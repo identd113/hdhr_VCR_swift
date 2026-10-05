@@ -2463,7 +2463,7 @@ struct VLCPlayerView: View {
         // turn (see its comment — a SwiftUI render-timing fix), so this can miss on the very first
         // call from .onAppear; the .onChange(of: bridge.recordingShowId) handler below re-runs it
         // once that lands.
-        if base.contains("/api/watch-recording"), let showId = bridge.recordingShowId,
+        if LocalRelay.isWatchRecording(base), let showId = bridge.recordingShowId,
            let show = state.recordingShows.first(where: { $0.show_id == showId }) {
             let entry = Self.liveRecordingEntry(for: show)
             glog("[VLC] syncChannel matched recording \(entry.GuideName) for url=\(base)")
@@ -2630,7 +2630,7 @@ struct VLCPlayerView: View {
 
     private func activeTunerCount() async -> Int? {
         guard let url = URL(string: device.statusURL),
-              let (data, _) = try? await URLSession.shared.data(from: url),
+              let data = await LANFetch.data(from: url, label: "status.json (tuner wait)"),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return nil }
         return tuners.filter { $0.VctNumber != nil }.count
     }
@@ -2695,7 +2695,7 @@ struct VLCPlayerView: View {
         // is for logging and a non-blocking warning if we appear to be over capacity.
         Task {
             guard let statusURL = URL(string: device.statusURL),
-                  let (data, _) = try? await URLSession.shared.data(from: statusURL),
+                  let data = await LANFetch.data(from: statusURL, label: "status.json (post-switch)"),
                   let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return }
             let tunerCount  = device.TunerCount ?? 2
             let active      = tuners.filter { $0.VctNumber != nil }.count
@@ -3081,7 +3081,7 @@ final class VLCPlayerWindowManager {
         guard secondaryDeviceID != nil else { return false }
         if let feedRemoteURL { return secondaryFeedRemoteURL == feedRemoteURL }
         if let recordingShowId {
-            return VLCBridge.shared.secondaryURL?.contains("/api/watch-recording?show=\(recordingShowId)") ?? false
+            return VLCBridge.shared.secondaryURL?.contains("\(LocalRelay.watchRecordingPath)?show=\(recordingShowId)") ?? false
         }
         if let deviceID, let channelNumber {
             return secondaryFeedRemoteURL == nil && secondaryDeviceID == deviceID && secondaryChannelNumber == channelNumber

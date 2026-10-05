@@ -909,7 +909,7 @@ final class WebServer: @unchecked Sendable {
     // already proven against, which never has this problem either.
     private func handleTranscodeSourceRelay(showId: String, startOffset: Int, conn: NWConnection) {
         guard !showId.isEmpty,
-              let remoteURL = URL(string: "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(startOffset)") else {
+              let remoteURL = URL(string: LocalRelay.watchRecordingURL(port: activePort, showId: showId, start: startOffset)) else {
             send(.badRequest("missing show id"), on: conn); return
         }
         beginFeedRelayProxy(remoteURL: remoteURL, sessionId: "transcode-source-\(showId)", conn: conn)
@@ -2778,7 +2778,7 @@ final class WebServer: @unchecked Sendable {
         state.discordWebDelete(show)
         // Clear url/recording on the live copy so nothing re-queues while deleteShow runs;
         // deleteShow() owns the stop() call and uses the original show copy's URL for VLC close.
-        if let idx = state.shows.firstIndex(where: { $0.show_id == show.show_id }) {
+        if let idx = state.showIndex(show.show_id) {
             state.shows[idx].show_url       = ""
             state.shows[idx].show_recording = false
         }
@@ -3889,10 +3889,12 @@ final class WebServer: @unchecked Sendable {
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
 
+        // Hoisted: recordingShows re-filters every show on each access, and this loop runs once per on-air channel.
+        let recordingKeys = Set(state.recordingShows.map { "\($0.hdhr_record):\($0.show_channel)" })
         var entries: [NowEntry] = []
         for device in state.recordableDevices {
             for (ch, entry) in state.onAirNow(for: device) {
-                let isRec = state.recordingShows.contains { $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
+                let isRec = recordingKeys.contains("\(device.DeviceID):\(ch.GuideNumber)")
                 let isSched = guideMatcher.isManaged(entry: entry)
                 entries.append(NowEntry(
                     deviceId: device.DeviceID,

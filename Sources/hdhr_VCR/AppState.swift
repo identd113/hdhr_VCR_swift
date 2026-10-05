@@ -1339,7 +1339,7 @@ final class AppState: ObservableObject {
             let showId = String(tail.prefix(while: { !$0.isWhitespace && $0 != "'" && $0 != "\"" }))
             guard !showId.isEmpty else { continue }
 
-            if let i = shows.firstIndex(where: { $0.show_id == showId }),
+            if let i = showIndex(showId),
                let endDate = shows[i].show_end, endDate > now {
                 shows[i].show_recording = true
                 shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
@@ -2451,7 +2451,7 @@ final class AppState: ObservableObject {
             glog("[Watch] yield: tuner never confirmed free within the 45s poll budget — attempting startRecording once anyway", level: .warning)
         }
         setYieldProgress("Tuner free — starting the recording…", generation: generation)
-        if let i = shows.firstIndex(where: { $0.show_id == showId }) {
+        if let i = showIndex(showId) {
             await startRecording(index: i)
         } else {
             glog("[Watch] yield: show \(showId) no longer in shows[] — cannot call startRecording", level: .warning)
@@ -2493,7 +2493,7 @@ final class AppState: ObservableObject {
                     setYieldProgress("Recording started — waiting for the file to appear on disk… (\(attempt)/90)", generation: generation)
                 } else {
                     setYieldProgress("Still trying to start the recording… (\(attempt)/90)", generation: generation)
-                    if let i = shows.firstIndex(where: { $0.show_id == showId }) {
+                    if let i = showIndex(showId) {
                         await startRecording(index: i)
                     }
                 }
@@ -2563,7 +2563,7 @@ final class AppState: ObservableObject {
             // guide-provider crosswalk error (an unrelated program mistagged with this show's own
             // SeriesID). Log loudly so a real mistagging incident is visible instead of silently
             // scheduling the wrong episode.
-            if Show.seriesTitle(from: m.entry.Title) != show.show_title {
+            if m.entry.seriesTitle != show.show_title {
                 glog("[\(show.show_title)] resolveSeriesAir: matched entry title is \"\(m.entry.Title)\" — possible guide provider mistagging, using it anyway", level: .warning)
             }
             show.show_next    = m.entry.startDate
@@ -2691,7 +2691,13 @@ final class AppState: ObservableObject {
     // `firstIndex(where:)` it replaces, just faster when the hint still holds.
     private func resolveShowIndex(_ showId: String, hint: Int) -> Int? {
         if hint < shows.count, shows[hint].show_id == showId { return hint }
-        return shows.firstIndex(where: { $0.show_id == showId })
+        return showIndex(showId)
+    }
+
+    /// Current index of the show with this `show_id`, or nil. Never cache the result across an
+    /// `await` — `shows` can mutate while suspended (see the idle-loop show-array safety invariant).
+    func showIndex(_ showId: String) -> Int? {
+        shows.firstIndex(where: { $0.show_id == showId })
     }
 
     func idleLoop() async {
@@ -2740,7 +2746,7 @@ final class AppState: ObservableObject {
             // full guide-grid rebuild for the whole batch instead of one per show.
             var tunerAvailabilityBroadcast: (channel: String, device: String)? = nil
             for show in activeShows where !show.hdhr_record.isEmpty && !usable.contains(show.hdhr_record) {
-                guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
+                guard let i = showIndex(show.show_id) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) not detected — auto-pausing until it's seen again", level: .warning)
                 applyPause(index: i, reason: Self.autoPauseTunerMissingReason, broadcast: false)
                 dirty = true
@@ -2756,7 +2762,7 @@ final class AppState: ObservableObject {
             // manual resume — no special-casing needed here.
             for show in pausedShows where show.show_fail_reason == Self.autoPauseTunerMissingReason
                                        && !show.hdhr_record.isEmpty && usable.contains(show.hdhr_record) {
-                guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
+                guard let i = showIndex(show.show_id) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) detected again — auto-resuming")
                 applyResume(index: i, broadcast: false)
                 dirty = true
@@ -2896,7 +2902,7 @@ final class AppState: ObservableObject {
                     // let `shows` mutate (e.g. an interleaved delete) while this call was suspended.
                     // Without this broadcast, an open web guide keeps showing the just-expired
                     // window's stale schedule until some unrelated event rebuilds the page.
-                    if let curIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+                    if let curIdx = showIndex(show.show_id) {
                         pushShowUpdate(type: "show_updated", channel: shows[curIdx].show_channel, device: shows[curIdx].hdhr_record, rebuildMenu: false)
                     }
                     dirty = true
@@ -3034,7 +3040,7 @@ final class AppState: ObservableObject {
                 glog("[\(show.show_title)] stranded show_next in past — advancing", level: .warning)
                 await scheduleNextAir(index: i)
                 // Re-resolve by show_id — see the auto-resume branch above for why.
-                if let curIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+                if let curIdx = showIndex(show.show_id) {
                     pushShowUpdate(type: "show_updated", channel: shows[curIdx].show_channel, device: shows[curIdx].hdhr_record, rebuildMenu: false)
                 }
                 dirty = true
@@ -3060,7 +3066,7 @@ final class AppState: ObservableObject {
         // out-of-range index after an interleaved delete/add mutates `shows`.
         let readyIds = readyIndices.map { shows[$0].show_id }
         for id in readyIds {
-            guard let i = shows.firstIndex(where: { $0.show_id == id }) else { continue }
+            guard let i = showIndex(id) else { continue }
             let s = shows[i]
             guard s.show_active, !s.show_recording, !s.show_paused,
                   let next = s.show_next, let end = s.show_end, next <= now + 10, end > now else { continue }
@@ -3470,7 +3476,7 @@ final class AppState: ObservableObject {
     }
 
     func skipRecording(showId: String) async {
-        guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
+        guard let i = showIndex(showId) else { return }
         glog("[\(shows[i].show_title)] SKIP — paused until next airing")
         showRuntime[showId]?.pendingDiscordStart = false
         recordingManager.stop(showId: showId)
@@ -3661,7 +3667,7 @@ final class AppState: ObservableObject {
             await scheduleNextAir(index: index)
             // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can let
             // `shows` mutate (e.g. an interleaved delete) while this call was suspended.
-            if let curIndex = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+            if let curIndex = showIndex(show.show_id) {
                 let rescheduled = shows[curIndex]
                 pushShowUpdate(type: "show_updated", channel: rescheduled.show_channel, device: rescheduled.hdhr_record, rebuildMenu: false)
             }
@@ -3707,7 +3713,7 @@ final class AppState: ObservableObject {
         // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can let `shows`
         // mutate (e.g. an interleaved delete) while this call was suspended; the original `index`
         // parameter is no longer guaranteed valid or to still refer to this show.
-        guard let curIndex = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        guard let curIndex = showIndex(show.show_id) else { return }
         let completedShow = shows[curIndex]
         // Reflects the new show_next/show_channel/hdhr_record for any open web guide — without
         // this, a finished recurring show's tuner dropdown/badges keep showing the just-finished
@@ -3743,7 +3749,7 @@ final class AppState: ObservableObject {
         // Re-derive the index inside the Task rather than capturing it now — `shows` can mutate
         // (e.g. a delete) before this deferred Task actually runs on the MainActor.
         Task { @MainActor in
-            guard let i = self.shows.firstIndex(where: { $0.show_id == showId }) else { return }
+            guard let i = self.showIndex(showId) else { return }
             await self.stopRecording(index: i, natural: false)
         }
     }
@@ -3864,7 +3870,7 @@ final class AppState: ObservableObject {
                     guideByDevice = guideStore.channelsByDevice
                     // Re-resolve after the await — bail out entirely if this show was deleted
                     // while the guide fetch was in flight.
-                    guard let reIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+                    guard let reIdx = showIndex(show.show_id) else { return }
                     idx = reIdx
                     // Re-read the show and recompute its filters from the fresh value — found in
                     // code review 2026-09-28: a concurrent edit to this exact show (e.g. the user
@@ -3889,7 +3895,7 @@ final class AppState: ObservableObject {
                     if freshDevice.DeviceID != device.DeviceID, !guideStore.isFresh(deviceId: freshDevice.DeviceID) {
                         await guideStore.load(for: freshDevice, hours: config.GuideHours, useXML: config.Guide_use_xml)
                         guideByDevice = guideStore.channelsByDevice
-                        guard let reIdx2 = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+                        guard let reIdx2 = showIndex(show.show_id) else { return }
                         idx = reIdx2
                     }
                 }
@@ -3899,7 +3905,7 @@ final class AppState: ObservableObject {
                     // See resolveSeriesAir's identical check — SeriesID is trusted as authoritative
                     // here too, so this doesn't reject the match, but logs loudly if the title looks
                     // like it belongs to an unrelated program (a guide-provider crosswalk error).
-                    if Show.seriesTitle(from: match.entry.Title) != show.show_title {
+                    if match.entry.seriesTitle != show.show_title {
                         glog("[\(show.show_title)] scheduleNextAir: matched entry title is \"\(match.entry.Title)\" — possible guide provider mistagging, using it anyway", level: .warning)
                     }
                     shows[idx].show_next    = match.entry.startDate
@@ -4065,14 +4071,14 @@ final class AppState: ObservableObject {
         if let next = show.show_next, let end = show.show_end, next <= now + 10, end > now {
             let id = show.show_id
             Task {
-                if let j = shows.firstIndex(where: { $0.show_id == id }) {
+                if let j = showIndex(id) {
                     await startRecording(index: j)
                 }
             }
         }
     }
     func updateShow(_ show: Show) {
-        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        guard let i = showIndex(show.show_id) else { return }
         // Same hard backstop as addShow — an edit can reassign hdhr_record (e.g. seriesChannel →
         // a different device), so this needs the identical check, not just a check on creation.
         if isVirtualRelayDevice(show.hdhr_record) {
@@ -4101,7 +4107,7 @@ final class AppState: ObservableObject {
         // seriesAll) takes effect without waiting for the next idle-loop tick.
         guard show.show_active, !show.show_paused, !show.show_recording, show.state != .single else { return }
         Task { [weak self] in
-            guard let self, let j = self.shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+            guard let self, let j = self.showIndex(show.show_id) else { return }
             await self.scheduleNextAir(index: j)
             self.saveConfig()
             // Re-broadcast now that scheduleNextAir resolved the real show_next/channel — the
@@ -4213,13 +4219,13 @@ final class AppState: ObservableObject {
     }
 
     func pauseShow(_ show: Show) {
-        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        guard let i = showIndex(show.show_id) else { return }
         glog("[\(show.show_title)] PAUSED manual")
         applyPause(index: i, reason: "Manually paused")
         saveConfig()
     }
     func resumeShow(_ show: Show) {
-        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        guard let i = showIndex(show.show_id) else { return }
         glog("[\(show.show_title)] RESUMED")
         applyResume(index: i)
         saveConfig()
@@ -4230,7 +4236,7 @@ final class AppState: ObservableObject {
         // tunerStatus/showRuntime signal-dropout cleanup) when deleting a show that's actively recording —
         // a bare recordingManager.stop() skipped all of that, leaving the web UI showing a
         // recording tuner for up to one idle-tick until the next hardware poll self-corrected.
-        if let i = shows.firstIndex(where: { $0.show_id == show.show_id }), shows[i].show_recording {
+        if let i = showIndex(show.show_id), shows[i].show_recording {
             // alsoRebuildGrid: false — the pushShowUpdate below rebuilds the grid again anyway
             // once the show is actually removed, so teardown's own intermediate rebuild (still
             // showing the about-to-be-deleted show, just no longer recording) would be pure waste.
@@ -4314,7 +4320,7 @@ final class AppState: ObservableObject {
         let ids = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && !shows[$0].show_recording && shows[$0].show_use_seriesid }
             .map { shows[$0].show_id }
         for id in ids {
-            guard let i = shows.firstIndex(where: { $0.show_id == id }),
+            guard let i = showIndex(id),
                   shows[i].show_active, !shows[i].show_paused, !shows[i].show_recording, shows[i].show_use_seriesid
             else { continue }
             await scheduleNextAir(index: i)
@@ -4936,14 +4942,14 @@ final class AppState: ObservableObject {
                                       extra: [(name: String, value: String, inline: Bool)] = [],
                                       snapshot: DiscordEpisodeSnapshot) async {
         guard let url = discordEffectiveURL(enabled: enabled, webhookURL: nil),
-              let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
+              let i = showIndex(showId) else { return }
         glog("[Discord] \(event) — \(shows[i].show_title)")
         let embed = buildDiscordShowEmbed(event: event, show: shows[i], color: color, extra: extra, snapshot: snapshot)
         let existing = shows[i].discord_start_msg_id
         if !existing.isEmpty {
             editDiscordEmbed(webhookURL: url, messageId: existing, embed: embed)
         } else if let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed),
-                  let j = shows.firstIndex(where: { $0.show_id == showId }) {
+                  let j = showIndex(showId) {
             shows[j].discord_start_msg_id = msgId
         }
     }
@@ -4983,7 +4989,7 @@ final class AppState: ObservableObject {
             _ = await previous?.value
             await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra, snapshot: snapshot)
             if clearIdAfter {
-                if let j = self.shows.firstIndex(where: { $0.show_id == showId }) {
+                if let j = self.showIndex(showId) {
                     self.shows[j].discord_start_msg_id = ""
                 }
                 // Same lifecycle boundary as discord_start_msg_id — the next airing's attempt
@@ -5177,7 +5183,7 @@ final class AppState: ObservableObject {
         recordingShowId != nil
             || currentFeedRemoteURL != nil
             || secondaryFeedRemoteURL != nil
-            || (secondaryURL?.contains("/api/watch-recording") ?? false)
+            || (secondaryURL.map(LocalRelay.isRelay) ?? false)
     }
 
     // MARK: - FEED local disk cache (primary window only — see docs/VirtualTunerService.md's "FEED
@@ -5338,7 +5344,7 @@ final class AppState: ObservableObject {
         } else {
             mgr.setSecondaryFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
         }
-        return ("http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(sessionId)&start=0", sessionId, startedAt)
+        return (LocalRelay.watchRecordingURL(port: webServer.activePort, showId: sessionId), sessionId, startedAt)
     }
 
     /// Kills the puller, unregisters from WebServer, deletes the cache file, and forgets the
@@ -5512,7 +5518,7 @@ final class AppState: ObservableObject {
         } else {
             mgr.setSecondaryFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
         }
-        return "http://127.0.0.1:\(webServer.activePort)/api/feed-local-relay?session=\(sessionId)"
+        return LocalRelay.feedLocalRelayURL(port: webServer.activePort, sessionId: sessionId)
     }
 
     /// Opens a native player window directly against another hdhrVCRplus instance's virtual-relay
@@ -5598,7 +5604,7 @@ final class AppState: ObservableObject {
             let placeholder = recordableDevices.first { !$0.isVirtualRelay } ?? device
             mgr.ensureWindowForStandalonePiP(placeholderDevice: placeholder, appState: self)
         }
-        let isLocalRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        let isLocalRelay = LocalRelay.isRelay(url)
         // Already the secondary — no window/focus concept for a thumbnail to re-trigger. A local
         // relay URL identifies its stream only by its query (?show=/?session=), so it's compared
         // whole; urlBase alone made every recording/FEED relay on one device look identical, so
@@ -5687,7 +5693,7 @@ final class AppState: ObservableObject {
         let elapsed      = recordingElapsedSeconds(show)
         let startSeconds = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
         let startOffset  = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
-        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        let relayURL = LocalRelay.watchRecordingURL(port: webServer.activePort, showId: show.show_id, start: startOffset)
         glog("[Watch] '\(show.show_title)' from disk via local relay as secondary (PiP): \(show.show_recording_path)")
         watchAsSecondary(url: relayURL, title: show.show_title, device: device)
     }
@@ -5816,7 +5822,7 @@ final class AppState: ObservableObject {
         let elapsed         = recordingElapsedSeconds(show)
         let startSeconds    = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
         let startOffset     = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
-        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        let relayURL = LocalRelay.watchRecordingURL(port: webServer.activePort, showId: show.show_id, start: startOffset)
         let mgr = VLCPlayerWindowManager.shared
         // Already in the PiP → promote it (Tab) instead of a duplicate primary. "From the
         // beginning" is a deliberate different position, so it still opens normally.
@@ -5984,7 +5990,7 @@ final class AppState: ObservableObject {
               let byteOffset = recordingRelayByteOffset(source, atSeconds: seconds) else { return }
         let elapsed = recordingRelayElapsedSeconds(source)
         let clampedSeconds = max(0, min(seconds, elapsed))
-        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
+        let relayURL = LocalRelay.watchRecordingURL(port: webServer.activePort, showId: showId, start: byteOffset)
         glog("[Watch] seeking '\(source.title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
         VLCBridge.shared.play(url: relayURL)
         VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: source.recordingStart, seekBaseSeconds: clampedSeconds)
@@ -6020,7 +6026,7 @@ final class AppState: ObservableObject {
         // The FEED-cache branch here is a narrow edge case: it can only happen via an explicit
         // tap-to-swap of an already-primary FEED cache session, never via watchRemoteRelayAsSecondary,
         // which never touches feedCacheSessions at all.
-        guard url.contains("/api/watch-recording"),
+        guard LocalRelay.isWatchRecording(url),
               let showId = URLComponents(string: url)?.queryItems?.first(where: { $0.name == "show" })?.value,
               let source = recordingRelaySource(showId: showId) else {
             VLCBridge.shared.clearRecordingSeek()
@@ -6105,7 +6111,7 @@ final class AppState: ObservableObject {
     // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
     private func fetchDeviceStatusUncached(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
-              let (data, _) = try? await URLSession.shared.data(from: url),
+              let data = await LANFetch.data(from: url, label: "status.json"),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
 
@@ -6224,7 +6230,7 @@ final class AppState: ObservableObject {
         await withTaskGroup(of: (String, String?).self) { group in
             for job in vstatusJobs {
                 group.addTask {
-                    guard let (vsData, _) = try? await URLSession.shared.data(from: job.url),
+                    guard let vsData = await LANFetch.data(from: job.url, label: "vstatus"),
                           let text = String(data: vsData, encoding: .utf8)
                     else { return (job.showId, nil) }
                     return (job.showId, text)
@@ -6334,7 +6340,7 @@ final class AppState: ObservableObject {
                         }
                         for _ in 0..<3 {
                             try? await Task.sleep(nanoseconds: 500_000_000)
-                            if let (statusData, _) = try? await URLSession.shared.data(from: statusURL),
+                            if let statusData = await LANFetch.data(from: statusURL, label: "scan status.json"),
                                let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData) {
                                 for entry in batch {
                                     guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
@@ -6433,7 +6439,7 @@ final class AppState: ObservableObject {
         guard !isVirtualRelayDevice(deviceId) else { return false }
         guard VLCPlayerWindowManager.shared.secondaryDeviceID == deviceId else { return false }
         guard let url = VLCBridge.shared.secondaryURL else { return false }
-        let isLocalRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        let isLocalRelay = LocalRelay.isRelay(url)
         return !isLocalRelay
     }
 

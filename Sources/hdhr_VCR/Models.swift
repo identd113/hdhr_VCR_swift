@@ -973,6 +973,10 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var id: Int { StartTime }
     var deviceId:    String = ""   // not in JSON — stamped after decode
     var channelNum:  String = ""   // not in JSON — stamped after decode
+    // Title with any " SxxExx…" suffix stripped (Show.seriesTitle(from:)), stamped once when the
+    // guide index is built — the title-fallback scans in GuideStore compare it against every
+    // future entry on a device, and the regex behind seriesTitle(from:) made that tens of ms per call.
+    var cachedSeriesTitle: String? = nil
     var StartTime: Int
     var EndTime: Int
     var Title: String
@@ -988,6 +992,8 @@ struct GuideEntry: Codable, Identifiable, Hashable {
         case StartTime, EndTime, Title, EpisodeTitle, EpisodeNumber, Synopsis, SeriesID, ImageURL, OriginalAirdate, Filter
     }
 
+    /// `Show.seriesTitle(from: Title)`, from the index-time stamp when present (falls back to computing it).
+    var seriesTitle: String { cachedSeriesTitle ?? Show.seriesTitle(from: Title) }
     var startDate: Date { Date(timeIntervalSince1970: TimeInterval(StartTime)) }
     var endDate:   Date { Date(timeIntervalSince1970: TimeInterval(EndTime)) }
     var durationMinutes: Int { (EndTime - StartTime) / 60 }

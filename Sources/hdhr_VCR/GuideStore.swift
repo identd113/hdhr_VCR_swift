@@ -278,7 +278,8 @@ final class GuideStore {
             let chNum  = sortedChannels[i].GuideNumber
             var sorted = guide.sorted { $0.StartTime < $1.StartTime }
             sorted = sorted.map { entry in
-                var e = entry; e.deviceId = deviceId; e.channelNum = chNum; return e
+                var e = entry; e.deviceId = deviceId; e.channelNum = chNum
+                e.cachedSeriesTitle = Show.seriesTitle(from: e.Title); return e
             }
             sortedChannels[i].Guide = sorted
             channelEntryIndex[key]  = sorted
@@ -494,7 +495,7 @@ final class GuideStore {
         let epoch = Int(date.timeIntervalSince1970)
         if let channelNum, let deviceId {
             let candidates = (channelEntryIndex["\(deviceId):\(channelNum)"] ?? []).filter {
-                $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                $0.StartTime <= epoch && $0.EndTime > epoch && $0.seriesTitle == title
             }
             guard !candidates.isEmpty else { return nil }
             // Same reasoning as currentEpisode's own single-candidate check (see its comment) —
@@ -513,7 +514,7 @@ final class GuideStore {
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: candidates[0])
         }
         let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
-            .filter { $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
+            .filter { $0.StartTime <= epoch && $0.EndTime > epoch && $0.seriesTitle == title
                 && (channelNum == nil || $0.channelNum == channelNum) }
         guard let first = candidates.first else { return nil }
         // Same reasoning as currentEpisode: every candidate here is airing right now, so there's
@@ -547,7 +548,7 @@ final class GuideStore {
         let epoch = Int(after.timeIntervalSince1970)
         if let channelNum, let deviceId {
             guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
-                $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                $0.StartTime > epoch && $0.seriesTitle == title
             }) else { return nil }
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
         }
@@ -558,7 +559,7 @@ final class GuideStore {
         // tie, matching what the old full sort + prefix(while:) produced, in one O(n) pass instead
         // of an O(n log n) sort + materialize.
         let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
-            .filter { $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
+            .filter { $0.StartTime > epoch && $0.seriesTitle == title
                 && (channelNum == nil || $0.channelNum == channelNum) }
         guard let first = candidates.min(by: { $0.StartTime < $1.StartTime }) else { return nil }
         guard isNotRecorded != nil || isFavorite != nil else {

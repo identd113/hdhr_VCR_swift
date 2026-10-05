@@ -338,7 +338,7 @@ final class VLCBridge: ObservableObject {
         // would resurrect a dead recordingShowId and corrupt vlcOccupiesTuner's "is this really a
         // zero-cost relay session" check. currentURL still encoding this exact show's id confirms
         // nothing else has taken over the player since this call was scheduled.
-        guard let url = currentURL, url.contains("/api/watch-recording"), url.contains("show=\(showId)") else {
+        guard let url = currentURL, LocalRelay.isWatchRecording(url), url.contains("show=\(showId)") else {
             glog("[VLC] beginRecordingSeek — ignored stale call for showId=\(showId), currentURL=\(currentURL ?? "nil") no longer matches", level: .warning)
             return
         }
@@ -727,7 +727,7 @@ final class VLCBridge: ObservableObject {
         // writing the file libvlc reads, no network jitter for libvlc itself to buffer against —
         // so it gets the same 300ms network-caching value (below) instead of the 2000ms live-
         // stream value it would otherwise fall into.
-        let isRecordingRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        let isRecordingRelay = LocalRelay.isRelay(url)
         // minRate/rate-ramp and the recording-relay scrub anchor (recordingShowId) are strictly
         // primary-only, regardless of this URL's shape — the secondary is a deliberately minimal,
         // controls-free thumbnail with no buffer pill to ramp and no scrub bar to anchor; tap-to-
@@ -829,7 +829,7 @@ final class VLCBridge: ObservableObject {
         // (show id "<DeviceID>-<UUID>", the only /api/watch-recording ids with a dash) gets 1500ms:
         // its cache file is written by a cross-machine curl whose arrival is bursty, so it needs
         // more than local Watch Now's 300ms — the old 8s FEED auto-play wait used to hide that.
-        let isFeedCache = url.contains("/api/feed-local-relay")
+        let isFeedCache = LocalRelay.isFeedLocalRelay(url)
             || url.range(of: #"/api/watch-recording\?show=[0-9A-Fa-f]{8}-"#, options: .regularExpression) != nil
         let networkCachingMs = isFeedCache ? 1500 : isRecordingRelay ? 300 : 2000
         // prefetch-buffer-size (KiB) — VLC 3.0.23's "prefetch" stream_filter defaults to 16384
