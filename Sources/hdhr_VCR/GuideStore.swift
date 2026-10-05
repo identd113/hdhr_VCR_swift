@@ -582,9 +582,15 @@ final class GuideStore {
             }
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: candidates[0])
         }
-        let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
-            .filter { $0.StartTime <= epoch && $0.EndTime > epoch && $0.seriesTitle == title
-                && (channelNum == nil || $0.channelNum == channelNum) }
+        // Explicit types + steps (not one flatMap→filter chain): the older Swift toolchain on the laptop could not
+        // type-check the chained form in reasonable time ("unable to type-check this expression").
+        let scanned: [GuideEntry] = titleFallbackScanKeys(deviceId: deviceId).flatMap { (key: String) -> [GuideEntry] in
+            channelEntryIndex[key] ?? []
+        }
+        let candidates: [GuideEntry] = scanned.filter { (e: GuideEntry) -> Bool in
+            guard e.StartTime <= epoch, e.EndTime > epoch, e.seriesTitle == title else { return false }
+            return channelNum == nil || e.channelNum == channelNum
+        }
         guard let first = candidates.first else { return nil }
         // Same reasoning as currentEpisode: every candidate here is airing right now, so there's
         // no StartTime-tied subset to narrow to first — preferUnrecorded/preferFavorite apply
@@ -627,9 +633,13 @@ final class GuideStore {
         // flipping across guide rebuilds — min(by:) returns the first-encountered minimum on a
         // tie, matching what the old full sort + prefix(while:) produced, in one O(n) pass instead
         // of an O(n log n) sort + materialize.
-        let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
-            .filter { $0.StartTime > epoch && $0.seriesTitle == title
-                && (channelNum == nil || $0.channelNum == channelNum) }
+        let scanned: [GuideEntry] = titleFallbackScanKeys(deviceId: deviceId).flatMap { (key: String) -> [GuideEntry] in
+            channelEntryIndex[key] ?? []
+        }
+        let candidates: [GuideEntry] = scanned.filter { (e: GuideEntry) -> Bool in
+            guard e.StartTime > epoch, e.seriesTitle == title else { return false }
+            return channelNum == nil || e.channelNum == channelNum
+        }
         guard let first = candidates.min(by: { $0.StartTime < $1.StartTime }) else { return nil }
         guard isNotRecorded != nil || isFavorite != nil else {
             return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
