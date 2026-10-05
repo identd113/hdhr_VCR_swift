@@ -149,6 +149,11 @@ final class WebServer: @unchecked Sendable {
     // buildGuideGridHTML pass on every hit; nil only before the first prebuildPageHTML ever runs,
     // same as cachedHTML's own live-build fallback below.
     private var cachedGridHTML: String? = nil
+    // The guide window start (`guideWindow(state:).start`, which advances every 30 minutes) the cached grid /
+    // pages above were built against. When it falls behind the live value the cached HTML is stale (its
+    // window and baked-in now-line origin are hours old on a quiet system, since the caches are otherwise
+    // rebuilt only by guide-changing events) — see refreshCachesIfGuideWindowMoved.
+    var cachedGridWinStart: Int? = nil   // internal (not private) only so a test can mark the cache stale
     // Skip-already-recorded per-series on-disk tag scan (see computeRecordedTagsByShow) computed
     // alongside cachedGridHTML above — buildGuideJSON reuses it instead of repeating the disk scan
     // on every /api/guide.json hit (hdhr_guide polls this every 20s). nil only before the first
@@ -299,6 +304,19 @@ final class WebServer: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: rawResults, count: items.count))
     }
 
+    /// Rebuilds the cached grid + page HTML if the guide window has advanced since they were built. The caches are
+    /// otherwise refreshed only by guide-changing events (add/edit/delete/pause/resume/favorite/recording/guide
+    /// refresh), which on a quiet system are hours apart (the periodic guide refresh runs every 2–3 h by
+    /// default) — so GET /, /vertical and the ↺ refresh (/api/guide-refresh) handed out a grid whose window and
+    /// now-line origin were hours stale. Checked per request (cheap integer compare); the rebuild itself happens
+    /// at most once per 30-minute window step. (CLAUDE.md's old "hourly guide_refreshed" is not what runs.)
+    @MainActor
+    func refreshCachesIfGuideWindowMoved(state: AppState) {
+        guard let built = cachedGridWinStart, built != guideWindow(state: state).start else { return }
+        glog("[WebServer] guide window moved on (\(built) → \(guideWindow(state: state).start)) — rebuilding the cached grid/pages")
+        prebuildPageHTML(state: state)
+    }
+
     @MainActor
     func prebuildPageHTML(state: AppState, prebuiltGrid: String? = nil) {
         // Set on every exit path, not just success — this function has no failure branch (unlike
@@ -309,6 +327,7 @@ final class WebServer: @unchecked Sendable {
         // variants below, which differ only in their <head>/<style>, not the grid itself.
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         cachedGridHTML = grid
+        cachedGridWinStart = guideWindow(state: state).start
         // These two still have to run serially — buildHTML reads MainActor-isolated `state`.
         let html = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: false).utf8)
         // Skip building/caching the vertical variant on installs that have never actually hit
@@ -695,6 +714,9 @@ final class WebServer: @unchecked Sendable {
         sseLock.lock()
         sseConns.removeAll { $0 === conn }
         sseLock.unlock()
+        // De-listing alone left a half-dead socket in liveConns until Network.framework happened to fail it;
+        // cancelling is idempotent and lets the normal state handler clean it up now.
+        conn.cancel()
     }
 
     private func registerSSE(_ conn: NWConnection) {
@@ -2427,6 +2449,9 @@ final class WebServer: @unchecked Sendable {
         }
 
         // GET routes
+        if path == "/" || path == "/index.html" || path == "/vertical" || path == "/api/guide-refresh" {
+            refreshCachesIfGuideWindowMoved(state: state)
+        }
         switch path {
         case "/", "/index.html":
             if let html = cachedHTML, let gz = cachedHTMLGzip {

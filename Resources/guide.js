@@ -83,6 +83,10 @@ function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12
 function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
 function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
 function noTranscode(devId){var t=tuners[devId];return !!(t&&t.nt);}
+// Escapes a value for use inside a quoted attribute selector ([data-x="…"]). Channel numbers / DeviceIDs / guide
+// names come from the network (a spoofed LAN HDHomeRun can advertise a `"` or `\`), and an unescaped one makes
+// querySelector THROW — mid-applyGuidePayload that aborted the rest of the refresh after the DOM swap.
+function cq(v){v=String(v==null?'':v);return(window.CSS&&CSS.escape)?CSS.escape(v):v.replace(/["\\]/g,'\\$&');}
 function showInfo(el){
   var d=el.dataset;
   // Mark the selection before renderHeavyFields() runs — paintHeavyFields() gates its
@@ -543,6 +547,18 @@ function decodeGzipB64(b64){
 // Applies a {grid,sumph,tdrop} payload to the DOM — shared by refreshGuide()'s fetch
 // response and the SSE-pushed guide-change events (which carry the same shape so a
 // rebuild triggered by a state change happens once server-side, not once per open tab).
+// Ordering guard: guide payloads reach this page by two routes — a /api/guide-refresh fetch and SSE events whose
+// gzip+base64 fields decode asynchronously — and each can finish out of order. Every request/event takes a number
+// when it STARTS; a result is applied only if nothing newer has already been applied (an older, slower result
+// arriving late used to overwrite a newer grid and leave the page wrong until the next event).
+var _evtSeq=0,_appliedSeq=0,_lastApplyAt=Date.now();
+function nextEvtSeq(){return ++_evtSeq;}
+function applyGuidePayloadSeq(seq,d,selOverride){
+  if(seq<_appliedSeq)return false;
+  _appliedSeq=seq;_lastApplyAt=Date.now();
+  applyGuidePayload(d,selOverride);
+  return true;
+}
 function applyGuidePayload(d,selOverride){
   var gw=document.querySelector('.gw');
   var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
@@ -553,6 +569,9 @@ function applyGuidePayload(d,selOverride){
   // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
   var nh=document.querySelector('.g-hdr');
   if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
+  updateNowLine(); // re-plot the red now-line against the new origin immediately (it used to wait for the 60 s tick)
+  // Bound the lazily-loaded detail cache: drop airings that started before the new window.
+  _heavyCache.forEach(function(v,k){var st=+k.slice(k.lastIndexOf(':')+1);if(st&&st<_winStart)_heavyCache.delete(k);});
   var oldPh=document.getElementById('sum-ph');
   if(oldPh)oldPh.innerHTML=d.sumph;
   // Update each tuner's show list; header/toggle-open state is preserved.
@@ -569,15 +588,16 @@ function applyGuidePayload(d,selOverride){
   if(prevStart){
     // Direct attribute selector instead of materializing every .g-prog into an array and
     // scanning it — lets the browser's native selector engine find the match directly.
-    var match=document.querySelector('.g-prog[data-start="'+prevStart+'"][data-num="'+prevNum+'"][data-device="'+prevDev+'"]');
+    var match=document.querySelector('.g-prog[data-start="'+cq(prevStart)+'"][data-num="'+cq(prevNum)+'"][data-device="'+cq(prevDev)+'"]');
     if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
   }
 }
 function refreshGuide(selOverride){
   // Returns the fetch chain (existing callers all ignore the return value) so pull-to-refresh
   // can wait for the real completion instead of guessing with a timeout.
+  var seq=nextEvtSeq();
   return fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
-    applyGuidePayload(d,selOverride);
+    applyGuidePayloadSeq(seq,d,selOverride);
   }).catch(function(){});
 }
 function doEditFromGuide(){
@@ -822,7 +842,7 @@ function relTime(epoch){
 function goToShow(ch){
   closeTunerPop();
   var now=Math.floor(Date.now()/1000);
-  var rows=document.querySelectorAll('.g-row[data-ch="'+ch+'"]');
+  var rows=document.querySelectorAll('.g-row[data-ch="'+cq(ch)+'"]');
   for(var i=0;i<rows.length;i++){
     var progs=rows[i].querySelectorAll('.g-prog');
     for(var j=0;j<progs.length;j++){
@@ -839,10 +859,10 @@ function jumpToGuide(rowEl){
   document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
   setDev(dev);
   var p=null;
-  if(epoch&&+epoch>0)p=document.querySelector('.g-prog[data-num="'+ch+'"][data-device="'+dev+'"][data-start="'+epoch+'"]');
+  if(epoch&&+epoch>0)p=document.querySelector('.g-prog[data-num="'+cq(ch)+'"][data-device="'+cq(dev)+'"][data-start="'+cq(epoch)+'"]');
   if(!p){
     var now=Math.floor(Date.now()/1000);
-    document.querySelectorAll('.g-row[data-ch="'+ch+'"]').forEach(function(row){
+    document.querySelectorAll('.g-row[data-ch="'+cq(ch)+'"]').forEach(function(row){
       if(p)return;
       row.querySelectorAll('.g-prog').forEach(function(prog){
         if(!p&&prog.dataset.device===dev&&+prog.dataset.start<=now&&+prog.dataset.end>now)p=prog;
@@ -1435,7 +1455,7 @@ function jumpToSearchAiring(){
   if(!_searchShow)return;
   var a=_searchShow.airings[_searchShow.idx];
   if(!a)return;
-  var p=document.querySelector('.g-prog[data-device="'+a.device+'"][data-num="'+a.ch+'"][data-start="'+a.start+'"]');
+  var p=document.querySelector('.g-prog[data-device="'+cq(a.device)+'"][data-num="'+cq(a.ch)+'"][data-start="'+cq(a.start)+'"]');
   if(p){p.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});showInfo(p);}
 }
 function cycleSearchEpisode(delta){
@@ -1529,11 +1549,11 @@ function rebuildGenreFilter(){
   var sel=document.getElementById('genre-sel');
   if(!sel)return;
   while(sel.options.length>1)sel.remove(1); // keep the static "All genres" placeholder
-  var scope=curDev?'.g-prog[data-genre][data-device="'+curDev+'"]':'.g-prog[data-genre]';
+  var scope=curDev?'.g-prog[data-genre][data-device="'+cq(curDev)+'"]':'.g-prog[data-genre]';
   var gs=new Set();
   document.querySelectorAll(scope).forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
-  var infScope=curDev?'.g-prog[data-inf="1"][data-device="'+curDev+'"]':'.g-prog[data-inf="1"]';
-  var newScope=curDev?'.g-prog[data-new="1"][data-device="'+curDev+'"]':'.g-prog[data-new="1"]';
+  var infScope=curDev?'.g-prog[data-inf="1"][data-device="'+cq(curDev)+'"]':'.g-prog[data-inf="1"]';
+  var newScope=curDev?'.g-prog[data-new="1"][data-device="'+cq(curDev)+'"]':'.g-prog[data-new="1"]';
   var hasInf=document.querySelector(infScope)!==null;
   var hasNew=document.querySelector(newScope)!==null;
   var bar=document.getElementById('genre-bar');
@@ -1646,6 +1666,15 @@ setInterval(updateNowLine,60000);
 (function(){
   if(!window.EventSource)return;
   var es=new EventSource('/api/events');
+  // EventSource auto-reconnects after a Wi-Fi blip / laptop sleep, but the server only replays tuner counts on
+  // connect — every guide-change event pushed during the gap is lost, so the grid and tuner dropdowns stayed stale
+  // until some unrelated later event. Re-sync on every RE-open (the first open is the page load itself), and when a
+  // hidden tab becomes visible again after a while (timers/sockets are throttled or frozen while hidden).
+  var _esOpenedOnce=false;
+  es.onopen=function(){if(_esOpenedOnce)refreshGuide();_esOpenedOnce=true;};
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'&&Date.now()-_lastApplyAt>120000)refreshGuide();
+  });
   es.onmessage=function(e){
     try{
       var d=JSON.parse(e.data);
@@ -1663,7 +1692,7 @@ setInterval(updateNowLine,60000);
         // Inline DOM update — no full reload needed
         var bColors={poor:'#e53935',fair:'#fbc02d',good:'#43a047'};
         var bc=bColors[d.bucket]||null;
-        document.querySelectorAll('.g-row[data-gname="'+d.gname+'"]').forEach(function(row){
+        document.querySelectorAll('.g-row[data-gname="'+cq(d.gname)+'"]').forEach(function(row){
           var sig=row.querySelector('.g-sig');
           if(!bc){if(sig)sig.remove();return;}
           var svgStr='<svg class="g-sig" viewBox="0 0 11 10" width="11" height="10">'
@@ -1686,6 +1715,7 @@ setInterval(updateNowLine,60000);
         // level regardless of this browser's DecompressionStream support) when that API is missing,
         // rather than silently doing nothing until the next reload.
         if(!window.DecompressionStream){refreshGuide();return;}
+        var seq=nextEvtSeq(); // taken on ARRIVAL — decodes finish in size order, not arrival order
         var tdropZKeys=Object.keys(d.tdropZ||{});
         Promise.all([
           d.gridZ ? decodeGzipB64(d.gridZ) : Promise.resolve(d.grid||''),
@@ -1694,7 +1724,7 @@ setInterval(updateNowLine,60000);
         ]).then(function(res){
           var tdrop=Object.assign({},d.tdrop||{});
           tdropZKeys.forEach(function(k,i){tdrop[k]=res[2][i];});
-          applyGuidePayload({grid:res[0],sumph:res[1],tdrop:tdrop});
+          applyGuidePayloadSeq(seq,{grid:res[0],sumph:res[1],tdrop:tdrop});
         }).catch(function(){
           // A corrupted/truncated gzip+base64 payload throws here — fall back to a full refresh
           // instead of leaving the grid stale with no retry until an unrelated later event or the
@@ -1709,7 +1739,7 @@ setInterval(updateNowLine,60000);
         // Must be checked before the d.sumPh||d.tdrop branch below: this payload's
         // "tdrop" is a {device:html} object (see applyGuidePayload), not the single-
         // string shape that branch expects.
-        applyGuidePayload(d);
+        applyGuidePayloadSeq(nextEvtSeq(),d);
       } else if(d.sumPh||d.tdrop){
         // Fragment push — apply inline without a full page fetch
         if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
@@ -1720,7 +1750,7 @@ setInterval(updateNowLine,60000);
         if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){
           var isRec=d.type==='recording_started';
           var nowTs=Math.floor(Date.now()/1000);
-          document.querySelectorAll('.g-prog[data-num="'+d.channel+'"][data-device="'+d.device+'"]').forEach(function(el){
+          document.querySelectorAll('.g-prog[data-num="'+cq(d.channel)+'"][data-device="'+cq(d.device)+'"]').forEach(function(el){
             var s=parseInt(el.dataset.start,10),en=parseInt(el.dataset.end,10);
             if(s<=nowTs&&en>nowTs){
               if(isRec){
@@ -1752,7 +1782,7 @@ setInterval(updateNowLine,60000);
           // (device fully gone and referenced by no scheduled show), skip the swap so the open
           // dropdown isn't silently destroyed — the next full refresh reconciles the bar.
           var skip=false;
-          if(openId){var tmp=document.createElement('div');tmp.innerHTML=d.devbar;if(!tmp.querySelector('[id="'+openId+'"]'))skip=true;}
+          if(openId){var tmp=document.createElement('div');tmp.innerHTML=d.devbar;if(!tmp.querySelector('[id="'+cq(openId)+'"]'))skip=true;}
           if(!skip){
             db.innerHTML=d.devbar;
             if(openId){var reopened=document.getElementById(openId);if(reopened)reopened.style.display='block';}

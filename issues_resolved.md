@@ -6,6 +6,16 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Triage T17 (web guide stale-grid cluster) fixed — 2026-10-05
+
+- **No resync after an EventSource reconnect:** the server only replays tuner counts on connect, so guide-change events pushed during a Wi-Fi blip / laptop sleep were lost. `guide.js` now calls `refreshGuide()` on every re-open and when a hidden tab becomes visible after >2 min.
+- **Out-of-order applies:** `nextEvtSeq()` / `applyGuidePayloadSeq` — each `/api/guide-refresh` fetch and SSE grid event takes a number on arrival and is applied only if nothing newer was applied (gzip decodes finish in size order, not arrival order).
+- **Hours-old cached grid:** `WebServer.refreshCachesIfGuideWindowMoved` rebuilds the cached grid/pages when the 30-minute guide window has advanced (checked on `/`, `/vertical`, `/api/guide-refresh`); `applyGuidePayload` now calls `updateNowLine()` after re-syncing the window origin.
+- **Related:** attribute selectors use `cq()` (`CSS.escape`) so a `"`/`\` in a channel number can't make `querySelector` throw mid-apply; `_heavyCache` is pruned of airings older than the window on every apply; `removeSSE` cancels the connection; CLAUDE.md's wrong "hourly `guide_refreshed`" claim corrected (it is every `GuideHours/divisor`, 2–3 h).
+Tests: `GuideFreshnessTests` (6 — ordering guard and `cq` run in node against the real guide.js, parse check, window-moved rebuild).
+
+---
+
 # Triage batch 2 fixed — 2026-10-05 (T04, T05, T06, T09, T10, T11)
 
 - **T06 guide "already loading" = failure:** `GuideStore.load` now keeps one in-flight `Task` per device; a second caller joins it and gets the real result, instead of `false` (which triggered backoff + a "Guide Load Failed" notification/Discord card for a guide that loaded fine).
