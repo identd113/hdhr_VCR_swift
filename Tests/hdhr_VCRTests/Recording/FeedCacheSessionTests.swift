@@ -60,7 +60,7 @@ struct FeedCacheSessionTests {
             remoteURL: "http://192.0.2.1/auto/v5.1?dev=FEEDCAFE", device: makeDevice(), title: "Test FEED Show"))
         await waitUntil { manager.isFeedCachePullRunning(sessionId: session.sessionId) }
 
-        let cacheDir = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
+        let cacheDir = AppState.feedCacheDirectory
         let cachePath = "\(cacheDir)/\(session.sessionId).ts"
         #expect(FileManager.default.fileExists(atPath: cachePath) == true)
 

@@ -5277,7 +5277,7 @@ final class AppState: ObservableObject {
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same cache file.
         let sessionId = "\(device.DeviceID.safeFileComponent)-\(UUID().uuidString)"
-        let cacheDir  = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
+        let cacheDir  = Self.feedCacheDirectory
         let cachePath = "\(cacheDir)/\(sessionId).ts"
 
         // The returned URL is served by this Mac's own web server — claim it the same way
@@ -5398,6 +5398,13 @@ final class AppState: ObservableObject {
     /// has played through to the end — or that no player slot references any more — is deleted, so
     /// a window left sitting on a finished show doesn't hold its multi-GB cache until closed.
     /// A still-scrubbing viewer (puller done, playback not at EOF) keeps the file.
+    /// Where FEED cache files live: ~/Library/Caches/hdhrVCRplus/feed-cache, or a temp folder under test
+    /// (so the suite never writes/sweeps the real cache — see `runningUnderTests`).
+    nonisolated static var feedCacheDirectory: String {
+        runningUnderTests ? NSTemporaryDirectory() + "hdhrVCRplus-test-feed-cache"
+                          : NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
+    }
+
     private func maintainFeedCacheSessions() {
         guard !feedCacheSessions.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
@@ -5485,7 +5492,7 @@ final class AppState: ObservableObject {
             glog("[Startup] Killed \(killedCount) orphaned FEED cache puller(s)", level: .warning)
         }
 
-        let dir = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
+        let dir = Self.feedCacheDirectory
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
         for name in entries { try? FileManager.default.removeItem(atPath: dir + "/" + name) }
         if !entries.isEmpty {

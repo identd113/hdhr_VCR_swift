@@ -29,8 +29,8 @@ if ! xcode-select -p &>/dev/null || ! command -v swift &>/dev/null; then
 fi
 echo "    Xcode Command Line Tools: OK"
 
-echo "==> Stopping running instance…"
-pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
+# (The running instance is stopped later — only once the build below has succeeded — so a failed build
+# no longer leaves the app dead. Recording curl processes survive a stop and are reattached on launch.)
 
 # macOS occasionally leaves a "hdhrVCRplus 2.app"/"3.app"/etc. duplicate in the repo root when a
 # bundle-replace below races a lingering handle on the just-stopped process — observed
@@ -73,9 +73,16 @@ echo "    Version: $APP_VERSION"
 echo "==> Building…"
 swift build
 
+echo "==> Stopping running instance…"
+pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
+
+# Ask SwiftPM where the products are rather than hardcoding .build/debug (deploy_release.sh already
+# does): the output layout changes with the toolchain / build-system default.
+BIN_PATH="$(swift build --show-bin-path)"
+
 echo "==> Deploying binary…"
 mkdir -p "$APP/Contents/MacOS"
-cp .build/debug/hdhr_VCR "$BINARY"
+cp "$BIN_PATH/hdhr_VCR" "$BINARY"
 
 echo "==> Deploying CLI helper…"
 # hdhr_guide (docs/TUIGuide.md) — bundled terminal guide client. Lives in Contents/Helpers/, not
@@ -83,7 +90,7 @@ echo "==> Deploying CLI helper…"
 # the whole-bundle codesign) since a loose executable outside the bundle's main-executable slot
 # needs its own signature — the outer codesign call doesn't reach into Contents/Helpers/.
 mkdir -p "$APP/Contents/Helpers"
-cp .build/debug/hdhr_guide "$APP/Contents/Helpers/hdhr_guide"
+cp "$BIN_PATH/hdhr_guide" "$APP/Contents/Helpers/hdhr_guide"
 
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
@@ -99,6 +106,9 @@ cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
 cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
+# Privacy manifest (required-reason API declarations) — was never copied into the bundle, so the
+# shipped app had none (docs/MAS_COMPLIANCE.md §7).
+cp Sources/hdhr_VCR/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 
 echo "==> Generating app icon…"
 # Build AppIcon.icns from AppIcon-source.png — a dedicated 1024x1024 master with the icon
@@ -172,11 +182,11 @@ if [ "$_WS_READY" = "1" ]; then
     # here are reported, not fatal: the app already deployed and is running successfully by
     # this point, a latency regression shouldn't make deploy.sh itself exit non-zero.
     if xcrun --find xctest &>/dev/null; then
-        swift test --filter WebServerPerfTests || echo "    ⚠ perf tests failed or reported a regression — see output above"
+        RUN_LIVE_PERF_TESTS=1 swift test --filter WebServerPerfTests || echo "    ⚠ perf tests failed or reported a regression — see output above"
     else
         # CommandLineTools-only toolchain (no full Xcode): swift test compiles the suite but
         # has no host to actually execute it in — see Tests/hdhr_VCRTests/WebServerPerfTests.swift.
-        swift test --filter WebServerPerfTests || true
+        RUN_LIVE_PERF_TESTS=1 swift test --filter WebServerPerfTests || true
         echo "    (xctest unavailable in this toolchain — build verified but tests did not execute; install full Xcode for real pass/fail output)"
     fi
 else

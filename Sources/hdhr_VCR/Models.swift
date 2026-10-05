@@ -68,11 +68,33 @@ final class RotatingLogFile {
     }
 }
 
+/// True when this process is the unit-test runner (`swift test` / xctest). The app's own log
+/// files live under ~/Library/Logs; every suite that constructs an AppState/GuideStore/etc. runs
+/// code that calls glog()/discordLog(), so without this the test run appended its chatter (device
+/// "AABBCCDD", mock shows) to the user's live hdhrVCRplus.log — tens of thousands of lines that ate
+/// the 20 MB rotation budget and polluted real troubleshooting (2026-10-05 review). Under test the
+/// logs go to a throw-away temp folder instead.
+let runningUnderTests: Bool = {
+    // `swift test` hosts swift-testing suites in `swiftpm-testing-helper` (no XCTest env vars, test
+    // bundle not in Bundle.allBundles) — so check the helper's argv as well as XCTest being loaded.
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || NSClassFromString("XCTestCase") != nil
+        || CommandLine.arguments.contains { $0 == "--test-bundle-path" || $0.hasSuffix("swiftpm-testing-helper") }
+}()
+
+/// Folder the app's log files are written to: ~/Library/Logs normally, a temp folder under test.
+let appLogsDirectory: String = {
+    guard runningUnderTests else { return NSHomeDirectory() + "/Library/Logs" }
+    let dir = NSTemporaryDirectory() + "hdhrVCRplus-test-logs"
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    return dir
+}()
+
 private let appLog = Logger(subsystem: "com.hdhr.vcrplus", category: "app")
 private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utility)
 // Shared formatter and file — accessed only from the serial logQueue so no concurrent access.
 private let logDateFormatter = ISO8601DateFormatter()
-let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
+let logFilePath = appLogsDirectory + "/hdhrVCRplus.log"
 private let logFile = RotatingLogFile(path: logFilePath)
 
 // Separate, self-capped file for curl's own `-v` verbose stderr output (Settings → Advanced →
@@ -87,7 +109,7 @@ private let logFile = RotatingLogFile(path: logFilePath)
 // persistent Swift-side handle held between recordings), checked once per verbose recording
 // start rather than per line, since curl's writes happen entirely outside Swift's visibility
 // once spawned.
-let curlVerboseLogFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus-curl.log"
+let curlVerboseLogFilePath = appLogsDirectory + "/hdhrVCRplus-curl.log"
 private let curlVerboseLogCapBytes: UInt64 = 5 * 1024 * 1024
 
 // `path` defaults to the real curlVerboseLogFilePath; RecordingManagerTests overrides it to a

@@ -33,6 +33,9 @@ final class WebServerPerfMetricsTests: XCTestCase {
     }
 
     private func requireServerAvailable() throws {
+        // Opt-in — these hit the live app (see WebServerPerfTests.swift's livePerfTestsOptedIn).
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_LIVE_PERF_TESTS"] == "1",
+                          "live-app perf tests are opt-in: RUN_LIVE_PERF_TESTS=1")
         let ok = await_ {
             guard let (_, response) = try? await URLSession.shared.data(
                 for: URLRequest(url: URL(string: "http://127.0.0.1:1980/api/ping")!, timeoutInterval: 2)

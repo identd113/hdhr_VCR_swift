@@ -7,7 +7,7 @@ import Foundation
 // Same [timestamp] [LEVEL] line format as glog(), written via its own serial queue/handle.
 private let discordLogQueue = DispatchQueue(label: "com.hdhr.vcrplus.discordlog", qos: .utility)
 private let discordLogDateFormatter = ISO8601DateFormatter()
-let discordLogFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus-discord.log"
+let discordLogFilePath = appLogsDirectory + "/hdhrVCRplus-discord.log"
 // Discord logging runs at roughly 1% of the main log's volume (measured: ~11 KB/day vs. the main
 // log's ~1.2 MB/day) — a 5 MB cap is still generous (over a year of live history) without
 // carrying the main log's 20 MB default for a file this quiet.

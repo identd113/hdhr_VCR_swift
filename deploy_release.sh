@@ -51,9 +51,15 @@ if [ -z "$RELEASE_VERSION" ]; then
     echo "       e.g.: ./deploy_release.sh 1.3.0"
     exit 1
 fi
+# The version is stamped into Info.plist and used in file names / tags below — reject anything that
+# isn't a plain semantic version (a typo like "v2.6" or a stray flag would otherwise ship as-is).
+if ! echo "$RELEASE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$'; then
+    echo "ERROR: '$RELEASE_VERSION' is not a semantic version (expected e.g. 2.6.0, no leading 'v')"
+    exit 1
+fi
 
-echo "==> Stopping running instance…"
-pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
+# (The running instance is stopped just before the new binary is copied in, below — only once the
+# release build has succeeded. Recording curl processes survive a stop and are reattached on launch.)
 
 # macOS occasionally leaves a "hdhrVCRplus 2.app"/"3.app"/etc. duplicate in the repo root when a
 # bundle-replace below races a lingering handle on the just-stopped process — observed
@@ -99,6 +105,9 @@ swift build -c release --arch arm64
 # active toolchain's build-system default or output layout changes again.
 BIN_PATH="$(swift build --show-bin-path -c release --arch arm64)"
 
+echo "==> Stopping running instance…"
+pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
+
 echo "==> Deploying binary…"
 cp "$BIN_PATH/hdhr_VCR" "$BINARY"
 lipo -info "$BINARY"
@@ -124,6 +133,8 @@ cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
 cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
+# Privacy manifest (required-reason API declarations) — was never copied into the bundle (docs/MAS_COMPLIANCE.md §7).
+cp Sources/hdhr_VCR/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 
 echo "==> Generating app icon…"
 # Built from AppIcon-source.png — a dedicated 1024x1024 master with transparent corners,
@@ -164,7 +175,8 @@ if [ "$ADHOC" -eq 1 ]; then
     codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign - \
              "$_TMP_APP/Contents/Helpers/hdhr_guide"
 else
-    codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" \
+    # --timestamp: notarization requires a secure timestamp on every Developer ID signature.
+    codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" \
              "$_TMP_APP/Contents/Helpers/hdhr_guide"
 fi
 
@@ -176,7 +188,7 @@ if [ "$ADHOC" -eq 1 ]; then
              "$_TMP_APP"
 else
     echo "==> Signing with Hardened Runtime…"
-    codesign --force --options runtime \
+    codesign --force --options runtime --timestamp \
              --entitlements "$ENTITLEMENTS" \
              --sign "$SIGN_IDENTITY" \
              "$_TMP_APP"

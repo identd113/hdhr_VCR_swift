@@ -28,7 +28,17 @@ private let heavyBurstCount = 10   // even — see that test's own comment on wh
 private let sseConnectionCount = 4   // a couple of open guide tabs/windows — see the test's own comment
 private let sampleCount = 5
 
+// Opt-in (2026-10-05 review): these tests hit the user's LIVE app — they POST /api/toggle-favorite
+// on a real channel of the real HDHomeRun a dozen times and force repeated guide rebuilds — so a plain
+// `swift test` must not run them just because something happens to be listening on :1980. deploy.sh
+// sets RUN_LIVE_PERF_TESTS=1 for its post-deploy check; run by hand with
+//   RUN_LIVE_PERF_TESTS=1 swift test --filter WebServerPerfTests
+private func livePerfTestsOptedIn() -> Bool {
+    ProcessInfo.processInfo.environment["RUN_LIVE_PERF_TESTS"] == "1"
+}
+
 private func serverAvailable(port: Int = 1980) async -> Bool {
+    guard livePerfTestsOptedIn() else { return false }
     guard let (status, _, _) = try? await timedGet("/api/ping", port: port) else { return false }
     return status == 200
 }
