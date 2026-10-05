@@ -6,6 +6,21 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# 2026-10-05 repo-wide review: first batch fixed
+
+From the 4-agent review logged in `ISSUES.md` (items below are fixed; the rest of that block is still open):
+- **libvlc stat-counter wrap crash** (`1429087`): per-tick Int32 deltas use `&-` (counters are C ints that wrap at 2 GiB); `swapSlots` only resets the demoted rate if it was ramping.
+- **Security/privacy** (`28d49b7`): `DeviceAuth=` masked in every `glog` line (`redactingSecrets`); network-supplied `DeviceID` → `String.safeFileComponent` in FEED session ids and the guide-cache file name; FEED puller curl gets `--proto =http,https`; `X-Frame-Options: SAMEORIGIN` + CSP `frame-ancestors 'self'` on every web response (user chose same-origin-only); WebServer/RecordingManager use the throwing FileHandle API (no NSException on a vanished volume); `tools/mock_scenario.py clean` uses `glob.escape` (`[MOCK]` was a character class matching real files).
+- **Signal history** (`a01f394`): decoder now `.secondsSince1970`; `ChannelSignalStore.repaired` recovers timestamps shifted 31 years per relaunch by the old decoder (the live file held values near year 18000).
+- **Engine** (`6b90c56`): Bonus Time no longer stacks on retry (`ShowRuntimeState.bonusPaddedEnd`; runtime-only, so a relaunch mid-window can still pad once); retried recordings never overwrite the partial file (`AppState.uniqueRecordingPath` → `_partN`); signal scan skips a device whose tuners are all busy or that has a recording starting within 2 min, and no longer records snq=0 for a refused tune.
+- **UI** (`18131b1`): Edit Show keeps the configured folder of an offline NAS (`Show.posixPrimaryDir`; only writes show_dir if changed); Add Show starts every pick from `Show.blank()`.
+- **Hygiene** (`6f6a2d0`): `runningUnderTests` redirects the logs and FEED cache to a temp folder under `swift test`; live-app perf tests are opt-in (`RUN_LIVE_PERF_TESTS=1`, set by deploy.sh); deploy scripts stop the app only after a good build, use `--show-bin-path`, bundle `PrivacyInfo.xcprivacy`; `deploy_release.sh` adds `--timestamp` and validates the version.
+- `stationLogoPlaceholder` is now a real cached bitmap (it re-ran a drawing handler on every render).
+
+Still in the live `~/Library/Logs/hdhrVCRplus.log`: ~34k old `AABBCCDD` test lines written before this fix (not removed automatically).
+
+---
+
 # Stale-issue sweep: 9 open items fixed — 2026-10-04
 
 Audited `ISSUES.md` against the code and fixed what was still real:

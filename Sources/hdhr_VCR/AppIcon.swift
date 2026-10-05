@@ -54,5 +54,19 @@ let stationLogoPlaceholder: NSImage = {
           let src = NSImage(contentsOf: url) else {
         return NSImage(systemSymbolName: "tv", accessibilityDescription: nil) ?? NSImage(size: size)
     }
-    return NSImage(size: size, flipped: false) { r in src.draw(in: r); return true }
+    // Rasterised ONCE into a real 128×128-pixel bitmap (64 pt @2x). An `NSImage(size:flipped:drawingHandler:)`
+    // would look equivalent but re-runs its handler — a full draw of the multi-resolution .icns — every
+    // time any view renders it (2026-10-05 review).
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 128, pixelsHigh: 128, bitsPerSample: 8,
+                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+          let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return src }
+    rep.size = size
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = ctx
+    src.draw(in: NSRect(origin: .zero, size: size))
+    NSGraphicsContext.restoreGraphicsState()
+    let image = NSImage(size: size)
+    image.addRepresentation(rep)
+    return image
 }()

@@ -12,6 +12,8 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 <!-- REVIEW-2026-10-05 BEGIN -->
 
+> **Status 2026-10-05 (end of day):** fixed in `1429087`, `28d49b7`, `a01f394`, `6b90c56`, `18131b1`, `6f6a2d0` — see `issues_resolved.md` ("2026-10-05 repo-wide review: first batch fixed"): the Int32 stat-counter trap, DeviceAuth in logs, DeviceID in paths, framing, FileHandle exceptions, the `mock_scenario.py` glob, signal-history dates, Bonus Time stacking, partial-recording overwrite, signal-scan busy tuners/zeros, Edit Show NAS re-point, Add Show state leak, test log/cache/live-app isolation, deploy-script hazards + privacy manifest. Everything else below is still open.
+
 ### 2026-10-05 repo-wide code review (4 agents) — raw findings
 
 *(Agents read the code and logged each finding as found; the main session has NOT re-verified them. "CONFIRMED" = the agent read the code path, "PLAUSIBLE" = not proven. Re-confirm before fixing; move to `issues_resolved.md` with the commit hash once fixed. Mirror of the agents' scratch files, regenerated while the review ran.)*
