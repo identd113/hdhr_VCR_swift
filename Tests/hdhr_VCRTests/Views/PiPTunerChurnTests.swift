@@ -585,7 +585,10 @@ struct PiPTunerChurnTests {
     @Test func feedFromTheLaptopCostsNoTuner() throws {
         guard let c = common() else { return }
         let reach = sh("/usr/bin/ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "laptop", "true"], timeout: 15)
-        guard reach.status == 0 else { return }       // no laptop — environment skip
+        guard reach.status == 0 else {                // no laptop — environment skip, but say so
+            FileHandle.standardError.write("feedFromTheLaptopCostsNoTuner skipped: `ssh laptop` is unreachable (asleep? keep it awake with `caffeinate -d`)\n".data(using: .utf8)!)
+            return
+        }
         // The laptop only advertises a FEED relay if Settings → Sharing → Recording FEED is on (it defaults to
         // off). Without it there is no FEED to watch, so this is an environment skip, not a failure.
         let relayOn = sh("/usr/bin/ssh", ["laptop", #"python3 -c "import json,glob,os;f=max(glob.glob(os.path.expanduser('~/Library/Application Support/hdhrVCRplus/hdhr_VCR-*.json')),key=os.path.getmtime);c=json.load(open(f));print(c.get('config',c).get('Virtual_tuner_relay_enabled'))""#], timeout: 20)
