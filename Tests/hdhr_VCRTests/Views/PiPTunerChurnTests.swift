@@ -586,6 +586,13 @@ struct PiPTunerChurnTests {
         guard let c = common() else { return }
         let reach = sh("/usr/bin/ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "laptop", "true"], timeout: 15)
         guard reach.status == 0 else { return }       // no laptop — environment skip
+        // The laptop only advertises a FEED relay if Settings → Sharing → Recording FEED is on (it defaults to
+        // off). Without it there is no FEED to watch, so this is an environment skip, not a failure.
+        let relayOn = sh("/usr/bin/ssh", ["laptop", #"python3 -c "import json,glob,os;f=max(glob.glob(os.path.expanduser('~/Library/Application Support/hdhrVCRplus/hdhr_VCR-*.json')),key=os.path.getmtime);c=json.load(open(f));print(c.get('config',c).get('Virtual_tuner_relay_enabled'))""#], timeout: 20)
+        guard relayOn.out.contains("True") else {
+            FileHandle.standardError.write("feedFromTheLaptopCostsNoTuner skipped: turn on Settings → Sharing → Recording FEED on the laptop\n".data(using: .utf8)!)
+            return
+        }
         let tool = scenarioTool(c.repoRoot)
         _ = sh("/usr/bin/python3", [tool, "clean"])   // the mini must NOT be recording, or its own relay wins
         let remote = "cd ~/GitHub/hdhr_VCR_swift && python3 tools/mock_scenario.py"
