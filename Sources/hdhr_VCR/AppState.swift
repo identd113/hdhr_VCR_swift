@@ -6287,7 +6287,10 @@ final class AppState: ObservableObject {
 
             let active   = tuners.filter { $0.VctNumber != nil }.count
             let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-            let vlcOpen  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+            // Same two checks activeTunerCount sums — a live OTA stream in either slot, never a local
+            // relay (recording/FEED) — so the audit line agrees with what tunersFull actually counts.
+            let vlcOpen  = (vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
+                         + (secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
             let auditLine = "\(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)"
             if lastTunerAudit[device.DeviceID] != auditLine {
                 lastTunerAudit[device.DeviceID] = auditLine
