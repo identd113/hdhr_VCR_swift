@@ -93,7 +93,7 @@ func pipAXHandlers(uiEvents: String) -> String {
 
     -- Channel ▸ is the 5th item; Right opens its submenu on the first channel. "second" steps
     -- down once, "last" steps up once (menus wrap).
-    on pickPipChannel(win, mode)
+    on pickPipChannel(win, mode, skipChannel)
         set codes to {125, 125, 125, 125, 125, 124}
         if mode is "last" then
             set end of codes to 126

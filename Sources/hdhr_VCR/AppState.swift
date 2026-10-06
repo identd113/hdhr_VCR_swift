@@ -4309,6 +4309,11 @@ final class AppState: ObservableObject {
         }
         VLCPlayerWindowManager.shared.closeIfPlaying(showId: show.show_id, url: show.show_url)
         shows.removeAll { $0.show_id == show.show_id }
+        // Re-evaluated now that the show is actually gone, whichever path preceded this: deleting the
+        // last recording show used to leave the FEED relay advertised (TunerCount 0, empty lineup) until
+        // some unrelated recording start/stop re-ran this — found by PiPTunerChurnTests' FEED run, where
+        // the stale relay also stopped the *other* Mac from relaying (first recorder keeps it).
+        updateVirtualTunerPresence()
         // Purge every show_id-keyed side table — show_id is never reused, so leaving entries
         // behind here would grow these dictionaries/sets without bound over a long-running
         // session as shows are added and deleted over time. One removal now instead of a

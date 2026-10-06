@@ -2022,7 +2022,7 @@ struct WindowNavigationTests {
                 set AppleScript's text item delimiters to ""
 
                 -- 5. Change the PiP's source.
-                set end of out to "pipPick1=" & (my pickPipChannel(playerWin, "second"))
+                set end of out to "pipPick1=" & (my pickPipChannel(playerWin, "second", "\#(recordedChannel)"))
                 delay 3
 
                 -- 6. Swap: the live channel becomes primary, the recording drops to the corner.
@@ -2056,7 +2056,7 @@ struct WindowNavigationTests {
                 end repeat
                 set end of out to "title2=" & titleBeforeSwap2 & " >> " & titleAfterSwap2
                 delay 2
-                set end of out to "pipPick2=" & (my pickPipChannel(playerWin, "last"))
+                set end of out to "pipPick2=" & (my pickPipChannel(playerWin, "last", "\#(recordedChannel)"))
                 delay 3
                 set end of out to "stillThere=" & ((my findById(playerWin, "vlc-pip-thumbnail")) is not missing value)
 

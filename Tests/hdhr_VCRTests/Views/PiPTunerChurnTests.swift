@@ -91,6 +91,12 @@ private struct Tuners: CustomStringConvertible {
     var description: String { "app=\(app.map(String.init) ?? "?") hw=\(hw.map(String.init) ?? "?") total=\(total.map(String.init) ?? "?")" }
 }
 
+/// "(dev X ch 4.1)" in mock_scenario.py start's output → "4.1".
+private func recordedChannel(_ startOutput: String) -> String {
+    guard let r = startOutput.range(of: #"ch (\S+)\)"#, options: .regularExpression) else { return "" }
+    return String(startOutput[r].dropFirst(3).dropLast())
+}
+
 private func discoverDeviceID() -> String? {
     let page = curl("http://127.0.0.1:1980/", timeout: 10)
     guard let r = page.range(of: #""([0-9A-F]{8})":\{"nt":"#, options: .regularExpression) ?? page.range(of: #""([0-9A-F]{8})":\{[^}]*"surl""#, options: .regularExpression)
@@ -103,7 +109,7 @@ private func tunerSnapshot(deviceID: String) -> Tuners {
     var out = Tuners()
     let page = curl("http://127.0.0.1:1980/", timeout: 10)
     guard let r = page.range(of: "\"\(deviceID)\":\\{[^}]*\\}", options: .regularExpression) else { return out }
-    let objText = "{" + page[r].dropFirst(deviceID.count + 3)
+    let objText = String(page[r].dropFirst(deviceID.count + 3))   // skips `"ID":`, leaving the `{…}` object
     guard let obj = try? JSONSerialization.jsonObject(with: Data(objText.utf8)) as? [String: Any] else { return out }
     out.app = obj["a"] as? Int
     out.total = obj["t"] as? Int
@@ -174,7 +180,7 @@ private func wrap(_ uiEvents: String, _ body: String) -> String {
     """
 }
 
-private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: World) -> String {
+private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: World, skip: String) -> String {
     switch op {
     case .openOnRecording:
         return wrap(uiEvents, #"""
@@ -301,30 +307,31 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
     case .swap:
         return wrap(uiEvents, #"""
         set pw to my playerWin()
-        set before to name of pw
+        set titleBeforeSwap to name of pw
         click (my findById(pw, "vlc-pip-thumbnail"))
         repeat 20 times
             delay 0.2
-            if (name of pw) is not before then exit repeat
+            if (name of pw) is not titleBeforeSwap then exit repeat
         end repeat
         return "OK"
         """#)
     case .pipChannel:
         let mode = Bool.random(using: &rng) ? "last" : "second"
-        return wrap(uiEvents, "        return my pickPipChannel(my playerWin(), \"\(mode)\")")
+        return wrap(uiEvents, "        return my pickPipChannel(my playerWin(), \"\(mode)\", \"\(skip)\")")
     case .pipCorner:
         let idx = Int.random(in: 1...4, using: &rng)
         return wrap(uiEvents, "        return my moveToCorner(my playerWin(), \(idx))")
     case .primaryToLive, .primaryChannel:
-        return wrap(uiEvents, #"""
-        return my pickPrimaryChannel(my playerWin(), "")
-        """#)
+        // The recorded channel is skipped: the app plays it from disk (no tuner), which would break the model.
+        return wrap(uiEvents, """
+        return my pickPrimaryChannel(my playerWin(), "\(skip)")
+        """)
     case .moveWindow:
         let x = Int.random(in: 20...700, using: &rng), y = Int.random(in: 40...300, using: &rng)
-        return wrap(uiEvents, "        set position of my playerWin() to {\(x), \(y)}\n        return \"OK\"")
+        return wrap(uiEvents, "        set pw to my playerWin()\n        set position of pw to {\(x), \(y)}\n        return \"OK\"")
     case .resizeWindow:
         let w = Int.random(in: 640...1400, using: &rng), h = Int.random(in: 420...800, using: &rng)
-        return wrap(uiEvents, "        set size of my playerWin() to {\(w), \(h)}\n        return \"OK\"")
+        return wrap(uiEvents, "        set pw to my playerWin()\n        set size of pw to {\(w), \(h)}\n        return \"OK\"")
     case .closePlayer:
         return wrap(uiEvents, #"""
         set pw to my playerWin()
@@ -340,8 +347,19 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
 }
 
 /// "winFrame|thumbFrame|windowNames" for the geometry checks.
-private func geometryScript(uiEvents: String) -> String {
-    wrap(uiEvents, #"""
+private func geometryScript(uiEvents: String, expectThumb: Bool) -> String {
+    wrap(uiEvents, (expectThumb ? """
+    -- the AX tree can lag the UI by a few seconds; a PiP the model says exists gets time to appear
+    set pwWait to my playerWin()
+    repeat 12 times
+        if pwWait is not missing value then
+            if my findById(pwWait, "vlc-pip-thumbnail") is not missing value then exit repeat
+        end if
+        delay 0.5
+        set pwWait to my playerWin()
+    end repeat
+
+    """ : "") + #"""
     set pw to my playerWin()
     set names to ""
     repeat with w in windows
@@ -357,7 +375,7 @@ private func geometryScript(uiEvents: String) -> String {
 private struct Step { var n: Int; var op: Op; var result: String; var world: World; var settle: TimeInterval?; var tuners: Tuners; var note: String }
 
 private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, uiEvents: String,
-                 steps: Int, seed: UInt64, appLogOffset: UInt64) -> [String] {
+                 steps: Int, seed: UInt64, appLogOffset: UInt64, recordedChannel: String) -> [String] {
     var rng = SplitMix64(state: seed)
     var world = World()
     var trail: [Step] = []
@@ -415,7 +433,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
             if candidates.contains(want) { op = want }
         }
         let t0 = Date()
-        let result = runAppleScript(script(for: op, uiEvents: uiEvents, rng: &rng, world: world)) ?? "SCRIPT_FAILED"
+        let result = runAppleScript(script(for: op, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel)) ?? "SCRIPT_FAILED"
         var note = ""
         if result != "OK" && !result.hasPrefix("OK:") {
             problems.append("step \(n) \(op.rawValue): the UI action did not complete — \(result)")
@@ -429,11 +447,14 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
         var snap = Tuners()
         var settled: TimeInterval?
         let deadline = Date().addingTimeInterval(35)
+        var samples: [String] = []
         repeat {
             Thread.sleep(forTimeInterval: 1.0)
             snap = tunerSnapshot(deviceID: deviceID)
+            samples.append("\(Int(Date().timeIntervalSince(t0)))s:\(snap.app.map(String.init) ?? "?")/\(snap.hw.map(String.init) ?? "?")")
             if snap.hw == want && snap.app == want { settled = Date().timeIntervalSince(t0); break }
         } while Date() < deadline
+        if settled == nil || samples.count > 6 { note += " samples(app/hw)=" + samples.joined(separator: " ") }
         if settled == nil {
             problems.append("step \(n) \(op.rawValue): tuners never settled at the expected \(want) (base \(base) + \(world.liveCount) live) — \(snap)")
         } else if let s = settled, s > 25 {
@@ -441,7 +462,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
         }
 
         // UI geometry.
-        let geo = (runAppleScript(geometryScript(uiEvents: uiEvents)) ?? "?|?|?").components(separatedBy: "|")
+        let geo = (runAppleScript(geometryScript(uiEvents: uiEvents, expectThumb: world.pip != .none)) ?? "?|?|?").components(separatedBy: "|")
         if geo.count == 3 {
             let (win, thumb, names) = (geo[0], geo[1], geo[2])
             if world.player && win == "-" { problems.append("step \(n) \(op.rawValue): player window missing") }
@@ -474,7 +495,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
 
     // Always end closed, then the leak check: with nothing of ours open the hardware must be back at base.
     if world.player {
-        _ = runAppleScript(script(for: .closePlayer, uiEvents: uiEvents, rng: &rng, world: world))
+        _ = runAppleScript(script(for: .closePlayer, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel))
         world = World()
     }
     var finalSnap = Tuners()
@@ -555,7 +576,7 @@ struct PiPTunerChurnTests {
             Issue.record("baseline tuner state disagrees before any UI action: \(base)"); return
         }
         let problems = run(phase: "mini-recording", feedPhase: false, deviceID: dev, base: hw, uiEvents: c.uiEvents,
-                           steps: c.steps, seed: c.seed, appLogOffset: c.logOffset)
+                           steps: c.steps, seed: c.seed, appLogOffset: c.logOffset, recordedChannel: recordedChannel(started.out))
         #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
 
@@ -581,7 +602,7 @@ struct PiPTunerChurnTests {
             Issue.record("baseline tuner state disagrees before any UI action: \(base)"); return
         }
         let problems = run(phase: "feed-from-laptop", feedPhase: true, deviceID: dev, base: hw, uiEvents: c.uiEvents,
-                           steps: c.steps, seed: c.seed &+ 1, appLogOffset: c.logOffset)
+                           steps: c.steps, seed: c.seed &+ 1, appLogOffset: c.logOffset, recordedChannel: recordedChannel(started.out))
         #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
 }
