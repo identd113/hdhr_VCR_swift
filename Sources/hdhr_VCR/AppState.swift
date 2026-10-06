@@ -230,6 +230,11 @@ final class AppState: ObservableObject {
     // indefinitely, menu closed or not.
     private var lastGuideOccupancyBroadcast: [String: Date] = [:]
     private static let guideOccupancyBroadcastCooldown: TimeInterval = 15
+    // Devices with a trailing broadcast already scheduled (see broadcastTunerOccupancyChange). A change
+    // that lands inside the cooldown above used to be dropped outright — deviceTunerOccupancy is already
+    // updated by then, so no later tick sees a "change" and the web guide's badge/ring/dropdown stayed
+    // stale until an unrelated event or the next periodic refresh.
+    private var pendingGuideOccupancyBroadcast: Set<String> = []
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
     @Published var signalScanProgress: String? = nil
@@ -6211,6 +6216,31 @@ final class AppState: ObservableObject {
     }
 
     // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
+    /// Pushes a hardware-only occupancy change to the web guide, at most once per
+    /// `guideOccupancyBroadcastCooldown` per device. A change inside the cooldown isn't dropped: one
+    /// trailing broadcast is scheduled for when it ends, and it reads the *current* state when it
+    /// fires, so any number of changes in between collapse into a single, up-to-date push.
+    private func broadcastTunerOccupancyChange(deviceId: String) async {
+        let elapsed = lastGuideOccupancyBroadcast[deviceId].map { Date().timeIntervalSince($0) }
+        if let elapsed, elapsed < Self.guideOccupancyBroadcastCooldown {
+            guard pendingGuideOccupancyBroadcast.insert(deviceId).inserted else { return }
+            let wait = Self.guideOccupancyBroadcastCooldown - elapsed
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                guard let self else { return }
+                self.pendingGuideOccupancyBroadcast.remove(deviceId)
+                await self.broadcastTunerOccupancyChange(deviceId: deviceId)
+            }
+            return
+        }
+        lastGuideOccupancyBroadcast[deviceId] = Date()
+        webServer.broadcastGuideChangeEvent(type: "tuner_occupancy_changed",
+                                            extra: ["device": deviceId], state: self)
+        // broadcastGuideChangeEvent's payload (grid/sumph/tdrop) never touches #dev-bar, so the tuner
+        // box's own live-count badge needs its own push — see pushFreshTunerCounts's doc comment.
+        await webServer.pushFreshTunerCounts()
+    }
+
     private func fetchDeviceStatusUncached(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
               let data = await LANFetch.data(from: url, label: "status.json"),
@@ -6271,20 +6301,7 @@ final class AppState: ObservableObject {
             // to the next periodic refresh despite deviceTunerOccupancy itself updating within one idle
             // tick — found 2026-08-11 while live-verifying the tuner-popover title fix (Part C).
             // Throttled independently of the menu-open write above — see lastGuideOccupancyBroadcast.
-            let guideCooldownElapsed = lastGuideOccupancyBroadcast[device.DeviceID].map {
-                Date().timeIntervalSince($0) >= Self.guideOccupancyBroadcastCooldown
-            } ?? true
-            if guideCooldownElapsed {
-                lastGuideOccupancyBroadcast[device.DeviceID] = Date()
-                webServer.broadcastGuideChangeEvent(type: "tuner_occupancy_changed",
-                                                    extra: ["device": device.DeviceID], state: self)
-                // broadcastGuideChangeEvent's payload (grid/sumph/tdrop) never touches #dev-bar, so
-                // without this the tuner box's own live-count badge stays stale on a hardware-only
-                // occupancy change (another Mac/TV/this app's own Watch Now locking or freeing the
-                // tuner) until a recording start/stop or the periodic refresh happens to touch it —
-                // see pushFreshTunerCounts's own doc comment.
-                await webServer.pushFreshTunerCounts()
-            }
+            await broadcastTunerOccupancyChange(deviceId: device.DeviceID)
         }
 
         // vstatus fetch jobs collected below and run concurrently after this loop, rather than
