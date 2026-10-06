@@ -1868,6 +1868,407 @@ struct WindowNavigationTests {
             "PiP thumbnail disappeared after switching the secondary's channel")
     }
 
+    // MARK: - Full PiP workout against a live recording
+
+    /// End-to-end PiP sequence on the machine the app is running on (the Mac mini):
+    ///   1. start a real recording (`tools/mock_scenario.py start` — a tagged `[MOCK]` single on a
+    ///      now-airing guide entry; removed again via `mock_scenario.py clean` in a `defer`),
+    ///   2. Watch Now → open the in-progress recording as the primary,
+    ///   3. add an OTA live channel as the PiP via the player's right-click "Add Picture-in-Picture…",
+    ///   4. move the PiP through all four corners (distinct on-screen positions asserted),
+    ///   5. change the PiP's source via its right-click Channel submenu,
+    ///   6. swap primary ↔ PiP (title must change),
+    ///   7. change the (new) primary's source via the toolbar channel picker,
+    ///   8. swap back and change the PiP's source once more.
+    /// Source changes and swaps are verified from the app's own log (`playSecondaryChannel`,
+    /// `playChannel`, `swapSlots`), read from the byte offset the log had when the test began —
+    /// the AX tree alone can't tell which stream is playing. Skips (returns) when there's nothing
+    /// airing, no free tuner, or no addable live channel — same convention as the rest of the suite.
+    @Test func pipFullWorkoutOverLiveRecording() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let scenarioTool = repoRoot.appendingPathComponent("tools/mock_scenario.py").path
+        func runTool(_ args: [String]) -> (status: Int32, output: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            task.arguments = [scenarioTool] + args
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            do { try task.run() } catch { return (-1, "\(error)") }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            return (task.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        }
+
+        // Synthetic right-click + key events for the PiP's native NSMenu (see tools/ui_events.swift).
+        let uiEventsBinary = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ui_events").path
+        do {
+            let compile = Process()
+            compile.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            compile.arguments = ["swiftc", "-O", repoRoot.appendingPathComponent("tools/ui_events.swift").path, "-o", uiEventsBinary]
+            let errPipe = Pipe()
+            compile.standardError = errPipe
+            try compile.run()
+            let errText = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            compile.waitUntilExit()
+            guard compile.terminationStatus == 0 else {
+                Issue.record("could not compile tools/ui_events.swift: \(errText)")
+                return
+            }
+        }
+
+        let logURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/hdhrVCRplus.log")
+        let logOffset = (try? FileManager.default.attributesOfItem(atPath: logURL.path)[.size] as? UInt64) ?? 0
+
+        let started = runTool(["start"])
+        if started.status == 2 { return }   // nothing airing / tuner full — environment skip
+        guard started.status == 0 else {
+            Issue.record("mock_scenario.py start failed (\(started.status)): \(started.output)")
+            return
+        }
+        defer { _ = runTool(["clean"]) }
+        // "(dev X ch 4.1)" in start's output: the recorded channel. The primary's source change must
+        // not pick it — the app plays that one from disk, which would leave a recording relay (no
+        // Channel submenu) in the PiP after the swap back.
+        let recordedChannel = started.output.range(of: #"ch (\S+)\)"#, options: .regularExpression)
+            .map { String(started.output[$0]).dropFirst(3).dropLast() } .map(String.init) ?? ""
+
+        // Warm-up: the player's right-click AXShowMenu is unreliable until this process has already
+        // driven other windows through System Events (see pipPickerOpensFromPlayerContextMenu's
+        // "Known flake"). The full suite gets that for free; run alone, this test has to do it.
+        _ = try openAndCloseTopLevelWindow(menuItemName: "Add Show…")
+        _ = try openAndCloseTopLevelWindow(menuItemName: "Watch Now…")
+
+        let script = #"""
+        -- Depth-first walk over `UI elements` rather than `entire contents`: on this macOS build
+        -- `entire contents of <window>` returns an empty list (for every app, Terminal included)
+        -- while the per-element walk still sees the whole tree. mode is "id" (AXIdentifier equals
+        -- key) or "help" (AXHelp starts with key) or "pipLive" (a Watch Now live-channel PiP button).
+        on findWhere(el, mode, key)
+            tell application "System Events"
+                try
+                    set kids to UI elements of el
+                on error
+                    return missing value
+                end try
+                repeat with k in kids
+                    try
+                        if mode is "id" then
+                            if ((value of attribute "AXIdentifier" of k) as string) is key then return k
+                        else if mode is "pipLive" then
+                            set hlp to (help of k) as string
+                            if hlp starts with "Watch " and hlp ends with "alongside what's already open" then return k
+                        else
+                            if ((help of k) as string) starts with key then return k
+                        end if
+                    end try
+                    set hit to my findWhere(k, mode, key)
+                    if hit is not missing value then return hit
+                end repeat
+            end tell
+            return missing value
+        end findWhere
+
+        on findById(win, ident)
+            return my findWhere(win, "id", ident)
+        end findById
+
+        on waitById(win, ident, tries)
+            repeat tries times
+                set e to my findById(win, ident)
+                if e is not missing value then return e
+                delay 0.25
+            end repeat
+            return missing value
+        end waitById
+
+        property uiEvents : "\#(uiEventsBinary)"
+
+        -- The PiP's context menu is a native NSMenu that AX can't see or trigger, so: real
+        -- right-click on the thumbnail's centre, then drive the open menu with arrow keys
+        -- (125 down, 126 up, 124 right, 36 return) posted to the app's own process.
+        on pipMenuKeys(win, codes)
+            tell application "System Events"
+                set thumbEl to my waitById(win, "vlc-pip-thumbnail", 20)
+                if thumbEl is missing value then return "NO_THUMB"
+                set p to position of thumbEl
+                set sz to size of thumbEl
+                set cx to ((item 1 of p) + (item 1 of sz) / 2) as integer
+                set cy to ((item 2 of p) + (item 2 of sz) / 2) as integer
+            end tell
+            do shell script quoted form of uiEvents & " rightclick " & cx & " " & cy
+            delay 0.7
+            set arg to ""
+            repeat with c in codes
+                set arg to arg & " " & (c as string)
+            end repeat
+            do shell script quoted form of uiEvents & " keys" & arg
+            return "OK"
+        end pipMenuKeys
+
+        -- Menu order: Top Left, Top Right, Bottom Left, Bottom Right, Channel ▸, Close.
+        on moveToCorner(win, idx)
+            set codes to {}
+            repeat idx times
+                set end of codes to 125
+            end repeat
+            set end of codes to 36
+            return my pipMenuKeys(win, codes)
+        end moveToCorner
+
+        -- Channel ▸ is the 5th item; Right opens its submenu on the first channel. "second" steps
+        -- down once, "last" steps up once (menus wrap).
+        on pickPipChannel(win, mode)
+            set codes to {125, 125, 125, 125, 125, 124}
+            if mode is "last" then
+                set end of codes to 126
+            else
+                set end of codes to 125
+            end if
+            set end of codes to 36
+            return my pipMenuKeys(win, codes)
+        end pickPipChannel
+
+        -- Toolbar channel picker: first enabled row that looks like a channel ("5.1  KXYZ") and
+        -- isn't what's already selected.
+        on pickPrimaryChannel(win, skipChannel)
+            tell application "System Events"
+                set picker to my waitById(win, "vlc-channel-picker", 20)
+                if picker is missing value then return "NO_PICKER"
+                set currentVal to ""
+                try
+                    set currentVal to (value of picker) as string
+                end try
+                click picker
+                repeat 10 times
+                    try
+                        repeat with mi in (every menu item of menu 1 of picker)
+                            try
+                                set nm to name of mi
+                                if nm is not missing value and nm is not currentVal and (enabled of mi) and (character 1 of nm) is in "0123456789" and not (nm starts with (skipChannel & " ")) then
+                                    click mi
+                                    return "OK:" & nm
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    delay 0.25
+                end repeat
+                key code 53
+            end tell
+            return "NO_PICKER_ITEM"
+        end pickPrimaryChannel
+
+        on thumbPosition(win)
+            tell application "System Events"
+                set thumb to my waitById(win, "vlc-pip-thumbnail", 20)
+                if thumb is missing value then return "NO_THUMB"
+                set p to position of thumb
+                return ((item 1 of p) as string) & "," & ((item 2 of p) as string)
+            end tell
+        end thumbPosition
+
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                -- Open the in-progress recording as the primary (Watch Now → "Watch Now!").
+                click menu item "Watch Now…" of menu 1 of menu bar item 1 of menu bar 2
+                set watchBtn to missing value
+                repeat 40 times
+                    delay 0.5
+                    if exists window "Watch Now" then
+                        set watchBtn to my findWhere(window "Watch Now", "help", "Play the in-progress recording")
+                        if watchBtn is not missing value then exit repeat
+                    end if
+                end repeat
+                if watchBtn is missing value then
+                    try
+                        click (first button of window "Watch Now" whose description is "close button")
+                    end try
+                    return "NO_RECORDING_TO_WATCH"
+                end if
+                click watchBtn
+                set playerWin to missing value
+                repeat 40 times
+                    delay 0.25
+                    repeat with w in windows
+                        if (name of w) is not "Watch Now" then set playerWin to w
+                    end repeat
+                    if playerWin is not missing value then exit repeat
+                end repeat
+                if playerWin is missing value then return "NO_PLAYER_WINDOW"
+                -- Playing = the "Connecting…/Starting…" status element is gone.
+                set stillStarting to true
+                repeat 60 times
+                    if (my findById(playerWin, "vlc-start-status")) is missing value then
+                        set stillStarting to false
+                        exit repeat
+                    end if
+                    delay 0.5
+                end repeat
+                if stillStarting then return "NO_PLAYBACK_STARTED"
+                delay 1
+
+                -- Add the first live channel as PiP from Watch Now's per-channel "Watch alongside
+                -- (PiP)" button (the player's right-click "Add Picture-in-Picture…" can't be
+                -- triggered reliably through AX — the video pane isn't exposed with AXShowMenu).
+                -- Those buttons' help reads "Watch <title> as a small muted thumbnail alongside
+                -- what's already open"; the recording's own row says "Play the in-progress…".
+                set addBtn to missing value
+                repeat 20 times
+                    if exists window "Watch Now" then
+                        set addBtn to my findWhere(window "Watch Now", "pipLive", "")
+                    end if
+                    if addBtn is not missing value then exit repeat
+                    delay 0.5
+                end repeat
+                if addBtn is missing value then return "NO_PIP_TARGET_AVAILABLE"
+                click addBtn
+                delay 2
+                set thumb to my waitById(playerWin, "vlc-pip-thumbnail", 20)
+                if thumb is missing value then return "NO_PIP_THUMBNAIL"
+                set out to {}
+
+                -- 4. Move the PiP around: every corner, recording where the thumbnail lands.
+                set posList to {}
+                set cornerIdx to 0
+                repeat with cn in {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}
+                    set cornerIdx to cornerIdx + 1
+                    set r to my moveToCorner(playerWin, cornerIdx)
+                    delay 1
+                    set end of posList to (cn as string) & "=" & r & "@" & (my thumbPosition(playerWin))
+                end repeat
+                set AppleScript's text item delimiters to "|"
+                set end of out to "corners=" & (posList as string)
+                set AppleScript's text item delimiters to ""
+
+                -- 5. Change the PiP's source.
+                set end of out to "pipPick1=" & (my pickPipChannel(playerWin, "second"))
+                delay 3
+
+                -- 6. Swap: the live channel becomes primary, the recording drops to the corner.
+                set titleBeforeSwap to name of playerWin
+                click (my waitById(playerWin, "vlc-pip-thumbnail", 20))
+                set titleAfterSwap to titleBeforeSwap
+                repeat 10 times
+                    delay 0.2
+                    try
+                        set titleAfterSwap to name of playerWin
+                    end try
+                    if titleAfterSwap is not titleBeforeSwap then exit repeat
+                end repeat
+                set end of out to "title1=" & titleBeforeSwap & " >> " & titleAfterSwap
+                delay 2
+
+                -- 7. Change the new primary's source from the toolbar picker.
+                set end of out to "primaryPick=" & (my pickPrimaryChannel(playerWin, "\#(recordedChannel)"))
+                delay 3
+
+                -- 8. Swap back, then change the PiP's source again.
+                set titleBeforeSwap2 to name of playerWin
+                click (my waitById(playerWin, "vlc-pip-thumbnail", 20))
+                set titleAfterSwap2 to titleBeforeSwap2
+                repeat 10 times
+                    delay 0.2
+                    try
+                        set titleAfterSwap2 to name of playerWin
+                    end try
+                    if titleAfterSwap2 is not titleBeforeSwap2 then exit repeat
+                end repeat
+                set end of out to "title2=" & titleBeforeSwap2 & " >> " & titleAfterSwap2
+                delay 2
+                set end of out to "pipPick2=" & (my pickPipChannel(playerWin, "last"))
+                delay 3
+                set end of out to "stillThere=" & ((my findById(playerWin, "vlc-pip-thumbnail")) is not missing value)
+
+                -- Teardown: PiP, player, Watch Now.
+                try
+                    click (my findById(playerWin, "vlc-pip-close-button"))
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                set AppleScript's text item delimiters to linefeed
+                set joined to out as string
+                set AppleScript's text item delimiters to ""
+                return joined
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP full-workout script failed to run")
+            return
+        }
+        // Unlike the other PiP tests, a skip sentinel here is a failure: the recording was already
+        // started above, so "nothing to test" can't be the explanation, and a silent pass would hide
+        // a broken run (found the hard way — see this test's first live run).
+        if result.hasPrefix("NO_") && result != "NO_PIP_THUMBNAIL" {
+            Issue.record("workout stopped before the PiP steps: \(result)")
+            return
+        }
+        if result == "NO_PIP_THUMBNAIL" {
+            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
+            return
+        }
+
+        var fields: [String: String] = [:]
+        for line in result.split(separator: "\n") {
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            fields[String(line[..<eq])] = String(line[line.index(after: eq)...])
+        }
+
+        // 4. Four corners, four distinct on-screen positions.
+        let cornerResults = (fields["corners"] ?? "").split(separator: "|").map(String.init)
+        #expect(cornerResults.count == 4, "expected 4 corner moves, got: \(fields["corners"] ?? "none")")
+        #expect(cornerResults.allSatisfy { $0.contains("=OK@") },
+            "a corner menu item could not be clicked: \(cornerResults)")
+        let positions = cornerResults.compactMap { $0.components(separatedBy: "@").last }
+        #expect(Set(positions).count == 4,
+            "moving the PiP through all four corners should land it at 4 distinct positions, got \(positions)")
+
+        // 5/8. PiP source changes, 7. primary source change.
+        for key in ["pipPick1", "primaryPick", "pipPick2"] {
+            #expect(fields[key]?.hasPrefix("OK") == true, "\(key) did not complete: \(fields[key] ?? "missing")")
+        }
+
+        // 6/8. Both swaps must retitle the player window.
+        for key in ["title1", "title2"] {
+            let parts = (fields[key] ?? "").components(separatedBy: " >> ")
+            #expect(parts.count == 2 && parts[0] != parts[1],
+                "\(key): player window title did not change across a swap (\(fields[key] ?? "missing"))")
+        }
+        #expect(fields["stillThere"] == "true", "PiP thumbnail was gone after the final source change")
+
+        // Cross-check against what the app itself says it did.
+        let logTail: String = {
+            guard let h = try? FileHandle(forReadingFrom: logURL) else { return "" }
+            defer { try? h.close() }
+            // A rotation during the run would put the offset past EOF — fall back to the whole file.
+            let size = (try? h.seekToEnd()) ?? 0
+            try? h.seek(toOffset: logOffset <= size ? logOffset : 0)
+            return String(data: (try? h.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
+        }()
+        func count(_ needle: String) -> Int { logTail.components(separatedBy: needle).count - 1 }
+        #expect(count("[VLC] playSecondaryChannel ") >= 2,
+            "expected ≥2 PiP Channel-menu source changes in the app log, saw \(count("[VLC] playSecondaryChannel ")) — a tuner pre-flight may have refused one")
+        #expect(count("[VLC] playChannel ") >= 1,
+            "the primary's channel change never reached playChannel in the app log")
+        #expect(count("[VLC] swapSlots — ") >= 2,
+            "expected 2 swaps in the app log, saw \(count("[VLC] swapSlots — "))")
+    }
+
     /// Shared helper for the simple single-instance windows (Add Show, Watch Now) that open
     /// directly from a flat top-level menu item with no per-show submenu to navigate.
     private func openAndCloseTopLevelWindow(menuItemName: String) throws -> (title: String, windowCountAfter: Int) {

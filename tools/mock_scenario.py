@@ -9,6 +9,9 @@ Subcommands:
   duplicate [--series X]     plant a fake "already recorded" file  -> green skip flag (file-based)
   conflict  [--device X]     schedule overlapping shows on one tuner -> conflict warning
   record-test [--series X]   schedule a now-airing entry, verify it records, then clean up (uses a tuner)
+  start [--series X]         like record-test but LEAVES the [MOCK] recording running (UI tests need a live
+                             recording to drive; remove it afterwards with `clean`). Exit 0 = recording and
+                             writing, 2 = nothing to start (no airing entry / tuner full), 1 = failed to write
   plant --file X.json        schedule arbitrary custom shows against already-loaded guide entries
   list                       list mockable upcoming managed airings (for `duplicate`)
   clean                      remove everything this tool created (mock files + [MOCK] shows)
@@ -52,7 +55,9 @@ REC_EXTS = (".ts", ".m2ts", ".mkv")
 # ── config / paths ────────────────────────────────────────────────────────────
 def config_path():
     base = os.path.expanduser("~/Library/Application Support/hdhrVCRplus")
-    hits = sorted(glob.glob(os.path.join(base, "hdhr_VCR-*.json")))
+    # The folder can hold several hostnames' configs (renamed/shared machines) — the live one is
+    # whichever the app saved most recently, not whichever sorts first.
+    hits = sorted(glob.glob(os.path.join(base, "hdhr_VCR-*.json")), key=os.path.getmtime, reverse=True)
     if not hits:
         sys.exit("No config found under ~/Library/Application Support/hdhrVCRplus/")
     return hits[0]
@@ -279,6 +284,43 @@ def do_record_test(port, shows, series):
     sys.exit(0 if ok else 1)
 
 
+# ── start (schedule a now-airing entry and leave it recording) ────────────────
+def do_start(port, shows, series):
+    airing = guide_blocks(port, airing_now=True)
+    if series:
+        airing = [b for b in airing if series.lower() in b["title"].lower()]
+    if not airing:
+        print("No currently-airing guide entry found to start.")
+        sys.exit(2)
+    # Try each airing entry in turn — a full tuner (or a channel the device refuses) on one
+    # entry shouldn't rule out the rest.
+    for blk in airing:
+        title = MOCK_PREFIX + blk["title"]
+        r = post_json(port, "/api/record", {
+            "deviceId": blk["device"], "guideNumber": blk["channel"], "startTime": blk["start"],
+            "showType": "single", "title": title,
+        })
+        if not r.get("ok"):
+            continue
+        if r.get("tunerFull"):
+            cleanup_mock_shows(port, [s for s in load_shows() if s.get("show_title") == title])
+            print("tuner full — nothing started.")
+            sys.exit(2)
+        print(f"Scheduled {title}  (dev {blk['device']} ch {blk['channel']}); waiting up to 40s for bytes…")
+        for _ in range(20):
+            time.sleep(2)
+            show = next((s for s in load_shows() if s.get("show_title") == title), None)
+            path = show.get("show_recording_path") if show else None
+            if show and show.get("show_recording") and path and os.path.exists(path) and os.path.getsize(path) > 0:
+                print(f"RECORDING {path}")
+                sys.exit(0)
+        print("FAIL — no growing recording file appeared within 40s; cleaning up.")
+        cleanup_mock_shows(port, [s for s in load_shows() if s.get("show_title") == title])
+        sys.exit(1)
+    print("No airing entry could be scheduled.")
+    sys.exit(2)
+
+
 # ── plant (schedule arbitrary custom shows from a JSON file) ──────────────────
 def do_plant(port, file):
     try:
@@ -391,7 +433,7 @@ def nudge(port):
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(description="Plant/remove mock app states to demo or test guide + scheduling behavior.")
-    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "plant", "list", "clean"],
+    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "start", "plant", "list", "clean"],
                     help="scenario to mock (or list/clean)")
     ap.add_argument("--series", help="restrict to a series whose title contains this text")
     ap.add_argument("--device", help="device id for `conflict` (default: first device in the guide)")
@@ -412,6 +454,8 @@ def main():
             do_conflict(args.port, shows, args.device)
         elif args.cmd == "record-test":
             do_record_test(args.port, shows, args.series)
+        elif args.cmd == "start":
+            do_start(args.port, shows, args.series)
         elif args.cmd == "plant":
             do_plant(args.port, args.file)
         elif args.cmd == "clean":
