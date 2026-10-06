@@ -2627,14 +2627,21 @@ struct VLCPlayerView: View {
                 startPlayChannel(ch, url: url)
             }
         } else {
-            Task {
+            // Numbered like the live→live branch above: a second pick (or a channel-up/down burst) while this
+            // pre-flight is still awaiting must supersede it — otherwise both tasks start a stream, in whatever
+            // order their status fetches happen to finish, and the one that plays may not be the last one picked.
+            let generation = switchGeneration
+            switchTask?.cancel()
+            switchTask = Task {
                 // Allocate/verify the tuner FIRST. The stream being watched (a FEED, say) is untouched until this
                 // passes; only then is it blanked and replaced — so a refusal costs nothing and the switch has no
                 // artificial pause on top of the new stream's own connect time.
                 guard await state.tunerAvailable(device, context: ch.GuideName) else {
-                    if let previous { revertPickerAfterRefusedSwitch(to: previous) }
+                    // A newer pick owns the picker now — only undo our own optimistic label.
+                    if generation == switchGeneration, let previous { revertPickerAfterRefusedSwitch(to: previous) }
                     return
                 }
+                guard !Task.isCancelled, generation == switchGeneration else { return }   // superseded while checking
                 blankForNewStream()
                 startPlayChannel(ch, url: url)
             }
