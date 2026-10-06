@@ -5134,7 +5134,12 @@ final class AppState: ObservableObject {
         return false
     }
 
-    func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil, guideNumber: String? = nil) {
+    /// `beforeOpen` runs on the main actor right before the window/stream is switched, after every pre-flight check
+    /// passed (the in-window channel picker uses it to blank the stream being replaced only at that moment);
+    /// `onRefused` runs instead when the switch is refused (no stream URL, no free tuner) so the caller can undo any
+    /// optimistic UI. Both default to nil — every other caller is unchanged.
+    func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil, guideNumber: String? = nil,
+                    beforeOpen: (@MainActor () -> Void)? = nil, onRefused: (@MainActor () -> Void)? = nil) {
         guard VLCBridge.shared.isAvailable else { return }
         // recordableDevices — this is the real-tuner live-watch path (gated by tunerAvailable's
         // occupancy check just below); a discovered virtual relay device is never a legitimate
@@ -5153,6 +5158,7 @@ final class AppState: ObservableObject {
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
             alert.runModal()
+            onRefused?()
             return
         }
         let streamURL = config.applyTranscode(url, override: transcode)
@@ -5179,7 +5185,7 @@ final class AppState: ObservableObject {
             // Switching channels in an already-open player on this device reuses the same slot —
             // skip the availability check so we don't block a legal channel switch.
             if mgr.currentDeviceID != device.DeviceID {
-                guard await tunerAvailable(device, context: title) else { return }
+                guard await tunerAvailable(device, context: title) else { onRefused?(); return }
             }
             // Re-check after the await above: neither currentDeviceID nor currentURL change until
             // mgr.open() actually runs below, so a second watchInApp call for this same channel
@@ -5197,6 +5203,7 @@ final class AppState: ObservableObject {
                     recordingManager.preventSleep(id: "vlc", reason: "Watching: \(title)", duration: duration)
                 }
             }
+            beforeOpen?()
             mgr.open(url: streamURL, title: title, device: device, appState: self, channelNumber: guideNumber)
             refreshTunerOccupancy()
         }

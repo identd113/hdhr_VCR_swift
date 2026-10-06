@@ -125,3 +125,34 @@ struct VLCPlayerViewTunerReuseTests {
         #expect(reusing.first?.currentURLSet == true)
     }
 }
+
+// 2026-10-06: switching from a FEED to a real channel must pre-flight the tuner BEFORE touching the FEED — the FEED
+// keeps playing (not blanked behind the poster, not muted) until the new stream actually starts.
+@Suite("VLCPlayerView.shouldKeepStreamUntilNewOneStarts")
+struct VLCPlayerViewKeepStreamTests {
+    @Test func feedOrRelayPlaying_pickingAnUnrecordedLiveChannel_keepsTheStreamUntilReady() {
+        #expect(VLCPlayerView.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: true, reusesExistingTuner: false, channelIsBeingRecorded: false, alreadyInPiP: false))
+    }
+
+    @Test func liveToLiveOnTheSameTuner_keepsTheImmediateBlank() {
+        // the old stream's tuner is reused (and may have to be freed first), so the stream is stopped anyway
+        #expect(!VLCPlayerView.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: true, reusesExistingTuner: true, channelIsBeingRecorded: false, alreadyInPiP: false))
+    }
+
+    @Test func channelBeingRecorded_isPlayedFromDisk_soKeepsTheImmediateBlank() {
+        #expect(!VLCPlayerView.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: true, reusesExistingTuner: false, channelIsBeingRecorded: true, alreadyInPiP: false))
+    }
+
+    @Test func channelAlreadyInThePiP_isASwap_soKeepsTheImmediateBlank() {
+        #expect(!VLCPlayerView.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: true, reusesExistingTuner: false, channelIsBeingRecorded: false, alreadyInPiP: true))
+    }
+
+    @Test func nothingPlaying_hasNothingToKeep() {
+        #expect(!VLCPlayerView.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: false, reusesExistingTuner: false, channelIsBeingRecorded: false, alreadyInPiP: false))
+    }
+}

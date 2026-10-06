@@ -1874,74 +1874,7 @@ struct VLCPlayerView: View {
             .frame(maxWidth: 220)
             .accessibilityLabel("Channel")
             .accessibilityIdentifier("vlc-channel-picker")
-            .onChange(of: selectedChannel) { _, ch in
-                // Reset unconditionally, before the suppress check below — a synced (externally
-                // triggered) channel switch still means the track list underneath genuinely
-                // changed, even though suppressNextChannelPlay skips re-triggering playback here.
-                // Resetting only on the non-suppressed path left the picker holding a stale track
-                // id from the previous channel after a synced switch.
-                selectedAudioTrackId = -1
-                selectedSpuTrackId   = -1
-                spuChoiceIsExplicit  = false
-                if suppressNextChannelPlay {
-                    suppressNextChannelPlay = false
-                    // The live→disk yield handoff (syncChannel's recording-relay match) is the one
-                    // suppressed case that ISN'T a genuine content change — it relabels the picker
-                    // for the *same* show already playing, so it alone also sets suppressSameContent
-                    // and must skip the poster/mute reset below — root-caused 2026-09-11: this
-                    // handler used to unconditionally blank posterNSImage/reopen posterHidden anyway,
-                    // and since .task(id: currentGuideEntry?.ImageURL) only re-fires when the image
-                    // URL actually changes (it doesn't here — currentGuideEntry's own synthetic-entry
-                    // resolution deliberately maps back to the same real show), nothing ever
-                    // repopulated it: the show's poster/logo was gone for the rest of that session.
-                    if suppressSameContent { suppressSameContent = false; return }
-                    // Any other suppressed switch IS genuine new content — most notably switching
-                    // which FEED show is playing (VLCPlayerWindowManager.open reuses this window/
-                    // view when the source device doesn't change, so no fresh .onAppear ever runs
-                    // for the new stream). Root-caused 2026-09-14, live report: without this reset,
-                    // posterHidden stayed true (left over from the *first* FEED show's successful
-                    // auto-play), so the auto-start gate's `!posterHidden` guard silently failed for
-                    // every subsequent switch — the video genuinely changed (VLCBridge.play(url:)
-                    // loaded the new stream regardless) but audio stayed muted at the volume 0
-                    // VLCPlayerWindowManager.open sets before every play() call, forever. Falling
-                    // through to the same poster/mute reset the direct-picker path uses below lets
-                    // attemptAutoStart fire again for the new stream (play(url:) resets
-                    // hasVideoFrame, so its first frame re-triggers the gate) and restore volume —
-                    // playChannel/watchRecordingInApp itself must still stay skipped since the
-                    // caller (VLCPlayerWindowManager.open) already started this exact stream.
-                    posterHidden = false
-                    posterNSImage = nil
-                    VLCBridge.shared.setVolume(0)
-                    return
-                }
-                // Any user pick supersedes a pending tuner-wait switch — including picks that go through
-                // watchInApp/watchRemoteRelay/watchRecordingInApp, which never touch switchGeneration.
-                switchGeneration += 1
-                switchTask?.cancel()
-                posterHidden = false
-                posterNSImage = nil
-                VLCBridge.shared.setVolume(0)
-                guard let ch else { return }
-                if let feedURL = remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) {
-                    // Switch to a FEED row (allFeedEntries) — the same path MenuContent's
-                    // "Recording on Another Mac" Watch row takes. watchRemoteRelay dedups against
-                    // the FEED already playing, and rebinds the window to the FEED's own device.
-                    guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
-                    state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
-                                           device: pair.device)
-                } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
-                    guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
-                    state.watchRecordingInApp(show)
-                } else if device.isVirtualRelay, let src = channelSourceDevice {
-                    // A real channel picked from a FEED-bound window — open it on the real tuner
-                    // (watchInApp's tuner check; open() rebinds this window to that device).
-                    // FEED rows themselves never get here: they're all "live-feed:" rows above,
-                    // routed through watchRemoteRelay/the disk cache (review #8).
-                    state.watchInApp(url: ch.URL ?? "", title: ch.GuideName, deviceId: src.DeviceID, guideNumber: ch.GuideNumber)
-                } else {
-                    playChannel(ch)
-                }
-            }
+            .onChange(of: selectedChannel) { oldCh, ch in handleChannelPickChanged(from: oldCh, to: ch) }
 
             // Quick-record: same four-type pulldown as Watch Now's Record button
             // (WatchNowRow/quickRecordMenu, GuideViewHelpers.swift) — icon-only here since the
@@ -2523,7 +2456,92 @@ struct VLCPlayerView: View {
         }
     }
 
-    private func playChannel(_ ch: LineupEntry) {
+    /// The in-window channel picker's selection changed (body moved out of `.onChange` — the longer closure made the
+    /// toolbar's view-builder expression too complex for the compiler to type-check).
+    private func handleChannelPickChanged(from oldCh: LineupEntry?, to ch: LineupEntry?) {
+        // Reset unconditionally, before the suppress check below — a synced (externally
+        // triggered) channel switch still means the track list underneath genuinely
+        // changed, even though suppressNextChannelPlay skips re-triggering playback here.
+        // Resetting only on the non-suppressed path left the picker holding a stale track
+        // id from the previous channel after a synced switch.
+        selectedAudioTrackId = -1
+        selectedSpuTrackId   = -1
+        spuChoiceIsExplicit  = false
+        if suppressNextChannelPlay {
+            suppressNextChannelPlay = false
+            // The live→disk yield handoff (syncChannel's recording-relay match) is the one
+            // suppressed case that ISN'T a genuine content change — it relabels the picker
+            // for the *same* show already playing, so it alone also sets suppressSameContent
+            // and must skip the poster/mute reset below — root-caused 2026-09-11: this
+            // handler used to unconditionally blank posterNSImage/reopen posterHidden anyway,
+            // and since .task(id: currentGuideEntry?.ImageURL) only re-fires when the image
+            // URL actually changes (it doesn't here — currentGuideEntry's own synthetic-entry
+            // resolution deliberately maps back to the same real show), nothing ever
+            // repopulated it: the show's poster/logo was gone for the rest of that session.
+            if suppressSameContent { suppressSameContent = false; return }
+            // Any other suppressed switch IS genuine new content — most notably switching
+            // which FEED show is playing (VLCPlayerWindowManager.open reuses this window/
+            // view when the source device doesn't change, so no fresh .onAppear ever runs
+            // for the new stream). Root-caused 2026-09-14, live report: without this reset,
+            // posterHidden stayed true (left over from the *first* FEED show's successful
+            // auto-play), so the auto-start gate's `!posterHidden` guard silently failed for
+            // every subsequent switch — the video genuinely changed (VLCBridge.play(url:)
+            // loaded the new stream regardless) but audio stayed muted at the volume 0
+            // VLCPlayerWindowManager.open sets before every play() call, forever. Falling
+            // through to the same poster/mute reset the direct-picker path uses below lets
+            // attemptAutoStart fire again for the new stream (play(url:) resets
+            // hasVideoFrame, so its first frame re-triggers the gate) and restore volume —
+            // playChannel/watchRecordingInApp itself must still stay skipped since the
+            // caller (VLCPlayerWindowManager.open) already started this exact stream.
+            posterHidden = false
+            posterNSImage = nil
+            VLCBridge.shared.setVolume(0)
+            return
+        }
+        // Any user pick supersedes a pending tuner-wait switch — including picks that go through
+        // watchInApp/watchRemoteRelay/watchRecordingInApp, which never touch switchGeneration.
+        switchGeneration += 1
+        switchTask?.cancel()
+        // Picking a real channel while a FEED / recording relay / other-device stream is playing is a
+        // brand-new tuner request: it must be pre-flighted (and the tuner allocated) BEFORE we touch the
+        // stream the viewer is watching. Blanking behind the poster and muting here, up front, made the FEED
+        // look paused for the whole pre-flight + connect (and left it blanked if the switch was then refused).
+        // In that case the blanking moves to the instant the new stream actually starts
+        // (blankForNewStream, called by playChannel / watchInApp's beforeOpen); on a refusal the picker
+        // reverts and the FEED simply keeps playing. 2026-10-06.
+        let keepStreamUntilReady = ch.map { shouldKeepCurrentStreamUntilNewOneStarts(for: $0) } ?? false
+        if !keepStreamUntilReady { blankForNewStream() }
+        guard let ch else { return }
+        if let feedURL = remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) {
+            // Switch to a FEED row (allFeedEntries) — the same path MenuContent's
+            // "Recording on Another Mac" Watch row takes. watchRemoteRelay dedups against
+            // the FEED already playing, and rebinds the window to the FEED's own device.
+            guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
+            state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
+                                   device: pair.device)
+        } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
+            guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
+            state.watchRecordingInApp(show)
+        } else if device.isVirtualRelay, let src = channelSourceDevice {
+            // A real channel picked from a FEED-bound window — open it on the real tuner
+            // (watchInApp's tuner check; open() rebinds this window to that device).
+            // FEED rows themselves never get here: they're all "live-feed:" rows above,
+            // routed through watchRemoteRelay/the disk cache (review #8).
+            // (plain if-assignments, not `cond ? { … } : nil` — that ternary of optional closures defeats type inference)
+            var beforeOpen: (@MainActor () -> Void)? = nil
+            var onRefused: (@MainActor () -> Void)? = nil
+            if keepStreamUntilReady {
+                beforeOpen = { blankForNewStream() }
+                onRefused = { revertPickerAfterRefusedSwitch(to: oldCh) }
+            }
+            state.watchInApp(url: ch.URL ?? "", title: ch.GuideName, deviceId: src.DeviceID, guideNumber: ch.GuideNumber,
+                             beforeOpen: beforeOpen, onRefused: onRefused)
+        } else {
+            playChannel(ch, revertTo: keepStreamUntilReady ? oldCh : nil)
+        }
+    }
+
+    private func playChannel(_ ch: LineupEntry, revertTo previous: LineupEntry? = nil) {
         if VLCPlayerWindowManager.shared.secondaryIsShowing(deviceID: device.DeviceID, channelNumber: ch.GuideNumber) {
             glog("[VLC] playChannel \(ch.GuideNumber) — already in the PiP, swapping instead")
             swapPrimaryAndSecondary()
@@ -2610,10 +2628,59 @@ struct VLCPlayerView: View {
             }
         } else {
             Task {
-                guard await state.tunerAvailable(device, context: ch.GuideName) else { return }
+                // Allocate/verify the tuner FIRST. The stream being watched (a FEED, say) is untouched until this
+                // passes; only then is it blanked and replaced — so a refusal costs nothing and the switch has no
+                // artificial pause on top of the new stream's own connect time.
+                guard await state.tunerAvailable(device, context: ch.GuideName) else {
+                    if let previous { revertPickerAfterRefusedSwitch(to: previous) }
+                    return
+                }
+                blankForNewStream()
                 startPlayChannel(ch, url: url)
             }
         }
+    }
+
+    /// Hides the current picture behind the poster and mutes — done at the moment a NEW stream is about to
+    /// replace it, so the auto-start gate re-arms for the new stream's first frame (see the picker handler).
+    private func blankForNewStream() {
+        posterHidden = false
+        posterNSImage = nil
+        VLCBridge.shared.setVolume(0)
+    }
+
+    /// After a refused channel switch (no tuner free, empty URL) the picker already shows the channel the user
+    /// clicked while the old stream is still playing — put it back without triggering a play.
+    private func revertPickerAfterRefusedSwitch(to previous: LineupEntry?) {
+        guard let previous, selectedChannel?.GuideNumber != previous.GuideNumber else { return }
+        suppressNextChannelPlay = true
+        suppressSameContent = true     // relabel only — the old stream never stopped
+        selectedChannel = previous
+    }
+
+    /// True for a live-channel pick that is a genuinely new tuner request while a stream that holds none on the
+    /// target device (FEED, recording relay, or another device's channel) is playing — see the picker handler.
+    private func shouldKeepCurrentStreamUntilNewOneStarts(for ch: LineupEntry) -> Bool {
+        guard remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) == nil,
+              showId(fromLiveGuideNumber: ch.GuideNumber) == nil,
+              let target = channelSourceDevice?.DeviceID else { return false }
+        let mgr = VLCPlayerWindowManager.shared
+        return Self.shouldKeepStreamUntilNewOneStarts(
+            currentlyPlaying: !(bridge.currentURL ?? "").isEmpty,
+            reusesExistingTuner: ownStreamStoppedForSwitch || Self.reusesExistingTuner(
+                currentDeviceID: mgr.currentDeviceID, targetDeviceID: target, recordingShowId: bridge.recordingShowId,
+                currentFeedRemoteURL: mgr.currentFeedRemoteURL, currentURL: bridge.currentURL),
+            channelIsBeingRecorded: state.recordingShows.contains { $0.hdhr_record == target && $0.show_channel == ch.GuideNumber },
+            alreadyInPiP: mgr.secondaryIsShowing(deviceID: target, channelNumber: ch.GuideNumber))
+    }
+
+    /// Pure decision, extracted for unit testing: keep the current stream playing (don't blank/mute) until the new one
+    /// actually starts. Only for a fresh tuner request over a stream that holds none on the target device; every
+    /// other pick (live→live on the same tuner, a recording being watched from disk, a channel already in the PiP)
+    /// keeps the existing immediate blank.
+    nonisolated static func shouldKeepStreamUntilNewOneStarts(currentlyPlaying: Bool, reusesExistingTuner: Bool,
+                                                              channelIsBeingRecorded: Bool, alreadyInPiP: Bool) -> Bool {
+        currentlyPlaying && !reusesExistingTuner && !channelIsBeingRecorded && !alreadyInPiP
     }
 
     /// True when the device has no free tuner, so a live→live switch has to release our own first.
