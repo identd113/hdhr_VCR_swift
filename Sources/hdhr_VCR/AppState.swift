@@ -5262,6 +5262,25 @@ final class AppState: ObservableObject {
         let startedAt: Date
     }
     private var feedCacheSessions: [String: FeedCacheSession] = [:]   // primary-only, non-persisted
+    /// First time `maintainFeedCacheSessions` saw playback of this session reach its end while a window was still
+    /// showing it — only used to bound how long a finished session's cache is kept (see shouldReleaseFeedCache).
+    private var feedCachePlaybackEndedAt: [String: Date] = [:]
+    /// How long a window may sit on a FEED whose show is over AND whose playback has reached the end before its
+    /// cache is released anyway (a multi-GB file must not live forever behind an open "Playback Ended" window).
+    static let feedCacheEndedHoldSeconds: TimeInterval = 30 * 60
+
+    /// Whether a FEED cache session whose source show is over should be deleted now.
+    /// - Not shown in any player slot (window closed / moved to another stream): yes — nothing can read it.
+    /// - Still shown, playback not at the end: no — the viewer is still watching/scrubbing it.
+    /// - Still shown, playback reached the end: NO until `holdSeconds` have passed. Reaching the end of a finished show is
+    ///   not "done" — the window is still on that stream's Ended overlay and the viewer can scrub back or replay, and
+    ///   deleting the cache the moment playback ended killed the stream out from under them (2026-10-06).
+    nonisolated static func shouldReleaseFeedCache(inPrimary: Bool, inSecondary: Bool,
+                                                   playbackEndedFor: TimeInterval?, holdSeconds: TimeInterval) -> Bool {
+        if !inPrimary && !inSecondary { return true }
+        guard let endedFor = playbackEndedFor else { return false }
+        return endedFor >= holdSeconds
+    }
 
     /// WebServer's own read access into feedCacheSessions, for handleWatchRecording's FEED-cache
     /// fallback (see that function's own doc comment) — AppState stays the single owner of this
@@ -5474,14 +5493,25 @@ final class AppState: ObservableObject {
             let inPrimary   = mgr.currentFeedSessionId == id
             let inSecondary = mgr.secondaryFeedSessionId == id
             let finished = (inPrimary && bridge.hasEnded) || (inSecondary && bridge.secondaryHasEnded)
-            if finished || (!inPrimary && !inSecondary) {
-                glog("[Watch] FEED cache session \(id): show over and playback finished — releasing the cache")
+            if finished {
+                if feedCachePlaybackEndedAt[id] == nil {
+                    feedCachePlaybackEndedAt[id] = Date()
+                    glog("[Watch] FEED cache session \(id): show over and playback reached the end — keeping the cache while the window is open (scrub back / replay)")
+                }
+            } else {
+                feedCachePlaybackEndedAt[id] = nil   // restarted/seeked after the end → not "ended" any more
+            }
+            let endedFor = feedCachePlaybackEndedAt[id].map { Date().timeIntervalSince($0) }
+            if Self.shouldReleaseFeedCache(inPrimary: inPrimary, inSecondary: inSecondary,
+                                           playbackEndedFor: endedFor, holdSeconds: Self.feedCacheEndedHoldSeconds) {
+                glog("[Watch] FEED cache session \(id): show over and \(inPrimary || inSecondary ? "left on its ended screen for \(Int(Self.feedCacheEndedHoldSeconds / 60)) min" : "no window is showing it") — releasing the cache")
                 stopFeedCacheSession(sessionId: id)
             }
         }
     }
 
     func stopFeedCacheSession(sessionId: String) {
+        feedCachePlaybackEndedAt.removeValue(forKey: sessionId)
         guard let session = feedCacheSessions.removeValue(forKey: sessionId) else { return }
         recordingManager.stopFeedCachePull(sessionId: sessionId)
         try? FileManager.default.removeItem(atPath: session.cachePath)

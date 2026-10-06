@@ -131,3 +131,31 @@ struct FeedCacheSessionTests {
         #expect(secondary.url.contains("/api/watch-recording?show=\(secondary.sessionId)"))
     }
 }
+
+// 2026-10-06: a FEED whose show ended used to have its cache deleted the moment playback reached the end, even
+// though the window was still on that stream — so the viewer could no longer scrub back or replay.
+@Suite("FEED cache release decision")
+struct FeedCacheReleaseDecisionTests {
+    private let hold: TimeInterval = 30 * 60
+
+    @Test func windowStillShowingIt_andPlaybackNotAtTheEnd_keepsTheCache() {
+        #expect(!AppState.shouldReleaseFeedCache(inPrimary: true, inSecondary: false, playbackEndedFor: nil, holdSeconds: hold))
+        #expect(!AppState.shouldReleaseFeedCache(inPrimary: false, inSecondary: true, playbackEndedFor: nil, holdSeconds: hold))
+    }
+
+    @Test func playbackReachedTheEnd_butTheWindowIsStillOnIt_keepsTheCacheForScrubbingBackAndReplay() {
+        #expect(!AppState.shouldReleaseFeedCache(inPrimary: true, inSecondary: false, playbackEndedFor: 0, holdSeconds: hold))
+        #expect(!AppState.shouldReleaseFeedCache(inPrimary: true, inSecondary: false, playbackEndedFor: 9, holdSeconds: hold))
+        #expect(!AppState.shouldReleaseFeedCache(inPrimary: false, inSecondary: true, playbackEndedFor: hold - 1, holdSeconds: hold))
+    }
+
+    @Test func leftOnTheEndedScreenLongerThanTheHold_releasesIt() {
+        #expect(AppState.shouldReleaseFeedCache(inPrimary: true, inSecondary: false, playbackEndedFor: hold, holdSeconds: hold))
+        #expect(AppState.shouldReleaseFeedCache(inPrimary: true, inSecondary: false, playbackEndedFor: hold + 600, holdSeconds: hold))
+    }
+
+    @Test func noWindowShowsIt_releasesImmediately_whateverTheState() {
+        #expect(AppState.shouldReleaseFeedCache(inPrimary: false, inSecondary: false, playbackEndedFor: nil, holdSeconds: hold))
+        #expect(AppState.shouldReleaseFeedCache(inPrimary: false, inSecondary: false, playbackEndedFor: 0, holdSeconds: hold))
+    }
+}
