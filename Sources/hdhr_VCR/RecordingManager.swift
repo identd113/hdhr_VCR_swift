@@ -272,7 +272,12 @@ final class RecordingManager {
     /// callers' detached waitpid still reaps it.) 2026-10-05 triage T35.
     private func killIfStillCurl(_ pid: Int32) {
         guard isCurlProcess(pid: pid) || isOurChild(pid: pid) else {
-            glog("[Rec] not killing pid \(pid): it is no longer \((curlExecutablePath as NSString).lastPathComponent) (already exited, or the pid was recycled)")
+            // Say so only when a process still holds this pid but it is NOT ours — the recycled-pid case this guard
+            // exists for. A pid that is simply gone (kill(pid,0) fails with ESRCH) is the normal outcome of a natural
+            // stop (curl already exited at the show's end) and is not worth a log line on every recording.
+            if kill(pid, 0) == 0 {
+                glog("[Rec] not killing pid \(pid): it now belongs to another process, not \((curlExecutablePath as NSString).lastPathComponent) (pid recycled)", level: .warning)
+            }
             return
         }
         kill(pid, SIGKILL)

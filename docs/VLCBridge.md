@@ -134,7 +134,7 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 | Auto catch-up (sustained stall) | INFO | `[VLC] sustained stall (N consecutive ticks, window visible) — catching up to live` |
 | Every tick, unconditionally (see below) | INFO | `[VLC] tick pos=+2971ms/3000ms bytes=+1503827 displayed=+182 lost=+0 rate=1.000` |
 | Real stall detected | WARN | `[VLC] STALL — playback position advanced only Nms of the expected 3000ms, bytes still arriving (+N) — decode/render-side` (or `no new bytes either — network-side`) |
-| Stall clears | INFO | `[VLC] STALL resolved after ~Ns (N tick(s)) — position now advancing normally (+Nms)` |
+| Stall clears | INFO | `[VLC] STALL resolved after ~Ns (N tick(s)) — position now advancing normally (+Nms)` — or, if the window became hidden meanwhile, `STALL tracking dropped … the window is no longer visible`. A tick only counts as a stall (`VLCBridge.isStalledTick`) when the window is visible: macOS throttles hidden windows, so slow ticks there are expected (2026-10-06). |
 | Frames dropped | INFO | `[VLC] N frame(s) dropped this tick (displayed +N) — window may be backgrounded, or a real render-side hitch if it's frontmost` |
 
 ### Stall/frame-drop diagnostics (added 2026-09-07)

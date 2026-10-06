@@ -113,3 +113,23 @@ struct VLCBridgeAutoCatchUpTests {
         #expect(VLCBridge.spuFetchHasBudget(spuTracksIsEmpty: true, attempts: attempts) == false)
     }
 }
+
+// MARK: - isStalledTick (2026-10-06): hidden windows are throttled by macOS and must not count as stalls
+
+@Suite("VLCBridge.isStalledTick")
+struct VLCBridgeStalledTickTests {
+    @Test func visibleWindow_slowPositionAdvance_isAStall() {
+        #expect(VLCBridge.isStalledTick(posDeltaMs: 0, expectedMs: 3000, windowVisible: true))
+        #expect(VLCBridge.isStalledTick(posDeltaMs: 1799, expectedMs: 3000, windowVisible: true))
+    }
+
+    @Test func visibleWindow_normalAdvance_isNotAStall() {
+        #expect(!VLCBridge.isStalledTick(posDeltaMs: 1800, expectedMs: 3000, windowVisible: true))
+        #expect(!VLCBridge.isStalledTick(posDeltaMs: 3100, expectedMs: 3000, windowVisible: true))
+    }
+
+    @Test func hiddenWindow_neverCountsAsAStall_howeverSlowTheTick() {
+        #expect(!VLCBridge.isStalledTick(posDeltaMs: 0, expectedMs: 3000, windowVisible: false))
+        #expect(!VLCBridge.isStalledTick(posDeltaMs: 257, expectedMs: 3000, windowVisible: false))
+    }
+}

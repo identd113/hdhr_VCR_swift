@@ -1686,10 +1686,11 @@ final class AppState: ObservableObject {
                 let missed = devices[i].missedProbes
                 if missed == 3 {
                     let affected = shows.filter { $0.show_active && $0.hdhr_record == devices[i].DeviceID }
-                    glog("[DeviceProbe] \(devices[i].DeviceID) not seen for 3 probes — marking unavailable (\(affected.count) show(s) affected)", level: .warning)
+                    // A virtual FEED relay vanishing is the normal end of a recorded show, not a fault — info, not a warning.
+                    glog("[DeviceProbe] \(devices[i].DeviceID) not seen for 3 probes — marking unavailable (\(affected.count) show(s) affected)", level: devices[i].isVirtualRelay ? .info : .warning)
                     webServer.broadcastDeviceBarEvent(type: "deviceOffline", deviceId: devices[i].DeviceID, state: self)
                 } else if missed > 3 {
-                    glog("[DeviceProbe] \(devices[i].DeviceID) still missing (missed \(missed))", level: .warning)
+                    glog("[DeviceProbe] \(devices[i].DeviceID) still missing (missed \(missed))", level: devices[i].isVirtualRelay ? .info : .warning)
                 }
             }
         }

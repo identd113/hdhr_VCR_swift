@@ -122,3 +122,14 @@ struct WebServerHelperTests {
         #expect(ws.fillTemplate(row.template, row.tokens) == row.expected)
     }
 }
+
+@Suite("watch-recording wait logging")
+struct WatchRecordingWaitLoggingTests {
+    @Test func routineLiveEdgeWaits_areNotLogged_realPausesAre() {
+        #expect(!WebServer.shouldLogResumedWait(elapsed: 0.2))     // a live-edge relay waits ~0.2–0.5 s per chunk
+        #expect(!WebServer.shouldLogResumedWait(elapsed: 0.5))
+        #expect(!WebServer.shouldLogResumedWait(elapsed: 1.9))
+        #expect(WebServer.shouldLogResumedWait(elapsed: WebServer.minLoggedWaitSeconds))
+        #expect(WebServer.shouldLogResumedWait(elapsed: 6.0))
+    }
+}

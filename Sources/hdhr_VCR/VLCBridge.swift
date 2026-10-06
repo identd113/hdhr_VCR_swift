@@ -1598,7 +1598,10 @@ final class VLCBridge: ObservableObject {
                 glog("[VLC] tick pos=+\(posDeltaMs)ms/\(expectedMs)ms bytes=+\(bytesDelta) displayed=+\(displayDelta ?? -1) lost=+\(lostDelta ?? -1) rate=\(String(format: "%.3f", currentRate)) windowVisible=\(windowVisible)")
                 // Under 60% of the expected real-time advance is a real, perceptible slowdown, not
                 // just scheduler jitter on the 3s Timer (which is real but small next to this).
-                if posDeltaMs < Int64(Double(expectedMs) * 0.6) {
+                // A window that isn't visible (covered, minimized, other Space, display asleep) is throttled by macOS —
+                // its playback clock legitimately crawls, so a slow tick there is not a stall (2026-10-06: a "STALL" that
+                // "resolved" with windowVisible=false). isStalledTick requires a visible window.
+                if Self.isStalledTick(posDeltaMs: posDeltaMs, expectedMs: expectedMs, windowVisible: windowVisible) {
                     consecutiveStalledTicks += 1
                     if consecutiveStalledTicks == 1 {
                         let cause = bytesDelta > 0 ? "bytes still arriving (+\(bytesDelta)) — decode/render-side" : "no new bytes either — network-side"
@@ -1606,7 +1609,11 @@ final class VLCBridge: ObservableObject {
                     }
                 } else if consecutiveStalledTicks > 0 {
                     let stalledFor = Double(consecutiveStalledTicks) * Self.statsTimerInterval
-                    glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms), windowVisible=\(windowVisible)")
+                    if windowVisible {
+                        glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms), windowVisible=\(windowVisible)")
+                    } else {
+                        glog("[VLC] STALL tracking dropped after ~\(String(format: "%.1f", stalledFor))s — the window is no longer visible, so slow ticks are expected (macOS throttles hidden windows)")
+                    }
                     consecutiveStalledTicks = 0
                 }
                 if let lostDelta, lostDelta > 0 {
@@ -1671,6 +1678,13 @@ final class VLCBridge: ObservableObject {
     nonisolated static func shouldCatchUpForCorruption(corruptDelta: Int32, threshold: Int32 = 15) -> Bool {
         corruptDelta > threshold
     }
+    /// Whether one stats tick counts as a stall: the playback position advanced under 60% of the expected real-time
+    /// amount (a real, perceptible slowdown rather than 3 s-timer jitter) **and** the window is visible. A hidden
+    /// window's clock is throttled by macOS, so a slow tick there says nothing about the stream.
+    nonisolated static func isStalledTick(posDeltaMs: Int64, expectedMs: Int64, windowVisible: Bool) -> Bool {
+        windowVisible && posDeltaMs < Int64(Double(expectedMs) * 0.6)
+    }
+
     nonisolated static func shouldCatchUpForSustainedStall(consecutiveStalledTicks: Int, windowVisible: Bool,
                                                             threshold: Int = sustainedStallThreshold) -> Bool {
         consecutiveStalledTicks >= threshold && windowVisible

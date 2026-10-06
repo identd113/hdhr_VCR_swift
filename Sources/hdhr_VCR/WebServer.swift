@@ -1839,9 +1839,12 @@ final class WebServer: @unchecked Sendable {
     // replaced exactly, while the read-retry itself now happens far more often.
     private static let liveEdgePollInterval: TimeInterval = 0.02
     private static let stillRecordingCheckEveryNPolls = 25
-    // Minimum waitStreak before a "caught up to live edge" / "resumed" pair is actually logged —
-    // see handleGrowingFileChunk's own comment on the pair it gates. 10 polls * 20ms = ~200ms.
-    private static let minLoggedWaitStreak = 10
+    // Minimum wait before a "resumed" line is logged — see handleGrowingFileChunk's own comment. Time-based
+    // (2 s), not a poll count: a relay following a live stream at its real-time edge naturally waits 0.2–0.5 s
+    // for each next chunk, which the old 10-poll (~200 ms) gate logged ~30 times a minute per viewer (101 lines in
+    // 3 minutes on 2026-10-05). A pause long enough to matter for a FEED stall investigation is seconds.
+    static let minLoggedWaitSeconds: TimeInterval = 2.0
+    nonisolated static func shouldLogResumedWait(elapsed: TimeInterval) -> Bool { elapsed >= minLoggedWaitSeconds }
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
@@ -2038,7 +2041,7 @@ final class WebServer: @unchecked Sendable {
         // investigation cared about. bytesSent here is still the pre-this-chunk total, i.e. exactly
         // the byte offset the wait started at — folded into this one line instead of a separate
         // "caught up" line the empty-chunk branch above used to log unconditionally.
-        if waitStreak >= Self.minLoggedWaitStreak, let waitStartedAt {
+        if let waitStartedAt, Self.shouldLogResumedWait(elapsed: Date().timeIntervalSince(waitStartedAt)) {
             glog("[WebServer] watch-recording show=\(showId) resumed after \(String(format: "%.1f", Date().timeIntervalSince(waitStartedAt)))s wait (\(waitStreak) polls, caught up at \(bytesSent) bytes)")
         }
         // A read that came back shorter than what was asked for means there wasn't a full
