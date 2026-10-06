@@ -205,7 +205,7 @@ final class AppState: ObservableObject {
     // "Tuner Conflict" notice while the HDHomeRun's own status.json catches up to the dropped
     // connection (measured 1–45s, see recordAfterYieldingWatchNow).
     private var preemptedLiveWatch: (deviceId: String, at: Date)? = nil
-    private static let liveWatchPreemptWarningLeadSeconds: TimeInterval = 180
+    nonisolated static let liveWatchPreemptWarningLeadSeconds: TimeInterval = 180
     private static let liveWatchPreemptGraceSeconds: TimeInterval = 60
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
@@ -5997,6 +5997,26 @@ final class AppState: ObservableObject {
         return mgr.currentDeviceID == show.hdhr_record && mgr.currentChannelNumber == show.show_channel
     }
 
+    /// Pure decision behind `warnOfLiveWatchPreemptionIfNeeded`, extracted for unit testing. The three
+    /// closures are lazy and ordered exactly as the original inline checks were — the cheap tuner check
+    /// first, the airing marked as evaluated once that passes (so the disk-scanning skip check runs at
+    /// most once per airing), then skip, then "a tuner frees up anyway".
+    /// - warn: show the heads-up now.
+    /// - markEvaluated: record `epoch` in `liveWatchPreemptWarnedEpoch` so this airing isn't re-evaluated.
+    struct LiveWatchWarningOutcome: Equatable { var warn: Bool; var markEvaluated: Bool }
+
+    nonisolated static func liveWatchWarningOutcome(
+        secondsUntilStart: TimeInterval, warnedEpoch: TimeInterval?, epoch: TimeInterval,
+        leadSeconds: TimeInterval = liveWatchPreemptWarningLeadSeconds,
+        blockedOnlyByOwnWatchNow: () -> Bool, willBeSkipped: () -> Bool, freesUpAnyway: () -> Bool
+    ) -> LiveWatchWarningOutcome {
+        guard secondsUntilStart > 0, secondsUntilStart <= leadSeconds else { return .init(warn: false, markEvaluated: false) }
+        guard warnedEpoch != epoch, blockedOnlyByOwnWatchNow() else { return .init(warn: false, markEvaluated: false) }
+        guard !willBeSkipped() else { return .init(warn: false, markEvaluated: true) }
+        guard !freesUpAnyway() else { return .init(warn: false, markEvaluated: true) }
+        return .init(warn: true, markEvaluated: true)
+    }
+
     /// A few minutes before a recording that would be blocked only by this instance's own live
     /// Watch Now, warn the viewer that live TV will stop (or switch to the recording, same channel)
     /// when it starts — nothing is stopped until then (preemptOwnLiveWatch, from startRecording).
@@ -6006,18 +6026,22 @@ final class AppState: ObservableObject {
     private func warnOfLiveWatchPreemptionIfNeeded() {
         let now = Date()
         for show in shows where show.show_active && !show.show_paused && !show.show_recording {
-            guard let next = show.show_next, next > now,
-                  next.timeIntervalSince(now) <= Self.liveWatchPreemptWarningLeadSeconds else { continue }
+            guard let next = show.show_next else { continue }
             let epoch = next.timeIntervalSince1970
-            guard showRuntime[show.show_id]?.liveWatchPreemptWarnedEpoch != epoch,
-                  tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) else { continue }
-            // Evaluated once per airing either way (marked below) — the duplicate check scans disk.
-            showRuntime[show.show_id, default: ShowRuntimeState()].liveWatchPreemptWarnedEpoch = epoch
-            guard !scheduledRecordingWillBeSkipped(show) else { continue }
-            let freesUpAnyway = recordingShows.contains {
-                $0.hdhr_record == show.hdhr_record && ($0.show_end ?? .distantFuture) <= next
+            let outcome = Self.liveWatchWarningOutcome(
+                secondsUntilStart: next.timeIntervalSince(now),
+                warnedEpoch: showRuntime[show.show_id]?.liveWatchPreemptWarnedEpoch,
+                epoch: epoch,
+                blockedOnlyByOwnWatchNow: { tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) },
+                willBeSkipped: { scheduledRecordingWillBeSkipped(show) },
+                freesUpAnyway: {
+                    recordingShows.contains { $0.hdhr_record == show.hdhr_record && ($0.show_end ?? .distantFuture) <= next }
+                })
+            // Evaluated once per airing either way — the duplicate check scans disk.
+            if outcome.markEvaluated {
+                showRuntime[show.show_id, default: ShowRuntimeState()].liveWatchPreemptWarnedEpoch = epoch
             }
-            guard !freesUpAnyway else { continue }
+            guard outcome.warn else { continue }
             let when = shortTime(next)
             let sameChannel = ownLiveWatchIsSameChannel(as: show)
             let message = sameChannel

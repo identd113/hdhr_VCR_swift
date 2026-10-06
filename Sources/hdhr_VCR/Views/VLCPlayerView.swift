@@ -285,9 +285,22 @@ struct VLCPlayerView: View {
     }
     private var channelLineup: [LineupEntry] {
         guard let src = channelSourceDevice else { return [] }
-        return (state.lineups[src.DeviceID] ?? []).sorted {
-            $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
-        }
+        return Self.sortedChannels(state.lineups[src.DeviceID] ?? [])
+    }
+
+    /// Plain ascending channel-number order ("5.1" < "5.2" < "5.10" — numeric, not lexical), the
+    /// order every channel list in the player uses. Pure, for unit testing.
+    nonisolated static func sortedChannels(_ lineup: [LineupEntry]) -> [LineupEntry] {
+        lineup.sorted { $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending }
+    }
+
+    /// Media-key next/prev order: recording rows, then FEED rows, then the real channels in plain
+    /// ascending order — minus any plain row whose channel is recording (its "Live …" row covers
+    /// it, and stepping onto the plain row redirects back to that row, so up/down could never get
+    /// past it). Pure, for unit testing.
+    nonisolated static func channelCycleOrder(recording: [LineupEntry], feeds: [LineupEntry],
+                                               channels: [LineupEntry], recordingChannels: Set<String>) -> [LineupEntry] {
+        recording + feeds + channels.filter { !recordingChannels.contains($0.GuideNumber) }
     }
     private var favoriteLineup: [LineupEntry] { channelLineup.filter(\.isFavorite) }
     private var otherLineup: [LineupEntry] { channelLineup.filter { !$0.isFavorite } }
@@ -406,7 +419,8 @@ struct VLCPlayerView: View {
     // "Live" row, so up/down could never get past it (2026-10-01 review #13).
     private var channelCycleOrder: [LineupEntry] {
         let recordingChannels = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map(\.show_channel))
-        return recordingChannelEntries + allFeedEntries + channelLineup.filter { !recordingChannels.contains($0.GuideNumber) }
+        return Self.channelCycleOrder(recording: recordingChannelEntries, feeds: allFeedEntries,
+                                       channels: channelLineup, recordingChannels: recordingChannels)
     }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3. Every real, actually-applied transcode

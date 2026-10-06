@@ -520,7 +520,12 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] Stopped")
     }
 
+    // Test seam: sees every event handed to broadcastEvent (guide-change events and recording events
+    // both funnel through it), whether or not any SSE client is connected. nil in production.
+    var broadcastObserver: (([String: Any]) -> Void)?
+
     func broadcastEvent(_ event: [String: Any]) {
+        broadcastObserver?(event)
         guard let data = try? JSONSerialization.data(withJSONObject: event),
               let json = String(data: data, encoding: .utf8) else { return }
         let bytes = Data("data: \(json)\n\n".utf8)
@@ -2514,10 +2519,7 @@ final class WebServer: @unchecked Sendable {
         case "/api/tuner-status.json":
             // Unlike Terminal_guide_enabled (a courtesy gate over data already reachable elsewhere),
             // this is a real gate — see Home_assistant_status_enabled's own doc comment (Models.swift).
-            guard state.config.Home_assistant_status_enabled else {
-                return .notFound("Home Assistant status endpoint is disabled — enable it in Settings → Sharing")
-            }
-            return .ok(contentType: "application/json", body: buildTunerStatusJSON(state: state))
+            return tunerStatusResponse(state: state)
 
         case "/api/guide.json":
             return .ok(contentType: "application/json", body: buildGuideJSON(state: state, deviceId: nil))
@@ -3966,8 +3968,19 @@ final class WebServer: @unchecked Sendable {
     // as JSON instead of HTML, for external consumers (e.g. a Home Assistant REST sensor) that
     // want tuner status without scraping the guide page. Reuses computeDevTuners so this can never
     // disagree with the dev-bar's own occupancy badge.
+    // The route body for /api/tuner-status.json, split out so the gate is testable without a live
+    // listener. Internal, not private, for that reason.
     @MainActor
-    private func buildTunerStatusJSON(state: AppState) -> Data {
+    func tunerStatusResponse(state: AppState) -> WebResponse {
+        guard state.config.Home_assistant_status_enabled else {
+            return .notFound("Home Assistant status endpoint is disabled — enable it in Settings → Sharing")
+        }
+        return .ok(contentType: "application/json", body: buildTunerStatusJSON(state: state))
+    }
+
+    // Internal, not private — WebServerTunerStatusTests parses this directly.
+    @MainActor
+    func buildTunerStatusJSON(state: AppState) -> Data {
         struct ShowRef: Encodable { var showId, title, channel: String; var poster: String? }
         struct RecordingRef: Encodable { var showId, title, channel: String; var end: Int?; var poster: String? }
         struct UpNextRef: Encodable { var showId, title, channel: String; var next: Int; var poster: String? }

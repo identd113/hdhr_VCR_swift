@@ -83,6 +83,16 @@ struct MenuContent: View {
     // rebuild (CLAUDE.md's "Menu rebuild churn" invariant).
     private func watchingDisplay(for info: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)?) -> (deviceId: String, title: String, isPiPOnly: Bool)? {
         let mgr = VLCPlayerWindowManager.shared
+        return Self.watchingDisplay(info: info, currentDeviceID: mgr.currentDeviceID, currentTitle: mgr.currentTitle,
+                                    secondaryDeviceID: mgr.secondaryDeviceID, secondaryTitle: mgr.secondaryTitle)
+    }
+
+    /// Pure core of `watchingDisplay(for:)`, extracted for unit testing: primary stream first (rich
+    /// info when it resolves, else the window's own title), PiP secondary only when nothing is primary.
+    nonisolated static func watchingDisplay(
+        info: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)?,
+        currentDeviceID: String?, currentTitle: String?, secondaryDeviceID: String?, secondaryTitle: String?
+    ) -> (deviceId: String, title: String, isPiPOnly: Bool)? {
         if let info {
             // entry is always nil for a remote FEED device (guideByDevice[relayId] never
             // populates — see docs/VirtualTunerService.md's "Known limitation"); falls back to
@@ -90,13 +100,13 @@ struct MenuContent: View {
             // name, same source VLCPlayerView's poster overlay fallback already uses.
             let showName = info.entry?.Title ?? (info.device.isVirtualRelay ? info.channel.virtualRelayShowTitle : nil)
             let title = "Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" + (showName.map { " · \($0)" } ?? "")
-            return (mgr.currentDeviceID ?? "", title, false)
+            return (currentDeviceID ?? "", title, false)
         }
-        if let deviceId = mgr.currentDeviceID, let title = mgr.currentTitle {
-            return (deviceId, title, false)
+        if let currentDeviceID, let currentTitle {
+            return (currentDeviceID, currentTitle, false)
         }
-        if let deviceId = mgr.secondaryDeviceID, let title = mgr.secondaryTitle {
-            return (deviceId, title, true)
+        if let secondaryDeviceID, let secondaryTitle {
+            return (secondaryDeviceID, secondaryTitle, true)
         }
         return nil
     }
