@@ -123,6 +123,34 @@ private func guideJSON(terminalGuideEnabled: Bool = true, empty: Bool = false) -
     """
 }
 
+/// A larger guide for navigation/search tests: `channels` channels ("CH00"…, numbers 4.1, 4.2 … 4.9, 5.1 …) with `entries`
+/// one-hour shows each, starting at the top of the window. Generic titles are "Show cNN eKK" (NN = channel index, KK = entry
+/// index) so a test can check that the selected show really belongs to the selected channel. A few catalogue titles repeat across
+/// channels for search: "News at Six" (channels 0,5,10,… entry 2), "News at Ten" (same channels, entry 5), "Newsroom Weekly"
+/// (channels 0,3,6,… that aren't news channels, entry 3), "Cooking Wizard" (channels 0,7,14,… entry 1).
+private func bigGuideJSON(channels: Int = 25, entries: Int = 10) -> String {
+    let winStart = Int(Date().timeIntervalSince1970) / 1800 * 1800
+    func title(_ i: Int, _ k: Int) -> String {
+        if i % 5 == 0 && k == 2 { return "News at Six" }
+        if i % 5 == 0 && k == 5 { return "News at Ten" }
+        if i % 3 == 0 && i % 5 != 0 && k == 3 { return "Newsroom Weekly" }
+        if i % 7 == 0 && k == 1 { return "Cooking Wizard" }
+        return String(format: "Show c%02d e%02d", i, k)
+    }
+    let chans = (0..<channels).map { i -> String in
+        let number = "\(4 + i / 9).\(i % 9 + 1)"
+        let es = (0..<entries).map { k in
+            #"{"title":"\#(title(i, k))","startTime":\#(winStart + k * 3600),"endTime":\#(winStart + (k + 1) * 3600),"isRecording":false,"isScheduled":false}"#
+        }.joined(separator: ",")
+        return #"{"guideNumber":"\#(number)","guideName":"\#(String(format: "CH%02d", i))","hd":true,"favorite":false,"entries":[\#(es)]}"#
+    }.joined(separator: ",")
+    return """
+    {"deviceId":"AABBCCDD","winStart":\(winStart),"winSec":86400,
+     "devices":[{"deviceId":"AABBCCDD","active":0,"total":2}],"channels":[\(chans)],
+     "sportsPaddingEnabled":true,"terminalGuideEnabled":true}
+    """
+}
+
 // MARK: running the binary
 
 private func binaryURL() -> URL? {
@@ -224,6 +252,71 @@ private final class PTYSession: @unchecked Sendable {
             Thread.sleep(forTimeInterval: 0.05)
         } while Date() < deadline
         return stripANSI(output).contains(text)
+    }
+
+    // MARK: screen model
+
+    /// Lines of the most recent *complete* frame (ANSI stripped, blank lines dropped). Frames are written atomically between
+    /// the synchronized-output markers (ESC[?2026h … ESC[?2026l), so a half-written frame is never returned.
+    func lastFrame() -> [String] {
+        let frames = output.components(separatedBy: "\u{1B}[?2026h").filter { $0.contains("\u{1B}[?2026l") }
+        guard let f = frames.last else { return [] }
+        return stripANSI(f).components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// The channel the grid's ">" gutter marker is on, e.g. ("5.3", "CH11").
+    func selectedChannel() -> (number: String, name: String)? {
+        for l in lastFrame() {
+            if let m = l.range(of: #"^> (\d+\.\d+) (CH\d+)"#, options: .regularExpression) {
+                let parts = l[m].dropFirst(2).split(separator: " ")
+                return (String(parts[0]), String(parts[1]))
+            }
+        }
+        return nil
+    }
+
+    /// The selected show's title from the summary header ("> <title>") in normal mode.
+    func selectedTitle() -> String? {
+        let f = lastFrame()
+        guard f.count > 1, f[1].hasPrefix("> ") else { return nil }
+        return String(f[1].dropFirst(2))
+    }
+
+    /// The footer hint line (search mode shows "/query_  ^v show 1/3  <> airing 1/5 …"), or the normal key hint.
+    func footer() -> String { lastFrame().first { $0.hasPrefix("/") || $0.hasPrefix("^v channel") } ?? "" }
+
+    /// Waits until `predicate` holds for the current frame (polling), returning whether it did.
+    @discardableResult
+    func waitForFrame(timeout: TimeInterval = 6, _ predicate: (PTYSession) -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if predicate(self) { return true }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while Date() < deadline
+        return predicate(self)
+    }
+
+    /// Waits until nothing new has been printed for `quiet` seconds (the child has consumed its input and redrawn).
+    func waitIdle(quiet: TimeInterval = 0.45, timeout: TimeInterval = 8) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = output.utf8.count
+        var since = Date()
+        while Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+            let now = output.utf8.count
+            if now != last { last = now; since = Date() }
+            else if Date().timeIntervalSince(since) >= quiet { return }
+        }
+    }
+
+    /// Sends a long run of keys in small chunks (a pty's input buffer is small — a huge single write would block or drop).
+    func sendKeys(_ keys: [String], perChunk: Int = 40, pause: TimeInterval = 0.06) {
+        var i = 0
+        while i < keys.count {
+            send(keys[i..<min(keys.count, i + perChunk)].joined())
+            i += perChunk
+            Thread.sleep(forTimeInterval: pause)
+        }
     }
 
     func waitForExit(timeout: TimeInterval = 6) -> Int32? {
@@ -331,5 +424,210 @@ struct TUIGuideSmokeTests {
         #expect(tty.waitFor("KFOO"))
         #expect(stub.requests.contains { $0.method == "GET" && $0.path.hasPrefix("/api/guide.json") })
         tty.send("q"); _ = tty.waitForExit()
+    }
+
+    // MARK: arrow-key navigation (a lot of it)
+
+    private enum K {
+        static let up = "\u{1B}[A", down = "\u{1B}[B", right = "\u{1B}[C", left = "\u{1B}[D"
+    }
+
+    /// "Show c07 e03" → (channel index 7, entry 3); nil for the catalogue titles.
+    private func parseGeneric(_ title: String) -> (channel: Int, entry: Int)? {
+        let parts = title.split(separator: " ")
+        guard parts.count == 3, parts[0] == "Show", parts[1].hasPrefix("c"), parts[2].hasPrefix("e"),
+              let c = Int(parts[1].dropFirst()), let e = Int(parts[2].dropFirst()) else { return nil }
+        return (c, e)
+    }
+
+    private func launchBig(channels: Int = 25, entries: Int = 10) throws -> (StubGuideServer, PTYSession)? {
+        let stub = StubGuideServer(guideJSON: bigGuideJSON(channels: channels, entries: entries))
+        try stub.start()
+        guard let tty = PTYSession(port: stub.port) else { stub.stop(); return nil }
+        guard tty.waitFor("CH00") else { Issue.record("grid never rendered: \(tty.lastFrame().prefix(5))"); stub.stop(); return nil }
+        return (stub, tty)
+    }
+
+    @Test func downThenUpArrow_walkEveryChannel_andClampAtBothEnds() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        #expect(tty.selectedChannel()?.name == "CH00")
+
+        // One press at a time through the first dozen channels: each press moves exactly one row.
+        for i in 1...12 {
+            tty.send(K.down)
+            let expected = String(format: "CH%02d", i)
+            #expect(tty.waitForFrame { $0.selectedChannel()?.name == expected }, "down #\(i): expected \(expected), on \(String(describing: tty.selectedChannel()))")
+        }
+        // A burst well past the end must stop at the last channel (clamp, not wrap).
+        tty.sendKeys(Array(repeating: K.down, count: 60))
+        tty.waitIdle()
+        #expect(tty.selectedChannel()?.name == "CH24")
+        // …and the same back up past the top.
+        tty.sendKeys(Array(repeating: K.up, count: 80))
+        tty.waitIdle()
+        #expect(tty.selectedChannel()?.name == "CH00")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func leftRightArrow_cycleAChannelsShows_thenKeepPagingTheTimelineAtTheEnds() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        // CH01 has only generic titles ("Show c01 eKK"); CH00 carries the search catalogue's repeated titles.
+        tty.send(K.down)
+        #expect(tty.waitForFrame { $0.selectedChannel()?.name == "CH01" })
+        #expect(tty.waitForFrame { $0.selectedTitle().flatMap(self.parseGeneric)?.entry == 0 }, "should start on the first show")
+
+        for k in 1...9 {
+            tty.send(K.right)
+            #expect(tty.waitForFrame { $0.selectedTitle().flatMap(self.parseGeneric)?.entry == k }, "right #\(k): on \(String(describing: tty.selectedTitle()))")
+        }
+        // Past the last show the timeline pages instead; the selection stays on the last show and nothing breaks.
+        tty.sendKeys(Array(repeating: K.right, count: 25))
+        tty.waitIdle()
+        #expect(tty.selectedTitle().flatMap(parseGeneric)?.entry == 9)
+        tty.sendKeys(Array(repeating: K.left, count: 40))
+        tty.waitIdle()
+        #expect(tty.selectedTitle().flatMap(parseGeneric)?.entry == 0)
+        // The channel never changed while cycling shows.
+        #expect(tty.selectedChannel()?.name == "CH01")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func aLongSeededWalkOfAllFourArrowsAndPaging_neverDesyncsTheSelectionOrCrashes() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        var rng = SystemRandomNumberGenerator()
+        let seed = UInt64.random(in: 1...UInt64.max, using: &rng)
+        var state = seed
+        func next() -> Int { state = state &* 6364136223846793005 &+ 1442695040888963407; return Int(state >> 33) }
+        let keys = [K.up, K.down, K.left, K.right, "[", "]"]
+        let walk = (0..<480).map { _ in keys[next() % keys.count] }
+        say("arrow walk seed \(seed)")
+
+        var checked = 0
+        var i = 0
+        while i < walk.count {
+            tty.sendKeys(Array(walk[i..<min(walk.count, i + 40)]))
+            i += 40
+            tty.waitIdle()
+            #expect(tty.process.isRunning, "the TUI died after \(i) keys (seed \(seed))")
+            guard let ch = tty.selectedChannel(), let channelIndex = Int(ch.name.dropFirst(2)) else {
+                Issue.record("no selected channel in the frame after \(i) keys (seed \(seed)): \(tty.lastFrame().prefix(6))"); break
+            }
+            #expect((0..<25).contains(channelIndex))
+            // The selected show must belong to the selected channel — a desync between the row and entry selection would break this.
+            if let title = tty.selectedTitle(), let g = parseGeneric(title) {
+                #expect(g.channel == channelIndex, "selected show '\(title)' is not on \(ch.name) (seed \(seed), after \(i) keys)")
+                #expect((0..<10).contains(g.entry))
+                checked += 1
+            }
+        }
+        #expect(checked > 3, "too few generic-title checkpoints (\(checked)) to mean anything")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    // MARK: search
+
+    @Test func slash_searchCyclesShowsWithUpDown_andAiringsWithLeftRight_clampingAtTheEnds() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+
+        tty.send("/")
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("/_") })
+        for c in "news" { tty.send(String(c)) }
+        // 3 matching shows (sorted: News at Six, News at Ten, Newsroom Weekly); the first has 5 airings (channels 0,5,10,15,20).
+        #expect(tty.waitForFrame { $0.footer().contains("show 1/3") }, "footer: \(tty.footer())")
+        #expect(tty.footer().contains("airing 1/5"))
+        #expect(tty.selectedChannel()?.name == "CH00", "first match should be focused")
+
+        // ← / → cycle that show's airings: each moves the grid to the next channel airing it, clamping at both ends.
+        for n in 2...5 {
+            tty.send(K.right)
+            #expect(tty.waitForFrame { $0.footer().contains("airing \(n)/5") }, "right → airing \(n): \(tty.footer())")
+            #expect(tty.selectedChannel()?.name == String(format: "CH%02d", (n - 1) * 5))
+        }
+        tty.sendKeys(Array(repeating: K.right, count: 10)); tty.waitIdle()
+        #expect(tty.footer().contains("airing 5/5"), "→ must clamp at the last airing: \(tty.footer())")
+        tty.sendKeys(Array(repeating: K.left, count: 12)); tty.waitIdle()
+        #expect(tty.footer().contains("airing 1/5"), "← must clamp at the first airing: \(tty.footer())")
+
+        // ↑ / ↓ cycle the shows, clamping at both ends.
+        tty.send(K.down)
+        #expect(tty.waitForFrame { $0.footer().contains("show 2/3") }, "footer: \(tty.footer())")
+        tty.sendKeys(Array(repeating: K.down, count: 6)); tty.waitIdle()
+        #expect(tty.footer().contains("show 3/3"), "↓ must clamp at the last show: \(tty.footer())")
+        tty.sendKeys(Array(repeating: K.up, count: 6)); tty.waitIdle()
+        #expect(tty.footer().contains("show 1/3"), "↑ must clamp at the first show: \(tty.footer())")
+
+        // Enter on a match opens the record screen for it; Esc returns to the grid.
+        tty.send("\r")
+        #expect(tty.waitFor("Schedule Recording"))
+        #expect(tty.lastFrame().contains { $0.contains("News at Six") })
+        tty.send("\u{1B}")
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") }, "Esc should return to the normal grid: \(tty.footer())")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func searchResultsAreCappedAtEight_andDownStopsOnTheEighth() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        tty.send("/")
+        for c in "show" { tty.send(String(c)) }       // matches ~250 distinct titles; the list is capped
+        #expect(tty.waitForFrame { $0.footer().contains("show 1/8") }, "footer: \(tty.footer())")
+        tty.sendKeys(Array(repeating: K.down, count: 40)); tty.waitIdle()
+        #expect(tty.footer().contains("show 8/8"), "footer: \(tty.footer())")
+        tty.send("\u{1B}")
+        // Esc immediately followed by a key would read as one escape sequence (Alt-key) — wait for the grid first.
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") }, "footer: \(tty.footer())")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func channelJump_hashQueryMovesTheSelectionLive() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        tty.send("/"); tty.send("#"); tty.send("5"); tty.send("."); tty.send("3")
+        // Channel 5.3 is index 11 (numbers run 4.1…4.9, 5.1…5.9, 6.1…).
+        #expect(tty.waitForFrame { $0.selectedChannel()?.number == "5.3" }, "on \(String(describing: tty.selectedChannel())); footer \(tty.footer())")
+        #expect(tty.selectedChannel()?.name == "CH11")
+        #expect(tty.footer().hasPrefix("/#5.3_"))
+        tty.send("\r")                                // Enter confirms and closes
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") })
+        #expect(tty.selectedChannel()?.name == "CH11")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func insideSearch_qAndFAreJustText_andEscapeGivesTheCommandsBack() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        tty.send("/"); tty.send("q"); tty.send("f")
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("/qf_") }, "footer: \(tty.footer())")
+        #expect(tty.process.isRunning, "q typed into a search must not quit")
+        #expect(stub.requests.first { $0.method == "POST" } == nil, "f typed into a search must not toggle a favorite")
+
+        tty.send("\u{1B}")
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") })
+        tty.send("f")                                   // back in normal mode, f is a command again
+        #expect(stub.waitForRequest("POST", "/api/toggle-favorite") != nil)
+        tty.send("q"); #expect(tty.waitForExit() == 0)
+    }
+
+    @Test func shortQueriesWaitForThreeCharacters_noMatchesSaysSo_andBackspaceUnwindsAndCancels() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        tty.send("/"); tty.send("n"); tty.send("e")
+        #expect(tty.waitForFrame { $0.footer().contains("3+ to search") }, "footer: \(tty.footer())")
+
+        tty.send("\u{7F}"); tty.send("\u{7F}")         // backspace ×2 empties the query…
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("/_") }, "footer: \(tty.footer())")
+        tty.send("\u{7F}")                              // …one more on an empty query cancels the search
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") }, "footer: \(tty.footer())")
+
+        tty.send("/"); for c in "zzz" { tty.send(String(c)) }
+        #expect(tty.waitForFrame { $0.footer().contains("No matches") }, "footer: \(tty.footer())")
+        tty.send("\u{1B}")
+        // Esc immediately followed by a key would read as one escape sequence (Alt-key) — wait for the grid first.
+        #expect(tty.waitForFrame { $0.footer().hasPrefix("^v channel") }, "footer: \(tty.footer())")
+        tty.send("q"); #expect(tty.waitForExit() == 0)
     }
 }

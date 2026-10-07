@@ -612,9 +612,18 @@ builds the binary; a missing binary is a **failure**, not a silent skip.
 | `rendersTheGuide_andQuitsCleanlyOnQ_restoringTheTerminal` | channel + show names render; enters the alternate screen; `q` exits 0; leaves the alternate screen and shows the cursor again |
 | `fKeyTogglesTheSelectedChannelsFavorite_overHTTP` | `f` POSTs `/api/toggle-favorite` with the selected channel's number and device, and the status line confirms (✓) |
 | `downArrowMovesTheSelection_soFTogglesTheOtherChannel` | an arrow-key escape sequence moves the selection; the next `f` targets the second channel |
+| `downThenUpArrow_walkEveryChannel_andClampAtBothEnds` | 25-channel guide: ↓ moves exactly one row per press through the first dozen, a 60-key burst stops at the last channel (clamp, no wrap), an 80-key ↑ burst stops at the first |
+| `leftRightArrow_cycleAChannelsShows_thenKeepPagingTheTimelineAtTheEnds` | →/← step through a channel's shows one by one; past the last/first the timeline pages and the selection stays put; the channel never changes |
+| `aLongSeededWalkOfAllFourArrowsAndPaging_…` | a 480-key random walk over ↑ ↓ ← → `[` `]` (fresh seed each run, printed): after every 40-key chunk the TUI is alive, the selected channel is valid, and the selected show belongs to the selected channel (`Show cNN eKK` ↔ `CHNN`) |
+| `slash_searchCyclesShowsWithUpDown_andAiringsWithLeftRight_clampingAtTheEnds` | `/news` → `show 1/3`, `airing 1/5`; →/← cycle that show's airings (grid follows to each channel) and clamp at both ends; ↓/↑ cycle the shows and clamp; Enter opens the record screen for the match, Esc returns to the grid |
+| `searchResultsAreCappedAtEight_andDownStopsOnTheEighth` | a query matching ~250 titles shows `1/8`; ↓ stops at `8/8` |
+| `channelJump_hashQueryMovesTheSelectionLive` | `/#5.3` jumps the selection to channel 5.3 as you type; Enter confirms and closes |
+| `insideSearch_qAndFAreJustText_andEscapeGivesTheCommandsBack` | `q`/`f` typed into a search don't quit or toggle a favorite; after Esc `f` is a command again |
+| `shortQueriesWaitForThreeCharacters_noMatchesSaysSo_andBackspaceUnwindsAndCancels` | `(3+ to search)` hint, `No matches`, backspace unwinds the query and cancels on an empty one |
 | `sigterm_restoresTheTerminalBeforeExiting` | SIGTERM still restores the screen and cursor (never leaves a shell echo-less) |
 | `requestsGoToTheConfiguredPort_notAHardcodedOne` | the guide fetch reaches the stub on the `HDHR_GUIDE_PORT` port |
 
 To extend: add a stub route in `StubGuideServer.respond`, drive keys with `PTYSession.send`, assert on `PTYSession.waitFor` (ANSI-stripped screen text)
-and `StubGuideServer.waitForRequest`. Not covered yet: the record/schedule flow (Enter → scope choice → `/api/record`), search (`/`), tuner switching (Tab), and
-resize (SIGWINCH).
+and `StubGuideServer.waitForRequest`. Test-writing notes: assert on the **last complete frame** (`PTYSession.lastFrame()` — frames are atomic between the `ESC[?2026h`/`l` markers; the pty adds `\r` to line ends) and on the search footer (`^v show 2/3  <> airing 1/5`), which states the exact search position; use `waitIdle()` after key bursts; send a long run of keys with `sendKeys` (a pty's input buffer is small); and **don't send Esc immediately followed by another key** — that is one escape sequence (Alt-key), so wait for the grid first.
+
+Not covered yet: the record/schedule flow beyond opening the screen (1–4 → `/api/record`, the day/New Only toggles, delete on a scheduled show), tuner switching (Tab), the 20 s background poll / "web server unreachable" status, and resize (SIGWINCH).
