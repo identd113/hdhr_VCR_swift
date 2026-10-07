@@ -8,7 +8,13 @@ import hdhr_guide_core
 // docs/WebServer.md's /api/guide.json and POST /api/record sections.
 
 enum API {
-    static let baseURL = "http://127.0.0.1:1980"
+    /// 1980 unless `HDHR_GUIDE_PORT` is set to a valid port (1…65535) — lets the tests point the real binary at a stub
+    /// server, and lets anyone running a custom `Web_server_port` use the TUI. Anything else falls back to 1980.
+    static let port: Int = {
+        if let raw = ProcessInfo.processInfo.environment["HDHR_GUIDE_PORT"], let p = Int(raw), (1...65535).contains(p) { return p }
+        return 1980
+    }()
+    static let baseURL = "http://127.0.0.1:\(port)"
 
     static func fetchGuide(device: String?) -> GuidePayload? {
         var urlStr = baseURL + "/api/guide.json"

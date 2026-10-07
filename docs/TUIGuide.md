@@ -10,7 +10,7 @@ unit-testable** — a `main.swift`-based executable target can't be `@testable i
 this split nothing in `hdhr_guide` had any automated test coverage at all; every fix described
 below was verified by hand against a real pty, not by `swift test`. `hdhr_guide` (terminal I/O,
 global mutable UI state, network calls) depends on `hdhr_guide_core`; `hdhr_guide_core` has no
-dependency back the other way. Tested by `Tests/hdhr_guide_coreTests/` (50 tests as of this
+dependency back the other way. Tested by `Tests/hdhr_guide_coreTests/` (73 tests as of 2026-10-06 — originally 50 when this was first written, as of this
 writing — `StringLayoutTests`, `GenreTests`, `GuideDTOsTests`, `GuideLogicTests`), which `swift
 test` runs alongside the rest of the project's suite.
 
@@ -537,7 +537,7 @@ that boundary. Worth doing if this logic needs to change again; not on its own.
 
 ## Known limitations
 
-- Fixed `127.0.0.1:1980` — doesn't read `Web_server_port` from config
+- Defaults to `127.0.0.1:1980` and doesn't read `Web_server_port` from config — set the `HDHR_GUIDE_PORT` environment variable (1–65535; anything else falls back to 1980) to point it at a custom port (added 2026-10-06, primarily so the smoke tests can aim the real binary at a stub server)
 - Polling only, no `/api/events` SSE subscription — up to ~20s of staleness between actions
 - Offline/undetected devices *are* now listed (`/api/guide.json`'s `devices` field unions in any
   device referenced by a show's `hdhr_record` but never discovered — mirrors `buildDevBarHTML`'s
@@ -594,3 +594,27 @@ factory `buildGuideGridHTML`'s green `.g-new-tag` title pill uses (`OriginalAird
 the summary panel/search results/full-screen record view) — a green `NEW ` prefix ahead of the
 title, budgeted into the title-truncation width the same way the status badge already is, colored to
 match `guide.css`'s `.g-new-tag` background (`#27ae60`).
+
+## Smoke tests of the real binary (`Tests/hdhr_VCRTests/TUI/TUIGuideSmokeTests.swift`)
+
+Added 2026-10-06. `hdhr_guide_coreTests` covers the pure logic above; these cover the **executable itself** — startup checks, raw-mode
+terminal setup/restore, key handling, and the HTTP it sends — by running the built `hdhr_guide` binary against a small in-test stub guide
+server (an `NWListener` on a random port, aimed at via `HDHR_GUIDE_PORT`) and, where a TTY is needed, on a real pseudo-terminal (`openpty`;
+a background thread drains the terminal continuously, because a pty's buffer is small and a child blocked on a write never sees the next key).
+Hermetic: never touches the live app on :1980 or a real tuner. `hdhr_VCRTests` depends on the `hdhr_guide` target so `swift test` always
+builds the binary; a missing binary is a **failure**, not a silent skip.
+
+| Test | Checks |
+|---|---|
+| `serverUnreachable_exitsWithAnActionableMessage` | exit 1; the message names the port actually used and says "Enable Web LAN" |
+| `terminalGuideSwitchedOff_exitsAndSaysSo` | exit 1 and "disabled … Terminal Guide" when `terminalGuideEnabled` is false |
+| `noTunerYet_exitsAndTellsTheUserToWait` | exit 1 and "no HDHomeRun tuner detected" for an empty payload |
+| `rendersTheGuide_andQuitsCleanlyOnQ_restoringTheTerminal` | channel + show names render; enters the alternate screen; `q` exits 0; leaves the alternate screen and shows the cursor again |
+| `fKeyTogglesTheSelectedChannelsFavorite_overHTTP` | `f` POSTs `/api/toggle-favorite` with the selected channel's number and device, and the status line confirms (✓) |
+| `downArrowMovesTheSelection_soFTogglesTheOtherChannel` | an arrow-key escape sequence moves the selection; the next `f` targets the second channel |
+| `sigterm_restoresTheTerminalBeforeExiting` | SIGTERM still restores the screen and cursor (never leaves a shell echo-less) |
+| `requestsGoToTheConfiguredPort_notAHardcodedOne` | the guide fetch reaches the stub on the `HDHR_GUIDE_PORT` port |
+
+To extend: add a stub route in `StubGuideServer.respond`, drive keys with `PTYSession.send`, assert on `PTYSession.waitFor` (ANSI-stripped screen text)
+and `StubGuideServer.waitForRequest`. Not covered yet: the record/schedule flow (Enter → scope choice → `/api/record`), search (`/`), tuner switching (Tab), and
+resize (SIGWINCH).

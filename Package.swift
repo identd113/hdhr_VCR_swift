@@ -29,7 +29,8 @@ let package = Package(
         ),
         .testTarget(
             name: "hdhr_VCRTests",
-            dependencies: ["hdhr_VCR"],
+            // hdhr_guide: so `swift test` always builds the terminal client binary that TUIGuideSmokeTests runs.
+            dependencies: ["hdhr_VCR", "hdhr_guide"],
             path: "Tests/hdhr_VCRTests",
             exclude: ["Views/__Snapshots__"]   // reference PNGs — accessed by filesystem path, not bundled
         ),

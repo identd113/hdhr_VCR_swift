@@ -103,7 +103,7 @@ nonisolated(unsafe) var resized = false
 signal(SIGWINCH) { _ in resized = true }
 
 guard let initial = API.fetchGuide(device: nil) else {
-    print("hdhr_guide: can't reach the web server at 127.0.0.1:1980.")
+    print("hdhr_guide: can't reach the web server at 127.0.0.1:\(API.port).")
     print("Make sure hdhrVCRplus is running with Settings → Sharing → Enable Web LAN enabled.")
     exit(1)
 }
