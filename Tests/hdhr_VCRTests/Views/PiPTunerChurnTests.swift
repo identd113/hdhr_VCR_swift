@@ -23,8 +23,10 @@ import AppKit
 //
 // Opt-in like the rest of the live UI tests: RUN_WINDOW_NAV_TESTS=1, app running, Accessibility granted.
 //   RUN_WINDOW_NAV_TESTS=1 swift test --filter PiPTunerChurnTests
-// The FEED test additionally needs `ssh laptop` (key auth) with this repo + the app on the laptop, and makes
-// the *laptop* the recording Mac — a shared tuner only ever has one Mac's FEED relay (first recorder wins).
+// The FEED test additionally needs `ssh laptop` (key auth) with Accessibility granted to its sshd session and
+// the app running there. The *mini* records and feeds (its Recording FEED relay), and the walk drives the
+// *laptop's* UI over ssh: the laptop watches that FEED as a primary and/or PiP, mixed with live PiPs. A FEED must
+// never cost a tuner on either machine, and both apps must agree with the shared hardware count throughout.
 
 // MARK: model
 
@@ -51,6 +53,107 @@ private struct SplitMix64: RandomNumberGenerator {
         z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
         return z ^ (z >> 31)
     }
+}
+
+// MARK: target machine (where the UI under test lives)
+
+/// The machine whose player we drive. Local = the mini; remote = the laptop, over ssh (osascript via stdin).
+private struct Target {
+    var name: String
+    var run: (String) -> String?        // run an AppleScript on that machine
+    var uiEvents: String                // path of the compiled tools/ui_events binary ON that machine
+    var fetchPage: () -> String         // that machine's own web guide page (its app's tuner counts)
+    var logOffset: () -> UInt64
+    var logSince: (UInt64) -> String
+    var screen: (w: Int, h: Int)
+}
+
+private func screenSize(run: (String) -> String?) -> (w: Int, h: Int) {
+    let out = run(#"tell application "Finder" to get bounds of window of desktop"#) ?? ""
+    let n = out.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+    return n.count == 4 ? (n[2], n[3]) : (1440, 900)
+}
+
+private func readLog(at url: URL, from offset: UInt64) -> String {
+    guard let h = try? FileHandle(forReadingFrom: url) else { return "" }
+    defer { try? h.close() }
+    let size = (try? h.seekToEnd()) ?? 0
+    try? h.seek(toOffset: offset <= size ? offset : 0)
+    return String(data: (try? h.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
+}
+
+private func localTarget(uiEvents: String) -> Target {
+    let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/hdhrVCRplus.log")
+    return Target(name: "mini",
+                  run: { runAppleScript($0) },
+                  uiEvents: uiEvents,
+                  fetchPage: { curl("http://127.0.0.1:1980/", timeout: 10) },
+                  logOffset: { (try? FileManager.default.attributesOfItem(atPath: logURL.path)[.size] as? UInt64) ?? 0 },
+                  logSince: { readLog(at: logURL, from: $0) },
+                  screen: screenSize(run: { runAppleScript($0) }))
+}
+
+/// `osascript -` does not read stdin as UTF-8, so a literal "—" (the FEED menu item's separator) or "…" ("Watch Now…")
+/// arrives mangled and never matches. Every string literal containing a non-ASCII character is rewritten to
+/// `("ab" & (character id 8212) & "cd")` — local runs (`osascript -e`) don't need this, ssh stdin does.
+private func asciiSafe(_ script: String) -> String {
+    guard let re = try? NSRegularExpression(pattern: #""[^"\n]*""#) else { return script }
+    var out = ""
+    var last = script.startIndex
+    for m in re.matches(in: script, range: NSRange(script.startIndex..., in: script)) {
+        guard let r = Range(m.range, in: script) else { continue }
+        out += script[last..<r.lowerBound]
+        let lit = String(script[r].dropFirst().dropLast())
+        if lit.unicodeScalars.allSatisfy({ $0.isASCII }) {
+            out += script[r]
+        } else {
+            var parts: [String] = []
+            var cur = ""
+            for u in lit.unicodeScalars {
+                if u.isASCII { cur.unicodeScalars.append(u) }
+                else { parts.append("\"\(cur)\""); cur = ""; parts.append("(character id \(u.value))") }
+            }
+            parts.append("\"\(cur)\"")
+            out += "(" + parts.joined(separator: " & ") + ")"
+        }
+        last = r.upperBound
+    }
+    out += script[last...]
+    return out
+}
+
+/// Runs `osascript -` on the laptop with the script on stdin (avoids shell-quoting a multi-KB script).
+private func remoteOsascript(_ script: String, timeout: TimeInterval = 150) -> String? {
+    let script = asciiSafe(script)
+    let t = Process()
+    t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+    t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "laptop", "osascript", "-"]
+    let inPipe = Pipe(), outPipe = Pipe(), errPipe = Pipe()
+    t.standardInput = inPipe; t.standardOutput = outPipe; t.standardError = errPipe
+    do { try t.run() } catch { return nil }
+    inPipe.fileHandleForWriting.write(Data(script.utf8))
+    try? inPipe.fileHandleForWriting.close()
+    let killer = DispatchWorkItem { if t.isRunning { t.terminate() } }
+    DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
+    let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+    let err = errPipe.fileHandleForReading.readDataToEndOfFile()
+    t.waitUntilExit()
+    killer.cancel()
+    guard t.terminationStatus == 0 else {
+        FileHandle.standardError.write("laptop osascript error: \(String(data: err, encoding: .utf8) ?? "?")\n".data(using: .utf8)!)
+        return nil
+    }
+    return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func laptopTarget(uiEvents: String) -> Target {
+    return Target(name: "laptop",
+                  run: { remoteOsascript($0) },
+                  uiEvents: uiEvents,
+                  fetchPage: { sh("/usr/bin/ssh", ["-o", "BatchMode=yes", "laptop", "curl -s -m 10 http://127.0.0.1:1980/"], timeout: 25).out },
+                  logOffset: { UInt64(sh("/usr/bin/ssh", ["laptop", "stat -f %z ~/Library/Logs/hdhrVCRplus.log"], timeout: 20).out.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 },
+                  logSince: { off in sh("/usr/bin/ssh", ["laptop", "tail -c +\(off + 1) ~/Library/Logs/hdhrVCRplus.log"], timeout: 30).out },
+                  screen: screenSize(run: { remoteOsascript($0) }))
 }
 
 // MARK: shell + tuner probes
@@ -88,7 +191,12 @@ private struct Tuners: CustomStringConvertible {
     var app: Int?          // AppState.activeTunerCount, as embedded in the web guide
     var hw: Int?           // tuners with a channel locked, per the device's own status.json
     var total: Int?
-    var description: String { "app=\(app.map(String.init) ?? "?") hw=\(hw.map(String.init) ?? "?") total=\(total.map(String.init) ?? "?")" }
+    var peer: Int?         // the *other* Mac's app count (the recorder), when a recorder target is given
+    var description: String {
+        "app=\(app.map(String.init) ?? "?") hw=\(hw.map(String.init) ?? "?") total=\(total.map(String.init) ?? "?")"
+            + (peer.map { " peer=\($0)" } ?? "")
+    }
+    func matches(_ want: Int, hasPeer: Bool) -> Bool { hw == want && app == want && (!hasPeer || peer == want) }
 }
 
 /// "(dev X ch 4.1)" in mock_scenario.py start's output → "4.1".
@@ -105,9 +213,8 @@ private func discoverDeviceID() -> String? {
     return ids.first
 }
 
-private func tunerSnapshot(deviceID: String) -> Tuners {
+private func tunerSnapshot(deviceID: String, page: String) -> Tuners {
     var out = Tuners()
-    let page = curl("http://127.0.0.1:1980/", timeout: 10)
     guard let r = page.range(of: "\"\(deviceID)\":\\{[^}]*\\}", options: .regularExpression) else { return out }
     let objText = String(page[r].dropFirst(deviceID.count + 3))   // skips `"ID":`, leaving the `{…}` object
     guard let obj = try? JSONSerialization.jsonObject(with: Data(objText.utf8)) as? [String: Any] else { return out }
@@ -180,7 +287,7 @@ private func wrap(_ uiEvents: String, _ body: String) -> String {
     """
 }
 
-private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: World, skip: String) -> String {
+private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: World, skip: String, screen: (w: Int, h: Int)) -> String {
     switch op {
     case .openOnRecording:
         return wrap(uiEvents, #"""
@@ -210,7 +317,7 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         return wrap(uiEvents, #"""
         set mn to menu 1 of menu bar item 1 of menu bar 2
         set feedItem to missing value
-        repeat 20 times
+        repeat 90 times
             repeat with mi in (every menu item of mn)
                 try
                     set nm to name of mi
@@ -327,10 +434,10 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         return my pickPrimaryChannel(my playerWin(), "\(skip)")
         """)
     case .moveWindow:
-        let x = Int.random(in: 20...700, using: &rng), y = Int.random(in: 40...300, using: &rng)
+        let x = Int.random(in: 20...max(40, screen.w - 760), using: &rng), y = Int.random(in: 40...max(60, screen.h - 520), using: &rng)
         return wrap(uiEvents, "        set pw to my playerWin()\n        set position of pw to {\(x), \(y)}\n        return \"OK\"")
     case .resizeWindow:
-        let w = Int.random(in: 640...1400, using: &rng), h = Int.random(in: 420...800, using: &rng)
+        let w = Int.random(in: 640...max(700, min(1400, screen.w - 120)), using: &rng), h = Int.random(in: 420...max(480, min(800, screen.h - 140)), using: &rng)
         return wrap(uiEvents, "        set pw to my playerWin()\n        set size of pw to {\(w), \(h)}\n        return \"OK\"")
     case .closePlayer:
         return wrap(uiEvents, #"""
@@ -374,14 +481,21 @@ private func geometryScript(uiEvents: String, expectThumb: Bool) -> String {
 
 private struct Step { var n: Int; var op: Op; var result: String; var world: World; var settle: TimeInterval?; var tuners: Tuners; var note: String }
 
-private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, uiEvents: String,
-                 steps: Int, seed: UInt64, appLogOffset: UInt64, recordedChannel: String) -> [String] {
+private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, target: Target, recorder: Target?,
+                 steps: Int, seed: UInt64, appLogOffset: UInt64, recorderLogOffset: UInt64 = 0, recordedChannel: String) -> [String] {
+    let uiEvents = target.uiEvents
     var rng = SplitMix64(state: seed)
     var world = World()
     var trail: [Step] = []
     var problems: [String] = []
-    let total = tunerSnapshot(deviceID: deviceID).total ?? 2
+    let total = tunerSnapshot(deviceID: deviceID, page: target.fetchPage()).total ?? 2
 
+    func snapshot() -> Tuners {
+        var t = tunerSnapshot(deviceID: deviceID, page: target.fetchPage())
+        if let recorder { t.peer = tunerSnapshot(deviceID: deviceID, page: recorder.fetchPage()).app }
+        return t
+    }
+    let hasPeer = recorder != nil
     func expected() -> Int { base + world.liveCount }
 
     func allowed() -> [Op] {
@@ -433,7 +547,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
             if candidates.contains(want) { op = want }
         }
         let t0 = Date()
-        let result = runAppleScript(script(for: op, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel)) ?? "SCRIPT_FAILED"
+        let result = target.run(script(for: op, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel, screen: target.screen)) ?? "SCRIPT_FAILED"
         var note = ""
         if result != "OK" && !result.hasPrefix("OK:") {
             problems.append("step \(n) \(op.rawValue): the UI action did not complete — \(result)")
@@ -450,9 +564,9 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
         var samples: [String] = []
         repeat {
             Thread.sleep(forTimeInterval: 1.0)
-            snap = tunerSnapshot(deviceID: deviceID)
+            snap = snapshot()
             samples.append("\(Int(Date().timeIntervalSince(t0)))s:\(snap.app.map(String.init) ?? "?")/\(snap.hw.map(String.init) ?? "?")")
-            if snap.hw == want && snap.app == want { settled = Date().timeIntervalSince(t0); break }
+            if snap.matches(want, hasPeer: hasPeer) { settled = Date().timeIntervalSince(t0); break }
         } while Date() < deadline
         if settled == nil || samples.count > 6 { note += " samples(app/hw)=" + samples.joined(separator: " ") }
         if settled == nil {
@@ -462,7 +576,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
         }
 
         // UI geometry.
-        let geo = (runAppleScript(geometryScript(uiEvents: uiEvents, expectThumb: world.pip != .none)) ?? "?|?|?").components(separatedBy: "|")
+        let geo = (target.run(geometryScript(uiEvents: uiEvents, expectThumb: world.pip != .none)) ?? "?|?|?").components(separatedBy: "|")
         if geo.count == 3 {
             let (win, thumb, names) = (geo[0], geo[1], geo[2])
             if world.player && win == "-" { problems.append("step \(n) \(op.rawValue): player window missing") }
@@ -495,31 +609,26 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
 
     // Always end closed, then the leak check: with nothing of ours open the hardware must be back at base.
     if world.player {
-        _ = runAppleScript(script(for: .closePlayer, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel))
+        _ = target.run(script(for: .closePlayer, uiEvents: uiEvents, rng: &rng, world: world, skip: recordedChannel, screen: target.screen))
         world = World()
     }
     var finalSnap = Tuners()
     let leakDeadline = Date().addingTimeInterval(45)
     repeat {
         Thread.sleep(forTimeInterval: 1.5)
-        finalSnap = tunerSnapshot(deviceID: deviceID)
-        if finalSnap.hw == base && finalSnap.app == base { break }
+        finalSnap = snapshot()
+        if finalSnap.matches(base, hasPeer: hasPeer) { break }
     } while Date() < leakDeadline
-    if finalSnap.hw != base || finalSnap.app != base {
+    if !finalSnap.matches(base, hasPeer: hasPeer) {
         problems.append("after closing everything the tuners are \(finalSnap), expected \(base) — a tuner was leaked or a count is stale")
     }
 
-    // The app's own log for the run.
-    let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/hdhrVCRplus.log")
-    if let h = try? FileHandle(forReadingFrom: logURL) {
-        defer { try? h.close() }
-        let size = (try? h.seekToEnd()) ?? 0
-        try? h.seek(toOffset: appLogOffset <= size ? appLogOffset : 0)
-        let text = String(data: (try? h.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
+    // The apps' own logs for the run (the viewer, and the recorder if it is a different Mac).
+    for (label, text) in [(target.name, target.logSince(appLogOffset))] + (recorder.map { [($0.name, $0.logSince(recorderLogOffset))] } ?? []) {
         let errors = text.split(separator: "\n").filter { $0.contains("[ERROR]") }
-        if !errors.isEmpty { problems.append("the app logged \(errors.count) [ERROR] line(s) during the run, e.g. \(errors.prefix(3).joined(separator: " ⏎ "))") }
+        if !errors.isEmpty { problems.append("the \(label) app logged \(errors.count) [ERROR] line(s) during the run, e.g. \(errors.prefix(3).joined(separator: " ⏎ "))") }
         let tunerRefusals = text.split(separator: "\n").filter { $0.contains("All Tuners") || $0.contains("tuner refused") }
-        if !tunerRefusals.isEmpty { problems.append("the device refused a stream (all tuners busy) \(tunerRefusals.count)× — \(tunerRefusals.first!)") }
+        if !tunerRefusals.isEmpty { problems.append("the device refused a stream on the \(label) (all tuners busy) \(tunerRefusals.count)× — \(tunerRefusals.first!)") }
     }
 
     // Always print the trail — it is the point of a soak run, pass or fail.
@@ -540,79 +649,116 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ui
 @Suite("PiP / FEED / window churn — tuner-state soak (live app, opt-in)", .serialized)
 struct PiPTunerChurnTests {
 
-    private func common() -> (uiEvents: String, seed: UInt64, steps: Int, repoRoot: URL, logOffset: UInt64)? {
-        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return nil }
+    private struct Env { var seed: UInt64; var steps: Int; var repoRoot: URL }
+
+    private func env() -> Env {
         let repoRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let bin = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ui_events").path
-        let compile = sh("/usr/bin/xcrun", ["swiftc", "-O", repoRoot.appendingPathComponent("tools/ui_events.swift").path, "-o", bin])
-        guard compile.status == 0 else { Issue.record("could not compile tools/ui_events.swift"); return nil }
-        let env = ProcessInfo.processInfo.environment
-        let seed = env["HDHR_CHURN_SEED"].flatMap { UInt64($0) } ?? UInt64(Date().timeIntervalSince1970)
-        let steps = env["HDHR_CHURN_STEPS"].flatMap { Int($0) } ?? 30
-        let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/hdhrVCRplus.log")
-        let off = (try? FileManager.default.attributesOfItem(atPath: logURL.path)[.size] as? UInt64) ?? 0
-        return (bin, seed, steps, repoRoot, off)
+        let e = ProcessInfo.processInfo.environment
+        return Env(seed: e["HDHR_CHURN_SEED"].flatMap { UInt64($0) } ?? UInt64(Date().timeIntervalSince1970),
+                   steps: e["HDHR_CHURN_STEPS"].flatMap { Int($0) } ?? 30,
+                   repoRoot: repoRoot)
     }
 
     private func scenarioTool(_ root: URL) -> String { root.appendingPathComponent("tools/mock_scenario.py").path }
 
-    /// The mini records (one tuner), and the walk opens/closes a recording-relay primary, live and FEED-less PiPs,
-    /// swaps, channel changes, corner moves and window moves/resizes. The relay primary costs no tuner; every live
-    /// stream costs exactly one.
+    private func say(_ msg: String) { FileHandle.standardError.write((msg + "\n").data(using: .utf8)!) }
+
+    private func compileLocalHelper(_ root: URL) -> String? {
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ui_events").path
+        let r = sh("/usr/bin/xcrun", ["swiftc", "-O", root.appendingPathComponent("tools/ui_events.swift").path, "-o", bin])
+        if r.status != 0 { Issue.record("could not compile tools/ui_events.swift: \(r.out)"); return nil }
+        return bin
+    }
+
+    private func compileLaptopHelper(_ root: URL) -> String? {
+        let src = root.appendingPathComponent("tools/ui_events.swift").path
+        guard sh("/usr/bin/scp", ["-q", "-o", "BatchMode=yes", src, "laptop:/tmp/hdhr_ui_events.swift"], timeout: 30).status == 0 else {
+            Issue.record("could not copy tools/ui_events.swift to the laptop"); return nil
+        }
+        let r = sh("/usr/bin/ssh", ["laptop", "xcrun swiftc -O /tmp/hdhr_ui_events.swift -o /tmp/hdhr_ui_events"], timeout: 180)
+        if r.status != 0 { Issue.record("could not compile ui_events on the laptop: \(r.out)"); return nil }
+        return "/tmp/hdhr_ui_events"
+    }
+
+    /// True when this Mac's config has the Recording FEED relay switched on (Settings → Sharing → Recording FEED).
+    private func miniRelayEnabled() -> Bool {
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/hdhrVCRplus")
+        let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("hdhr_VCR-") && $0.pathExtension == "json" }
+            .sorted { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                    > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+        guard let f = files.first, let data = try? Data(contentsOf: f),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        let cfg = (obj["config"] as? [String: Any]) ?? obj
+        return cfg["Virtual_tuner_relay_enabled"] as? Bool == true
+    }
+
+    /// The mini records (one tuner) and its own player is driven: a recording-relay primary costs no tuner, every live
+    /// stream (primary or PiP) costs exactly one; swaps, channel changes, corner moves and window moves/resizes must
+    /// never change that.
     @Test func churnWhileTheMiniIsRecording() throws {
-        guard let c = common() else { return }
-        let tool = scenarioTool(c.repoRoot)
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let e = env()
+        guard let bin = compileLocalHelper(e.repoRoot) else { return }
+        let tool = scenarioTool(e.repoRoot)
         _ = sh("/usr/bin/python3", [tool, "clean"])
         let started = sh("/usr/bin/python3", [tool, "start"])
-        if started.status == 2 { return }            // nothing airing / no free tuner — environment skip
+        if started.status == 2 { say("churnWhileTheMiniIsRecording skipped: nothing airing / no free tuner"); return }
         guard started.status == 0 else { Issue.record("mock_scenario.py start failed (\(started.status))"); return }
         defer { _ = sh("/usr/bin/python3", [tool, "clean"]) }
 
+        let mini = localTarget(uiEvents: bin)
         guard let dev = discoverDeviceID() else { Issue.record("could not find a tuner device in the web guide"); return }
         Thread.sleep(forTimeInterval: 4)
-        let base = tunerSnapshot(deviceID: dev)
+        let base = tunerSnapshot(deviceID: dev, page: mini.fetchPage())
         guard let hw = base.hw, let app = base.app, hw == app else {
             Issue.record("baseline tuner state disagrees before any UI action: \(base)"); return
         }
-        let problems = run(phase: "mini-recording", feedPhase: false, deviceID: dev, base: hw, uiEvents: c.uiEvents,
-                           steps: c.steps, seed: c.seed, appLogOffset: c.logOffset, recordedChannel: recordedChannel(started.out))
+        let problems = run(phase: "mini-recording", feedPhase: false, deviceID: dev, base: hw, target: mini, recorder: nil,
+                           steps: e.steps, seed: e.seed, appLogOffset: mini.logOffset(),
+                           recordedChannel: recordedChannel(started.out))
         #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
 
-    /// The *laptop* records (it is the Mac whose FEED relay stays live for the shared tuner); the mini watches that
-    /// FEED as primary and/or PiP and mixes in live PiPs. A FEED must never cost a tuner on either machine.
-    @Test func feedFromTheLaptopCostsNoTuner() throws {
-        guard let c = common() else { return }
-        let reach = sh("/usr/bin/ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "laptop", "true"], timeout: 15)
-        guard reach.status == 0 else {                // no laptop — environment skip, but say so
-            FileHandle.standardError.write("feedFromTheLaptopCostsNoTuner skipped: `ssh laptop` is unreachable (asleep? keep it awake with `caffeinate -d`)\n".data(using: .utf8)!)
-            return
+    /// The *mini* records and feeds (its Recording FEED relay); the *laptop's* player is driven over ssh and watches that
+    /// FEED as a primary and/or PiP, mixed with live PiPs on the shared HDHomeRun. A FEED must never cost a tuner on
+    /// either Mac, and the laptop's count, the mini's count and the hardware must agree after every step.
+    @Test func feedFromTheMiniShowsOnTheLaptop() throws {
+        guard windowNavTestsOptedIn(), appRunning() else { return }
+        let e = env()
+        guard miniRelayEnabled() else {
+            say("feedFromTheMiniShowsOnTheLaptop skipped: turn on Settings → Sharing → Recording FEED on the mini"); return
         }
-        // The laptop only advertises a FEED relay if Settings → Sharing → Recording FEED is on (it defaults to
-        // off). Without it there is no FEED to watch, so this is an environment skip, not a failure.
-        let relayOn = sh("/usr/bin/ssh", ["laptop", #"python3 -c "import json,glob,os;f=max(glob.glob(os.path.expanduser('~/Library/Application Support/hdhrVCRplus/hdhr_VCR-*.json')),key=os.path.getmtime);c=json.load(open(f));print(c.get('config',c).get('Virtual_tuner_relay_enabled'))""#], timeout: 20)
-        guard relayOn.out.contains("True") else {
-            FileHandle.standardError.write("feedFromTheLaptopCostsNoTuner skipped: turn on Settings → Sharing → Recording FEED on the laptop\n".data(using: .utf8)!)
-            return
+        guard sh("/usr/bin/ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "laptop", "true"], timeout: 15).status == 0 else {
+            say("feedFromTheMiniShowsOnTheLaptop skipped: `ssh laptop` is unreachable (asleep? keep it awake with `caffeinate -d`)"); return
         }
-        let tool = scenarioTool(c.repoRoot)
-        _ = sh("/usr/bin/python3", [tool, "clean"])   // the mini must NOT be recording, or its own relay wins
-        let remote = "cd ~/GitHub/hdhr_VCR_swift && python3 tools/mock_scenario.py"
-        _ = sh("/usr/bin/ssh", ["laptop", "\(remote) clean"], timeout: 60)
-        let started = sh("/usr/bin/ssh", ["laptop", "\(remote) start"], timeout: 90)
-        if started.status == 2 { return }
-        guard started.status == 0 else { Issue.record("laptop mock_scenario.py start failed (\(started.status))"); return }
-        defer { _ = sh("/usr/bin/ssh", ["laptop", "\(remote) clean"], timeout: 60) }
+        guard remoteOsascript(#"tell application "System Events" to tell process "hdhr_VCR" to return count of windows"#, timeout: 40) != nil else {
+            say("feedFromTheMiniShowsOnTheLaptop skipped: the laptop's app isn't running or its ssh session lacks Accessibility"); return
+        }
+        guard let laptopBin = compileLaptopHelper(e.repoRoot) else { return }
 
+        let tool = scenarioTool(e.repoRoot)
+        let laptopTool = "cd ~/GitHub/hdhr_VCR_swift && python3 tools/mock_scenario.py"
+        _ = sh("/usr/bin/ssh", ["laptop", "\(laptopTool) clean"], timeout: 60)     // the laptop must NOT be recording — the mini feeds
+        _ = sh("/usr/bin/python3", [tool, "clean"])
+        let started = sh("/usr/bin/python3", [tool, "start"])
+        if started.status == 2 { say("feedFromTheMiniShowsOnTheLaptop skipped: nothing airing / no free tuner"); return }
+        guard started.status == 0 else { Issue.record("mock_scenario.py start failed (\(started.status))"); return }
+        defer { _ = sh("/usr/bin/python3", [tool, "clean"]); _ = sh("/usr/bin/ssh", ["laptop", "\(laptopTool) clean"], timeout: 60) }
+
+        let miniTarget = localTarget(uiEvents: "")
+        let laptop = laptopTarget(uiEvents: laptopBin)
         guard let dev = discoverDeviceID() else { Issue.record("could not find a tuner device in the web guide"); return }
-        Thread.sleep(forTimeInterval: 8)               // let the mini's next discovery pass see the laptop's relay
-        let base = tunerSnapshot(deviceID: dev)
-        guard let hw = base.hw, let app = base.app, hw == app else {
-            Issue.record("baseline tuner state disagrees before any UI action: \(base)"); return
+        Thread.sleep(forTimeInterval: 6)
+        let base = tunerSnapshot(deviceID: dev, page: laptop.fetchPage())
+        let miniBase = tunerSnapshot(deviceID: dev, page: miniTarget.fetchPage())
+        guard let hw = base.hw, base.app == hw, miniBase.app == hw else {
+            Issue.record("baseline tuner state disagrees before any UI action: laptop \(base) / mini \(miniBase)"); return
         }
-        let problems = run(phase: "feed-from-laptop", feedPhase: true, deviceID: dev, base: hw, uiEvents: c.uiEvents,
-                           steps: c.steps, seed: c.seed &+ 1, appLogOffset: c.logOffset, recordedChannel: recordedChannel(started.out))
+        let problems = run(phase: "feed-from-mini→laptop", feedPhase: true, deviceID: dev, base: hw, target: laptop, recorder: miniTarget,
+                           steps: e.steps, seed: e.seed &+ 1, appLogOffset: laptop.logOffset(), recorderLogOffset: miniTarget.logOffset(),
+                           recordedChannel: recordedChannel(started.out))
         #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
 }
