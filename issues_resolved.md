@@ -6,6 +6,14 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Live two-Mac testing (PiPTunerChurnTests) — three fixes — 2026-10-06
+
+- **FEED relay left advertising after deleting the last recording (`2f2869e`):** `deleteShow` removed the show but never re-ran `updateVirtualTunerPresence()` on that path, so `/discover.json` kept answering with `TunerCount: 0` and an empty lineup and the relay never logged `stopped advertising` (a natural stop did). Because only one Mac's relay may be live per shared tuner (first recorder wins), the stale relay also made a *second* Mac that began recording back off, so it never got a FEED. Reproduced deterministically (start a recording, delete the show); fix = re-run `updateVirtualTunerPresence()` once the show is actually removed. Verified live: `stopped advertising` logged, `/discover.json` → 404.
+- **Tuner-count badge trailing a stream opening/closing by ~12 s, and a throttled occupancy change being lost (`0375130`, `aa5c6aa`):** the hardware-occupancy push shared one 15 s per-device cooldown between the tiny `tuner_update` badge push and the expensive grid rebuild, and `deviceTunerOccupancy` was already updated by the time the cooldown was checked, so a change inside the window was dropped outright — a Mac watching another's recording kept a stale badge/ring/dropdown until an unrelated event or the next periodic refresh. Fix = a trailing rebuild for the throttled half (`0375130`), then splitting the halves so the badge push is never throttled (`aa5c6aa`). Tests: `TunerOccupancyBroadcastTests`. Live: the closed-live-player lag went from ~12 s to 2–4 s.
+- **`[TunerAudit] vlc=` ignored PiP (`bbf30f5`):** it only checked whether the primary *window* was on the device, so it logged `vlc=0` with a live PiP holding a tuner and `vlc=1` for a primary that was just a recording relay. Now the same two checks `activeTunerCount` sums (`vlcOccupiesTuner` + `secondaryVlcOccupiesTuner`). Log text only.
+
+---
+
 # Triage T17 (web guide stale-grid cluster) fixed — 2026-10-05
 
 - **No resync after an EventSource reconnect:** the server only replays tuner counts on connect, so guide-change events pushed during a Wi-Fi blip / laptop sleep were lost. `guide.js` now calls `refreshGuide()` on every re-open and when a hidden tab becomes visible after >2 min.

@@ -30,6 +30,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | [WebServer.md](WebServer.md) | `WebServer.swift` | LAN web server — guide HTML, JSON API, SSE push |
 | [ChannelSignalStore.md](ChannelSignalStore.md) | `ChannelSignalStore.swift` | Per-channel SNQ signal history + stats |
 | [HDHRFindings.md](HDHRFindings.md) | — | Live-tested HDHomeRun device/API behavior notes |
+| [LiveUITests.md](LiveUITests.md) | `Tests/…/Views/WindowNavigationTests.swift`, `PiPTunerChurnTests.swift` | Opt-in live UI tests (Accessibility-driven): the PiP workout and the PiP/FEED/window tuner-state churn soak — prerequisites, macOS 27 gotchas, what they've caught |
 
 ## Other
 
