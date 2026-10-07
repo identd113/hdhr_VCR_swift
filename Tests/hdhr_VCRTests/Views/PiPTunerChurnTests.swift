@@ -234,12 +234,27 @@ private let churnHandlers = #"""
 on playerWin()
     tell application "System Events" to tell process "hdhr_VCR"
         repeat with w in windows
-            set n to name of w
-            if n is not "Watch Now" and n is not "Add Picture-in-Picture" and n is not "Support hdhrVCRplus" then return w
+            try
+                set n to name of w
+                if n is not "Watch Now" and n is not "Add Picture-in-Picture" and n is not "Support hdhrVCRplus" then return w
+            end try
         end repeat
     end tell
     return missing value
 end playerWin
+
+-- A window found by walking `windows` (a direct `window "Name"` specifier fails on the laptop for windows that
+-- plainly exist), tolerant of windows closing mid-loop.
+on windowNamed(nm)
+    tell application "System Events" to tell process "hdhr_VCR"
+        repeat with w in windows
+            try
+                if (name of w) is nm then return w
+            end try
+        end repeat
+    end tell
+    return missing value
+end windowNamed
 
 -- "x,y,w,h" of an element, or "-" when it's missing.
 on frameOf(el)
@@ -263,6 +278,27 @@ on waitPlaying(win)
     end repeat
     return false
 end waitPlaying
+
+-- Last element (document order) with the given AXIdentifier. The PiP picker's sections run Recording Now, FEED,
+-- then Live TV, all sharing one add-button id — so the last one is a live channel.
+on findLastById(el, ident)
+    tell application "System Events"
+        set found to missing value
+        try
+            set kids to UI elements of el
+        on error
+            return missing value
+        end try
+        repeat with k in kids
+            try
+                if ((value of attribute "AXIdentifier" of k) as string) is ident then set found to k
+            end try
+            set inner to my findLastById(k, ident)
+            if inner is not missing value then set found to inner
+        end repeat
+        return found
+    end tell
+end findLastById
 
 on closeExtraWindows()
     tell application "System Events" to tell process "hdhr_VCR"
@@ -380,17 +416,36 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         return "OK"
         """#)
     case .addLivePip:
+        // The player's right-click "Add Picture-in-Picture…" (a real right-click + Down/Return via ui_events), then the
+        // picker's last add button (the Live TV section). Watch Now's per-row PiP buttons aren't used: on the laptop
+        // the Watch Now window doesn't reliably open while a player is up.
         return wrap(uiEvents, #"""
-        click menu item "Watch Now…" of menu 1 of menu bar item 1 of menu bar 2
-        set addBtn to missing value
+        set pw to my playerWin()
+        if pw is missing value then return "NO_PLAYER_WINDOW"
+        set p to position of pw
+        set sz to size of pw
+        set cx to ((item 1 of p) + ((item 1 of sz) / 2)) as integer
+        set cy to ((item 2 of p) + ((item 2 of sz) / 2)) as integer
+        do shell script (quoted form of uiEvents) & " rightclick " & cx & " " & cy
+        delay 1.2
+        do shell script (quoted form of uiEvents) & " keys 125 36"
+        set pipWin to missing value
         repeat 30 times
             delay 0.5
-            if exists window "Watch Now" then
-                set addBtn to my findWhere(window "Watch Now", "pipLive", "")
-                if addBtn is not missing value then exit repeat
-            end if
+            set pipWin to my windowNamed("Add Picture-in-Picture")
+            if pipWin is not missing value then exit repeat
         end repeat
-        if addBtn is missing value then return "NO_PIP_TARGET"
+        if pipWin is missing value then return "NO_PIP_PICKER"
+        set addBtn to missing value
+        repeat 20 times
+            set addBtn to my findLastById(my windowNamed("Add Picture-in-Picture"), "pip-picker-add-button")
+            if addBtn is not missing value then exit repeat
+            delay 0.5
+        end repeat
+        if addBtn is missing value then
+            my closeExtraWindows()
+            return "NO_PIP_TARGET"
+        end if
         click addBtn
         set pw to my playerWin()
         repeat 30 times
@@ -470,7 +525,9 @@ private func geometryScript(uiEvents: String, expectThumb: Bool) -> String {
     set pw to my playerWin()
     set names to ""
     repeat with w in windows
-        set names to names & (name of w) & ";"
+        try
+            set names to names & (name of w) & ";"
+        end try
     end repeat
     if pw is missing value then return "-|-|" & names
     return (my frameOf(pw)) & "|" & (my frameOf(my findById(pw, "vlc-pip-thumbnail"))) & "|" & names
@@ -531,6 +588,20 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ta
         case .pipChannel, .pipCorner, .primaryChannel, .moveWindow, .resizeWindow: break
         }
     }
+
+    // Start from a clean slate: no player, picker or Watch Now window left over from an earlier (aborted) run.
+    _ = target.run(wrap(uiEvents, """
+        repeat 3 times
+            repeat with w in windows
+                try
+                    if (name of w) is not "Support hdhrVCRplus" then click (first button of w whose description is "close button")
+                end try
+            end repeat
+            delay 1
+        end repeat
+        return "OK"
+        """))
+    Thread.sleep(forTimeInterval: 3)
 
     // Scripted prefix so the key transitions always run, then the random walk.
     var prefix: [Op] = feedPhase
@@ -750,11 +821,20 @@ struct PiPTunerChurnTests {
         let miniTarget = localTarget(uiEvents: "")
         let laptop = laptopTarget(uiEvents: laptopBin)
         guard let dev = discoverDeviceID() else { Issue.record("could not find a tuner device in the web guide"); return }
-        Thread.sleep(forTimeInterval: 6)
-        let base = tunerSnapshot(deviceID: dev, page: laptop.fetchPage())
-        let miniBase = tunerSnapshot(deviceID: dev, page: miniTarget.fetchPage())
+        // The laptop only learns about the mini's recording from its next hardware poll — measure how long its
+        // tuner count (the web guide badge) takes to catch up, instead of assuming it is instant.
+        var base = Tuners(), miniBase = Tuners()
+        let t0 = Date()
+        let catchUpDeadline = Date().addingTimeInterval(60)
+        repeat {
+            Thread.sleep(forTimeInterval: 2)
+            base = tunerSnapshot(deviceID: dev, page: laptop.fetchPage())
+            miniBase = tunerSnapshot(deviceID: dev, page: miniTarget.fetchPage())
+            if let hw = base.hw, base.app == hw, miniBase.app == hw { break }
+        } while Date() < catchUpDeadline
+        say("laptop tuner count caught up with the mini's recording after \(Int(Date().timeIntervalSince(t0)))s: laptop \(base) / mini \(miniBase)")
         guard let hw = base.hw, base.app == hw, miniBase.app == hw else {
-            Issue.record("baseline tuner state disagrees before any UI action: laptop \(base) / mini \(miniBase)"); return
+            Issue.record("baseline tuner state disagrees even after 60s, before any UI action: laptop \(base) / mini \(miniBase)"); return
         }
         let problems = run(phase: "feed-from-mini→laptop", feedPhase: true, deviceID: dev, base: hw, target: laptop, recorder: miniTarget,
                            steps: e.steps, seed: e.seed &+ 1, appLogOffset: laptop.logOffset(), recorderLogOffset: miniTarget.logOffset(),
