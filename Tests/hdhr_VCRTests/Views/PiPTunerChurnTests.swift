@@ -430,12 +430,37 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         delay 1.2
         do shell script (quoted form of uiEvents) & " keys 125 36"
         set pipWin to missing value
-        repeat 30 times
+        repeat 12 times
             delay 0.5
             set pipWin to my windowNamed("Add Picture-in-Picture")
             if pipWin is not missing value then exit repeat
         end repeat
-        if pipWin is missing value then return "NO_PIP_PICKER"
+        if pipWin is missing value then
+            -- Right-click didn't reach the video (window stacking differs per machine): use Watch Now's per-row
+            -- "Watch alongside (PiP)" button instead — also a first-class way to add a live PiP.
+            click menu item ("Watch Now" & (character id 8230)) of menu 1 of menu bar item 1 of menu bar 2
+            set rowBtn to missing value
+            repeat 30 times
+                delay 0.5
+                set wnWin to my windowNamed("Watch Now")
+                if wnWin is not missing value then
+                    set rowBtn to my findWhere(wnWin, "pipLive", "")
+                    if rowBtn is not missing value then exit repeat
+                end if
+            end repeat
+            if rowBtn is missing value then
+                my closeExtraWindows()
+                return "NO_PIP_PICKER"
+            end if
+            click rowBtn
+            set pw to my playerWin()
+            repeat 30 times
+                if my findById(pw, "vlc-pip-thumbnail") is not missing value then exit repeat
+                delay 0.5
+            end repeat
+            my closeExtraWindows()
+            return "OK"
+        end if
         set addBtn to missing value
         repeat 20 times
             set addBtn to my findLastById(my windowNamed("Add Picture-in-Picture"), "pip-picker-add-button")
@@ -536,7 +561,7 @@ private func geometryScript(uiEvents: String, expectThumb: Bool) -> String {
 
 // MARK: the walk
 
-private struct Step { var n: Int; var op: Op; var result: String; var world: World; var settle: TimeInterval?; var tuners: Tuners; var note: String }
+private struct Step { var n: Int; var at: Date = Date(); var op: Op; var result: String; var world: World; var settle: TimeInterval?; var tuners: Tuners; var note: String }
 
 private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, target: Target, recorder: Target?,
                  steps: Int, seed: UInt64, appLogOffset: UInt64, recorderLogOffset: UInt64 = 0, recordedChannel: String) -> [String] {
@@ -705,7 +730,8 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ta
     // Always print the trail — it is the point of a soak run, pass or fail.
     var report = "\n=== \(phase): seed \(seed), \(trail.count) steps, base \(base) of \(total) tuners ===\n"
     for s in trail {
-        report += String(format: "%3d  %-16@ → player=%@ primary=%@ pip=%@  want=%d  %@  settle=%@%@  [%@]\n",
+        let stamp = DateFormatter(); stamp.dateFormat = "HH:mm:ss"
+        report += stamp.string(from: s.at) + String(format: " %3d  %-16@ → player=%@ primary=%@ pip=%@  want=%d  %@  settle=%@%@  [%@]\n",
                          s.n, s.op.rawValue as NSString, s.world.player ? "y" : "n" as NSString, s.world.primary.rawValue as NSString,
                          s.world.pip.rawValue as NSString, base + s.world.liveCount, s.tuners.description as NSString,
                          (s.settle.map { String(format: "%.0fs", $0) } ?? "never") as NSString, s.note as NSString, s.result as NSString)

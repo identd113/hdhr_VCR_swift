@@ -751,8 +751,8 @@ final class WebServer: @unchecked Sendable {
     // the tuner box's own live-count badge would sit stale until the next recording start/stop or
     // the next periodic refresh, even while the grid ring updated immediately.
     @MainActor
-    func pushFreshTunerCounts() async {
-        guard let state = appState else { return }
+    func pushFreshTunerCounts(state explicitState: AppState? = nil) async {
+        guard let state = explicitState ?? appState else { return }
         var counts: [String: Any] = [:]
         // recordableDevices — a discovered virtual relay device isn't a real tuner (its TunerCount
         // is actually "count of actively-recording shows", not a real slot count), and

@@ -6245,11 +6245,22 @@ final class AppState: ObservableObject {
     }
 
     // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
-    /// Pushes a hardware-only occupancy change to the web guide, at most once per
-    /// `guideOccupancyBroadcastCooldown` per device. A change inside the cooldown isn't dropped: one
-    /// trailing broadcast is scheduled for when it ends, and it reads the *current* state when it
-    /// fires, so any number of changes in between collapse into a single, up-to-date push.
-    private func broadcastTunerOccupancyChange(deviceId: String) async {
+    /// Pushes a hardware-only occupancy change to the web guide. Two parts with different costs:
+    ///  • the tuner-count badge (`pushFreshTunerCounts`) is a few bytes built from `activeTunerCount` —
+    ///    pushed immediately, every time, so a tuner opening/closing shows up in ~2s instead of waiting
+    ///    out the throttle below (found by PiPTunerChurnTests: the badge trailed a closed player by ~12s);
+    ///  • the guide grid / dropdown rebuild (`tuner_occupancy_changed`) is expensive (buildGuideGridHTML +
+    ///    gzip), so it stays throttled to once per `guideOccupancyBroadcastCooldown` per device.
+    /// Internal, not private, for tests.
+    func broadcastTunerOccupancyChange(deviceId: String) async {
+        await webServer.pushFreshTunerCounts(state: self)
+        broadcastGuideForOccupancyChange(deviceId: deviceId)
+    }
+
+    /// The throttled, heavy half. A change inside the cooldown isn't dropped: one trailing rebuild is
+    /// scheduled for when it ends, and it reads the *current* state when it fires, so any number of changes
+    /// in between collapse into a single, up-to-date rebuild.
+    private func broadcastGuideForOccupancyChange(deviceId: String) {
         let elapsed = lastGuideOccupancyBroadcast[deviceId].map { Date().timeIntervalSince($0) }
         if let elapsed, elapsed < Self.guideOccupancyBroadcastCooldown {
             guard pendingGuideOccupancyBroadcast.insert(deviceId).inserted else { return }
@@ -6258,16 +6269,13 @@ final class AppState: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 guard let self else { return }
                 self.pendingGuideOccupancyBroadcast.remove(deviceId)
-                await self.broadcastTunerOccupancyChange(deviceId: deviceId)
+                self.broadcastGuideForOccupancyChange(deviceId: deviceId)
             }
             return
         }
         lastGuideOccupancyBroadcast[deviceId] = Date()
         webServer.broadcastGuideChangeEvent(type: "tuner_occupancy_changed",
                                             extra: ["device": deviceId], state: self)
-        // broadcastGuideChangeEvent's payload (grid/sumph/tdrop) never touches #dev-bar, so the tuner
-        // box's own live-count badge needs its own push — see pushFreshTunerCounts's doc comment.
-        await webServer.pushFreshTunerCounts()
     }
 
     private func fetchDeviceStatusUncached(for device: HDHRDevice) async {
