@@ -184,6 +184,38 @@ struct GuideStoreMockNetworkTests {
             #expect(!store.isFresh(deviceId: device.DeviceID))
         }
 
+        // A 200 that decodes to zero channels (rotated/expired DeviceAuth) must fail and leave the
+        // previous good guide in place, not replace it with nothing and count as fresh.
+        @Test @MainActor func load_emptyChannelList_keepsPreviousData() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            #expect(await store.load(for: device) == true)
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), Data("[]".utf8)) }
+            #expect(await store.load(for: device) == false)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2)
+        }
+
+        // invalidateAll() while a load is in flight, then a fresh load(): the reload must start its
+        // own fetch and succeed — not join the stale task (which discards its result) and report false.
+        @Test @MainActor func invalidateAll_midFlight_thenReload_succeeds() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            nonisolated(unsafe) var calls = 0
+            MockURLProtocol.requestHandler = { req in
+                calls += 1
+                if calls == 1 { Thread.sleep(forTimeInterval: 0.4) }   // the stale, slow first fetch
+                return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            let stale = Task { await store.load(for: device) }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            store.invalidateAll()
+            let reload = await store.load(for: device)
+            _ = await stale.value
+            #expect(reload == true)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2)
+        }
+
         @Test @MainActor func load_badJSON_doesNotCrash() async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()

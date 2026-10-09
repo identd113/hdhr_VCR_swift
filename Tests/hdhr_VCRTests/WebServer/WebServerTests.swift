@@ -208,6 +208,11 @@ private func get(_ path: String, port: Int = 1980, timeout: Double = 5) async th
 // Needed for malformed / non-standard requests URLSession refuses to send (negative Content-Length,
 // HEAD, HTTP/1.0) — exercising the keep-alive reuse gate and the crash guard directly.
 private func rawRequest(_ request: String, port: UInt16 = 1980, timeout: Double = 3) -> String? {
+    rawRequest(bytes: Array(request.utf8), port: port, timeout: timeout)
+}
+
+// Byte-level variant — for requests String can't express (invalid UTF-8 in a header).
+private func rawRequest(bytes: [UInt8], port: UInt16 = 1980, timeout: Double = 3) -> String? {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { return nil }
     defer { close(fd) }
@@ -221,7 +226,7 @@ private func rawRequest(_ request: String, port: UInt16 = 1980, timeout: Double 
         p.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
     }
     guard connected == 0 else { return nil }
-    _ = Array(request.utf8).withUnsafeBytes { send(fd, $0.baseAddress, $0.count, 0) }
+    _ = bytes.withUnsafeBytes { send(fd, $0.baseAddress, $0.count, 0) }
     var buf = [UInt8](repeating: 0, count: 65536)
     let n = recv(fd, &buf, buf.count, 0)
     return n > 0 ? String(decoding: buf[0..<n], as: UTF8.self) : ""
@@ -354,6 +359,20 @@ struct WebServerSmokeTests {
         #expect(resp?.contains("400") == true)
         let (status, _) = try await get("/api/ping")
         #expect(status == 200, "server crashed on a negative Content-Length")
+    }
+
+    @Test func nonUTF8HeaderBytes_areRejected_notTreatedAsBareGET() async throws {
+        guard await serverAvailable() else { return }
+        // A header block that isn't valid UTF-8 used to decode to "" — parsed as a bare `GET /` with
+        // no Host/Origin, which skipped the anti-rebinding gate and served the full guide page.
+        var bytes = Array("GET /api/ping HTTP/1.1\r\nHost: evil.example.com\r\nX-T: ".utf8)
+        bytes.append(0xE9)   // lone Latin-1 byte — invalid UTF-8
+        bytes.append(contentsOf: Array("\r\n\r\n".utf8))
+        let resp = rawRequest(bytes: bytes) ?? ""
+        #expect(resp.contains("403"), "invalid-UTF-8 headers must be refused, got: \(resp.prefix(80))")
+        #expect(!resp.contains("\"ok\""))
+        let (status, _) = try await get("/api/ping")
+        #expect(status == 200)
     }
 
     @Test func guideDetailOverflowWindowDoesNotCrash() async throws {

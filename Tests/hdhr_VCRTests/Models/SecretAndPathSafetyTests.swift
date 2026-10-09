@@ -86,3 +86,36 @@ struct TriageHelperTests {
         #expect(c.timeoutIntervalForResource == LANFetch.requestTimeout * 2)
     }
 }
+
+
+@Suite("Discord webhook token redaction + untrusted show titles")
+struct WebhookAndTitleSafetyTests {
+    @Test(arguments: [
+        ("failed https://discord.com/api/webhooks/123456/abcDEF_-token ok",
+         "failed https://discord.com/api/webhooks/123456/REDACTED ok"),
+        ("NSErrorFailingURLStringKey=https://discord.com/api/webhooks/9/tok?wait=true)",
+         "NSErrorFailingURLStringKey=https://discord.com/api/webhooks/9/REDACTED?wait=true)"),
+        ("no secret here", "no secret here"),
+        ("/webhooks/not-numeric/x", "/webhooks/not-numeric/x"),
+    ] as [(input: String, expected: String)])
+    func webhookTokensAreMasked(_ row: (input: String, expected: String)) {
+        #expect(redactingSecrets(row.input) == row.expected)
+    }
+
+    @Test func bothSecretKindsRedactedInOneLine() {
+        let out = redactingSecrets("a DeviceAuth=sek b https://discord.com/api/webhooks/1/tkn c")
+        #expect(!out.contains("sek") && !out.contains("tkn"))
+    }
+
+    @Test(arguments: [
+        ("..", ""), (".", ""), ("...hidden", "hidden"), ("  Seth Meyers \n", "Seth Meyers"),
+        ("A\u{0000}B\u{0007}C", "ABC"), ("Normal Title", "Normal Title"),
+    ] as [(input: String, expected: String)])
+    func titleSanitizing(_ row: (input: String, expected: String)) {
+        #expect(row.input.sanitizedShowTitle == row.expected)
+    }
+
+    @Test func overlongTitleIsCapped() {
+        #expect(String(repeating: "x", count: 500).sanitizedShowTitle.count == 120)
+    }
+}

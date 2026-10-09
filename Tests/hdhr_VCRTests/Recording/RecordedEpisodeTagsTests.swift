@@ -36,6 +36,22 @@ struct RecordedEpisodeTagsTests {
         #expect(tags.contains("S02E05"))
     }
 
+    // A partial from this airing's own earlier attempt must not count as "already recorded" —
+    // excludingPath removes it from consideration, while an older full recording still counts.
+    @Test func excludingPath_dropsOwnPartialButKeepsOtherFiles() throws {
+        let base = tempBase()
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let title = "The Office"
+        try writeFile("\(base)/\(title)/Season 01", "The Office_S01E01_5.1_20260101_2000.ts", bytes: 3_000_000)
+        try writeFile("\(base)/\(title)/Season 01", "The Office_S01E02_5.1_20260108_2000.ts", bytes: 3_000_000)
+        let partial = "\(base)/\(title)/Season 01/The Office_S01E02_5.1_20260108_2000.ts"
+        let state = makeTestAppState()
+        #expect(state.recordedEpisodeTags(forTitle: title, baseDir: base).contains("S01E02"))
+        let tags = state.recordedEpisodeTags(forTitle: title, baseDir: base, excludingPath: partial)
+        #expect(!tags.contains("S01E02"))
+        #expect(tags.contains("S01E01"))
+    }
+
     @Test func ignoresStubFilesBelowSizeFloor() throws {
         let base = tempBase()
         defer { try? FileManager.default.removeItem(atPath: base) }
