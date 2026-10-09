@@ -6,6 +6,40 @@ import AppKit
 // dev workflow, which always runs the app in place from the repo root, is never affected.
 enum AppRelocator {
 
+    /// True when `url` sits inside a git checkout (a developer's repo build output, e.g. the
+    /// `hdhrVCRplus.app` that `deploy_release.sh` opens from the repo root). Such a copy must never
+    /// be offered a move — accepting would trash the build output.
+    static func isInsideGitCheckout(_ url: URL, fileManager fm: FileManager = .default) -> Bool {
+        var dir = url.deletingLastPathComponent()
+        for _ in 0..<6 {
+            if fm.fileExists(atPath: dir.appendingPathComponent(".git").path) { return true }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { break }
+            dir = parent
+        }
+        return false
+    }
+
+    /// Installs a copy of `source` at `dest` without ever leaving the user with *less* than they
+    /// started with: the copy goes to a temporary sibling first, and only a complete copy replaces
+    /// an existing `dest` (atomic swap). A failed copy (disk full, permissions) leaves any existing
+    /// install untouched — the old flow deleted it before copying.
+    static func install(_ source: URL, replacing dest: URL, fileManager fm: FileManager = .default) throws {
+        let temp = dest.deletingLastPathComponent()
+            .appendingPathComponent(".\(dest.lastPathComponent).incoming-\(UUID().uuidString)")
+        do {
+            try fm.copyItem(at: source, to: temp)
+            if fm.fileExists(atPath: dest.path) {
+                _ = try fm.replaceItemAt(dest, withItemAt: temp)
+            } else {
+                try fm.moveItem(at: temp, to: dest)
+            }
+        } catch {
+            try? fm.removeItem(at: temp)
+            throw error
+        }
+    }
+
     /// If the running .app isn't inside an Applications folder (system or per-user), offers to
     /// copy it there, relaunch from the new location, and quit this instance.
     static func relocateToApplicationsIfNeeded() {
@@ -20,6 +54,7 @@ enum AppRelocator {
             .map { $0.standardizedFileURL.path }
         let currentParent = currentURL.deletingLastPathComponent().path
         guard !applicationsDirs.contains(currentParent) else { return }   // already installed correctly
+        guard !isInsideGitCheckout(currentURL) else { return }            // a developer's repo build — never offer to move/trash it
 
         let bundleName = currentURL.lastPathComponent
         let destURL = URL(fileURLWithPath: "/Applications").appendingPathComponent(bundleName)
@@ -36,11 +71,19 @@ enum AppRelocator {
             return
         }
 
+        // An install that's already running must not be swapped out from under its own process (and a
+        // second instance would fight this one for port 1980): just bring it forward and quit this one.
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
+                            && $0.bundleURL?.standardizedFileURL == destURL.standardizedFileURL }) {
+            glog("AppRelocator: \(destURL.path) is already running — activating it instead of replacing it")
+            running.activate(options: [.activateIgnoringOtherApps])
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+            return
+        }
+
         do {
-            if fm.fileExists(atPath: destURL.path) {
-                try fm.removeItem(at: destURL)   // replace a stale prior install
-            }
-            try fm.copyItem(at: currentURL, to: destURL)
+            try install(currentURL, replacing: destURL)
         } catch {
             glog("AppRelocator: copy to \(destURL.path) failed: \(error)", level: .error)
             let failAlert = NSAlert()

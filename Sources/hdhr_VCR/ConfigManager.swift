@@ -5,13 +5,17 @@ final class ConfigManager {
     private var configURL: URL
     /// Directory holding the config file (and, under it, other on-disk app state such as the guide cache).
     let supportDir: URL
+    /// Where the last-ever migration fallback looks (the old TCC-protected location). A test seam like
+    /// `appSupportDir`: without it, any test of `load()`'s fallbacks reads this Mac's real ~/Documents.
+    private let documentsDir: URL
 
     // appSupportDir is a test seam only — production always passes nil and gets the real
     // ~/Library/Application Support/hdhrVCRplus/ (not TCC-protected, survives ad-hoc re-signs).
     // Without this, any test that exercises an AppState mutating path (deleteShow, addShow, …)
     // would silently overwrite the live user's config through the app's real save path.
-    init(appSupportDir: URL? = nil) {
+    init(appSupportDir: URL? = nil, documentsDir: URL? = nil) {
         hostname = ProcessInfo.processInfo.hostName
+        self.documentsDir = documentsDir ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let appSupport = appSupportDir ?? (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("hdhrVCRplus")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -34,14 +38,44 @@ final class ConfigManager {
             return maybeUpgrade(file)
         }
         // Final fallback: ~/Documents (last-ever migration from old TCC-protected location)
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let docsURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
+        let docsURL = documentsDir.appendingPathComponent("hdhr_VCR-\(hostname).json")
         if let data = try? Data(contentsOf: docsURL),
            let file = try? decoder.decode(ConfigFile.self, from: data) {
             glog("[ConfigManager] Migrated config from ~/Documents")
             return maybeUpgrade(file)
         }
+        // The file is keyed by the machine's hostname, which isn't stable (DHCP-assigned name, a
+        // ".local" vs ".lan" suffix, a rename, a VPN) — a changed name would otherwise look like a
+        // fresh install: no shows, first-run wizard again, and the old file orphaned. This folder is
+        // per-user, per-machine, so any other hdhr_VCR-*.json in it is this install's config under an
+        // earlier name. Adopt the most recently saved one that decodes, as a copy (the original stays).
+        if let (adopted, file) = newestOtherHostConfig(decoder: decoder) {
+            glog("[ConfigManager] No config for hostname '\(hostname)' — adopting \(adopted.lastPathComponent) (hostname changed?)", level: .warning)
+            if let data = try? Data(contentsOf: adopted) { try? data.write(to: configURL, options: .atomic) }
+            return maybeUpgrade(file)
+        }
         glog("[ConfigManager] No config found — fresh install")
+        return nil
+    }
+
+    /// The most recently modified `hdhr_VCR-<other host>.json` (never a `.bak`, never the current
+    /// host's own file) in the support directory that decodes as a ConfigFile.
+    private func newestOtherHostConfig(decoder: JSONDecoder) -> (URL, ConfigFile)? {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: supportDir.path) else { return nil }
+        let candidates = names
+            .filter { $0.hasPrefix("hdhr_VCR-") && $0.hasSuffix(".json") && $0 != configURL.lastPathComponent }
+            .map { supportDir.appendingPathComponent($0) }
+            .compactMap { url -> (URL, Date)? in
+                guard let m = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date else { return nil }
+                return (url, m)
+            }
+            .sorted { $0.1 > $1.1 }
+        for (url, _) in candidates {
+            if let data = try? Data(contentsOf: url), let file = try? decoder.decode(ConfigFile.self, from: data) {
+                return (url, file)
+            }
+        }
         return nil
     }
 

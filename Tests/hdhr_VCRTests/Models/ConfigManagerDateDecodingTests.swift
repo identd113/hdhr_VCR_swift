@@ -85,3 +85,47 @@ struct ConfigManagerDateDecodingTests {
         #expect(reloaded?.shows.first?.show_next == Date(timeIntervalSince1970: 1_786_457_465))
     }
 }
+
+// The config file is keyed by hostname, which can change (DHCP name, ".local" vs ".lan", a rename).
+// Without a fallback a changed name looked like a fresh install — no shows, wizard again.
+@Suite("ConfigManager hostname-change fallback")
+struct ConfigManagerHostnameFallbackTests {
+    private func dir() -> URL {
+        let d = FileManager.default.temporaryDirectory.appendingPathComponent("hdhrHostTest-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+
+    private func configJSON(title: String) -> String {
+        #"{"config":{"Config_version":"2"},"shows":[{"show_id":"a1","show_title":"\#(title)"}]}"#
+    }
+
+    @Test func missingFileForThisHost_adoptsNewestOtherHostConfig() throws {
+        let d = dir(); defer { try? FileManager.default.removeItem(at: d) }
+        try Data(configJSON(title: "Older").utf8).write(to: d.appendingPathComponent("hdhr_VCR-oldname.json"))
+        try? FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)],
+                                               ofItemAtPath: d.appendingPathComponent("hdhr_VCR-oldname.json").path)
+        try Data(configJSON(title: "Newest").utf8).write(to: d.appendingPathComponent("hdhr_VCR-other.local.json"))
+        let mgr = ConfigManager(appSupportDir: d, documentsDir: d.appendingPathComponent("no-docs"))
+        let file = try #require(mgr.load())
+        #expect(file.shows.first?.show_title == "Newest")
+        // adopted as a copy under the current name; the originals stay
+        #expect(FileManager.default.fileExists(atPath: mgr.configPath))
+        #expect(FileManager.default.fileExists(atPath: d.appendingPathComponent("hdhr_VCR-other.local.json").path))
+    }
+
+    @Test func thisHostsOwnFile_winsOverOtherHosts() throws {
+        let d = dir(); defer { try? FileManager.default.removeItem(at: d) }
+        let mgr = ConfigManager(appSupportDir: d, documentsDir: d.appendingPathComponent("no-docs"))
+        try Data(configJSON(title: "Mine").utf8).write(to: URL(fileURLWithPath: mgr.configPath))
+        try Data(configJSON(title: "Theirs").utf8).write(to: d.appendingPathComponent("hdhr_VCR-zzz.json"))
+        #expect(mgr.load()?.shows.first?.show_title == "Mine")
+    }
+
+    @Test func backupFilesAndUndecodableFilesAreNeverAdopted() throws {
+        let d = dir(); defer { try? FileManager.default.removeItem(at: d) }
+        try Data(configJSON(title: "Bak").utf8).write(to: d.appendingPathComponent("hdhr_VCR-old.json.bak"))
+        try Data("not json".utf8).write(to: d.appendingPathComponent("hdhr_VCR-junk.json"))
+        #expect(ConfigManager(appSupportDir: d, documentsDir: d.appendingPathComponent("no-docs")).load() == nil)
+    }
+}
