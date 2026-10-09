@@ -386,6 +386,9 @@ struct AddShowView: View {
     private func resetShowForNewEntry() {
         show = Show.blank()
         show.show_transcode = state.config.Default_transcode
+        // @State's initialiser only runs once per window lifetime; re-read so a default folder
+        // changed in Settings since then is honoured.
+        recordFolder = state.defaultSaveDir
     }
 
     private func applyPendingChannel(_ pending: (device: HDHRDevice, channel: LineupEntry)) {

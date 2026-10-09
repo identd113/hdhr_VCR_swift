@@ -953,11 +953,14 @@ final class AppState: ObservableObject {
                 // pending (the overwhelmingly common case), so a normal deploy isn't slowed.
                 let pending = self.showRuntime.values.compactMap { $0.discordCardTask }
                 if !pending.isEmpty {
-                    await withTaskGroup(of: Void.self) { group in
-                        group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) } // 2s cap
-                        group.addTask { for t in pending { _ = await t.value } }
-                        await group.next() // first of {timeout, all-sends-done} wins
-                        group.cancelAll()
+                    // A real 2 s cap: awaiting an unstructured Task.value ignores cancellation, so a
+                    // task group would block on a slow webhook (60 s URLSession default) regardless
+                    // of cancelAll(). Resume from whichever of {timeout, drained} fires first and
+                    // simply abandon the other.
+                    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                        let once = ResumeOnce(cont)
+                        Task { try? await Task.sleep(nanoseconds: 2_000_000_000); once.resume() }
+                        Task { for t in pending { _ = await t.value }; once.resume() }
                     }
                 }
                 // Same bounded-wait shape as the Discord-card drain just above, for a different
@@ -3350,9 +3353,19 @@ final class AppState: ObservableObject {
         // show that never reached stopRecording (e.g. LAUNCH ERROR below) can't cause a later,
         // genuinely non-duplicate success to be misread as "this is the one that used the override".
         showRuntime[show.show_id]?.duplicateOverrideUsedThisAttempt = false
+        // A partial file left by an earlier attempt at THIS airing (curl died mid-show) must not
+        // count as "already recorded" — it can clear the duration floor while still truncated, which
+        // would skip the retry for good. Recognised by mtime inside this airing's window; an older
+        // full recording of the same episode (a rerun) is untouched and still counts.
+        var ownPartialPath: String? = nil
+        if !show.show_recording_path.isEmpty, let next = show.show_next,
+           let mtime = (try? FileManager.default.attributesOfItem(atPath: show.show_recording_path))?[.modificationDate] as? Date,
+           mtime >= next.addingTimeInterval(-120) {
+            ownPartialPath = show.show_recording_path
+        }
         if let tag = episodeTag,
            duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
-                                expectedMinutes: show.show_length) != nil {
+                                expectedMinutes: show.show_length, excludingPath: ownPartialPath) != nil {
             if show.show_ignore_duplicate_once {
                 showRuntime[show.show_id, default: ShowRuntimeState()].duplicateOverrideUsedThisAttempt = true
             } else {
@@ -4731,7 +4744,7 @@ final class AppState: ObservableObject {
     /// `.partial` instead of just being skipped (not deleted). Used by `startRecording` to clear a
     /// truncated leftover before recording over the same tag.
     nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String, expectedMinutes: Int = 0,
-                                          renameTruncatedTag: String? = nil) -> Set<String> {
+                                          renameTruncatedTag: String? = nil, excludingPath: String? = nil) -> Set<String> {
         let fm = FileManager.default
         let seriesDir = (baseDir as NSString).appendingPathComponent(safeTitle)
         // No recursive enumerator elsewhere in the codebase — walk exactly two levels: the title
@@ -4752,6 +4765,8 @@ final class AppState: ObservableObject {
             for filename in files where Show.isRecordingFile(filename) {
                 guard let tag = episodeTag(inFilename: filename) else { continue }
                 let full = (dir as NSString).appendingPathComponent(filename)
+                // `excludingPath` — this airing's own earlier (partial) attempt; see startRecording.
+                if full == excludingPath { continue }
                 let size = ((try? fm.attributesOfItem(atPath: full))?[.size] as? Int) ?? 0
                 candidates.append((tag.uppercased(), size, full))
             }
@@ -4793,13 +4808,15 @@ final class AppState: ObservableObject {
     /// dialog's "already on disk" warning so both reflect the exact same on-disk check.
     /// `expectedMinutes` — see `recordedEpisodeTags`'s doc comment; defaults to 0 (flat ~1 MB floor)
     /// for callers with no duration handy.
-    func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String, expectedMinutes: Int = 0) -> String? {
+    func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String, expectedMinutes: Int = 0,
+                             excludingPath: String? = nil) -> String? {
         guard config.Skip_recorded_episodes,
               episodeTag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
         else { return nil }
         let safeTitle = title.replacingOccurrences(of: "/", with: "-")
         let upper = episodeTag.uppercased()
-        return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir, expectedMinutes: expectedMinutes).contains(upper) ? upper : nil
+        return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir, expectedMinutes: expectedMinutes,
+                                excludingPath: excludingPath).contains(upper) ? upper : nil
     }
 
     /// UI convenience: looks up `show`'s next-airing episode tag from the guide and checks it via
@@ -6906,5 +6923,18 @@ final class NotificationActionDelegate: NSObject, UNUserNotificationCenterDelega
         case "STOP_RECORDING": await MainActor.run { appState?.stopRecording(showId: showId) }
         default: break
         }
+    }
+}
+
+
+/// Resumes a continuation at most once, from any thread — lets two racing tasks (a timeout and the
+/// work it bounds) both call `resume()` safely; only the first takes effect.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<Void, Never>?
+    init(_ cont: CheckedContinuation<Void, Never>) { self.cont = cont }
+    func resume() {
+        lock.lock(); let c = cont; cont = nil; lock.unlock()
+        c?.resume()
     }
 }

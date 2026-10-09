@@ -105,7 +105,9 @@ final class GuideStore {
         }
         let task = Task { await self.loadNow(for: device, hours: hours, useXML: useXML, maxCacheAge: maxCacheAge) }
         inFlightLoads[id] = task
-        defer { inFlightLoads.removeValue(forKey: id) }
+        // Remove only our own entry: invalidateAll() clears the table and a newer load may have
+        // registered under the same id while this (stale) one was still finishing.
+        defer { if inFlightLoads[id] == task { inFlightLoads.removeValue(forKey: id) } }
         return await task.value
     }
 
@@ -139,6 +141,12 @@ final class GuideStore {
                 return nil
             }
 
+            // A 200 with zero channels (expired/rotated DeviceAuth, cloud hiccup) must not replace a
+            // good guide with an empty one and count as fresh — fail so the old data is kept.
+            if channels.isEmpty {
+                glog("[\(id)] ERROR: guide response decoded to 0 channels — keeping previous data", level: .error)
+                return nil
+            }
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
             glog("[\(id)] parsed \(channels.count) channels, \(entryCount) total guide entries")
 
@@ -171,6 +179,10 @@ final class GuideStore {
                 glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
                 return nil
             }
+            if channels.isEmpty {
+                glog("[\(id)] ERROR: XMLTV response had 0 channels — keeping previous data", level: .error)
+                return nil
+            }
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
             glog("[\(id)] XMLTV parsed \(channels.count) channels, \(entryCount) total guide entries")
 
@@ -190,10 +202,12 @@ final class GuideStore {
     private func fetchAndIndex(id: String, url: URL, cacheFile: URL? = nil, maxCacheAge: TimeInterval? = nil,
                                parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
-        defer { loadingDevices.remove(id) }
         // Captured before the network+decode await below — see the epochAtStart guard right
         // before applyIndex for why.
         let epochAtStart = invalidationEpoch
+        // After an invalidateAll() the loading set was already cleared and a newer load may own
+        // this id — only the load from the current epoch may release it.
+        defer { if invalidationEpoch == epochAtStart { loadingDevices.remove(id) } }
 
         // Public guide API: reuse a recent on-disk copy instead of calling it again (relaunches /
         // deploys). The file is only trusted when it parses and still covers the present — otherwise
@@ -695,6 +709,9 @@ final class GuideStore {
         // epochAtStart guard.
         invalidationEpoch += 1
         loadingDevices.removeAll()
+        // A load() issued right after this must start fresh, not join a stale in-flight task that
+        // will discard its own result (epoch mismatch) and report failure.
+        inFlightLoads.removeAll()
         channelsByDevice = [:]
         channelEntryIndex = [:]
         seriesIndex = [:]

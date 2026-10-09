@@ -693,10 +693,11 @@ extension AppConfig: Codable {
         let decodedDivisor = (try? c.decode(Int.self, forKey: .Guide_refresh_interval_divisor)) ?? 8
         Guide_refresh_interval_divisor = [2, 4, 8].contains(decodedDivisor) ? decodedDivisor : 8
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
-        Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
+        // >= 1: 0/negative would make every show "PAUSED — fail threshold 0 reached" before its first try.
+        Fail_count_setting    = max(1, (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3)
         Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 30.0
         Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
-        Series_scan_retry_hours = (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4
+        Series_scan_retry_hours = max(1, (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4)
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
         Network_interface     = (try? c.decode(String.self,  forKey: .Network_interface))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false

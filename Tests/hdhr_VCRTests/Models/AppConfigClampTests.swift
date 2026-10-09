@@ -32,3 +32,19 @@ struct AppConfigGuideHoursClampTests {
         #expect(cfg.GuideHours == row.expected)
     }
 }
+
+@Suite("AppConfig failure/retry decode clamps")
+struct AppConfigRetryClampTests {
+    @Test(arguments: [(#"{"Fail_count_setting": 0}"#, 1), (#"{"Fail_count_setting": -3}"#, 1),
+                      ("{}", 3), (#"{"Fail_count_setting": 5}"#, 5)])
+    func failCountAtLeastOne(_ row: (String, Int)) throws {
+        let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(row.0.utf8))
+        #expect(cfg.Fail_count_setting == row.1)
+    }
+
+    @Test(arguments: [(#"{"Series_scan_retry_hours": 0}"#, 1), ("{}", 4), (#"{"Series_scan_retry_hours": 6}"#, 6)])
+    func retryHoursAtLeastOne(_ row: (String, Int)) throws {
+        let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(row.0.utf8))
+        #expect(cfg.Series_scan_retry_hours == row.1)
+    }
+}

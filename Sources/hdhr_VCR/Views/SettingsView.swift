@@ -54,7 +54,10 @@ struct SettingsView: View {
     @State private var terminalGuideOpenError: String  = ""
 
     private var launchAtLoginRegistered: Bool {
-        SMAppService.mainApp.status == .enabled
+        // .requiresApproval = register() succeeded and macOS is waiting on the user (System Settings
+        // → Login Items); counting it as not-registered left the draft permanently "dirty".
+        let s = SMAppService.mainApp.status
+        return s == .enabled || s == .requiresApproval
     }
     @State private var logoTapCount  = 0
     @State private var changelogHeight: CGFloat = 0
@@ -1253,6 +1256,13 @@ struct SettingsView: View {
             // comment in ConfigManager.swift). Simplest safe option: write the file, restart to
             // pick it up — matches how a manually-copied-in config file already had to be applied.
             configIOStatus = "Imported — restart hdhrVCRplus to load it. Changes made before restarting won't be saved."
+            // A status label is easy to miss, and from here every save is suppressed — say it loudly.
+            let alert = NSAlert()
+            alert.messageText = "Config imported — restart required"
+            alert.informativeText = "Changes made before restarting hdhrVCRplus will not be saved. Quit now, then reopen the app to load the imported config?"
+            alert.addButton(withTitle: "Quit Now")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn { NSApp.terminate(nil) }
         } catch {
             configIOStatus = "Error: \(error.localizedDescription)"
         }

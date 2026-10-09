@@ -28,6 +28,8 @@ struct EditShowView: View {
     // user to fix), so gating Save on it here would dead-lock: no visible field, disabled button.
     private var canSave: Bool {
         guard let s = show, !s.show_title.isEmpty else { return false }
+        // Same 1…1440 bound the web edit path enforces — 0/negative would record for no time.
+        guard (1...1440).contains(s.show_length) else { return false }
         guard seriesType != .seriesAll else { return true }
         guard !s.show_channel.isEmpty else { return false }
         guard let lineup = state.lineups[s.hdhr_record], !lineup.isEmpty else { return true }
