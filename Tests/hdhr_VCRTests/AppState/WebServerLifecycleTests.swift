@@ -16,7 +16,11 @@ import Foundation
 // port 19802, distinct from that suite's 19801, so the two never collide if run together.
 @Suite("AppState web server lifecycle — reconcileWebServerState race regression", .serialized)
 struct WebServerLifecycleTests {
-    static let testPort = 19802
+    // Free ports found at test time instead of hard-coded numbers, so a leftover listener (or a
+    // parallel `swift test`) can't collide. Failures seen under full-suite load were the *wait*
+    // expiring (neither running nor error set after 2 s — a slow bind, not a port clash), so the
+    // wait loops below also allow 10 s.
+    static let testPort = freePort()
     // Distinct from testPort, not reused across both tests — found 2026-09-11: `.serialized` only
     // orders the two tests, it doesn't make the first test's `defer { state.webServer.stop() }`
     // finish the real async NWListener teardown before the second test starts (`stop()`'s own real
@@ -24,7 +28,26 @@ struct WebServerLifecycleTests {
     // flake under full-suite load — the second test's own bind onto the still-closing first
     // listener's port could fail outright, not just run slow. Using a second port sidesteps the
     // teardown-timing race entirely rather than trying to win it.
-    static let secondTestPort = 19803
+    static let secondTestPort = freePort()
+
+    private static func freePort() -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return Int.random(in: 20_000...40_000) }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = 0
+        addr.sin_addr.s_addr = INADDR_ANY
+        let bound = withUnsafePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        guard bound == 0 else { return Int.random(in: 20_000...40_000) }
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let got = withUnsafeMutablePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &len) }
+        }
+        return got == 0 ? Int(UInt16(bigEndian: addr.sin_port)) : Int.random(in: 20_000...40_000)
+    }
 
     @MainActor
     @Test func backToBackTriggers_atLaunch_doNotRaceASecondBind() async throws {
@@ -40,7 +63,7 @@ struct WebServerLifecycleTests {
         state.config.Web_server_enabled = true
         state.setupWebServer()
 
-        for _ in 0..<100 where !state.webServerRunning && state.webServerError == nil {
+        for _ in 0..<500 where !state.webServerRunning && state.webServerError == nil {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
 
@@ -58,7 +81,7 @@ struct WebServerLifecycleTests {
 
         state.config.Web_server_enabled = true
         state.setupWebServer()
-        for _ in 0..<100 where !state.webServerRunning && state.webServerError == nil {
+        for _ in 0..<500 where !state.webServerRunning && state.webServerError == nil {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         #expect(state.webServerRunning == true)
