@@ -6,6 +6,64 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.6.0 (2026-10-09)
+
+### Removed
+- **Intel Mac support.** Release builds are Apple Silicon (arm64) only. macOS 15.0 or later is
+  still required.
+
+### Added
+- **Pause and resume with the space bar** while watching a recording or a FEED (live TV can't be
+  paused — there's no buffer to resume from).
+- **Place a picture-in-picture where you want it, and resize it by dragging its corner.** Right-click
+  the video and choose "Add Picture-in-Picture…" to open it in the quadrant you clicked; your size is
+  remembered and travels with Export/Import Config.
+- **Streams start by themselves** — no Start button. Picture and sound arrive together as soon as the
+  first frame is decoded.
+- **An info banner for what you're watching** — press `i` for the show, episode and source
+  ("Live OTA · Ch 5.1", "Recording" or "FEED").
+- **Scrub back and forward while watching a FEED**, the same way you can with a recording, and a FEED
+  now reconnects on its own after a network blip.
+- **Cast to Chromecast (Beta)** — the player's "…" menu finds Chromecasts on your LAN. Built and
+  unit-tested, but not yet verified against real Chromecast hardware.
+- **Exclude recordings from Time Machine** — Settings → Recording: Off, Each Recording or Show's
+  Folder — so terabytes of recordings stay out of your backup.
+- **A heads-up about 3 minutes before a scheduled recording needs the tuner you're watching.**
+  Nothing stops until the recording actually starts; on the same channel, playback simply switches
+  to the recording.
+- **Adjustable guide auto-refresh** (Settings → Guide), and **`/api/tuner-status.json`** for Home
+  Assistant and other pollers (off by default — Settings → Sharing → Home Assistant).
+- **A station with no logo now shows the app icon** instead of a blank.
+
+### Updated
+- **Fixed: series recordings started a few seconds late and posted a false "Recording Skipped."**
+  Every guide-matched series show lost the first 5–10 seconds of the broadcast.
+- **Fixed: a recording that ended normally could be logged as a failure** — no completion card or
+  post-recording script, and repeated, it could auto-pause a healthy show.
+- **Fixed: Bonus Time padding was applied twice** if the app restarted mid-airing.
+- **Fixed: a partial recording from a failed attempt could count as "already recorded"**, so the
+  retry was skipped and the airing stayed truncated.
+- **Fixed: your Discord webhook token was written to the logs** when a send failed. It is now masked.
+  Old log lines are not rewritten — rotate the webhook if you've shared logs.
+- **The web guide refuses cross-site and DNS-rebinding requests**, including ones with malformed
+  headers, and show titles sent to it are cleaned up.
+- **Fixed: a changed hostname made the app look like a fresh install** (no shows, setup wizard
+  again). It now finds and adopts your existing config.
+- **Fixed: "Move to Applications" could delete your existing copy before the new one was in place.**
+- **Fixed: a bad or empty guide reply could wipe your guide.**
+- **Fixed: recordings refused on a big drive that was merely "93% full"** — only your "Minimum free
+  disk" setting decides now.
+- **Fixed: switching channels while a tuner is busy no longer ends playback**, and switching from a
+  FEED to a real channel keeps the FEED playing until the new stream is ready. Fewer false
+  "playback stalled" reconnects, and no silent audio after a picture-in-picture swap.
+- **FEED playback is much smoother.** The web server was delivering to other Macs at about 1.6 Mbps
+  because of a macOS dual-stack networking issue; it now delivers at full network speed.
+- **Faster startup, fewer calls to the public guide service, and more resilient device discovery.**
+- **Smaller fixes:** Edit Show no longer saves a Length of 0, Import Config tells you to restart,
+  launch-at-login no longer leaves Settings on "unsaved changes", the web guide's tuner count
+  updates within seconds, the menu bar's "FEED available" light means someone is actually
+  watching, and a misleading "Primary folder unavailable" warning is gone.
+
 ## v2.5.0 (2026-09-19)
 
 ### Removed

@@ -2,7 +2,7 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
+## v2.6.0 — 2026-10-09
 
 Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.
 
@@ -49,6 +49,13 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **Scheduling fixes:** editing a weekly date/time show no longer skips tonight's airing, and a late show whose recording ends after midnight no longer skips the next night's airing.
 - *Updated* — **A recording that's picked up again after the app restarts is checked more carefully** — a recycled process ID can no longer make a finished recording look like it's still running.
 - *Updated* — **Recordings are no longer refused just because a big drive is "93% full".** Only the "Minimum free disk" setting decides now — a multi-terabyte array with hundreds of GB free used to skip scheduled recordings.
+- *Updated* — **Series recordings no longer start late or get a false "Recording Skipped."** The record-time guide check looked for an airing that was already on air, but the idle loop starts a recording up to 10 seconds early, so every guide-matched series recording was skipped once, rescheduled, and started on the next tick — losing the first 5–10 seconds of the broadcast (and triggering an extra guide fetch). The check now looks at the airing's own start time.
+- *Updated* — **A recording that ends naturally is no longer logged as a failure.** `curl` can exit up to a second before the scheduled end, and the idle loop compared against a clock captured before its earlier work, so a normal end was recorded as "curl exited unexpectedly" — skipping the completion card and post-recording script, leaving the FEED relay up for two more minutes, and (repeated) counting toward auto-pausing a healthy show. An exit within 3 seconds of the end is now a normal stop.
+- *Updated* — **Bonus Time padding is no longer applied twice after a restart.** The "already padded" marker was kept only in memory while the padded end time was saved, so quitting or crashing mid-airing and relaunching added the padding a second time (for single and date/time shows). The marker is now saved with the show (`show_bonus_padded_end`; absent in older configs, which behave as before).
+- *Updated* — **A partial recording from a failed attempt no longer counts as "already recorded."** With Skip already-recorded episodes on, a file left by an attempt at the same airing could clear the size floor and make the retry skip the airing for good, leaving it truncated. That attempt's own file is now ignored; older full recordings of the same episode still count.
+- *Updated* — **Quitting waits at most 2 seconds for Discord.** The shutdown wait for pending Discord messages ignored its own timeout, so a slow webhook could delay the final config save past a force-quit.
+- *Updated* — **Out-of-range settings are corrected on load.** "Failures before pausing" and "Series scan retry hours" are kept at 1 or more — a hand-edited 0 used to pause every show before its first attempt.
+- *Updated* — **A false "Primary folder unavailable — recording to fallback" warning is gone** for shows still holding a legacy colon-style folder (`Raid6:DVR Tests:`) from the original AppleScript app. The folder was always in use; only the log line was wrong. The check now compares the converted paths.
 
 ### Guide, logos & discovery (`GuideStore`, `HDHRManager`, `ChannelIconCache`, `LANFetch`)
 
@@ -56,6 +63,7 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **Discovery and guide fetching are more resilient.** One malformed guide entry or tuner reply no longer discards a whole guide fetch or device list, a single lost network reply no longer makes a tuner briefly disappear, and tuner discovery gives up after a fixed deadline instead of waiting indefinitely.
 - *Updated* — **Fewer calls to the public guide service.** The app keeps the last guide it downloaded on disk and, when it starts (a relaunch or deploy) within an hour of that download, reuses it instead of asking SiliconDust's servers again; the regular refresh every few hours still fetches fresh data. Slow or failing requests to your tuners are now cut off after 10 seconds and noted in the log (search for `[LAN]`).
 - *Updated* — **A station with no logo shows the app icon instead of a blank.** In the Watch Now list, the Add Show "other airings" list and the web guide (channel rows, Up Next, the show summary and the Record dialog), a channel whose logo is missing — or hasn't downloaded yet, or failed to — now shows the app icon, and the real logo replaces it as soon as it is available. The app still looks for a replacement every time the guide refreshes (a changed logo address is tried right away; an address the server says doesn't exist is re-checked once a day).
+- *Updated* — **A bad guide response can no longer wipe your guide.** A reply that decoded to zero channels (for example after the cloud token expired) replaced the guide with nothing and counted as fresh, so nothing retried; it now fails and keeps the previous guide. Changing a guide setting while a refresh was running could also make the follow-up reload report a failure (and a "Guide Load Failed" notification); a stale in-flight load no longer shadows the new one.
 
 ### Web guide & Discord (`WebServer`, `Resources/guide.*`, `DiscordNotifier`)
 
@@ -63,6 +71,9 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **The web guide and Discord stay in sync with recordings:** a show paused after repeated failures, or skipped because the disk is full, now shows that in the web guide immediately instead of looking unchanged; Discord recording cards use the right episode information; airing-day edits are rejected as a whole if any day is invalid instead of silently dropping the bad ones; and the guide only refreshes the affected tuner's dropdown on a change.
 - *Updated* — **The tuner count in the web guide keeps up.** The count on each tuner box now updates within a couple of seconds when a tuner is opened or closed — by you watching live, a picture-in-picture, or another Mac — instead of trailing by up to ~12 seconds. A change that landed during the guide's refresh throttle is also no longer lost: previously a Mac watching another Mac's recording could be left with a stale tuner count and tuner dropdown until the next periodic refresh (hours, by default). Only the heavy guide rebuild is still limited to once per 15 seconds, with one catch-up rebuild when the limit lifts.
 - *Updated* — **The web guide refuses requests made by other websites** you visit in your browser (cross-site requests and DNS-rebinding tricks); opening the guide by IP address, `localhost`, or a `.local`/`.lan`-style name works as before.
+- *Updated* — **The Discord webhook token is no longer written to the logs.** A failed send logged the full request URL (the token is a secret and the logs are ones users are asked to share). Webhook tokens are now masked in both the main and Discord logs. Old log lines are not rewritten — rotate the webhook if you've shared logs.
+- *Updated* — **The web guide rejects requests with malformed (non-UTF-8) headers.** Such a header block used to parse as a bare `GET /` with no `Host`/`Origin`, which skipped the cross-site and DNS-rebinding check.
+- *Updated* — **Show titles sent to the web guide are cleaned up** (control characters removed, 120-character cap, leading dots stripped), and the series folder name is sanitized the same way, so a title can't break a show's recordings or name a path outside its folder.
 
 ### Menu bar & Settings (`MenuContent`, `SettingsView`, `hdhr_VCRApp`)
 
@@ -70,6 +81,10 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **The menu bar menu** lists shows assigned to a tuner that was never detected (under "Unavailable Tuner" — they used to vanish with more than one tuner), and no longer flickers/rebuilds every few seconds while open during a recording.
 - *Updated* — **Menu bar polish:** the "Watching" entry stays visible when only the picture-in-picture is playing, and Up Next shows each show's time inline instead of a separate section per time bucket.
 - *Updated* — **The menu bar's blue "FEED available" light now only lights up while someone is actually watching another Mac's shared recording**, not just whenever one exists to watch. "Recording on Another Mac" in the menu still lists every available relay regardless of viewers — only the status light's meaning changed.
+- *Updated* — **Your config survives a hostname change.** The config file is named after the Mac's hostname (a DHCP name, `.local` vs `.lan`, a rename, a VPN can change it), and a new name used to look like a fresh install — no shows and the setup wizard again. With no file for the current name, the app now adopts a copy of the newest other `hdhr_VCR-*.json` that decodes.
+- *Updated* — **Edit Show won't save a Length of 0 or less** (it must be 1–1440 minutes, matching the web guide), and **Add Show** uses the current default folder instead of the one from when its window first opened.
+- *Updated* — **Importing a config now shows a "restart required" alert** (with Quit Now / Later) — saving is paused until the app restarts, which a small status line didn't make obvious.
+- *Updated* — **Launch at login no longer leaves Settings stuck on "unsaved changes"** while macOS waits for you to approve the login item.
 
 ### Performance (several files)
 
@@ -80,10 +95,12 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **The `[TunerAudit]` log line counts picture-in-picture streams.** Its `vlc=` field used to look only at the main player window, so it read `vlc=0` with a live PiP holding a tuner and `vlc=1` for a main window that was just playing a recording. It now counts live broadcast streams in either slot, the same way the app's tuner-full check does. (Log text only — nothing else changed.)
 - *Added* — **`HDHR_GUIDE_PORT` for the terminal guide.** `hdhr_guide` always talked to port 1980; set `HDHR_GUIDE_PORT` to use a different web-server port (an invalid value falls back to 1980). Mainly there so the new automated tests can run the real terminal guide against a stand-in server, but it also helps anyone who changed the web-server port.
 - *Info* — **A lot more automatic testing, including opt-in live tests.** About 65 new unit tests cover Time Machine exclusion, the free-disk rule, `/api/tuner-status.json`, player channel order, one-FEED-per-tuner arbitration, the 3-minute live-TV heads-up, web-guide updates on failed/skipped recordings, the menu bar's Unavailable Tuner and Watching lines, and the tuner-count updates. Sixteen smoke tests now run the real terminal-guide binary on a pseudo-terminal against a stand-in server: startup messages, rendering, quitting, favorite toggling, terminal restore on exit and on SIGTERM, plus heavy arrow-key navigation (walking every channel and show and clamping at the ends, a 480-key random walk checking the selection never desyncs) and search (cycling matching shows and their airings with all four arrows, the result cap, channel jump, typing `q`/`f` inside a search, short and empty queries). Two opt-in live suites drive the real app through Accessibility — `WindowNavigationTests` and a new PiP/FEED/window "churn" soak that checks the HDHomeRun's tuner state and the app's own count after every step, on this Mac and over SSH on a second one (`docs/LiveUITests.md`). Developer-facing; nothing to do.
+- *Info* — **More tests, and one less flaky.** The suite is now 843 tests. New ones cover webhook-token masking, title sanitizing, the partial-recording exclusion, guide reload/empty-response handling, the Bonus Time marker, the relocator's swap and git-checkout detection, the hostname-change fallback and `Show.isRecordingToFallback`; the web-server lifecycle tests now pick a free port at run time and allow a slower bind.
 
 ### Packaging & build
 
 - *Removed* — **Intel Mac support.** Release builds are now Apple Silicon (arm64) only, no longer a universal arm64+x86_64 binary. `hdhrVCRplus` still requires macOS 15.0+ regardless of chip.
+- *Updated* — **"Move to Applications" can't leave you without the app.** It copies to a temporary name and swaps it in only when the copy is complete (a failed copy used to follow deleting the existing install); it never offers to move a build that sits inside a git checkout; and an install already running from `/Applications` is brought forward instead of being replaced.
 
 ## v2.5.0 — 2026-09-19
 

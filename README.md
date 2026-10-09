@@ -17,11 +17,11 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
-### 📦 Latest: [v2.5.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.5.0/hdhrVCRplus-2.5.0.dmg)
-- **New: Recording FEED (Beta)** — watch an in-progress recording live from another Mac on your LAN, no second tuner needed. See below.
-- New: watch two live streams at once (picture-in-picture) — swap, reposition, or switch channels on the fly
-- New: an Info button on the player shows the show/episode and air date, like a TV remote's "i"
-- Player toolbar decluttered, a First-Run Wizard crash is fixed, and several playback reliability fixes landed
+### 📦 Latest: [v2.6.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.6.0/hdhrVCRplus-2.6.0.dmg)
+- **New: a much smoother player** — pause with the space bar, place and resize the picture-in-picture, scrub back through another Mac's recording (FEED), Cast to Chromecast (Beta)
+- New: exclude recordings from Time Machine, and a heads-up before a scheduled recording needs your tuner
+- Recording fixes: series shows no longer lose their first seconds, normal endings aren't logged as failures, and Bonus Time no longer doubles after a restart
+- FEED is much faster over the network, and your config now survives a hostname change. Apple Silicon only.
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 
