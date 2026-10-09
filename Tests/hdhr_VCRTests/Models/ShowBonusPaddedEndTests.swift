@@ -23,3 +23,29 @@ struct ShowBonusPaddedEndTests {
         #expect(back.show_bonus_padded_end == nil)
     }
 }
+
+// A show still holding a legacy HFS colon path ("Vol:Dir:", migrated from the AppleScript app) must
+// not be reported as "recording to fallback" while its volume is mounted — the old comparison
+// (posixRecordDir vs the raw show_dir string) always differed for HFS strings.
+@Suite("Show.isRecordingToFallback")
+struct ShowRecordingFallbackTests {
+    @Test func hfsPathOnMountedVolume_isNotFallback() {
+        var show = Show.blank(channel: "5.1", device: "DEV1")
+        show.show_dir = "ZZTestDir:"          // -> /Volumes/ZZTestDir, parent /Volumes always exists
+        show.show_temp_dir = Show.localFallbackDir
+        #expect(show.posixRecordDir == "/Volumes/ZZTestDir")
+        #expect(!show.isRecordingToFallback)
+    }
+
+    @Test func offlineVolume_isFallback() {
+        var show = Show.blank(channel: "5.1", device: "DEV1")
+        show.show_dir = "ZZNoSuchVolume:Dir:" // parent /Volumes/ZZNoSuchVolume is absent
+        show.show_temp_dir = Show.localFallbackDir
+        #expect(show.isRecordingToFallback)
+        #expect(show.posixRecordDir == Show.localFallbackDir)
+    }
+
+    @Test func emptyShowDir_isNotFallback() {
+        #expect(!Show.blank().isRecordingToFallback)
+    }
+}

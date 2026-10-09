@@ -281,6 +281,13 @@ struct Show: Identifiable, Equatable {
         return FileManager.default.fileExists(atPath: parent) ? primary : fallback
     }
 
+    /// True when this show's configured folder is offline and recording is being redirected to the
+    /// local fallback. Compares the two *POSIX* forms: comparing `posixRecordDir` to the raw
+    /// `show_dir` falsely reported a fallback for every show still holding a legacy HFS string
+    /// ("Raid6:DVR Tests:" != "/Volumes/Raid6/DVR Tests") even when the volume was mounted and the
+    /// primary folder was in use.
+    var isRecordingToFallback: Bool { !show_dir.isEmpty && posixRecordDir != posixPrimaryDir }
+
     // Converts legacy HFS colon-separated paths ("Raid6:DVR Tests:") to POSIX ("/Volumes/Raid6/DVR Tests").
     private static func toPosix(_ path: String) -> String {
         guard !path.hasPrefix("/"), path.contains(":") else { return path }

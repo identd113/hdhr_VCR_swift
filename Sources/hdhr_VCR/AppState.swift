@@ -3444,7 +3444,7 @@ final class AppState: ObservableObject {
         if config.TimeMachine_exclude_mode == "perFolder", FileManager.default.fileExists(atPath: recordDir) {
             excludeFromTimeMachine(recordDir)
         }
-        if !show.show_dir.isEmpty, show.posixRecordDir != show.show_dir {
+        if show.isRecordingToFallback {
             glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
         }
         var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
