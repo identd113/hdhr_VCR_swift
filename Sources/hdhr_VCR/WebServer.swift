@@ -2178,7 +2178,14 @@ final class WebServer: @unchecked Sendable {
             let bodyBytes     = data[sepRange.upperBound...]
 
             // Parse Content-Length, Accept-Encoding, and Connection from headers
-            let headerText    = String(data: headerSection, encoding: .utf8) ?? ""
+            // A header block that isn't valid UTF-8 must be rejected, not decoded to "" — an empty
+            // block parses as a bare `GET /` with no Host/Origin, which would skip the anti-rebinding
+            // gate below (a browser fetch() can send Latin-1 header bytes).
+            guard let headerText = String(data: headerSection, encoding: .utf8) else {
+                glog("[WebServer] rejected request from \(conn.endpoint): non-UTF-8 headers", level: .warning)
+                self.send(.forbidden("Malformed request headers"), on: conn)
+                return
+            }
             var contentLength = 0
             var acceptsGzip   = false
             var explicitClose = false
@@ -2781,7 +2788,7 @@ final class WebServer: @unchecked Sendable {
         }
         let transcode = obj["transcode"] as? String
         let bonusTime = obj["bonusTime"] as? Bool ?? false
-        let title     = (obj["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title     = (obj["title"] as? String)?.sanitizedShowTitle
         let newOnly   = obj["newOnly"] as? Bool ?? false
         state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime, titleOverride: title, newOnly: newOnly)
         let effectiveTitle = (title?.isEmpty == false) ? title! : entry.Title
@@ -2881,7 +2888,7 @@ final class WebServer: @unchecked Sendable {
                 state.showRuntime[updated.show_id]?.retryAfter = nil
             }
         }
-        if let title = obj["title"] as? String, !title.isEmpty { updated.show_title = title }
+        if let title = (obj["title"] as? String)?.sanitizedShowTitle, !title.isEmpty { updated.show_title = title }
         if let ch = obj["channel"] as? String, !ch.isEmpty {
             // Validate the channel exists in this device's lineup before storing — this endpoint has
             // no auth beyond LAN-subnet matching, and an unvalidated channel silently yields a

@@ -2989,7 +2989,11 @@ final class AppState: ObservableObject {
                 }
             }
 
-            if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
+            // Fresh clock + 3 s tolerance: `now` was captured before Pass 1's awaits, and curl's
+            // duration is Int()-truncated so it exits up to ~1 s before show_end. Without this a
+            // natural end was logged as "curl exited unexpectedly" (no completion card/post-script,
+            // false fail_count). Inside the tolerance the stop pass below ends it naturally.
+            if show.show_recording, endDate > Date().addingTimeInterval(3), !recordingManager.isRunning(showId: show.show_id) {
                 showRuntime[show.show_id]?.pendingDiscordStart = false // never confirmed; skip the start embed
                 // readAndClearHDHRError must run before teardownRecordingState — teardown calls
                 // stop() which clears the header file entry, losing the error before we can read it.
@@ -3226,10 +3230,15 @@ final class AppState: ObservableObject {
             // currentEntryByTitle/nextEntryByTitle exist specifically for this, and
             // scheduleNextAir already calls the title tier unconditionally) would otherwise
             // get zero protection from this guard, the exact gap it exists to close.
+            // Probe at the airing's own start, not `Date()`: the idle loop launches a show up to
+            // 10 s early (readyIndices), and a guide entry that hasn't started yet can't match
+            // "currently airing" — every series recording would otherwise be skipped once and
+            // start a full tick late.
+            let probeAt = max(Date(), min(show.show_next ?? Date(), Date().addingTimeInterval(10)))
             let confirmed = (!show.show_seriesid.isEmpty && guideStore.currentEpisode(seriesID: show.show_seriesid,
-                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil)
+                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: probeAt) != nil)
                          || guideStore.currentEntryByTitle(show.show_title,
-                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil
+                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: probeAt) != nil
             if !confirmed {
                 glog("[\(show.show_title)] guide no longer confirms this airing at record time — skipping, will re-resolve", level: .warning)
                 notify("Recording Skipped", body: show.show_title, subtitle: "Guide no longer confirms this airing")
@@ -4475,7 +4484,7 @@ final class AppState: ObservableObject {
             let rawTitle  = show.show_title
             let safeTitle = rawTitle.replacingOccurrences(of: "/", with: "-")
             // Strip any episode-specific suffix for folder naming (handles shows saved before this fix).
-            let safeFolderTitle = Show.seriesTitle(from: rawTitle).replacingOccurrences(of: "/", with: "-")
+            let safeFolderTitle = Show.seriesTitle(from: rawTitle).replacingOccurrences(of: "/", with: "-").sanitizedShowTitle
             let key = "\(baseDir)|\(safeTitle)"
             guard scanned.insert(key).inserted else { continue }
 

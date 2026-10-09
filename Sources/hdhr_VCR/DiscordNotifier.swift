@@ -17,7 +17,7 @@ func discordLog(_ msg: String, level: LogLevel = .info) {
     let tag = level == .info ? "INFO" : level == .warning ? "WARN" : "ERROR"
     let ts = Date()
     discordLogQueue.async {
-        discordLogFile.write("[\(discordLogDateFormatter.string(from: ts))] [\(tag)] \(msg)\n")
+        discordLogFile.write("[\(discordLogDateFormatter.string(from: ts))] [\(tag)] \(redactingSecrets(msg))\n")
     }
 }
 

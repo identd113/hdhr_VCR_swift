@@ -37,7 +37,7 @@ final class RotatingLogFile {
         // would let it cross rotateThreshold on phantom growth and trigger rotate() against a
         // file that never actually grew.
         guard let handle else { return }
-        handle.write(data)
+        try? handle.write(contentsOf: data)  // write(_: Data) raises an uncaught NSException on ENOSPC/EIO
         bytesWritten += UInt64(data.count)
         if bytesWritten >= rotateThreshold { rotate() }
     }
@@ -131,6 +131,7 @@ func rotateCurlVerboseLogIfNeeded(path: String = curlVerboseLogFilePath) {
 /// mirrors every line to the unified log with `privacy: .public` and to a file users are asked to
 /// share. Applied inside glog so no individual call site has to remember (2026-10-05 review).
 func redactingSecrets(_ s: String) -> String {
+    let s = redactingWebhookTokens(s)
     guard s.contains("DeviceAuth=") else { return s }   // cheap fast path: nearly every line
     var out = ""
     var rest = Substring(s)
@@ -144,7 +145,41 @@ func redactingSecrets(_ s: String) -> String {
     return out + rest
 }
 
+/// Masks the token in any Discord webhook URL (`/api/webhooks/<id>/<token>`). A URLError's
+/// description embeds the full failing URL, and the token is a bearer secret that posts to the
+/// channel — the logs are ones users are asked to share.
+func redactingWebhookTokens(_ s: String) -> String {
+    let marker = "/webhooks/"
+    guard s.contains(marker) else { return s }
+    var out = ""
+    var rest = Substring(s)
+    while let r = rest.range(of: marker) {
+        out += rest[..<r.upperBound]
+        var after = rest[r.upperBound...]
+        // <id>/<token>: keep the id, mask the token (stop at a URL/quote/space delimiter)
+        if let slash = after.firstIndex(of: "/"), after[..<slash].allSatisfy(\.isNumber) {
+            out += after[...slash]
+            after = after[after.index(after: slash)...]
+            let end = after.firstIndex(where: { "?\" '\n)\\<>".contains($0) || $0.isWhitespace || $0 == "/" }) ?? after.endIndex
+            out += "REDACTED"
+            rest = after[end...]
+        } else { rest = after }
+    }
+    return out + rest
+}
+
 extension String {
+    /// A show title from an untrusted source (the web API): control characters stripped, trimmed,
+    /// capped at 120 characters (file names are title + date + tag within a 255-byte limit), and
+    /// "."/".." or leading dots neutralised so it can't act as a path component. May return "".
+    var sanitizedShowTitle: String {
+        var t = String(unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(Character.init))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count > 120 { t = String(t.prefix(120)).trimmingCharacters(in: .whitespaces) }
+        while t.hasPrefix(".") { t.removeFirst() }
+        return t.trimmingCharacters(in: .whitespaces)
+    }
+
     /// A form of this string that is safe as one component of a file name or path (and in an HTTP
     /// header value): ASCII letters, digits, `-` and `_` only, at most 64 characters, never empty.
     /// Used for IDs that arrive from the network (a LAN device's `DeviceID`) before they are placed
