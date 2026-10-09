@@ -243,6 +243,11 @@ struct Show: Identifiable, Equatable {
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
     var show_bonus_time: Bool       // true = extend recording past guide end
+    /// The *padded* show_end that Bonus Time last produced for this airing — persisted so a relaunch
+    /// mid-airing (Stop & Quit, curl died while the app was down) doesn't add the padding a second
+    /// time to the already-padded show_end saved on disk. Compared by value in startRecording, so a
+    /// new airing (different show_end) unmatches it with no explicit clearing.
+    var show_bonus_padded_end: Date? = nil
     var discord_start_msg_id: String = ""   // message ID of the "Recording Started" embed; "" = none
     var show_tuner_resource: String  = ""   // e.g. "tuner0" — from X-HDHomeRun-Resource response header
     var show_ignore_duplicate_once: Bool  = false // per-show override: record even if Skip_recorded_episodes would skip it as already on disk
@@ -431,7 +436,7 @@ extension Show: Codable {
         case show_seriesid, show_fail_count, show_fail_reason, show_logo_url
         case show_transcode, show_recording, show_last
         case notify_upnext_time, notify_recording_time
-        case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
+        case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time, show_bonus_padded_end
         case discord_start_msg_id, show_tuner_resource, show_ignore_duplicate_once, show_new_only
     }
 
@@ -482,6 +487,7 @@ extension Show: Codable {
         show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
         show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
             ?? Show.genreImpliesBonusTime(show_genre)
+        show_bonus_padded_end = try? c.decode(Date.self, forKey: .show_bonus_padded_end)
         discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
         show_tuner_resource  = (try? c.decode(String.self, forKey: .show_tuner_resource))  ?? ""
         show_ignore_duplicate_once = (try? c.decode(Bool.self, forKey: .show_ignore_duplicate_once)) ?? false

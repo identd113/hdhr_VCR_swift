@@ -40,12 +40,6 @@ final class AppState: ObservableObject {
     // (@testable import doesn't reach true `private`) rather than via a hand-duplicated shadow
     // list that could itself drift out of sync with deleteShow's own cleanup.
     struct ShowRuntimeState {
-        // The show_end value Bonus Time padding was last added to (i.e. the *padded* end startRecording
-        // persisted). startRecording persists the padded end into show_end, so a retry within the same
-        // airing (launch failure, curl died, the 2-3 tick backoff) sees an already-padded show_end —
-        // without this marker it added Sports_padding_minutes again each attempt (2026-10-05 review).
-        // Compared by value, so scheduleNextAir moving show_end to the next airing naturally unmatches it.
-        var bonusPaddedEnd: Date? = nil
         // Pre-computed each idle tick (rebuildMenuEntries) — whether this show will actually
         // lose a tuner to a higher-priority competitor. Was: conflictingShowIDs (Set<String>).
         var isConflicting = false
@@ -3443,11 +3437,11 @@ final class AppState: ObservableObject {
         var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
         // Bonus Time: extend recording past the guide end when enabled on a show
         if config.Sports_padding_enabled && show.show_bonus_time {
-            if showRuntime[show.show_id]?.bonusPaddedEnd == endDate {
+            if show.show_bonus_padded_end == endDate {
                 glog("[\(show.show_title)] Bonus Time already applied to this airing's end — not adding it again")
             } else {
                 endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
-                showRuntime[show.show_id, default: ShowRuntimeState()].bonusPaddedEnd = endDate
+                shows[index].show_bonus_padded_end = endDate
                 glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
             }
         }
