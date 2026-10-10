@@ -2024,6 +2024,9 @@ final class VLCBridge: ObservableObject {
     /// `heldItem` has already been `libvlc_renderer_item_hold`'d synchronously inside the
     /// discovery callback (see startCastDiscovery's onItemAdded) — this just files it away.
     private func handleCastItemAdded(_ heldItem: OpaquePointer) {
+        // stopCastDiscovery() may have run between the callback's synchronous hold and this queued
+        // hop: re-inserting would resurrect a device after teardown and the held item would leak.
+        guard rendererDiscoverer != nil else { _riRelease?(heldItem); return }
         let name = _riName?(heldItem).map { String(cString: $0) } ?? "Chromecast"
         let id = String(UInt(bitPattern: heldItem))   // stable for this held item's lifetime
         castItemsByID[id] = heldItem

@@ -558,14 +558,34 @@ struct VLCPlayerView: View {
     // local disk cache exists to avoid, just for this one interaction. Necessarily starts a fresh
     // cache file at byte 0 (the old one is deleted) — no scrub-position continuity across the
     // raw↔H.264 switch, matching this toggle's existing reconnect-on-switch behavior.
+    /// Pure decision, extracted for unit testing: true when a FEED session that just finished starting
+    /// has no live window to belong to (closed, or this view was superseded by a rebind).
+    nonisolated static func feedToggleOutlivedWindow(windowOpen: Bool, myToken: UUID?, hostedToken: UUID) -> Bool {
+        !windowOpen || (myToken != nil && myToken != hostedToken)
+    }
+
     private func toggleFeedTranscode(to wantsTranscode: Bool) {
         guard wantsTranscode != feedIsTranscoding, let rawURL = currentFeedEntry?.URL else { return }
         let newRemoteURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
         glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newRemoteURL)")
+        let token = hostToken
         Task {
             guard let session = await state.startFeedCacheSession(
                 remoteURL: newRemoteURL, device: device,
                 title: VLCPlayerWindowManager.shared.currentTitle ?? device.FriendlyName ?? "FEED") else { return }
+            // The startup wait is 2–5 s; if the window closed (or was rebound to another device's view)
+            // meanwhile, playerWindowDidClose already ran and won't see this session — it would sit
+            // tracked on a dead window (puller + cache file alive until quit) and bridge.play would
+            // re-create a released player. Not cancelled via Task.cancel: the startup poll's
+            // `try? Task.sleep` returns instantly when cancelled and would spin into a bogus failure alert.
+            let mgr = VLCPlayerWindowManager.shared
+            if Self.feedToggleOutlivedWindow(windowOpen: mgr.currentTitle != nil, myToken: token, hostedToken: mgr.hostedViewToken) {
+                glog("[VLC] FEED transcode toggle: window closed during startup — releasing session \(session.sessionId)")
+                mgr.clearFeedRelayTracking(ifSessionId: session.sessionId)
+                state.stopFeedCacheSession(sessionId: session.sessionId)
+                state.webServer.unregisterFeedRelaySession(id: session.sessionId)
+                return
+            }
             bridge.play(url: session.url)
             DispatchQueue.main.async {
                 VLCBridge.shared.beginRecordingSeek(showId: session.sessionId, recordingStart: session.startedAt, seekBaseSeconds: 0)
@@ -2542,15 +2562,20 @@ struct VLCPlayerView: View {
         // reverts and the FEED simply keeps playing. 2026-10-06.
         let keepStreamUntilReady = ch.map { shouldKeepCurrentStreamUntilNewOneStarts(for: $0) } ?? false
         if !keepStreamUntilReady { blankForNewStream() }
-        guard let ch else { return }
+        guard let ch else { ownStreamStoppedForSwitch = false; return }
         if let feedURL = remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) {
             // Switch to a FEED row (allFeedEntries) — the same path MenuContent's
             // "Recording on Another Mac" Watch row takes. watchRemoteRelay dedups against
             // the FEED already playing, and rebinds the window to the FEED's own device.
+            // A non-live pick supersedes a tuner-wait switch whose task just returned on the cancelled
+            // check without clearing the flag — left true it would make the next live pick skip its
+            // pre-flight and stop() a FEED that holds no tuner. (Live picks keep it: see playChannel.)
+            ownStreamStoppedForSwitch = false
             guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
             state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
                                    device: pair.device)
         } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
+            ownStreamStoppedForSwitch = false
             guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
             state.watchRecordingInApp(show)
         } else if device.isVirtualRelay, let src = channelSourceDevice {
@@ -2559,6 +2584,7 @@ struct VLCPlayerView: View {
             // FEED rows themselves never get here: they're all "live-feed:" rows above,
             // routed through watchRemoteRelay/the disk cache (review #8).
             // (plain if-assignments, not `cond ? { … } : nil` — that ternary of optional closures defeats type inference)
+            ownStreamStoppedForSwitch = false
             var beforeOpen: (@MainActor () -> Void)? = nil
             var onRefused: (@MainActor () -> Void)? = nil
             if keepStreamUntilReady {
@@ -2568,13 +2594,16 @@ struct VLCPlayerView: View {
             state.watchInApp(url: ch.URL ?? "", title: ch.GuideName, deviceId: src.DeviceID, guideNumber: ch.GuideNumber,
                              beforeOpen: beforeOpen, onRefused: onRefused)
         } else {
-            playChannel(ch, revertTo: keepStreamUntilReady ? oldCh : nil)
+            playChannel(ch, revertTo: keepStreamUntilReady ? oldCh : nil, resumeOnRefusal: oldCh)
         }
     }
 
-    private func playChannel(_ ch: LineupEntry, revertTo previous: LineupEntry? = nil) {
+    /// `resumeOnRefusal`: the channel that was playing before this pick — if the tuner-wait switch below has already
+    /// stopped that stream and then finds every tuner held elsewhere, it is put back (see the timeout branch).
+    private func playChannel(_ ch: LineupEntry, revertTo previous: LineupEntry? = nil, resumeOnRefusal: LineupEntry? = nil) {
         if VLCPlayerWindowManager.shared.secondaryIsShowing(deviceID: device.DeviceID, channelNumber: ch.GuideNumber) {
             glog("[VLC] playChannel \(ch.GuideNumber) — already in the PiP, swapping instead")
+            ownStreamStoppedForSwitch = false
             swapPrimaryAndSecondary()
             return
         }
@@ -2590,6 +2619,7 @@ struct VLCPlayerView: View {
             $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber
         }) {
             glog("[VLC] playChannel \(ch.GuideNumber) — currently recording '\(recording.show_title)', playing from disk instead of a second live tuner")
+            ownStreamStoppedForSwitch = false
             state.watchRecordingInApp(recording)
             return
         }
@@ -2641,7 +2671,19 @@ struct VLCPlayerView: View {
                     // Every tuner is held by someone else: say so (the standard "All Tuners Busy" alert)
                     // instead of opening a stream the device will refuse with 805 and a "Playback Ended".
                     ownStreamStoppedForSwitch = false
-                    guard await state.tunerAvailable(device, context: ch.GuideName) else { return }
+                    guard await state.tunerAvailable(device, context: ch.GuideName) else {
+                        // We already stopped the stream that was playing, so a bare return left the player on
+                        // "Connecting…" forever with the picker on a channel that never opened. Put the picker
+                        // back and re-open what was playing: if its tuner is really free again that resumes it,
+                        // otherwise the player shows the normal "Playback Ended" instead of a dead spinner.
+                        guard generation == switchGeneration, bridge.currentURL == nil,
+                              let prev = resumeOnRefusal, let prevRaw = prev.URL, !prevRaw.isEmpty else { return }
+                        revertPickerAfterRefusedSwitch(to: prev)
+                        posterHidden = false
+                        VLCBridge.shared.setVolume(0)
+                        startPlayChannel(prev, url: state.config.applyTranscode(prevRaw))
+                        return
+                    }
                     guard !Task.isCancelled, generation == switchGeneration else { return }
                 }
                 // Re-arm the auto-start gate + mute exactly as the picker handler did — but it ran
@@ -2955,6 +2997,14 @@ final class VLCPlayerWindowManager {
     func setFeedRelayTracking(remoteURL: String, sessionId: String) {
         currentFeedRemoteURL = remoteURL
         currentFeedSessionId = sessionId
+    }
+
+    /// Undoes setFeedRelayTracking for a session that started on a window that has since closed.
+    /// No-op unless `sessionId` is still the tracked one.
+    func clearFeedRelayTracking(ifSessionId sessionId: String) {
+        guard currentFeedSessionId == sessionId else { return }
+        currentFeedRemoteURL = nil
+        currentFeedSessionId = nil
     }
 
     /// Secondary-slot counterpart to setFeedRelayTracking above — same purpose, for a PiP corner
@@ -3517,8 +3567,10 @@ final class VLCPlayerWindowManager {
         // Stop audio listener before releasing the player — windowWillClose fires before onDisappear,
         // so without this the CoreAudio callback fires into a partially torn-down view.
         VLCBridge.shared.stopDeviceChangeMonitoring()
-        VLCBridge.shared.stopCastDiscovery()
+        // Release the player first: stopCastDiscovery → stopCasting re-plays currentURL to leave the
+        // renderer, which would reconnect to a real tuner stream just before it is torn down.
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
+        VLCBridge.shared.stopCastDiscovery()
         VLCBridge.shared.releasePlayer(slot: .secondary) // PiP secondary shares this one window — tear it down too
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
