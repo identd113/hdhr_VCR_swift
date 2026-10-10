@@ -6179,6 +6179,11 @@ final class AppState: ObservableObject {
     /// (a live channel or a FEED relay swapping into primary) — recordingShowId is meaningless for
     /// either, and play() itself only clears it for a genuine live-tuner URL, not a FEED one.
     func reanchorRecordingSeekForSwap(newPrimaryURL url: String) {
+        // A stream that was primary before (and was demoted by this very swap, or an earlier one)
+        // gets back its own scrub position from VLCBridge — it kept playing in the corner, so that
+        // position is still correct, whereas the approximation below is the live edge and would make
+        // the scrub bar jump there. Only a stream first opened in the PiP falls through to it.
+        if VLCBridge.shared.consumeSwapRestoredSeekAnchor() { return }
         // The FEED-cache branch here is a narrow edge case: it can only happen via an explicit
         // tap-to-swap of an already-primary FEED cache session, never via watchRemoteRelayAsSecondary,
         // which never touches feedCacheSessions at all.

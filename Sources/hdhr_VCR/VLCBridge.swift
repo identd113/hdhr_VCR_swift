@@ -390,6 +390,27 @@ final class VLCBridge: ObservableObject {
         pausedAt = nil
     }
 
+    // MARK: - Scrub position across a PiP swap
+    // The scrub anchor above (recordingShowId/StartDate/SeekBase/ReopenedAt) describes the PRIMARY
+    // stream only. A swap (swapSlots) keeps both streams decoding without a reconnect, so a stream
+    // scrubbed back to some point keeps playing from that point while it sits in the corner — but
+    // the anchor used to be rebuilt after every swap as "elapsed since the recording started" (the
+    // live edge), so tabbing PiP and back made the scrub bar jump to the edge and left the next
+    // arrow-key/scrub seeking from the wrong base. The demoted stream's anchor is now saved here and
+    // handed back unchanged when it is promoted: the position formula (seek base + wall-clock since
+    // the last (re)connect) is still right, because the corner stream kept playing at 1x meanwhile.
+    // Only a stream that was never primary (opened straight into the PiP) has no saved anchor — that
+    // case falls back to AppState.reanchorRecordingSeekForSwap's near-live approximation.
+    private var seekAnchorSwapper = SeekAnchorSwapper()
+    private var swapRestoredSeekAnchor = false
+
+    /// True once if the last swapSlots() restored the promoted stream's own saved anchor, in which
+    /// case the caller must not re-derive (and thereby overwrite) it.
+    func consumeSwapRestoredSeekAnchor() -> Bool {
+        defer { swapRestoredSeekAnchor = false }
+        return swapRestoredSeekAnchor
+    }
+
     func clearRecordingSeek() {
         guard recordingShowId != nil else { return }
         glog("[VLC] clearRecordingSeek — was showId=\(recordingShowId ?? "?")")
@@ -784,6 +805,7 @@ final class VLCBridge: ObservableObject {
             secondaryIsPlaying = false
             secondaryHasEnded  = false
             secondaryURL = url
+            seekAnchorSwapper.clearSecondary()   // a new stream in the corner has no saved scrub position
         }
         // Claimed synchronously, same moment the old blocking _mpStop?(mp) used to run — so a
         // second play()/stop()/releasePlayer() landing before this call's background work finishes
@@ -1041,6 +1063,7 @@ final class VLCBridge: ObservableObject {
             secondaryIsPlaying = false
             secondaryHasEnded  = false
             secondaryURL       = nil
+            seekAnchorSwapper.clearSecondary()
             secondaryVideoPixelSize = nil
         }
         self[slot].pendingURL = nil
@@ -1150,6 +1173,13 @@ final class VLCBridge: ObservableObject {
             return false
         }
 
+        // Scrub anchors: save the demoted (current primary) stream's, take the promoted one's.
+        let demotedSeekAnchor: SeekAnchor? = recordingShowId.flatMap { id in
+            recordingStartDate.map { SeekAnchor(showId: id, start: $0, baseSeconds: recordingSeekBaseSeconds,
+                                                reopenedAt: recordingReopenedAt) }
+        }
+        let promotedSeekAnchor = seekAnchorSwapper.swap(demoting: demotedSeekAnchor)
+
         // Capture "before" values before any mutation below.
         let oldPrimaryPixelSize = videoPixelSize
         let oldSecondaryPixelSize = secondaryVideoPixelSize
@@ -1195,6 +1225,18 @@ final class VLCBridge: ObservableObject {
 
         currentURL   = oldSecondaryURL
         secondaryURL = oldPrimaryURL
+
+        // The promoted stream gets back exactly the scrub position it had (see SeekAnchor's comment).
+        if let a = promotedSeekAnchor {
+            recordingShowId          = a.showId
+            recordingStartDate       = a.start
+            recordingSeekBaseSeconds = a.baseSeconds
+            recordingReopenedAt      = a.reopenedAt
+            swapRestoredSeekAnchor   = true
+            glog("[VLC] swapSlots — restored the promoted stream's own scrub position (showId=\(a.showId))")
+        } else {
+            swapRestoredSeekAnchor = false
+        }
 
         // The newly-primary stream inherits the secondary slot's always-already-at-1.0 rate (the
         // secondary never ramps — see play(url:slot:)'s own comment) — there's no fill phase to
@@ -2270,4 +2312,31 @@ final class VLCBridge: ObservableObject {
             glog("[VLC] transcode session \(key) torn down (\(reason))")
         }
     }
+}
+
+
+/// A recording-relay/FEED stream's scrub position: seek base plus wall-clock time since the last
+/// (re)connect gives the position (see VLCBridge's "Scrub position across a PiP swap").
+struct SeekAnchor: Equatable {
+    let showId: String
+    let start: Date
+    let baseSeconds: Double
+    let reopenedAt: Date
+}
+
+/// Remembers the scrub anchor of the stream sitting in the corner (secondary) slot, so a PiP swap
+/// can hand each stream back its own position instead of re-deriving the live edge.
+struct SeekAnchorSwapper {
+    private(set) var secondary: SeekAnchor?
+
+    /// A swap: `current` is the primary stream's anchor (nil for a live channel / no anchor) which
+    /// moves to the corner; returns the anchor the promoted stream had, if it ever had one.
+    mutating func swap(demoting current: SeekAnchor?) -> SeekAnchor? {
+        let promoted = secondary
+        secondary = current
+        return promoted
+    }
+
+    /// The corner stream was replaced or closed — whatever position was saved no longer applies.
+    mutating func clearSecondary() { secondary = nil }
 }
