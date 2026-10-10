@@ -242,6 +242,18 @@ Raised 2026-09-12, deliberately **not scoped or started** — an explicit "not n
 
 ---
 
+## Keyboard-shortcuts help (`?`) for the other windows — planned 2026-10-09, not started
+
+**Done:** the player window. `?` (Shift-/) floats a semi-translucent card listing every key `VLCPlayerWindowManager.installKeyMonitor` handles — keycap left, description right, rows that can't act right now dimmed with a note, any key (or a click) closes it and is consumed. `Views/KeyboardShortcutsOverlay.swift` has a generic `KeyboardShortcutsOverlay(title:rows:onDismiss:)` + `ShortcutRow`, and `PlayerShortcuts.rows(...)` is the player's list (`PlayerShortcutsTests` fails if a handled key has no row). See `docs/VLCPlayerView.md`'s "Keyboard-shortcuts card" paragraph. Styled from the player's info banner (charcoal gradient over ultra-thin material, pale accent bar, serif type); design reference: YouTube/Tella `?` panels and the Mac apps CheatSheet and KeyClu.
+
+**Where it makes sense, in order:**
+1. **Web guide** (`Resources/guide.js`/`guide.css`; the in-app Add Show window embeds the same page, so it gets it for free). Keys to list: type anything to start search; `/` opens search; ↑ ↓ move through results; Enter picks; ← → cycle a result's airings; Esc or Backspace clears; Tab/Shift-Tab and Space/Enter on a focused block. **Gotcha:** the document-level `keydown` listener (guide.js ~1498) treats *any* printable key as "seed the search box with this", so `?` must be special-cased *before* it (and ignored while a modal or input has focus, like the listener already is). Build the card in JS/CSS using the guide's theme variables so light/dark both work; any key closes it. Needs `guide.js`/`guide.css` deployed to both Macs; unit coverage is thin for JS — add a small pure-function test over the key list the way the guide's other helpers are covered, or at minimum a served-output syntax check (`curl -s localhost:1980/ | awk … | node --check`, see CLAUDE.md).
+2. **Terminal guide** (`Sources/hdhr_guide/`). Keys: ↑ ↓ ← → move, `[` `]` page time, `f` favorite, `/` search, Tab switch tuner, `#` channel jump, `1`–`4` recording scope in the schedule screen, Enter select, Esc back, `q` quit (`main.swift` ~560–615 + the search/schedule modes). A terminal can't do translucency, so draw a bordered box over the grid with the grid dimmed behind it (ANSI faint), any key closes. Keep the pure list/format logic in `hdhr_guide_core` so it's unit-testable; mind resize (SIGWINCH) while the box is up.
+
+**Doesn't make sense (no hotkeys worth listing):** Watch Now, PiP picker, donation window, the native Add Show / Edit Show steps (only Esc → unsaved-changes prompt), first-run wizard (Esc/Return), Settings (⌘S/Return — explicitly excluded).
+
+**Reuse:** keep one canonical list of (keys, description, availability) per surface so docs and the overlay can't drift; the SwiftUI view can't be reused by the web/terminal surfaces, only the data shape and the visual language.
+
 ## Terminal Guide
 
 See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and known limitations.
