@@ -1064,6 +1064,13 @@ final class AppState: ObservableObject {
         //     liveness check is needed here.
         await sweepOrphanedFeedCachePullers()
 
+        // 2c. Age-based sweeps of regenerable app files (CachePruner): stale guide-cache files and
+        //     orphaned `--dump-header` temp files. Never under test (the temp folder is shared).
+        if !runningUnderTests {
+            guideStore.pruneDiskCache()
+            recordingManager.pruneOrphanedHeaderFiles()
+        }
+
         // 3. Start the web server now — port binding doesn't need devices or guide data.
         //    Starting here means the server is up within ~1s of launch instead of waiting
         //    for the full discovery + guide fetch sequence to complete.
@@ -3440,15 +3447,12 @@ final class AppState: ObservableObject {
         // count as "already recorded" — it can clear the duration floor while still truncated, which
         // would skip the retry for good. Recognised by mtime inside this airing's window; an older
         // full recording of the same episode (a rerun) is untouched and still counts.
-        var ownPartialPath: String? = nil
-        if !show.show_recording_path.isEmpty, let next = show.show_next,
-           let mtime = (try? FileManager.default.attributesOfItem(atPath: show.show_recording_path))?[.modificationDate] as? Date,
-           mtime >= next.addingTimeInterval(-120) {
-            ownPartialPath = show.show_recording_path
-        }
+        // Every attempt's file counts (X.ts, X_part2.ts, …), not only the last show_recording_path —
+        // otherwise attempt 3 sees attempt 1's partial as "already recorded" and skips the airing.
+        let ownAirStart = show.show_next
         if let tag = episodeTag,
            duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
-                                expectedMinutes: show.show_length, excludingPath: ownPartialPath) != nil {
+                                expectedMinutes: show.show_length, ownAirStart: ownAirStart) != nil {
             if show.show_ignore_duplicate_once {
                 showRuntime[show.show_id, default: ShowRuntimeState()].duplicateOverrideUsedThisAttempt = true
             } else {
@@ -3972,7 +3976,7 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] DONE single — deactivated")
             shows[idx].show_active = false
         case .dateTime:
-            if let next = nextDateTime(for: show) {
+            if let next = nextDateTime(for: show, skippingCurrentAiring: skipCurrentlyAiring) {
                 shows[idx].show_next = next
                 shows[idx].show_end  = next.addingTimeInterval(Double(show.show_length) * 60)
                 glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
@@ -4151,8 +4155,9 @@ final class AppState: ObservableObject {
         return Array(candidates.sorted().prefix(count))
     }
 
-    func nextDateTime(for show: Show, now: Date = Date()) -> Date? {
-        nextDateTimeOccurrences(for: show, after: Self.nextDateTimeSearchStart(currentNext: show.show_next, now: now)).first
+    func nextDateTime(for show: Show, now: Date = Date(), skippingCurrentAiring: Bool = false) -> Date? {
+        nextDateTimeOccurrences(for: show, after: Self.nextDateTimeSearchStart(currentNext: show.show_next, now: now,
+                                                                              skippingCurrentAiring: skippingCurrentAiring)).first
     }
 
     /// Where the next DateTime occurrence search starts. Pure — unit tested.
@@ -4162,7 +4167,12 @@ final class AppState: ObservableObject {
     /// time. Now: an airing still in the future is searched from `now` (an edit keeps tonight); an
     /// airing that already started/finished is searched from just after its own start (never the
     /// same airing again, but the very next one — even across midnight), and never before `now`.
-    nonisolated static func nextDateTimeSearchStart(currentNext: Date?, now: Date) -> Date {
+    /// `skippingCurrentAiring` — the New-Only / already-recorded skip branches run up to 10 s BEFORE
+    /// the airing (idle loop's early launch), when `currentNext > now`; searching from `now` would
+    /// return that same airing and re-skip it every tick. A skip always searches past `currentNext`.
+    nonisolated static func nextDateTimeSearchStart(currentNext: Date?, now: Date,
+                                                    skippingCurrentAiring: Bool = false) -> Date {
+        if skippingCurrentAiring, let currentNext { return max(now, currentNext.addingTimeInterval(60)) }
         guard let currentNext, currentNext <= now else { return now }
         return max(now, currentNext.addingTimeInterval(60))
     }
@@ -4827,7 +4837,8 @@ final class AppState: ObservableObject {
     /// `.partial` instead of just being skipped (not deleted). Used by `startRecording` to clear a
     /// truncated leftover before recording over the same tag.
     nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String, expectedMinutes: Int = 0,
-                                          renameTruncatedTag: String? = nil, excludingPath: String? = nil) -> Set<String> {
+                                          renameTruncatedTag: String? = nil, excludingPath: String? = nil,
+                                          ownAirStart: Date? = nil) -> Set<String> {
         let fm = FileManager.default
         let seriesDir = (baseDir as NSString).appendingPathComponent(safeTitle)
         // No recursive enumerator elsewhere in the codebase — walk exactly two levels: the title
@@ -4850,6 +4861,17 @@ final class AppState: ObservableObject {
                 let full = (dir as NSString).appendingPathComponent(filename)
                 // `excludingPath` — this airing's own earlier (partial) attempt; see startRecording.
                 if full == excludingPath { continue }
+                // `ownAirStart` — every file written during this airing's own window (all earlier
+                // attempts: X.ts, X_part2.ts, …), not just the last one. Excluded so a truncated
+                // earlier attempt never counts as "already recorded"; a 0-byte one is deleted
+                // outright (a failed attempt's empty stub — never counts, never lingers).
+                if let ownAirStart,
+                   let attrs = try? fm.attributesOfItem(atPath: full),
+                   let mtime = attrs[.modificationDate] as? Date,
+                   mtime >= ownAirStart.addingTimeInterval(-120) {
+                    if (attrs[.size] as? Int) == 0 { try? fm.removeItem(atPath: full) }
+                    continue
+                }
                 let size = ((try? fm.attributesOfItem(atPath: full))?[.size] as? Int) ?? 0
                 candidates.append((tag.uppercased(), size, full))
             }
@@ -4892,14 +4914,14 @@ final class AppState: ObservableObject {
     /// `expectedMinutes` — see `recordedEpisodeTags`'s doc comment; defaults to 0 (flat ~1 MB floor)
     /// for callers with no duration handy.
     func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String, expectedMinutes: Int = 0,
-                             excludingPath: String? = nil) -> String? {
+                             excludingPath: String? = nil, ownAirStart: Date? = nil) -> String? {
         guard config.Skip_recorded_episodes,
               episodeTag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
         else { return nil }
         let safeTitle = title.replacingOccurrences(of: "/", with: "-")
         let upper = episodeTag.uppercased()
         return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir, expectedMinutes: expectedMinutes,
-                                excludingPath: excludingPath).contains(upper) ? upper : nil
+                                excludingPath: excludingPath, ownAirStart: ownAirStart).contains(upper) ? upper : nil
     }
 
     /// UI convenience: looks up `show`'s next-airing episode tag from the guide and checks it via

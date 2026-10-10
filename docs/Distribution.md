@@ -120,10 +120,10 @@ runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..mai
 1. `./deploy_release.sh <version>` — builds an **Apple Silicon (arm64) binary** (`swift build -c release --arch arm64`), Developer-ID signs, notarizes, staples, sets `CFBundleShortVersionString`/`CFBundleVersion`, and packages the finished, stapled app into a DMG (`tools/build_dmg.sh`, see "DMG assembly" below) — look for the printed `Artifact: dist/hdhrVCRplus-<version>.dmg` line (no `v` prefix in the filename, unlike the git tag). Needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing. **Developer ID signing prompts for Touch ID/password on every run** (not just first use) — whoever runs this needs to be physically at the machine (or have real remote screen access) to clear it; it will hang otherwise. Intel support (a universal arm64+x86_64 build) was dropped 2026-09-28 — see `CHANGELOG.md`'s Unreleased "Removed" entry; `./deploy.sh`, the dev-loop script, was already arm64-only before this change.
 2. **Add a `## v<version> (<date>)` entry to [`RELEASES.md`](../RELEASES.md)**, condensed and
    end-user-facing (see existing entries for the house style) from what actually landed since the
-   last tag (`git log <last-tag>..main` / `Sources/hdhr_VCR/CHANGELOG.md`'s entries for this
+   last tag (`git log <last-tag>..main` / `CHANGELOG.md`'s entries for this
    release). `deploy_release.sh` does **not** touch this file — it only bundles
-   `CHANGELOG.md` into the app for the in-app About screen (see root `CLAUDE.md`'s "Guide page
-   CSS/JS/HTML" note and `SettingsView.swift`'s `changelogText`). Skipping this step is how
+   root `CHANGELOG.md` into the app (`cp` into `Contents/Resources/`) for the in-app About screen (see root `CLAUDE.md`'s "Guide page
+   CSS/JS/HTML" note and `SettingsView.swift`'s `changelogText`). `Sources/hdhr_VCR/CHANGELOG.md` is only a byte copy kept for SwiftPM's `.copy` resource (`Package.swift`); after editing the root file run `cp CHANGELOG.md Sources/hdhr_VCR/CHANGELOG.md` — `CachePrunerTests.changelogCopiesStayIdentical` fails if they drift. Skipping this step is how
    RELEASES.md fell two versions behind (v2.0.3, v2.0.4) before a manual audit caught it in
    2026-08-17 — do this before publishing the GitHub Release below, and use the new RELEASES.md
    section as the basis for that release's notes.

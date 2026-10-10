@@ -51,4 +51,15 @@ struct NextDateTimeTests {
         #expect(AppState.nextDateTimeSearchStart(currentNext: start, now: start.addingTimeInterval(10))
                 == start.addingTimeInterval(60))
     }
+
+    // Idle loop launches up to 10 s early: a skip at 19:59:55 must move past the 20:00 airing itself.
+    @MainActor @Test func skipJustBeforeAiring_advancesPastThatAiring() {
+        let state = makeTestAppState()
+        let show = dateTimeShow(days: ["Monday", "Tuesday"], time: 20, next: date(5, 20, 0))
+        let now = date(5, 19, 59).addingTimeInterval(55)
+        #expect(state.nextDateTime(for: show, now: now) == date(5, 20, 0))   // non-skip keeps old behavior
+        #expect(state.nextDateTime(for: show, now: now, skippingCurrentAiring: true) == date(6, 20, 0))
+        #expect(AppState.nextDateTimeSearchStart(currentNext: date(5, 20, 0), now: now, skippingCurrentAiring: true)
+                == date(5, 20, 0).addingTimeInterval(60))
+    }
 }

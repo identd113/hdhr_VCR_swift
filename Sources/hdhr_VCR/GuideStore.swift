@@ -282,7 +282,7 @@ final class GuideStore {
             applyIndex(prepared)
             loadTimestamps[id] = Date()
             lastFailure.removeValue(forKey: id)
-            if let cacheFile { Self.writeCache(data, to: cacheFile) }
+            if let cacheFile { Self.writeCache(data, to: cacheFile); pruneDiskCache() }
             glog("[\(id)] index built and timestamp set — guide ready")
             return true
 
@@ -372,6 +372,16 @@ final class GuideStore {
     nonisolated private static func writeCache(_ data: Data, to file: URL) {
         do { try data.write(to: file, options: .atomic) }
         catch { glog("[GuideCache] could not write \(file.lastPathComponent): \(error.localizedDescription)", level: .warning) }
+    }
+
+    /// Drops saved guides too old for the 36 h restore window (a changed GuideHours/XML setting or a
+    /// departed device otherwise leaves a ~1.4 MB file behind forever). Off the main actor; no-op when the
+    /// disk cache is disabled. Called at launch and after each successful write.
+    func pruneDiskCache() {
+        guard let dir = diskCacheDir else { return }
+        Task.detached(priority: .utility) {
+            CachePruner.logSummary("guide cache", CachePruner.pruneGuideCache(in: dir))
+        }
     }
 
     /// Fetch guide for all devices in parallel. Returns per-device success map.

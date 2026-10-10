@@ -157,4 +157,47 @@ struct RecordedEpisodeTagsTests {
         let tags = state.recordedEpisodeTags(forTitle: title, baseDir: base, expectedMinutes: 1)
         #expect(!tags.contains("S01E01"))
     }
+
+    private func touch(_ dir: String, _ name: String, _ date: Date) throws {
+        try FileManager.default.setAttributes([.modificationDate: date],
+                                              ofItemAtPath: (dir as NSString).appendingPathComponent(name))
+    }
+
+    // Attempts 1 (X.ts) and 2 (X_part2.ts) both died mid-airing: on attempt 3 neither may count as
+    // "already recorded", and the 0-byte stub is deleted. An older full rerun still counts.
+    @Test func ownAirStart_excludesEveryAttemptAndDeletesZeroByteStubs() throws {
+        let base = tempBase()
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let title = "The Office"
+        let dir = "\(base)/\(title)/Season 01"
+        let airStart = Date()
+        try writeFile(dir, "The Office_S01E02_5.1_20261009_2000.ts", bytes: 3_000_000)
+        try writeFile(dir, "The Office_S01E02_5.1_20261009_2000_part2.ts", bytes: 3_000_000)
+        try writeFile(dir, "The Office_S01E02_5.1_20261009_2000_part3.ts", bytes: 0)
+        try writeFile(dir, "The Office_S01E01_5.1_20261002_2000.ts", bytes: 3_000_000)
+        try touch(dir, "The Office_S01E01_5.1_20261002_2000.ts", airStart.addingTimeInterval(-7 * 86400))
+        let state = makeTestAppState()
+        // Old behavior shape: excluding only the last path leaves attempt 1 counting.
+        let last = "\(dir)/The Office_S01E02_5.1_20261009_2000_part2.ts"
+        #expect(state.recordedEpisodeTags(forTitle: title, baseDir: base, excludingPath: last).contains("S01E02"))
+        let tags = state.recordedEpisodeTags(forTitle: title, baseDir: base, ownAirStart: airStart)
+        #expect(!tags.contains("S01E02"))
+        #expect(tags.contains("S01E01"))
+        #expect(!FileManager.default.fileExists(atPath: "\(dir)/The Office_S01E02_5.1_20261009_2000_part3.ts"))
+        #expect(FileManager.default.fileExists(atPath: "\(dir)/The Office_S01E02_5.1_20261009_2000.ts"))
+    }
+
+    // A 0-byte file from an OLDER airing is not attributable to this attempt and must be left alone.
+    @Test func ownAirStart_leavesOlderZeroByteFileAlone() throws {
+        let base = tempBase()
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let title = "The Office"
+        let dir = "\(base)/\(title)/Season 01"
+        let name = "The Office_S01E01_5.1_20261002_2000.ts"
+        try writeFile(dir, name, bytes: 0)
+        let airStart = Date()
+        try touch(dir, name, airStart.addingTimeInterval(-86400))
+        _ = makeTestAppState().recordedEpisodeTags(forTitle: title, baseDir: base, ownAirStart: airStart)
+        #expect(FileManager.default.fileExists(atPath: "\(dir)/\(name)"))
+    }
 }

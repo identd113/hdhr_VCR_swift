@@ -200,6 +200,16 @@ final class RecordingManager {
         return nil
     }
 
+    /// Sweeps `--dump-header` temp files orphaned by a crash/force-quit (never ones a tracked recording
+    /// still owns). Launch-time only; the disk work runs off the main actor.
+    func pruneOrphanedHeaderFiles() {
+        let inUse = Set(headerFiles.values.map { ($0 as NSString).lastPathComponent })
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        Task.detached(priority: .utility) {
+            CachePruner.logSummary("recording header temp", CachePruner.pruneHeaderFiles(in: dir, inUse: inUse))
+        }
+    }
+
     private func clearHeaderFile(showId: String) {
         if let path = headerFiles.removeValue(forKey: showId) {
             try? FileManager.default.removeItem(atPath: path)
