@@ -111,6 +111,18 @@ struct FirstRunWizardView: View {
         }
     }
 
+    /// Fixed window height for every post-intro step: tall enough for the longest page, never taller than the screen.
+    /// A fixed (bounded) height — not `nil` — is what makes the ScrollView below safe; an unbounded ideal height inside
+    /// `.windowResizability(.contentSize)` is what crashed the Recording FEED step before. Header and Back/Next sit
+    /// outside the scroll view, so the Next button can never be pushed off the bottom.
+    private static var stepHeight: CGFloat {
+        min(600, (NSScreen.main?.visibleFrame.height ?? 800) - 80)
+    }
+
+    @ViewBuilder private func stepScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        if step == .intro { content() } else { ScrollView { content() } }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if step != .intro {
@@ -118,6 +130,7 @@ struct FirstRunWizardView: View {
                 Divider().opacity(0.5)
             }
 
+            stepScroll {
             ZStack {
                 switch step {
                 case .intro:
@@ -151,7 +164,7 @@ struct FirstRunWizardView: View {
                         .id(Step.notificationTiming)
                 }
             }
-            .frame(maxHeight: step == .intro ? nil : .infinity, alignment: .top)   // soaks up the minHeight floor so Back/Next stay pinned to the bottom
+            }
             .clipped()
 
             if step != .intro {
@@ -182,11 +195,8 @@ struct FirstRunWizardView: View {
         // before the panel shrinks back down on hand-off — animated in the same withAnimation
         // transaction as the step change (goNext()/goBack() already animate step this way; the
         // intro hand-off in finishIntro() below does the same).
-        .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : nil)
-        // Floor on every post-intro step: Step 1 (tuner card + Recording Defaults heading + 5 rows) came up
-        // a row short on a live Mac, clipping the Next button. A floor (never a ScrollView — see the
-        // Recording FEED note below) keeps the footer on screen; a taller step still grows past it.
-        .frame(minHeight: step == .intro ? 0 : 600)
+        .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : Self.stepHeight)
+        // (Post-intro height is the fixed `stepHeight` above — a bounded frame, so the step's ScrollView is safe.)
         // Keeps the window on-screen across steps whose content height differs a lot (see
         // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
         // varies per step by design (docs/FirstRunWizardView.md: "height follows content"), but
@@ -199,7 +209,13 @@ struct FirstRunWizardView: View {
         // off both the top and bottom instead of only downward, which is what actually keeps the
         // button row on-screen. See Views/WindowAction.swift for the shared NSViewRepresentable
         // idiom this and DonationNagView's floating-level setter both use.
-        .background(WindowAction(trigger: step) { $0.center() })
+        .background(WindowAction(trigger: step) { w in
+            // Pin the window to the size this step asks for. Left to `.windowResizability(.contentSize)` alone, a window
+            // AppKit restored at an earlier (shorter) frame kept it — the Back/Next row sat below the bottom edge.
+            let isIntro = (step == .intro)
+            w.setContentSize(NSSize(width: isIntro ? 640 : 460, height: isIntro ? 480 : Self.stepHeight))
+            w.center()
+        })
         // Same floating-panel chrome as DonationNagView — thickMaterial + 20pt rounded corners +
         // a faint border + drop shadow — so this reads as the same "app's own chrome" rather than
         // a bare Settings-style dialog in a hiddenTitleBar window with no material treatment.

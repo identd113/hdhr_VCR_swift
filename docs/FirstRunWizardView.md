@@ -28,7 +28,7 @@ the Form's own opaque grouped-list card, so the two don't read as a card nested 
 `.fixedSize(horizontal: false, vertical: true)` (List-backed Forms otherwise claim more vertical
 space than their rows need even without an outer fixed height).
 
-**Height floor (2026-10-10)**: every post-intro step also has `.frame(minHeight: 600)` and the step `ZStack` is `maxHeight: .infinity` (top-aligned), so Back/Next stay pinned to the bottom edge. Step 1 (tuner card + Recording Defaults + 5 rows) had come up a row short on a live Mac and clipped the Next button; a taller step still grows past the floor. A `ScrollView` is deliberately not used (see the Recording FEED note below).
+**Fixed step height + pinned footer (2026-10-10)**: every post-intro step is a fixed `min(600, screen − 80)` pt tall (`FirstRunWizardView.stepHeight` — a *bounded* frame), the step content sits in a `ScrollView`, and the header and Back/Next row are outside it, so Next can never be pushed off the bottom (Step 1 clipped it on a live Mac; a first attempt with only a `minHeight` made it worse). The window itself is also sized explicitly on every step change (`WindowAction` → `setContentSize` + `center`), because a window AppKit restored at an earlier, shorter frame ignored `.windowResizability(.contentSize)`. The unbounded-ideal-height `ScrollView` that crashed the Recording FEED step is a different shape from this; all seven steps were walked through after the change.
 
 **Header band**: the app icon (`appIconImage`, `Sources/hdhr_VCR/AppIcon.swift` — the same
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
