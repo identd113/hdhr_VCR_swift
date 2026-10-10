@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import hdhr_VCR
 
 // 2026-10-01 review #16 — cross-site request forgery / DNS-rebinding guard.
@@ -37,5 +38,54 @@ struct WebServerRequestGuardTests {
         // no-cors "simple" request bodies
         #expect(reason("POST", host: "10.0.2.100:1980", type: "text/plain") != nil)
         #expect(reason("POST", host: "10.0.2.100:1980", type: nil) != nil)
+    }
+
+    @Test func routerAssignedName_acceptedOnlyWhenUnderTheLocalDomain() {
+        let local = { (h: String) in h.hasSuffix(".fritz.box") }
+        #expect(WebServer.requestRejectionReason(method: "GET", host: "macmini.fritz.box:1980", origin: nil, secFetchSite: nil,
+                                                 contentType: nil, localHostNames: names, inLocalDomain: local) == nil)
+        #expect(WebServer.requestRejectionReason(method: "GET", host: "evil.example.com:1980", origin: nil, secFetchSite: nil,
+                                                 contentType: nil, localHostNames: names, inLocalDomain: local) != nil)
+        // default (no domain check) keeps the old behavior
+        #expect(reason("GET", host: "macmini.fritz.box:1980") != nil)
+    }
+}
+
+@Suite("LocalHostVerifier — this network's own domain host check")
+struct LocalHostVerifierTests {
+    final class Clock: @unchecked Sendable { var t = Date(timeIntervalSince1970: 1_000) }
+
+    @Test func parseSearchDomains_readsSearchAndDomainLines() {
+        let text = "# comment\nnameserver 10.0.0.1\ndomain fritz.box\nsearch home.example lan.example\n"
+        #expect(LocalHostVerifier.parseSearchDomains(text) == ["fritz.box", "home.example", "lan.example"])
+        #expect(LocalHostVerifier.parseSearchDomains("") == [])
+    }
+
+    @Test func inLocalDomain_acceptsOnlyNamesUnderTheNetworksDomain() {
+        let v = LocalHostVerifier(searchDomains: { ["fritz.box", ".Home.Example.", "com", "localnet"] }, ownHostName: { "woodflix.local" })
+        #expect(v.inLocalDomain("macmini.fritz.box"))
+        #expect(v.inLocalDomain("MacMini.Home.Example"))
+        #expect(v.inLocalDomain("a.b.fritz.box"))
+        #expect(!v.inLocalDomain("fritz.box"))                    // the bare domain isn't a host label under it
+        #expect(!v.inLocalDomain("evil.example.com"))             // rebinding attacker's domain
+        #expect(!v.inLocalDomain("notfritz.box"))                 // suffix must be on a label boundary
+        #expect(!v.inLocalDomain("evil.com"))                     // a bare "com" entry never widens the gate
+    }
+
+    @Test func ownHostNameDomainCounts() {
+        let v = LocalHostVerifier(searchDomains: { [] }, ownHostName: { "macmini.attlocal.net" })
+        #expect(v.inLocalDomain("printer.attlocal.net"))
+        #expect(!v.inLocalDomain("printer.example.com"))
+    }
+
+    @Test func localHostNames_refreshAfterRename() {
+        final class Name: @unchecked Sendable { var v = "Old.local" }
+        let name = Name(), clock = Clock()
+        let v = LocalHostVerifier(searchDomains: { [] }, ownHostName: { name.v }, now: { clock.t })
+        #expect(v.localHostNames() == ["old.local", "old"])
+        name.v = "New.local"
+        #expect(v.localHostNames() == ["old.local", "old"])   // within the 60 s TTL
+        clock.t = clock.t.addingTimeInterval(61)
+        #expect(v.localHostNames() == ["new.local", "new"])
     }
 }

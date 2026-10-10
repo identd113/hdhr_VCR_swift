@@ -639,7 +639,8 @@ final class WebServer: @unchecked Sendable {
     // add/edit/delete/pause/resume/favorite-toggle, any recording start/stop/reschedule) rebuilt
     // ALL devices' dropdown HTML and the full cross-device summary panel regardless of which single
     // device the triggering event actually touched, scaling with tuner count for zero benefit on
-    // every guide interaction. guide.js's applyGuidePayload only updates the DOM for keys actually
+    // every guide interaction. guide.js's applyGuidePayloadSeq tracks a per-device seq for exactly these
+    // partial maps (a stale-for-the-grid payload still applies its newer device fragments). applyGuidePayload only updates the DOM for keys actually
     // present in the pushed tdrop map (`Object.keys(d.tdrop).forEach(...)`) and leaves any omitted
     // device's dropdown untouched — never clears or stales it — so omitting an unaffected device
     // here is safe by construction, not just an optimization that happens not to break anything.
@@ -2243,7 +2244,8 @@ final class WebServer: @unchecked Sendable {
             // a LAN address. See requestRejectionReason.
             if let reason = Self.requestRejectionReason(method: method, host: hostHeader, origin: originHeader,
                                                         secFetchSite: secFetchSite, contentType: contentType,
-                                                        localHostNames: Self.localHostNames) {
+                                                        localHostNames: Self.localHostNames(),
+                                                        inLocalDomain: LocalHostVerifier.shared.inLocalDomain) {
                 glog("[WebServer] rejected \(method) \(cleanPath) from \(conn.endpoint): \(reason)", level: .warning)
                 self.send(.forbidden(reason), on: conn)
                 return
@@ -4669,12 +4671,9 @@ final class WebServer: @unchecked Sendable {
 
     /// This Mac's own host names, lowercased — accepted as a `Host` header alongside the generic
     /// LAN forms in requestRejectionReason.
-    static let localHostNames: Set<String> = {
-        let full = ProcessInfo.processInfo.hostName.lowercased()
-        var names: Set<String> = [full]
-        if let first = full.split(separator: ".").first { names.insert(String(first)) }
-        return names
-    }()
+    /// Recomputed at most every 60 s (not a one-shot `static let`) so renaming the Mac while the app
+    /// runs is picked up without a restart.
+    static func localHostNames() -> Set<String> { LocalHostVerifier.shared.localHostNames() }
 
     /// Why a request must be refused, or nil. Pure — unit tested. Added 2026-10-01 (review #16):
     /// the only gate was the TCP peer's subnet, which a browser on the LAN always passes — so any
@@ -4689,8 +4688,10 @@ final class WebServer: @unchecked Sendable {
     ///   this server never answers, so a cross-site page can't send one.
     nonisolated static func requestRejectionReason(method: String, host: String?, origin: String?,
                                                    secFetchSite: String?, contentType: String?,
-                                                   localHostNames: Set<String>) -> String? {
-        if let host, !host.isEmpty, !isAcceptableHost(host, localHostNames: localHostNames) {
+                                                   localHostNames: Set<String>,
+                                                   inLocalDomain: (String) -> Bool = { _ in false }) -> String? {
+        if let host, !host.isEmpty,
+           !isAcceptableHost(host, localHostNames: localHostNames, inLocalDomain: inLocalDomain) {
             return "unrecognized Host header"
         }
         guard method == "POST" else { return nil }
@@ -4708,7 +4709,12 @@ final class WebServer: @unchecked Sendable {
         return nil
     }
 
-    nonisolated static func isAcceptableHost(_ hostHeader: String, localHostNames: Set<String>) -> Bool {
+    /// `inLocalDomain` is the last resort for a name that matches none of the static rules (a
+    /// router-assigned DNS name such as `macmini.fritz.box`): true only for `<label>.<domain>` where
+    /// `domain` is one of this network's own DNS search/domain suffixes. A rebinding attacker's public
+    /// domain is never under those. See `LocalHostVerifier`.
+    nonisolated static func isAcceptableHost(_ hostHeader: String, localHostNames: Set<String>,
+                                             inLocalDomain: (String) -> Bool = { _ in false }) -> Bool {
         var name = hostHeader.lowercased()
         if name.hasPrefix("[") {   // [IPv6]:port
             return name.contains("]")
@@ -4719,7 +4725,8 @@ final class WebServer: @unchecked Sendable {
         let labels = name.split(separator: ".")
         if labels.count == 4, labels.allSatisfy({ UInt8($0) != nil }) { return true }   // IPv4 literal
         let lanSuffixes = [".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain", ".localhost"]
-        return lanSuffixes.contains { name.hasSuffix($0) }
+        if lanSuffixes.contains(where: { name.hasSuffix($0) }) { return true }
+        return inLocalDomain(name)
     }
 
     // MARK: - Subnet guard
@@ -4810,5 +4817,69 @@ final class WebServer: @unchecked Sendable {
         let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
         guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
         return (resp as? HTTPURLResponse)?.statusCode == 200
+    }
+}
+
+
+// MARK: - Host-name verification (router-assigned DNS names)
+
+/// This Mac's own names for the Host-header gate: its host name (refreshed every 60 s so a rename needs no restart)
+/// and the DNS search/domain suffixes the network handed it (`/etc/resolv.conf`), so a router-assigned name like
+/// `macmini.fritz.box` is accepted. Deliberately NOT a "resolves to my IP" test: a DNS-rebinding attacker's domain
+/// is exactly one that resolves to this Mac's LAN address, so only names under the LAN's own domain pass.
+final class LocalHostVerifier: @unchecked Sendable {
+    static let shared = LocalHostVerifier()
+
+    private let searchDomains: @Sendable () -> [String]
+    private let ownHostName: @Sendable () -> String
+    private let now: @Sendable () -> Date
+    private let lock = NSLock()
+    private var cached: (names: Set<String>, domains: [String], expires: Date)?
+
+    init(searchDomains: @escaping @Sendable () -> [String] = LocalHostVerifier.systemSearchDomains,
+         ownHostName: @escaping @Sendable () -> String = { ProcessInfo.processInfo.hostName },
+         now: @escaping @Sendable () -> Date = { Date() }) {
+        self.searchDomains = searchDomains; self.ownHostName = ownHostName; self.now = now
+    }
+
+    private func refreshed() -> (names: Set<String>, domains: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        if let c = cached, c.expires > now() { return (c.names, c.domains) }
+        let full = ownHostName().lowercased()
+        var names: Set<String> = [full]
+        if let first = full.split(separator: ".").first { names.insert(String(first)) }
+        var domains = searchDomains().map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
+            .filter { $0.contains(".") }   // a bare TLD-like entry ("com") must never widen the gate
+        // The own host name's domain part (`macmini.fritz.box` -> `fritz.box`) counts too.
+        if let dot = full.firstIndex(of: "."), full[full.index(after: dot)...].contains(".") {
+            domains.append(String(full[full.index(after: dot)...]))
+        }
+        cached = (names, domains, now().addingTimeInterval(60))
+        return (names, domains)
+    }
+
+    /// This Mac's host name, lowercased, plus its first label.
+    func localHostNames() -> Set<String> { refreshed().names }
+
+    /// True for `<label>.<domain>` where `domain` is one of this network's DNS search/domain suffixes.
+    func inLocalDomain(_ name: String) -> Bool {
+        let key = name.lowercased()
+        return refreshed().domains.contains { d in key.hasSuffix("." + d) && key.count > d.count + 1 }
+    }
+
+    /// The `search`/`domain` entries of /etc/resolv.conf.
+    static let systemSearchDomains: @Sendable () -> [String] = {
+        guard let text = try? String(contentsOfFile: "/etc/resolv.conf", encoding: .utf8) else { return [] }
+        return parseSearchDomains(text)
+    }
+
+    static func parseSearchDomains(_ text: String) -> [String] {
+        var out: [String] = []
+        for line in text.split(whereSeparator: \.isNewline) {
+            let parts = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            guard let key = parts.first, key == "search" || key == "domain" else { continue }
+            out.append(contentsOf: parts.dropFirst())
+        }
+        return out
     }
 }
