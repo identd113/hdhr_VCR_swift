@@ -46,7 +46,7 @@ The DMG is the thing you hand users. Everything else (payment gate) is layered o
 6. No "unidentified developer" warning because the app is notarized
 
 If a user launches the app directly from the DMG or an unzipped Downloads folder instead of
-dragging it to Applications first, `AppRelocator.swift` catches this on launch: an alert offers to
+dragging it to Applications first, `AppRelocator.swift` catches this on launch (it never offers for a build that sits inside a git checkout — `isInsideGitCheckout`, e.g. `deploy_release.sh`'s own output — and, if an install in `/Applications` is already running, it activates that one instead of replacing it; the copy goes to a hidden temporary name and `FileManager.replaceItemAt` swaps it in only once complete, so a failed copy can no longer leave the user with no install — `install(_:replacing:)`): an alert offers to
 copy the app into `/Applications`, trash the original (skipped for a Gatekeeper-translocated
 source — nothing real to trash there), and relaunch from the new location. Release builds only
 (`#if DEBUG`) — `./deploy.sh`'s dev workflow always runs the app in place from the repo root and is

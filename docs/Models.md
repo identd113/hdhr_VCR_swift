@@ -53,6 +53,10 @@ Called after each recording completes and file verification passes:
 
 ---
 
+## Bonus Time padded-end marker (`show_bonus_padded_end`)
+
+`Show.show_bonus_padded_end: Date?` (persisted; absent in older configs → `nil`) records the *padded* `show_end` that Bonus Time last produced for an airing. `startRecording` adds `Sports_padding_minutes` to `show_end` and saves the result; if `show_bonus_padded_end == endDate` it logs `Bonus Time already applied to this airing's end — not adding it again` instead, so a retry within the airing (launch failure, curl died, the backoff) — **or a relaunch mid-airing**, which used to lose the old in-memory `ShowRuntimeState.bonusPaddedEnd` while the padded `show_end` stayed on disk — can't pad twice. Compared by value, so a new airing (different `show_end`) unmatches it with no explicit clearing.
+
 ## Bonus Time Default
 
 `show_bonus_time` defaults to `false` for all new shows. **One exception:** the `init(from:)` decoder uses `show_genre.lowercased().contains("sports")` as the fallback when the field is absent from JSON — so shows loaded from a pre-bonus-time config auto-enable it if their genre is Sports. New shows created through the UI or `addShowFromGuide` always receive an explicit value (never the genre-based fallback), so genre alone does not auto-enable bonus time for newly added shows.
@@ -63,7 +67,7 @@ Called after each recording completes and file verification passes:
 
 `Show.localFallbackDir` (`NSHomeDirectory() + "/Movies/hdhr_videos"`) is the single shared constant for "the folder that always exists, purely local, no volume to go offline" — used by `posixRecordDir`'s own fallback tier, `AppState.defaultSaveDir`, `addShowFromGuide`, and the Add/Edit Show dialogs' folder handling, rather than each duplicating the literal path.
 
-`posixRecordDir` treats `show_dir` as primary and `show_temp_dir` as the fallback: if `show_dir`'s parent directory doesn't exist (the volume is unmounted), it redirects to `show_temp_dir`. For this to do anything, `show_temp_dir` has to actually be a *different* folder from `show_dir` — a prior bug in the native Add/Edit Show dialogs set them to the identical value (the user's chosen folder) on every save, silently discarding whatever real fallback a show had (including one set correctly by the web guide's `addShowFromGuide`, which always uses `Show.localFallbackDir` for `show_temp_dir` regardless of what `show_dir` is). Both dialogs now set `show_temp_dir` to `Show.localFallbackDir` instead of copying `show_dir`.
+`Show.posixPrimaryDir` is the configured folder as POSIX (a legacy HFS string like `"Raid6:DVR Tests:"` — shows migrated from the original AppleScript app — converted by `toPosix`, never swapped for the fallback), and `Show.isRecordingToFallback` is `!show_dir.isEmpty && posixRecordDir != posixPrimaryDir` — what drives `startRecording`'s "Primary folder unavailable — recording to fallback" warning. It compares the two *POSIX* forms: comparing `posixRecordDir` against the raw `show_dir` string (the pre-2026-10-09 check) always differed for an HFS-style `show_dir`, so such a show logged a false "unavailable" warning on every airing even though the mounted primary folder was in use. `posixRecordDir` treats `show_dir` as primary and `show_temp_dir` as the fallback: if `show_dir`'s parent directory doesn't exist (the volume is unmounted), it redirects to `show_temp_dir`. For this to do anything, `show_temp_dir` has to actually be a *different* folder from `show_dir` — a prior bug in the native Add/Edit Show dialogs set them to the identical value (the user's chosen folder) on every save, silently discarding whatever real fallback a show had (including one set correctly by the web guide's `addShowFromGuide`, which always uses `Show.localFallbackDir` for `show_temp_dir` regardless of what `show_dir` is). Both dialogs now set `show_temp_dir` to `Show.localFallbackDir` instead of copying `show_dir`.
 
 **Self-healing for shows already saved with the bug:** `Show.init(from:)` repairs it on every load — a non-empty `show_temp_dir` identical to a non-default `show_dir` (i.e. `show_temp_dir == show_dir && show_dir != Show.localFallbackDir`) is treated as unambiguous evidence of the bug (a genuinely intentional matching value would be pointless to ever set) and is reset to `Show.localFallbackDir` in memory immediately, before anything reads `posixRecordDir`. This doesn't require re-saving through the now-fixed dialogs, and doesn't force an immediate config-file rewrite either — it just reapplies on every load, so the running app's fallback behavior is correct from the moment the config loads regardless of what's actually persisted on disk.
 
@@ -234,6 +238,10 @@ enum SignalBucket: String, Codable, Equatable {
 
 ---
 
+## Show titles from untrusted sources (`String.sanitizedShowTitle`)
+
+A show title that arrives over the web API is cleaned by `sanitizedShowTitle` (`Models.swift`): control characters removed, trimmed, capped at 120 characters (a file name is title + date + tag inside a 255-byte limit) and leading dots stripped so `.`/`..` can't act as a path component. It is applied in `/api/record` and `/api/edit` and to the series folder name used when organizing recordings into `Title/Season NN`; it may return `""` (the record path then falls back to the guide entry's own title).
+
 ## Logging (`glog`)
 
 Global free function in `Models.swift`:
@@ -244,6 +252,8 @@ func glog(_ msg: String, level: LogLevel = .info)
 ```
 
 Writes to **both** OSLog (subsystem `com.hdhr.vcrplus`, category `app`) and the app log file.
+
+**Secrets are masked before they're written** (`redactingSecrets`, applied inside `glog` and `discordLog`): any `DeviceAuth=<value>` (a live SiliconDust cloud bearer token) and, since 2026-10-09, the token in a Discord webhook URL (`…/webhooks/<id>/<token>` → `…/REDACTED`, `redactingWebhookTokens`) — a failed send's `URLError` embeds the full URL, and these logs are the ones users are asked to share. Older lines already on disk are not rewritten.
 
 Log file: `~/Library/Logs/hdhrVCRplus.log`  
 Format: `[2026-05-25T04:01:24Z] [INFO] message`

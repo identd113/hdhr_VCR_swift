@@ -349,7 +349,7 @@ struct hdhr_VCRApp: App {
             // clearly "part of the same family" of status lights rather than a generic system
             // glyph. "play.tv.fill" + watchNowBlue remain as the bundle-less fallback, matching the
             // same Watch-button icon/color MenuContent's own "Recording on Another Mac" entries use.
-            // Flashing = a FEED is available to watch; solid = this Mac is watching one (2026-10-10; the
+            // Flashing = a FEED is available to watch; solid = this Mac is watching one (2026-10-09; the
             // earlier "only while someone is watching" rule was reversed per explicit user direction).
             blinkableIcon(lightOn: lightOn, litImage: appIconMenuBarFeed,
                           litSystemName: "play.tv.fill",

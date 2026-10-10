@@ -90,7 +90,7 @@ struct AppStateStatusLightTests {
         #expect(state.statusLightCandidates.isEmpty)
     }
 
-    // Reversed 2026-10-10 per explicit user direction (it had been "someone must be watching" since
+    // Reversed 2026-10-09 per explicit user direction (it had been "someone must be watching" since
     // 2026-09-29): a relay merely being detected now lights the blue light — flashing — so you notice a
     // FEED is there to watch. Watching one (below) turns it solid.
     @Test @MainActor func remoteRelayWithNoViewers_nowCountsAsFeedAvailable() {

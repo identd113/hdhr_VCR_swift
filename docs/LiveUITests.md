@@ -80,6 +80,10 @@ settle time, and every per-second sample when a settle was slow).
   On the laptop the `Watch Now…` menu item doesn't reliably open the Watch Now window while a player is up (open item in `ISSUES.md`).
 - Picking the channel that is being recorded makes the app play it **from disk** (no tuner) — the churn's channel picks skip it so the model holds.
 
+## Running them as a full release gate (2026-10-09 run)
+
+Run back-to-back (`WindowNavigationTests` ≈ 22 min, then `PiPTunerChurnTests`) on the Mac mini with the laptop reachable, the results were: 15/16 navigation tests, with `pipFullWorkoutOverLiveRecording` failing in the suite (`NO_RECORDING_TO_WATCH`, after 425 s) but **passing alone in 66 s**; and both churn tests failing at step 1 — then `churnWhileTheMiniIsRecording` passing all 30 steps on its own (final tuner counts back to base, no leaks). So a failure at step 1 of a full-suite run is leftover window/player state from the earlier tests, not the app: **re-run the failing test alone on an idle app before treating it as real.** `feedFromTheMiniShowsOnTheLaptop` still fails alone with `NO_PLAYER_WINDOW` — the laptop's menu offers the FEED ("Recording on <show> — woodflix.local → Watch") but an Accessibility `click` on it does nothing (no log line, no stream request on the mini), the same class as the open "`Watch Now…` doesn't reliably open on the laptop" item in `ISSUES.md`; watching a FEED by hand on the laptop works. Slow settles worth knowing about: adding a live PiP settled in 18–25 s usually but 80–85 s twice in three runs, and the app's tuner count lags the hardware count by 12–15 s after a stream opens/closes (it reads `status.json` on a poll). A scripted `set position` of a window with System Events can persist a bad frame (`NSWindow Frame watch-now`, 1873 wide) that blows the Watch Now posters up on the next launch — reset it, don't chase it as an app bug.
+
 ## What it has found
 
 - **Stuck FEED relay after deleting a recording** (fixed `2f2869e`): `deleteShow` never re-ran `updateVirtualTunerPresence()`; see `docs/VirtualTunerService.md`.

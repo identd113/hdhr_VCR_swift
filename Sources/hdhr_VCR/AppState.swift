@@ -359,7 +359,7 @@ final class AppState: ObservableObject {
     // remoteRelayEntries' own FEED_feature_enabled gate rather than re-checking it separately.
     //
     // Any available relay with a show on it counts — the viewer-count requirement added 2026-09-29
-    // ("someone must be watching") was dropped 2026-10-10 per explicit user direction: the blue light
+    // ("someone must be watching") was dropped 2026-10-09 per explicit user direction: the blue light
     // now FLASHES whenever a FEED is detected (so you notice there's something to watch) and goes
     // SOLID while this Mac is actually watching one (isWatchingRemoteFeed below).
     var hasAvailableRemoteFeed: Bool {
