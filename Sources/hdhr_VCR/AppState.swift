@@ -1967,8 +1967,10 @@ final class AppState: ObservableObject {
         // Exponential backoff: 1m → 5m → 15m → 30m → 1h after repeated API failures.
         // Prevents hammering the SiliconDust cloud API (e.g. 403 from EXTEND devices).
         if guideApiBackoff[deviceId]?.isBackedOff == true { return }
+        // needsRecovery, not just "empty": a guide restored from disk after a failed fetch (the
+        // 2026-10-09 certificate outage) must keep being retried, on the same backoff, until it succeeds.
         guard !guideStore.isLoading(deviceId: deviceId),
-              guideStore.channels(deviceId: deviceId).isEmpty,
+              guideStore.needsRecovery(deviceId: deviceId),
               let device = devices.first(where: { $0.DeviceID == deviceId }) else { return }
         Task {
             let ok = await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
@@ -1978,6 +1980,8 @@ final class AppState: ObservableObject {
             if ok {
                 handleGuideLoadSuccess(deviceId: deviceId)
                 guideByDevice = guideStore.channelsByDevice
+                // Web guide clients may be showing the saved copy this just replaced.
+                webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self)
                 await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
             } else {
                 // Notify user on first failure; subsequent backoff retries are silent
@@ -2759,7 +2763,7 @@ final class AppState: ObservableObject {
             // filter it would retry every single tick forever and eventually fire a real
             // "Guide Load Failed" user notification/Discord embed for a device the user never
             // configured (see handleGuideLoadFailure, called from ensureGuideLoaded's retry path).
-            for device in recordableDevices where guideStore.channels(deviceId: device.DeviceID).isEmpty {
+            for device in recordableDevices where guideStore.needsRecovery(deviceId: device.DeviceID) {
                 ensureGuideLoaded(for: device.DeviceID)
             }
 

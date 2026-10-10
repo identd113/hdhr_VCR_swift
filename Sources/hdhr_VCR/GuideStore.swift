@@ -304,6 +304,14 @@ final class GuideStore {
     /// The most recent failure per device; cleared when a network fetch for it succeeds.
     private(set) var lastFailure: [String: LoadFailure] = [:]
 
+    /// True while a device has no guide in memory, or its last fetch failed (so what it has may be a
+    /// saved copy from before an outage). Drives the quick, backed-off retry in AppState — without the
+    /// second half, a guide restored from disk by the failure fallback would never be retried until
+    /// the next periodic refresh, hours away.
+    func needsRecovery(deviceId: String) -> Bool {
+        channels(deviceId: deviceId).isEmpty || lastFailure[deviceId] != nil
+    }
+
     /// 2026-10-09: SiliconDust's *.hdhomerun.com certificate expired and every guide call failed with
     /// NSURLErrorSecureConnectionFailed (-1200) carrying a peer-trust error — a generic "API error"
     /// hid that completely.

@@ -305,6 +305,23 @@ struct GuideStoreMockNetworkTests {
             #expect(store.lastFailure[device.DeviceID] == nil, "a successful fetch ends the failure")
         }
 
+        // After the failure fallback fills the guide from disk, the device must still count as needing
+        // recovery, or AppState would never retry it until the periodic refresh (hours later).
+        @Test @MainActor func aGuideRestoredFromDisk_stillNeedsRecoveryUntilAFetchSucceeds() async {
+            let device = makeLocalDevice()
+            let dir = await cacheDirWithGuide(for: device)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let store = GuideStore(session: makeSession(), diskCacheDir: dir)
+            #expect(store.needsRecovery(deviceId: device.DeviceID), "nothing loaded yet")
+            MockURLProtocol.requestHandler = { _ in throw URLError(.serverCertificateHasBadDate) }
+            _ = await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2, "restored from disk")
+            #expect(store.needsRecovery(deviceId: device.DeviceID), "…but the failed refresh is still outstanding")
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            _ = await store.load(for: device)
+            #expect(!store.needsRecovery(deviceId: device.DeviceID), "a successful fetch ends it")
+        }
+
         @Test @MainActor func aNon200Answer_isRecordedAsHttp() async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()
