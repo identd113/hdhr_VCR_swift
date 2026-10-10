@@ -1897,7 +1897,6 @@ final class AppState: ObservableObject {
         // or deploy shouldn't spend a guide.php call); the periodic refreshGuides() below never does.
         let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml,
                                                maxCacheAge: GuideStore.startupCacheMaxAge)
-        Task { await self.checkGuideServiceCertificate() }   // rate-limited inside; startup and every periodic refresh pass through here
         guideByDevice = guideStore.channelsByDevice
         // didSet already ran these when the menu is closed — only the menu-open case (where
         // didSet's own guard skips them) needs the explicit call here, so guide load doesn't
@@ -1941,7 +1940,6 @@ final class AppState: ObservableObject {
         // recordableDevices — see performFetchAllGuides's own comment on why guide fetch excludes
         // a virtual relay device but lineup fetch (just above) deliberately doesn't.
         let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
-        Task { await self.checkGuideServiceCertificate() }   // rate-limited inside (12 h)
         guideByDevice = guideStore.channelsByDevice
         // Update per-device backoff; notify once per failure streak
         for (deviceId, ok) in results {
@@ -5138,32 +5136,6 @@ final class AppState: ObservableObject {
             return ("Guide Load Failed", "API error — retry in \(mins) min",
                     "Device \(deviceId) — API error, retry in \(mins) min", 0x95A5A6)
         }
-    }
-
-    private var lastCertificateCheckAt: Date?
-
-    /// Warns (macOS notification + Discord, honoring the Guide Load Failed toggle) when the guide
-    /// service's TLS certificate is close to expiring — at 14, 7, 3 and 1 days, once each per
-    /// certificate (tracked in UserDefaults so a relaunch doesn't repeat it). Checked at most every 12 h.
-    /// An already-expired certificate is left to the guide-failure alert, which fires when it really breaks.
-    func checkGuideServiceCertificate(host: String = "api.hdhomerun.com", force: Bool = false) async {
-        guard !runningUnderTests else { return }
-        if !force, let last = lastCertificateCheckAt, Date().timeIntervalSince(last) < 12 * 3600 { return }
-        lastCertificateCheckAt = Date()
-        guard let expiry = await CertificateExpiry.fetchNotAfter(host: host) else {
-            glog("[Cert] couldn't read \(host)'s certificate expiry (offline, or the server didn't offer one)")
-            return
-        }
-        let days = CertificateExpiry.daysLeft(until: expiry)
-        glog("[Cert] \(host) certificate expires \(expiry) (\(days) day(s) left)")
-        guard expiry > Date() else { return }
-        let key = "certWarned-\(host)-\(Int(expiry.timeIntervalSince1970))"
-        let warned = UserDefaults.standard.object(forKey: key) as? Int
-        guard let threshold = CertificateExpiry.dueThreshold(daysLeft: days, alreadyWarnedAt: warned) else { return }
-        UserDefaults.standard.set(threshold, forKey: key)
-        let m = CertificateExpiry.warningMessage(host: host, expiry: expiry, daysLeft: days)
-        notify(m.title, body: host, subtitle: m.subtitle)
-        discordError(m.title, detail: m.detail, color: 0xF1C40F, enabled: config.Discord_on_guide_error)
     }
 
     /// A guide fetch succeeded: clear the failure streak, and say so if the user had been told about it.

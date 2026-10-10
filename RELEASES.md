@@ -62,8 +62,6 @@ What's new in each version. For the fuller list of changes within a version, see
   (their certificate expired on 2026-10-09), a relaunch now loads your last saved guide instead of
   starting empty, and you get a plain notification and Discord message about it — then another when it
   recovers.
-- **An advance warning before the guide service's certificate expires** — a notification and Discord
-  message 14, 7, 3 and 1 days ahead, so an outage like the one on 2026-10-09 isn't a surprise.
 - **A scrubbed position survives a picture-in-picture swap**, and Watch Now's Record button is a compact
   button again.
 - **Faster startup, fewer calls to the public guide service, and more resilient device discovery.**
