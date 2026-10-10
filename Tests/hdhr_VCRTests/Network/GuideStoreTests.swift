@@ -216,6 +216,61 @@ struct GuideStoreMockNetworkTests {
             #expect(store.channels(deviceId: device.DeviceID).count == 2)
         }
 
+        // 2026-10-09: SiliconDust's cert expired, so every guide.php call failed TLS. A device with no
+        // guide in memory (relaunch/deploy) must fall back to the on-disk copy instead of sitting empty.
+        @MainActor private func cacheDirWithGuide(for device: HDHRDevice) async -> URL {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("guidecache-\(UUID().uuidString)")
+            let seeder = GuideStore(session: makeSession(), diskCacheDir: dir)
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            await seeder.load(for: device)          // writes <id>-json-12h.guide
+            return dir
+        }
+
+        @Test @MainActor func networkFailure_withNothingLoaded_fallsBackToTheOnDiskGuide() async {
+            let device = makeLocalDevice()
+            let dir = await cacheDirWithGuide(for: device)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            // The disk copy is from a couple of hours ago (as on a real relaunch), not seconds.
+            let file = dir.appendingPathComponent("\(device.DeviceID)-json-12h.guide")
+            try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-7200)], ofItemAtPath: file.path)
+            let fresh = GuideStore(session: makeSession(), diskCacheDir: dir)          // a relaunch: nothing in memory
+            MockURLProtocol.requestHandler = { _ in throw URLError(.serverCertificateUntrusted) }
+            let ok = await fresh.load(for: device)
+            #expect(ok == false, "the refresh failure is still reported, so the retry cadence continues")
+            #expect(fresh.channels(deviceId: device.DeviceID).count == 2, "but the guide is not empty")
+            #expect(!fresh.isFresh(deviceId: device.DeviceID), "stamped with the file's age, so it is retried")
+        }
+
+        @Test @MainActor func networkFailure_neverReplacesAGuideAlreadyInMemory() async {
+            let device = makeLocalDevice()
+            let dir = await cacheDirWithGuide(for: device)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let store = GuideStore(session: makeSession(), diskCacheDir: dir)
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2)
+            // Make the disk copy different (one channel), then fail the refresh.
+            let file = dir.appendingPathComponent("\(device.DeviceID)-json-12h.guide")
+            let one = #"[{"GuideNumber":"9.9","GuideName":"X","Guide":[{"StartTime":2000000000,"EndTime":2000003600,"Title":"T"}]}]"#
+            try? Data(one.utf8).write(to: file)
+            MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+            _ = await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2, "in-memory guide kept, not swapped for the disk copy")
+        }
+
+        @Test @MainActor func aDiskGuideOlderThanTheFallbackLimit_isNotUsed() async throws {
+            let device = makeLocalDevice()
+            let dir = await cacheDirWithGuide(for: device)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let file = dir.appendingPathComponent("\(device.DeviceID)-json-12h.guide")
+            let old = Date().addingTimeInterval(-(GuideStore.staleFallbackMaxAge + 3600))
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+            let fresh = GuideStore(session: makeSession(), diskCacheDir: dir)
+            MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+            _ = await fresh.load(for: device)
+            #expect(fresh.channels(deviceId: device.DeviceID).isEmpty)
+        }
+
         @Test @MainActor func load_badJSON_doesNotCrash() async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()

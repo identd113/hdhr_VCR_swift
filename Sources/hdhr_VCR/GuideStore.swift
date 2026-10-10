@@ -212,20 +212,29 @@ final class GuideStore {
         // Public guide API: reuse a recent on-disk copy instead of calling it again (relaunches /
         // deploys). The file is only trusted when it parses and still covers the present — otherwise
         // fall through to the normal network fetch below.
-        if let cacheFile, let maxCacheAge, let cached = Self.readFreshCache(cacheFile, maxAge: maxCacheAge) {
-            let nowEpoch = Int(Date().timeIntervalSince1970)
-            if let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
-                guard let channels = parse(cached.data) else { return nil }
-                return Self.prepareIndex(deviceId: id, channels: channels)
-            }).value,
-               prepared.channelEntryIndex.values.contains(where: { $0.contains { $0.EndTime > nowEpoch } }),
-               invalidationEpoch == epochAtStart {
-                applyIndex(prepared)
-                loadTimestamps[id] = cached.modified
-                glog("[\(id)] guide loaded from disk cache (\(Int(Date().timeIntervalSince(cached.modified)))s old, \(cached.data.count) bytes) — no network call")
+        if let cacheFile, let maxCacheAge {
+            if await applyDiskCache(id: id, file: cacheFile, maxAge: maxCacheAge, epochAtStart: epochAtStart, parse: parse) != nil {
                 return true
             }
             glog("[\(id)] disk-cached guide unusable (parse failed or no longer covers now) — fetching from network")
+        }
+
+        // The network fetch below can fail for reasons outside this app (2026-10-09: SiliconDust's
+        // *.hdhomerun.com certificate expired, so every guide.php call failed TLS). A device with no
+        // guide in memory — a relaunch, a deploy — would then sit with an empty guide, and every
+        // guide-confirmed series recording would be skipped ("guide no longer confirms"). So on any
+        // failure below, a device that has nothing loaded falls back to the newest on-disk copy that
+        // still covers the present, however old (up to `staleFallbackMaxAge`). The failure is still
+        // reported (return false → the usual retry cadence continues), and loadTimestamps keeps the
+        // file's own age so isFresh stays false. A guide already in memory is never replaced by an
+        // older disk copy.
+        func failed() async -> Bool {
+            if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
+               let modified = await applyDiskCache(id: id, file: cacheFile, maxAge: Self.staleFallbackMaxAge,
+                                                   epochAtStart: epochAtStart, parse: parse) {
+                glog("[\(id)] guide refresh failed — using the on-disk copy from \(Int(Date().timeIntervalSince(modified) / 60)) min ago until it succeeds", level: .warning)
+            }
+            return false
         }
 
         glog("[\(id)] GET \(Self.redactingDeviceAuth(url.absoluteString))")
@@ -239,12 +248,12 @@ final class GuideStore {
 
             guard status == 200 else {
                 glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
-                return false
+                return await failed()
             }
 
             guard !data.isEmpty else {
                 glog("[\(id)] ERROR: empty response body", level: .error)
-                return false
+                return await failed()
             }
 
             // JSON/XMLTV decode + per-channel sort scale with GuideHours/lineup size (~1.4MB,
@@ -255,7 +264,7 @@ final class GuideStore {
             guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
                 guard let channels = parse(data) else { return nil }
                 return Self.prepareIndex(deviceId: id, channels: channels)
-            }).value else { return false }
+            }).value else { return await failed() }
 
             // A call to invalidateAll() while the fetch/decode above was suspended means this
             // result is now stale — a fresh, correct reload for this device may have already
@@ -277,8 +286,31 @@ final class GuideStore {
 
         } catch {
             glog("[\(id)] NETWORK ERROR: \(error)", level: .error)
-            return false
+            return await failed()
         }
+    }
+
+    /// How old an on-disk guide may be when it's used only because the network fetch failed. A guide
+    /// covers ~GuideHours (≤ 28) from when it was fetched, and the coverage check below still has to
+    /// pass, so this mainly bounds how stale "what's on" can be after a long outage.
+    nonisolated static let staleFallbackMaxAge: TimeInterval = 36 * 3600
+
+    /// Parses `file` and, if it decodes and still covers the present, applies it. Returns the file's
+    /// modification date when applied, nil otherwise (missing/too old/unparseable/stale epoch).
+    private func applyDiskCache(id: String, file: URL, maxAge: TimeInterval, epochAtStart: Int,
+                                parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Date? {
+        guard let cached = Self.readFreshCache(file, maxAge: maxAge) else { return nil }
+        let nowEpoch = Int(Date().timeIntervalSince1970)
+        guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
+            guard let channels = parse(cached.data) else { return nil }
+            return Self.prepareIndex(deviceId: id, channels: channels)
+        }).value,
+              prepared.channelEntryIndex.values.contains(where: { $0.contains { $0.EndTime > nowEpoch } }),
+              invalidationEpoch == epochAtStart else { return nil }
+        applyIndex(prepared)
+        loadTimestamps[id] = cached.modified
+        glog("[\(id)] guide loaded from disk cache (\(Int(Date().timeIntervalSince(cached.modified)))s old, \(cached.data.count) bytes)")
+        return cached.modified
     }
 
     // MARK: - On-disk guide cache
