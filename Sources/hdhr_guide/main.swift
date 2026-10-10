@@ -82,7 +82,7 @@ let channelColWidth = 20
 let slotWidth = 14
 let secondsPerSlot = 1800
 
-enum Mode { case normal, recordSummary, search }
+enum Mode { case normal, recordSummary, search, help }
 
 // nonisolated(unsafe): written from a signal handler, which runs in a context Swift's actor
 // isolation has no model for at all (not the main actor, not any thread the compiler can reason
@@ -495,6 +495,8 @@ func confirmDelete() {
 
 func handle(_ key: Key) {
     DebugLog.log("handle(\(key)) mode=\(mode)")
+    // Shortcuts card ("?"): any key closes it and is consumed.
+    if mode == .help { mode = .normal; return }
     if mode == .recordSummary {
         let isScheduled = currentEntry()?.entry.isScheduled ?? false
         switch key {
@@ -600,6 +602,7 @@ func handle(_ key: Key) {
             pendingNewOnly = false
             pendingDays = [Calendar.current.component(.weekday, from: e.startDate) - 1]
         }
+    case .char("?"): mode = .help
     case .char("q"): interrupted = true
     default: break
     }
@@ -1119,7 +1122,7 @@ func render() {
             hint = "/\(searchQuery)_  ^v show \(searchHi + 1)/\(searchResults.count)\(airingPart)  Enter/Esc clear"
         }
     } else {
-        hint = "^v channel  <> show  [] page  f fav  / search  Enter record  Tab tuner  q quit"
+        hint = "^v channel  <> show  [] page  f fav  / search  Enter record  Tab tuner  ? keys  q quit"
     }
     out += dim + truncate(hint, cols) + reset + "\n"
     // statusMsg embeds the show's own title (e.g. "✓ Scheduled: <title>") — unbounded length,
@@ -1127,7 +1130,7 @@ func render() {
     let statusColor = statusMsg.hasPrefix("\u{2713}") ? "\u{1B}[32m" : (statusMsg.hasPrefix("\u{2717}") ? "\u{1B}[31m" : (statusMsg.hasPrefix("\u{26A0}") ? "\u{1B}[33m" : ""))
     out += statusColor + truncate(statusMsg, cols) + reset
 
-    Terminal.writeFrame(out)
+    Terminal.writeFrame(mode == .help ? overlayShortcuts(onto: out, cols: cols, rows: rows) : out)
 }
 
 Terminal.enterRawScreen()
@@ -1184,7 +1187,7 @@ while !interrupted {
     // channel by the time Enter picks it. Not updating lastPoll means the next eligible tick fires
     // as soon as either mode closes, rather than the poll going stale for however long someone sat
     // there.
-    if mode != .recordSummary, mode != .search, Date().timeIntervalSince(lastPoll) >= pollInterval {
+    if mode != .recordSummary, mode != .search, mode != .help, Date().timeIntervalSince(lastPoll) >= pollInterval {
         if let fresh = API.fetchGuide(device: currentDeviceId) {
             payload = fresh
             signalMap = API.fetchSignal() ?? signalMap

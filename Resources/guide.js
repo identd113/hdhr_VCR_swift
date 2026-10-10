@@ -1488,6 +1488,51 @@ document.addEventListener('keydown',function(e){
   e.preventDefault();
   cycleSearchEpisode(e.key==='ArrowRight'?1:-1);
 });
+// Keyboard-shortcuts card ("?"): one canonical list, rendered on demand. Capture-phase listener so it
+// runs before the type-to-search listener below (which would otherwise seed the search box with "?"),
+// and so any key that closes the card is consumed rather than also acting on the guide underneath.
+var GUIDE_SHORTCUTS=[
+  ['Type anything','Start a show search'],
+  ['/','Open an empty search box'],
+  ['\u2191 \u2193','Move through search results'],
+  ['Enter','Pick the highlighted result'],
+  ['\u2190 \u2192','Cycle the selected show\u2019s airings'],
+  ['Esc  \u232B','Clear the search'],
+  ['Tab  Shift-Tab','Move between programs'],
+  ['Space  Enter','Open the focused program'],
+  ['?','Show this card']
+];
+function closeShortcutsCard(){
+  var c=document.getElementById('kb-card');
+  if(c)c.remove();
+}
+function showShortcutsCard(){
+  if(document.getElementById('kb-card'))return;
+  var c=document.createElement('div');
+  c.id='kb-card';
+  var h='<div class="kb-panel"><div class="kb-title">Keyboard Shortcuts</div>';
+  GUIDE_SHORTCUTS.forEach(function(r){
+    h+='<div class="kb-row"><span class="kb-keys">'+hej(r[0])+'</span><span class="kb-desc">'+hej(r[1])+'</span></div>';
+  });
+  h+='<div class="kb-foot">Press any key to close</div></div>';
+  c.innerHTML=h;
+  c.addEventListener('click',closeShortcutsCard);
+  document.body.appendChild(c);
+}
+document.addEventListener('keydown',function(e){
+  if(document.getElementById('kb-card')){
+    if(e.key==='Shift'||e.key==='Control'||e.key==='Alt'||e.key==='Meta')return; // modifier alone isn't "a key"
+    e.preventDefault();e.stopPropagation();
+    closeShortcutsCard();
+    return;
+  }
+  if(e.key!=='?'||e.metaKey||e.ctrlKey||e.altKey)return;
+  var ae=document.activeElement;
+  var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable);
+  if(editable||anyGuideModalOpen())return;
+  e.preventDefault();e.stopPropagation();
+  showShortcutsCard();
+},true);
 // Type-to-search: #search-bar is collapsed to its ⌕ icon (guide.css) until hovered/focused, but a
 // user shouldn't have to reach for the mouse first — typing a plain character anywhere in the
 // guide (nothing else focused/editable, no modal open, no filter chip already active) pops the

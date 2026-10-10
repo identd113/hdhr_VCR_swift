@@ -22,6 +22,7 @@ What's new in each version. For the fuller list of changes within a version, see
   first frame is decoded.
 - **Press `?` in the player to see every keyboard shortcut** — a translucent card over the video, closed by
   any key; keys that don't apply right now are dimmed.
+- **`?` shortcuts card in the web guide and terminal guide too** — press `?` to see the keys; any key closes it.
 - **An info banner for what you're watching** — press `i` for the show, episode and source
   ("Live OTA · Ch 5.1", "Recording" or "FEED").
 - **Scrub back and forward while watching a FEED**, the same way you can with a recording, and a FEED

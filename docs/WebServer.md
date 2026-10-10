@@ -1328,3 +1328,7 @@ Every station-logo `<img>` in the web guide — the grid's `.g-logo`, the Up Nex
 ## Test seam: `broadcastObserver`
 
 `WebServer.broadcastObserver: (([String: Any]) -> Void)?` (added 2026-10-06, `nil` in production) is called at the top of `broadcastEvent` with every event handed to it — guide-change events (`broadcastGuideChangeEvent`) and recording events both funnel through there — whether or not any SSE client is connected. Tests use it to assert what the web guide is told (`WebGuidePushOnRecordingFailureTests`: a show paused after repeated failures or skipped for a full disk pushes `show_updated`; `TunerOccupancyBroadcastTests`: `tuner_update` every time, `tuner_occupancy_changed` throttled).
+
+### Keyboard-shortcuts card (`?`)
+
+`guide.js`'s `GUIDE_SHORTCUTS` list is rendered into `#kb-card` (styles at the end of `guide.css`, theme variables so light/dark both work) by `showShortcutsCard()`. The listener is registered in the **capture** phase so `?` is handled before the type-to-search listener (which would otherwise seed the search box with it); it's ignored while an input/select/textarea has focus or a modal is open. While the card is up, any non-modifier key (or a click) closes it and is swallowed. Update the list when a guide key changes.

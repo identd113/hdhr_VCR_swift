@@ -354,6 +354,7 @@ Table entries below name the physical keys; the footer's own on-screen hint spel
 | `[` / `]` | Page the visible time window by one screen-width directly, without needing to reach a channel's edge first |
 | `f` | Toggle favorite for the selected channel (`POST /api/toggle-favorite`, same endpoint the web guide's star buttons use) |
 | `/` | Enter search / channel-jump mode (`#5.1` jumps to a channel number; anything else searches show titles) — see "Search / channel-jump" below |
+| `?` | Shortcuts card (`Mode.help`) — bordered box over the dimmed grid listing every key (`tuiShortcuts`, `hdhr_guide_core/Shortcuts.swift`); any key closes it |
 | `Tab` | Switch to the next tuner |
 | `Enter` | Open the recording summary screen for the selected program |
 | `1`–`4` (unmanaged entry) | Once / Weekly / Series (this channel) / Series (any channel on this tuner) — POSTs immediately, using whatever `u`/`m`/`t`/`w`/`h`/`f`/`s` and `n` (below) are currently set to. No transcode/title override in this client — use the web guide or native UI afterward for anything non-default |
