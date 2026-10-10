@@ -28,6 +28,7 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **AirPlay speakers are now labeled in the Audio Output menu** (e.g. "Living Room (AirPlay)") instead of showing just a plain device name.
 - *Updated* — **The player's Display menu (for AirPlay video via Screen Mirroring) now explains itself in-app** — a short tip and tooltip pointing at Control Center → Screen Mirroring, instead of relying on you already knowing that step.
 - *Updated* — **A scrubbed position survives a picture-in-picture swap.** Scrub a recording or FEED back, Tab to the corner and Tab back: the scrub bar used to jump to the live edge and the next seek started from the wrong place, although the picture itself had kept playing from where you were. Each stream now keeps its own position through a swap (a stream first opened in the corner still starts near live).
+- *Added* — **Press `?` in the player for a keyboard-shortcuts card.** A semi-translucent panel floats over the video with each key and what it does — ← → skip back 15 s / forward 30 s, Space pause/resume, Tab swap the picture-in-picture, Esc leave full screen, `i` what's playing, `?` this help. Keys that don't apply right now (seeking on live TV, Tab with no picture-in-picture) are dimmed with a note saying when they work. Any key press, or a click, closes it. Also in the player's "…" menu → Keyboard Shortcuts.
 
 ### FEED & relay (`VirtualTunerService`, `RecordingManager` FEED cache, `WebServer` relay routes)
 

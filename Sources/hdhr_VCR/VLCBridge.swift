@@ -359,6 +359,12 @@ final class VLCBridge: ObservableObject {
     // reconnect), and recordingPlaybackSeconds stops advancing (pausedAt) so the scrub bar holds
     // its position; resume shifts recordingReopenedAt forward by the paused span. Any new play()
     // on primary, and swapSlots(), clear it.
+    /// The "?" keyboard-shortcuts card is showing over the player (Views/KeyboardShortcutsOverlay.swift). Lives
+    /// here because the key monitor that opens/closes it is on VLCPlayerWindowManager, a class with no
+    /// reference to the SwiftUI view that draws it — and any key press must close it, including ones the
+    /// monitor would otherwise act on.
+    @Published var keyboardHelpVisible = false
+
     @Published private(set) var isPaused = false
     private var pausedAt: Date? = nil
 

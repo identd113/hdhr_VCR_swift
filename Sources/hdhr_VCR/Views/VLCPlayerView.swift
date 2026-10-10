@@ -713,6 +713,17 @@ struct VLCPlayerView: View {
                         // Slides in from the left edge with its backdrop (2026-10-03).
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
+                // "?" keyboard-shortcuts card — any key (or a click) closes it; see installKeyMonitor.
+                if bridge.keyboardHelpVisible {
+                    KeyboardShortcutsOverlay(
+                        title: "Keyboard Shortcuts",
+                        rows: PlayerShortcuts.rows(canSeek: bridge.recordingShowId != nil,
+                                                   canPause: bridge.canPause || bridge.isPaused,
+                                                   hasPiP: bridge.secondaryURL != nil,
+                                                   isFullScreen: isFullScreen),
+                        onDismiss: { bridge.keyboardHelpVisible = false })
+                        .transition(.opacity)
+                }
                 // Space-bar pause (VLCBridge.togglePause, disk-backed streams only) — a centered,
                 // non-interactive glyph so a deliberately frozen frame never reads as a stall.
                 if bridge.isPaused {
@@ -828,6 +839,7 @@ struct VLCPlayerView: View {
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
             .animation(.easeOut(duration: 0.35), value: infoOverlayVisible)
+            .animation(.easeOut(duration: 0.18), value: bridge.keyboardHelpVisible)
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
@@ -2140,6 +2152,11 @@ struct VLCPlayerView: View {
                         } label: { Label("Cast", systemImage: "tv") }
                         .accessibilityIdentifier("vlc-cast-picker")
                     }
+                    Divider()
+                    Button { bridge.keyboardHelpVisible = true } label: {
+                        Label("Keyboard Shortcuts (?)", systemImage: "keyboard")
+                    }
+                    .accessibilityIdentifier("vlc-keyboard-shortcuts")
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .foregroundStyle(.secondary)
@@ -3257,6 +3274,20 @@ final class VLCPlayerWindowManager {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
             guard let self, let win, event.window === win else { return event }
+            // "?" help card: while it is showing, ANY key press closes it and is consumed (so Esc doesn't also
+            // leave full screen and an arrow doesn't also seek). Shift is a modifier-only flagsChanged, not a
+            // keyDown, so pressing it to type "?" doesn't close the card it just opened.
+            if event.type == .keyDown, VLCBridge.shared.keyboardHelpVisible {
+                VLCBridge.shared.keyboardHelpVisible = false
+                return nil
+            }
+            // "?" (Shift-/ on a US layout) opens it — matched on the typed character, not the key code, so it
+            // follows other layouts, and not with Command/Option/Control held.
+            if event.type == .keyDown, event.characters == "?",
+               event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+                VLCBridge.shared.keyboardHelpVisible = true
+                return nil
+            }
             // Bare "i" only — charactersIgnoringModifiers (not keyCode) so this matches by the same
             // layout-independent character SwiftUI's KeyEquivalent("i") itself would have used, and
             // the modifier check keeps Cmd/Option/Control/Shift-I from also triggering this (Shift
@@ -3477,6 +3508,7 @@ final class VLCPlayerWindowManager {
     }
 
     fileprivate func playerWindowDidClose() {
+        VLCBridge.shared.keyboardHelpVisible = false   // never reopen showing the "?" card
         glog("[VLC] WindowManager.playerWindowDidClose")
         lastConformedNative = nil   // a reopened window starts at its default shape and needs re-fitting
         // Cancel any in-flight "yield tuner to record" wait before it can reopen a window the user
