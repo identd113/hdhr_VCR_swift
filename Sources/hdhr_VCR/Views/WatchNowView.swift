@@ -675,9 +675,15 @@ struct WatchNowRow: View {
                 }
                 .accessibilityLabel("Record \(entry.Title)")
                 .help("Record \(entry.Title)")
+                // A SwiftUI Menu given only a button style is drawn as a pop-up *bar* stretched across
+                // the row (grey, full width) on macOS 27 instead of the compact red button this is meant
+                // to be. Asking for the button menu style and a fixed (content) size gives every other
+                // button in this row's look and width.
+                .menuStyle(.button)
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.small)
+                .fixedSize()
             }
         }
     }
