@@ -260,7 +260,8 @@ final class AppState: ObservableObject {
     // available should show red/blue cycling only, never up-next's amber.
     enum StatusLightKind: Equatable {
         case recording
-        case feedAvailable
+        case feedAvailable      // another Mac's FEED relay is up and could be watched — the blue light FLASHES
+        case feedWatching       // this Mac is playing a FEED stream right now — the blue light stays SOLID
         case upNext(minutes: Int)
     }
     // The blink state lives in its own small ObservableObject (StatusLightModel), observed only by
@@ -357,22 +358,37 @@ final class AppState: ObservableObject {
     // remote relay exists, is unnecessary allocation on an infinite hot loop. Mirrors
     // remoteRelayEntries' own FEED_feature_enabled gate rather than re-checking it separately.
     //
-    // Requires a real viewer (raw + transcode summed > 0), not just an existing relay — resolved
-    // 2026-09-29 per TODO.md's "FEED-available status light" entry: a relay merely existing is a
-    // much weaker signal ("a relay happens to be up") than someone actually watching it ("something
-    // needs your attention"), and per-show virtualRelayTranscodeViewers/virtualRelayRawViewers have
-    // been published and kept fresh (viewer-count-triggered announces) since 2026-09-13 specifically
-    // to make this possible. remoteRelayEntries (MenuContent's "Recording on Another Mac" list)
-    // deliberately still lists every available relay regardless of viewer count — that section is
-    // "what could I watch," a different question from the status light's "does this need my eyes."
+    // Any available relay with a show on it counts — the viewer-count requirement added 2026-09-29
+    // ("someone must be watching") was dropped 2026-10-10 per explicit user direction: the blue light
+    // now FLASHES whenever a FEED is detected (so you notice there's something to watch) and goes
+    // SOLID while this Mac is actually watching one (isWatchingRemoteFeed below).
     var hasAvailableRemoteFeed: Bool {
         guard config.FEED_feature_enabled else { return false }
         return devices.contains { device in
             device.isVirtualRelay && device.isAvailable
-                && (lineups[device.DeviceID] ?? []).contains { entry in
-                    entry.virtualRelayShowTitle != nil
-                        && ((entry.virtualRelayTranscodeViewers ?? 0) + (entry.virtualRelayRawViewers ?? 0)) > 0
-                }
+                && (lineups[device.DeviceID] ?? []).contains { $0.virtualRelayShowTitle != nil }
+        }
+    }
+
+    /// URLs of the streams the in-app player is playing (primary and picture-in-picture). A test seam:
+    /// the real player is a process-wide singleton the suite can't script.
+    var playingStreamURLs: () -> [String] = {
+        [VLCBridge.shared.currentURL, VLCBridge.shared.secondaryURL].compactMap { $0 }
+    }
+
+    /// True while this Mac is playing a stream from another Mac's FEED — either through the local FEED
+    /// cache relay (a primary FEED session) or straight from the remote relay (a FEED in the corner).
+    var isWatchingRemoteFeed: Bool {
+        guard config.FEED_feature_enabled else { return false }
+        let relayHosts = Set(devices.filter { $0.isVirtualRelay }.compactMap { $0.BaseURL.flatMap { URL(string: $0)?.host } })
+        return Self.isFeedStream(urls: playingStreamURLs(), relayHosts: relayHosts)
+    }
+
+    /// Pure: does any of `urls` belong to a FEED — the local FEED-cache relay path, or a host that is a
+    /// discovered virtual relay?
+    nonisolated static func isFeedStream(urls: [String], relayHosts: Set<String>) -> Bool {
+        urls.contains { url in
+            LocalRelay.isFeedLocalRelay(url) || (URL(string: url)?.host).map(relayHosts.contains) == true
         }
     }
 
@@ -845,13 +861,51 @@ final class AppState: ObservableObject {
     // catch-up rebuild MenuContent.onDisappear does once tracking ends. Root menus only
     // (`supermenu == nil`): a submenu's begin/end can't unbalance it.
     private var menuTrackingObservers: [NSObjectProtocol] = []
+    /// When and where the current root menu opened — to recognise a double-click on the menu bar icon.
+    private var menuTrackingBegan: (time: Date, point: CGPoint)?
+
+    /// Pure: was this root menu opened and closed again by a double-click on the menu bar icon? The icon is
+    /// an NSStatusItem with a native menu, so a double-click arrives as "menu opened" then "menu closed" a
+    /// moment later with the pointer still on the icon. A right-click menu elsewhere, or a quick click on a
+    /// menu item (the pointer is then down in the menu, not in the menu bar), doesn't match.
+    nonisolated static func isIconDoubleClick(began: Date, beganAt: CGPoint, ended: Date, endedAt: CGPoint,
+                                              screenTopY: CGFloat) -> Bool {
+        let barBand: CGFloat = 40   // the menu bar is ~24–37 pt tall depending on the display
+        return ended.timeIntervalSince(began) < 0.6
+            && beganAt.y >= screenTopY - barBand && endedAt.y >= screenTopY - barBand
+            && abs(endedAt.x - beganAt.x) < 40
+    }
+
+    /// Double-click on the menu bar icon: bring every open window of this app forward, and the player
+    /// (live stream) window frontmost of all. Returns how many windows it raised.
+    @discardableResult
+    func surfaceOpenWindows() -> Int {
+        let player = VLCPlayerWindowManager.shared
+        let others = NSApp.windows.filter { w in
+            (w.isVisible || w.isMiniaturized) && w.styleMask.contains(.titled)
+                && !w.className.contains("StatusBar") && w !== player.playerWindow
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        for w in others {
+            if w.isMiniaturized { w.deminiaturize(nil) }
+            w.orderFront(nil)
+        }
+        let raisedPlayer = player.bringToFront()   // last, so it ends up frontmost and key
+        let n = others.count + (raisedPlayer ? 1 : 0)
+        glog("[Menu] double-click on the icon — brought \(n) window(s) forward\(raisedPlayer ? " (player frontmost)" : "")")
+        return n
+    }
+
     private func installMenuTrackingObservers() {
         guard menuTrackingObservers.isEmpty else { return }
         let nc = NotificationCenter.default
         menuTrackingObservers.append(nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] note in
             guard let menu = note.object as? NSMenu, menu.supermenu == nil else { return }
             glog("[Menu] tracking began — \(menu.items.count) item(s) first=\(menu.items.first?.title ?? "-") playing=\(VLCBridge.shared.isPlaying)")
-            MainActor.assumeIsolated { self?.menuIsOpen = true }
+            MainActor.assumeIsolated {
+                self?.menuIsOpen = true
+                self?.menuTrackingBegan = (Date(), NSEvent.mouseLocation)
+            }
         })
         menuTrackingObservers.append(nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] note in
             guard let menu = note.object as? NSMenu, menu.supermenu == nil else { return }
@@ -860,6 +914,15 @@ final class AppState: ObservableObject {
                 guard let self, self.menuIsOpen else { return }
                 self.menuIsOpen = false
                 self.rebuildMenuEntries()
+                if let began = self.menuTrackingBegan {
+                    self.menuTrackingBegan = nil
+                    let endedAt = NSEvent.mouseLocation
+                    if let screen = NSScreen.screens.first(where: { NSMouseInRect(began.point, $0.frame, false) }),
+                       Self.isIconDoubleClick(began: began.time, beganAt: began.point, ended: Date(), endedAt: endedAt,
+                                              screenTopY: screen.frame.maxY) {
+                        self.surfaceOpenWindows()
+                    }
+                }
             }
         })
     }
@@ -2670,7 +2733,9 @@ final class AppState: ObservableObject {
     var statusLightCandidates: [StatusLightKind] {
         var tier1: [StatusLightKind] = []
         if isRecording { tier1.append(.recording) }
-        if hasAvailableRemoteFeed { tier1.append(.feedAvailable) }
+        // Watching a FEED outranks merely having one available — it is the same blue light, solid not flashing.
+        if isWatchingRemoteFeed { tier1.append(.feedWatching) }
+        else if hasAvailableRemoteFeed { tier1.append(.feedAvailable) }
         if !tier1.isEmpty { return tier1 }
         // Fixed one-hour lead time, not the broader "next show today" definition used by Up Next
         // listings elsewhere (MenuContent's Up Next section, the web guide's tuner dropdowns/
@@ -2693,26 +2758,40 @@ final class AppState: ObservableObject {
     // SwiftUI's eager startup build of the dropdown content (see the "Silently open+close" comment
     // on statusLabel in hdhr_VCRApp.swift) — gating on it here would silently block the blink
     // indefinitely on a fresh launch until the user's first real menu open/close.
+    /// Pure: which status the light shows at `now`, and whether it is lit this second.
+    ///
+    /// Recording and up-next flash only when "Blink menu bar icon" is on. A FEED that is merely
+    /// AVAILABLE always flashes, whatever that setting says — the flashing is what tells it apart from
+    /// WATCHING a FEED, which is solid blue. When nothing in the set flashes, the first candidate shows
+    /// steadily (the long-standing behavior with blink off). Otherwise the candidates take turns, each
+    /// for a full 6 s cycle: a flashing one lit 5 s / off 1 s, a solid one lit throughout its turn.
+    nonisolated static func statusLightState(candidates: [StatusLightKind], blinkSetting: Bool, now: Date)
+        -> (kind: StatusLightKind, lit: Bool)? {
+        guard let first = candidates.first else { return nil }
+        func flashes(_ kind: StatusLightKind) -> Bool {
+            switch kind {
+            case .feedAvailable: return true
+            case .feedWatching:  return false
+            case .recording, .upNext: return blinkSetting
+            }
+        }
+        guard candidates.contains(where: flashes) else { return (first, true) }
+        let cycleLength = 6.0 * Double(candidates.count)
+        let position = now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleLength)
+        let kind = candidates[min(candidates.count - 1, Int(position / 6.0))]
+        let withinColor = position.truncatingRemainder(dividingBy: 6.0)
+        return (kind, flashes(kind) ? withinColor < 5.0 : true)
+    }
+
     private func tickStatusLight() {
-        let candidates = statusLightCandidates
-        guard !candidates.isEmpty else {
+        guard let state = Self.statusLightState(candidates: statusLightCandidates,
+                                                blinkSetting: config.Status_light_blink_enabled, now: Date()) else {
             if activeStatusLight != nil { activeStatusLight = nil }
             if !statusLightOn { statusLightOn = true }
             return
         }
-        guard config.Status_light_blink_enabled else {
-            if activeStatusLight != candidates[0] { activeStatusLight = candidates[0] }
-            if !statusLightOn { statusLightOn = true }
-            return
-        }
-        let cycleLength = 6.0 * Double(candidates.count)
-        let position = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleLength)
-        let index = min(candidates.count - 1, Int(position / 6.0))
-        let withinColor = position.truncatingRemainder(dividingBy: 6.0)
-        let newLight = candidates[index]
-        let newValue = withinColor < 5.0
-        if activeStatusLight != newLight { activeStatusLight = newLight }
-        if statusLightOn != newValue { statusLightOn = newValue }
+        if activeStatusLight != state.kind { activeStatusLight = state.kind }
+        if statusLightOn != state.lit { statusLightOn = state.lit }
     }
 
     // Reentrancy guard: startTimer() fires a new Task every Idle_timer_interval regardless of

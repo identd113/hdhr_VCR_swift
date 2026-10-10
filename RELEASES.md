@@ -62,6 +62,8 @@ What's new in each version. For the fuller list of changes within a version, see
   (their certificate expired on 2026-10-09), a relaunch now loads your last saved guide instead of
   starting empty, and you get a plain notification and Discord message about it — then another when it
   recovers.
+- **The blue FEED light flashes when a FEED is available and stays solid while you watch one**, and
+  **double-clicking the menu bar icon brings all your open windows forward** (the player on top).
 - **A scrubbed position survives a picture-in-picture swap**, and Watch Now's Record button is a compact
   button again.
 - **Faster startup, fewer calls to the public guide service, and more resilient device discovery.**

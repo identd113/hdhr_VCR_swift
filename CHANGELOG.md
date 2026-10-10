@@ -89,6 +89,8 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 - *Updated* — **Importing a config now shows a "restart required" alert** (with Quit Now / Later) — saving is paused until the app restarts, which a small status line didn't make obvious.
 - *Updated* — **Launch at login no longer leaves Settings stuck on "unsaved changes"** while macOS waits for you to approve the login item.
 - *Updated* — **Watch Now's Record pull-down is a compact button again.** On macOS 27 it was drawn as a full-width grey bar; it is now the red, content-sized button the layout calls for.
+- *Updated* — **The blue FEED light flashes when a FEED is available and stays solid while you watch one.** The menu bar icon's blue light used to appear only while someone was watching another Mac's shared recording. It now flashes whenever a FEED is detected on your network (whatever the "Blink menu bar icon" setting says — flashing versus solid is how the two states are told apart), and holds solid while this Mac is playing a FEED, in the main player or the corner. Recording (red) and up-next (amber) behave as before.
+- *Added* — **Double-click the menu bar icon to bring your windows forward.** A quick double-click raises every open hdhrVCRplus window — Watch Now, Settings and the rest, restoring any you minimized — with the player (the live stream) window frontmost.
 
 ### Performance (several files)
 

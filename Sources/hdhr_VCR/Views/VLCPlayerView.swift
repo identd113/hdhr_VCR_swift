@@ -2845,6 +2845,20 @@ final class VLCPlayerWindowManager {
         )
     }
 
+    /// The player window itself, for callers (the menu-bar icon's double-click) that need to tell it apart
+    /// from the app's other windows.
+    var playerWindow: NSWindow? { window }
+
+    /// Brings the player window to the front and makes it key, restoring it first if minimized. False when
+    /// there is no open player window.
+    @discardableResult
+    func bringToFront() -> Bool {
+        guard let w = window, w.isVisible || w.isMiniaturized else { return false }
+        if w.isMiniaturized { w.deminiaturize(nil) }
+        w.makeKeyAndOrderFront(nil)
+        return true
+    }
+
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
     private(set) var currentDeviceID: String?
     /// GuideNumber of the channel `open()` was last called with; nil when closed or when the

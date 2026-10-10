@@ -90,14 +90,14 @@ struct AppStateStatusLightTests {
         #expect(state.statusLightCandidates.isEmpty)
     }
 
-    // Resolved 2026-09-29 (TODO.md's "FEED-available status light" entry): a relay merely existing
-    // is no longer enough — someone has to actually be watching it (raw + transcode viewer count
-    // summed > 0). A relay with a show attached but zero of either must not light the blue dot.
-    @Test @MainActor func remoteRelayWithNoViewers_doesNotCountAsFeedAvailable() {
+    // Reversed 2026-10-10 per explicit user direction (it had been "someone must be watching" since
+    // 2026-09-29): a relay merely being detected now lights the blue light — flashing — so you notice a
+    // FEED is there to watch. Watching one (below) turns it solid.
+    @Test @MainActor func remoteRelayWithNoViewers_nowCountsAsFeedAvailable() {
         let (device, lineups) = makeRemoteRelay(rawViewers: nil)
         let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
         state.config.FEED_feature_enabled = true
-        #expect(state.statusLightCandidates.isEmpty)
+        #expect(state.statusLightCandidates == [.feedAvailable])
     }
 
     // Transcode viewers count the same as raw viewers — either alone is enough.
@@ -107,5 +107,112 @@ struct AppStateStatusLightTests {
         let state = makeTestAppState(shows: [], devices: [device], lineups: [device.DeviceID: [entry]])
         state.config.FEED_feature_enabled = true
         #expect(state.statusLightCandidates == [.feedAvailable])
+    }
+
+    // MARK: - Watching a FEED → solid blue
+
+    @Test @MainActor func playingAFeedStream_isFeedWatching_notFeedAvailable() {
+        let (device, lineups) = makeRemoteRelay()
+        let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true
+        state.playingStreamURLs = { ["http://127.0.0.1:1980\(LocalRelay.feedLocalRelayPath)?session=abc"] }
+        #expect(state.isWatchingRemoteFeed)
+        #expect(state.statusLightCandidates == [.feedWatching])
+    }
+
+    @Test @MainActor func playingSomethingElse_leavesTheFeedFlashing() {
+        let (device, lineups) = makeRemoteRelay()
+        let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true
+        state.playingStreamURLs = { ["http://10.0.2.101:5004/auto/v5.1"] }   // a live channel on a real tuner
+        #expect(!state.isWatchingRemoteFeed)
+        #expect(state.statusLightCandidates == [.feedAvailable])
+    }
+
+    @Test @MainActor func recordingWhileWatchingAFeed_showsBothInOrder() {
+        let (device, lineups) = makeRemoteRelay()
+        let state = makeTestAppState(shows: [.testRecording()], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true
+        state.playingStreamURLs = { ["http://127.0.0.1:1980\(LocalRelay.feedLocalRelayPath)?session=abc"] }
+        #expect(state.statusLightCandidates == [.recording, .feedWatching])
+    }
+
+    @Test func isFeedStream_recognisesTheLocalCacheAndARemoteRelayHost() {
+        let hosts: Set<String> = ["10.0.2.100"]
+        #expect(AppState.isFeedStream(urls: ["http://127.0.0.1:1980\(LocalRelay.feedLocalRelayPath)?session=x"], relayHosts: hosts))
+        #expect(AppState.isFeedStream(urls: ["http://10.0.2.100:1980/auto/v4.1?transcode=heavy"], relayHosts: hosts))
+        #expect(!AppState.isFeedStream(urls: ["http://10.0.2.101:5004/auto/v4.1"], relayHosts: hosts))
+        #expect(!AppState.isFeedStream(urls: [], relayHosts: hosts))
+    }
+
+    // MARK: - Flash vs solid (AppState.statusLightState)
+
+    private func at(_ seconds: Double) -> Date { Date(timeIntervalSinceReferenceDate: seconds) }
+
+    @Test func aFeedThatIsMerelyAvailable_flashesEvenWithBlinkOff() throws {
+        let lit = try #require(AppState.statusLightState(candidates: [.feedAvailable], blinkSetting: false, now: at(2)))
+        let off = try #require(AppState.statusLightState(candidates: [.feedAvailable], blinkSetting: false, now: at(5.5)))
+        #expect(lit.kind == .feedAvailable && lit.lit)
+        #expect(off.kind == .feedAvailable && !off.lit, "off for the last second of the 6 s cycle")
+    }
+
+    @Test(arguments: [false, true])
+    func watchingAFeed_isSolidWhateverTheBlinkSetting(_ blink: Bool) throws {
+        for t in [0.5, 2, 5.5, 5.99] {
+            let s = try #require(AppState.statusLightState(candidates: [.feedWatching], blinkSetting: blink, now: at(t)))
+            #expect(s.kind == .feedWatching && s.lit, "solid at t=\(t)")
+        }
+    }
+
+    @Test func recordingAlone_followsTheBlinkSetting() throws {
+        #expect(try #require(AppState.statusLightState(candidates: [.recording], blinkSetting: false, now: at(5.5))).lit)
+        #expect(!(try #require(AppState.statusLightState(candidates: [.recording], blinkSetting: true, now: at(5.5))).lit))
+    }
+
+    @Test func recordingAndAvailableFeed_takeTurns_theFeedFlashingEvenWithBlinkOff() throws {
+        let c: [AppState.StatusLightKind] = [.recording, .feedAvailable]
+        let red = try #require(AppState.statusLightState(candidates: c, blinkSetting: false, now: at(2)))
+        let blue = try #require(AppState.statusLightState(candidates: c, blinkSetting: false, now: at(8)))
+        let blueOff = try #require(AppState.statusLightState(candidates: c, blinkSetting: false, now: at(11.5)))
+        #expect(red.kind == .recording && red.lit)
+        #expect(blue.kind == .feedAvailable && blue.lit)
+        #expect(blueOff.kind == .feedAvailable && !blueOff.lit)
+        // …and the recording's own turn is solid, not flashing, because blink is off
+        #expect(try #require(AppState.statusLightState(candidates: c, blinkSetting: false, now: at(5.5))).lit)
+    }
+
+    @Test func recordingWhileWatchingAFeed_blinkOff_showsTheFirstSteadily() throws {
+        let c: [AppState.StatusLightKind] = [.recording, .feedWatching]
+        for t in [2.0, 8.0] {
+            let s = try #require(AppState.statusLightState(candidates: c, blinkSetting: false, now: at(t)))
+            #expect(s.kind == .recording && s.lit, "nothing flashes, so the long-standing pick-first-steadily rule applies")
+        }
+    }
+
+    @Test func recordingWhileWatchingAFeed_blinkOn_theFeedsTurnIsSolid() throws {
+        let c: [AppState.StatusLightKind] = [.recording, .feedWatching]
+        #expect(!(try #require(AppState.statusLightState(candidates: c, blinkSetting: true, now: at(5.5))).lit), "red flashes")
+        let blue = try #require(AppState.statusLightState(candidates: c, blinkSetting: true, now: at(11.5)))
+        #expect(blue.kind == .feedWatching && blue.lit, "blue's turn stays lit through the whole 6 s")
+    }
+
+    @Test func noCandidates_isIdle() {
+        #expect(AppState.statusLightState(candidates: [], blinkSetting: true, now: at(1)) == nil)
+    }
+
+    // MARK: - Double-click on the menu bar icon
+
+    @Test func iconDoubleClick_isAQuickOpenCloseWithThePointerStillOnTheIcon() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let top: CGFloat = 1117   // a screen's maxY
+        func dbl(_ dt: Double, from: CGPoint, to: CGPoint) -> Bool {
+            AppState.isIconDoubleClick(began: t0, beganAt: from, ended: t0.addingTimeInterval(dt), endedAt: to, screenTopY: top)
+        }
+        let icon = CGPoint(x: 1500, y: top - 10)
+        #expect(dbl(0.25, from: icon, to: icon))                                   // the real thing
+        #expect(!dbl(0.9, from: icon, to: icon))                                   // slow: a normal open-then-dismiss
+        #expect(!dbl(0.25, from: icon, to: CGPoint(x: 1500, y: top - 200)))        // ended down in the menu (picked an item)
+        #expect(!dbl(0.25, from: icon, to: CGPoint(x: 1700, y: top - 10)))         // pointer moved off the icon
+        #expect(!dbl(0.25, from: CGPoint(x: 600, y: 300), to: CGPoint(x: 600, y: 300)))   // a right-click menu in a window
     }
 }

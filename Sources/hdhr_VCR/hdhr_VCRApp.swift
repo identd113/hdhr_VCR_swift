@@ -341,18 +341,22 @@ struct hdhr_VCRApp: App {
                           litSystemName: "clock.badge.fill",
                           litColor: .orange,
                           accessibilityLabel: "hdhrVCRplus — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
-        case .feedAvailable:
+        case .feedAvailable, .feedWatching:
+            // .feedAvailable flashes (tickStatusLight drives lightOn on/off), .feedWatching stays lit — same
+            // blue mark either way; the cadence is what tells "there's a FEED" from "you're watching one".
             // Same baked-artwork treatment as recording/up-next (app-feed.jpg — the same mark,
             // just a blue status dot instead of red/amber), so a FEED being watched reads as
             // clearly "part of the same family" of status lights rather than a generic system
             // glyph. "play.tv.fill" + watchNowBlue remain as the bundle-less fallback, matching the
             // same Watch-button icon/color MenuContent's own "Recording on Another Mac" entries use.
-            // AppState.hasAvailableRemoteFeed requires a real viewer, not just an existing relay
-            // (resolved 2026-09-29) — this label reflects that: someone is actually watching.
+            // Flashing = a FEED is available to watch; solid = this Mac is watching one (2026-10-10; the
+            // earlier "only while someone is watching" rule was reversed per explicit user direction).
             blinkableIcon(lightOn: lightOn, litImage: appIconMenuBarFeed,
                           litSystemName: "play.tv.fill",
                           litColor: watchNowBlue,
-                          accessibilityLabel: "hdhrVCRplus — a recording from another Mac is being watched")
+                          accessibilityLabel: kind == .feedWatching
+                              ? "hdhrVCRplus — watching a recording from another Mac"
+                              : "hdhrVCRplus — a recording from another Mac is available to watch")
         case nil:
             if let icon = appIconMenuBar {
                 Image(nsImage: icon)
