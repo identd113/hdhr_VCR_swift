@@ -28,6 +28,8 @@ the Form's own opaque grouped-list card, so the two don't read as a card nested 
 `.fixedSize(horizontal: false, vertical: true)` (List-backed Forms otherwise claim more vertical
 space than their rows need even without an outer fixed height).
 
+**Height floor (2026-10-10)**: every post-intro step also has `.frame(minHeight: 600)` and the step `ZStack` is `maxHeight: .infinity` (top-aligned), so Back/Next stay pinned to the bottom edge. Step 1 (tuner card + Recording Defaults + 5 rows) had come up a row short on a live Mac and clipped the Next button; a taller step still grows past the floor. A `ScrollView` is deliberately not used (see the Recording FEED note below).
+
 **Header band**: the app icon (`appIconImage`, `Sources/hdhr_VCR/AppIcon.swift` — the same
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
 rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the

@@ -151,6 +151,7 @@ struct FirstRunWizardView: View {
                         .id(Step.notificationTiming)
                 }
             }
+            .frame(maxHeight: step == .intro ? nil : .infinity, alignment: .top)   // soaks up the minHeight floor so Back/Next stay pinned to the bottom
             .clipped()
 
             if step != .intro {
@@ -182,6 +183,10 @@ struct FirstRunWizardView: View {
         // transaction as the step change (goNext()/goBack() already animate step this way; the
         // intro hand-off in finishIntro() below does the same).
         .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : nil)
+        // Floor on every post-intro step: Step 1 (tuner card + Recording Defaults heading + 5 rows) came up
+        // a row short on a live Mac, clipping the Next button. A floor (never a ScrollView — see the
+        // Recording FEED note below) keeps the footer on screen; a taller step still grows past it.
+        .frame(minHeight: step == .intro ? 0 : 600)
         // Keeps the window on-screen across steps whose content height differs a lot (see
         // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
         // varies per step by design (docs/FirstRunWizardView.md: "height follows content"), but
