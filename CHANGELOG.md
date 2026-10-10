@@ -4,7 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
-- *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over drifting cached station logos and posters, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on.
+- *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over show posters flying in from every edge of the screen, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on.
 - *Added* — **Settings → About explains the menu-bar light.** The logo now matches the light currently showing in the menu bar, and a legend lists what each light and blink pattern means.
 - *Updated* — The player's "?" card now lists right-click → "Add a picture-in-picture".
 - *Updated* — The Add Show guide uses native macOS scrollbars and sits flush to the window edge instead of in a bordered frame.

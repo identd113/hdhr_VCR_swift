@@ -9,7 +9,7 @@ import AppKit
 
 /// The splash's pure decisions — gate, timing, and the checklist text — so they are unit-tested.
 enum LaunchSplashPlan {
-    static let minimumSeconds: TimeInterval = 2.6
+    static let minimumSeconds: TimeInterval = 3.4
     static let capSeconds: TimeInterval = 7.0
 
     static func shouldShow(firstRunDone: Bool, enabled: Bool, underTests: Bool, reduceMotion: Bool) -> Bool {
@@ -62,6 +62,7 @@ struct LaunchSplashView: View {
 
     private enum Phase { case showing, flying, arrived }
     @State private var phase: Phase = .showing
+    @State private var assembled = false            // tiles have locked into the window: chrome, logo and text fade in
     @State private var started = Date()
     @State private var tiles: [NSImage] = []
     @State private var window: NSWindow?
@@ -76,8 +77,20 @@ struct LaunchSplashView: View {
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             let logoHome = CGPoint(x: center.x, y: center.y - cardSize.height / 2 + 40 + logoSize / 2)
             ZStack {
-                card.frame(width: cardSize.width, height: cardSize.height)
+                // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
+                // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
+                MosaicTiles(images: tiles, started: started, screen: geo.size)
                     .opacity(phase == .showing ? 1 : 0)
+
+                RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
+                               startRadius: 40, endRadius: 270)
+                    .frame(width: 600, height: 600)
+                    .opacity(phase == .showing && assembled ? 1 : 0)
+                    .position(center)
+                    .allowsHitTesting(false)
+
+                chrome.frame(width: cardSize.width, height: cardSize.height)
+                    .opacity(phase == .showing && assembled ? 1 : 0)
                     .position(center)
 
                 if phase == .arrived {
@@ -90,7 +103,7 @@ struct LaunchSplashView: View {
                 logo
                     .frame(width: logoSize, height: logoSize)
                     .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
-                    .opacity(phase == .arrived ? 0 : 1)
+                    .opacity(phase == .arrived ? 0 : (assembled ? 1 : 0))
                     .position(phase == .showing ? logoHome : target)
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -114,32 +127,26 @@ struct LaunchSplashView: View {
         .accessibilityHidden(true)
     }
 
-    private var card: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous).fill(.thickMaterial)
-            DriftingTiles(images: tiles)
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.55)], startPoint: .top, endPoint: .bottom))
-            VStack(spacing: 6) {
-                Color.clear.frame(height: 40 + logoSize + 6)   // the logo is drawn above, flying out of this spot
-                Text("hdhrVCRplus").font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Version \(versionText)").font(.callout).foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(stages) { s in
-                        HStack(spacing: 8) {
-                            Image(systemName: s.done ? "checkmark.circle.fill" : "circle.dotted")
-                                .foregroundStyle(s.done ? Color.green : Color.secondary)
-                            Text(s.label).font(.callout)
-                        }
+    /// The text over the finished wall — no panel, just a shadow to keep it legible over the posters.
+    private var chrome: some View {
+        VStack(spacing: 6) {
+            Color.clear.frame(height: 40 + logoSize + 6)   // the logo is drawn above, flying out of this spot
+            Text("hdhrVCRplus").font(.system(size: 30, weight: .bold, design: .rounded))
+            Text("Version \(versionText)").font(.callout).foregroundStyle(.white.opacity(0.8))
+            Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(stages) { s in
+                    HStack(spacing: 8) {
+                        Image(systemName: s.done ? "checkmark.circle.fill" : "circle.dotted")
+                            .foregroundStyle(s.done ? Color.green : Color.white.opacity(0.7))
+                        Text(s.label).font(.callout)
                     }
                 }
-                .padding(.bottom, 26)
             }
-            RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 1)
+            .padding(.bottom, 26)
         }
-        .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.9), radius: 6, y: 1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("hdhrVCRplus \(versionText) is starting")
     }
@@ -159,8 +166,8 @@ struct LaunchSplashView: View {
             startupDone: !state.isStartingUp)
     }
 
-    /// Borderless, clear, click-through, covering the menu-bar screen — a full-screen canvas the logo can fly across —
-    /// and above the menu bar itself so it can land on the icon.
+    /// Borderless, clear, click-through, covering the menu-bar screen — a full-screen canvas the tiles and logo can fly
+    /// across — and above the menu bar itself so the logo can land on the icon.
     private static func configure(_ w: NSWindow) {
         w.styleMask = [.borderless, .fullSizeContentView]
         w.isOpaque = false
@@ -172,13 +179,59 @@ struct LaunchSplashView: View {
         if let s = NSScreen.screens.first { w.setFrame(s.frame, display: true) }
     }
 
+    private static let savedPostersKey = "launchSplashPosterURLs"
+
+    /// Poster art of what's on air now across our tuners (the guide restored from disk is usually ready within a moment).
+    @MainActor private func posterURLs() -> [String] {
+        var seen = Set<String>(), out: [String] = []
+        for d in state.recordableDevices {
+            for (_, entry) in state.onAirNow(for: d) {
+                if let u = entry.ImageURL, !u.isEmpty, seen.insert(u).inserted { out.append(u) }
+            }
+        }
+        return out
+    }
+
+    /// The show posters for the wall. Last launch's list is on hand instantly (and the images are on disk), so the
+    /// splash never waits for the guide; fresh on-air posters are added if the guide is up within ~1 s. Fetches are
+    /// capped at ~1.5 s overall — whatever has arrived by then is used. No posters at all → cached station logos.
+    @MainActor private func loadPosters() async -> [NSImage] {
+        let want = MosaicTiles.slotCount
+        let saved = UserDefaults.standard.stringArray(forKey: Self.savedPostersKey) ?? []
+        var fresh = posterURLs()
+        var waited = 0
+        while fresh.count < want, saved.count < want, waited < 10, state.isStartingUp {   // brand-new install of this feature
+            try? await Task.sleep(for: .milliseconds(100)); waited += 1
+            fresh = posterURLs()
+        }
+        var urls = Array((fresh.shuffled() + saved.shuffled()).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.prefix(want))
+        urls.shuffle()
+        final class Box: @unchecked Sendable { var images: [Int: NSImage] = [:]; var done = 0 }
+        let box = Box()
+        for (i, u) in urls.enumerated() {
+            Task { @MainActor in
+                if let img = await ChannelIconCache.shared.image(for: u) { box.images[i] = img }
+                box.done += 1
+            }
+        }
+        var ticks = 0
+        while box.done < urls.count, ticks < 15 { try? await Task.sleep(for: .milliseconds(100)); ticks += 1 }
+        let posters = box.images.sorted { $0.key < $1.key }.map(\.value)
+        if !posters.isEmpty { return posters }
+        return await ChannelIconCache.shared.sampleCachedImages(limit: want)
+    }
+
     @MainActor private func run(in size: CGSize) async {
-        started = Date()
-        tiles = await ChannelIconCache.shared.sampleCachedImages(limit: 16)
+        tiles = await loadPosters()
+        started = Date()                                                       // tiles start flying now
+        try? await Task.sleep(for: .milliseconds(Int((MosaicTiles.assembleSeconds + 0.1) * 1000)))
+        withAnimation(.easeOut(duration: 0.6)) { assembled = true }
         while !LaunchSplashPlan.shouldFinish(elapsed: Date().timeIntervalSince(started), startupDone: !state.isStartingUp) {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return }
         }
+        let fresh = posterURLs()
+        if !fresh.isEmpty { UserDefaults.standard.set(Array(fresh.prefix(60)), forKey: Self.savedPostersKey) }
         // Where to land, in the window's own top-left coordinates.
         let item = LaunchSplashPlan.statusItemFrame().frame
         let origin = window?.frame.origin ?? .zero
@@ -193,31 +246,76 @@ struct LaunchSplashView: View {
     }
 }
 
-/// Cached logos/posters drifting slowly behind the card. Falls back to nothing when the cache is empty.
-private struct DriftingTiles: View {
+/// Cached logos/posters flying in from random points just off the screen's edges and locking into a 7×4 grid the size
+/// of the card. Position is a pure function of time since `started`, so it always animates (no state to fall behind),
+/// and once seated each tile keeps a faint bob so the wall stays alive. Fewer images than slots → they repeat;
+/// none cached → the app's placeholder mark fills the wall.
+private struct MosaicTiles: View {
+    static let cols = 10, rows = 5
+    static let wall = CGSize(width: 860, height: 520)
+    static var slotCount: Int { cols * rows }
+    static let assembleSeconds: Double = 1.6
+    private static let flightSeconds: Double = 0.9
+
     let images: [NSImage]
+    let started: Date
+    let screen: CGSize
+
+    /// Deterministic 0…1 jitter per tile and salt — stable across frames without storing state.
+    private static func rnd(_ i: Int, _ salt: Int) -> Double {
+        let x = sin(Double(i * 127 + salt * 311) * 12.9898) * 43758.5453
+        return x - x.rounded(.down)
+    }
+
+    /// Anywhere on a ring just outside the screen — every angle, not just four sides.
+    private func start(_ i: Int) -> CGPoint {
+        let angle = Self.rnd(i, 1) * 2 * .pi
+        let r = hypot(screen.width, screen.height) / 2 + 120 + 160 * Self.rnd(i, 2)
+        return CGPoint(x: screen.width / 2 + CGFloat(cos(angle)) * r, y: screen.height / 2 + CGFloat(sin(angle)) * r)
+    }
 
     var body: some View {
-        GeometryReader { geo in
-            TimelineView(.animation) { ctx in
-                let t = ctx.date.timeIntervalSinceReferenceDate
-                ZStack {
-                    ForEach(Array(images.enumerated()), id: \.offset) { i, img in
-                        let fi = Double(i)
-                        let w = 54 + CGFloat((i * 37) % 30)
-                        Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
-                            .frame(width: w, height: w * 1.25)
-                            .cornerRadius(6)
-                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                            .opacity(0.5)
-                            .rotationEffect(.degrees(sin(t * 0.3 + fi) * 8))
-                            .position(x: geo.size.width * (0.08 + 0.84 * ((fi * 0.382).truncatingRemainder(dividingBy: 1)))
-                                        + CGFloat(sin(t * 0.25 + fi * 1.7)) * 18,
-                                      y: geo.size.height * (0.1 + 0.8 * ((fi * 0.7548).truncatingRemainder(dividingBy: 1)))
-                                        + CGFloat(cos(t * 0.2 + fi * 2.3)) * 16)
-                    }
+        let wall = Self.wall
+        let slotW = wall.width / CGFloat(Self.cols), slotH = wall.height / CGFloat(Self.rows)
+        let origin = CGPoint(x: (screen.width - wall.width) / 2, y: (screen.height - wall.height) / 2)
+        TimelineView(.animation) { ctx in
+            let elapsed = ctx.date.timeIntervalSince(started)
+            ZStack {
+                ForEach(0..<Self.slotCount, id: \.self) { i in
+                    let delay = (Self.assembleSeconds - Self.flightSeconds) * Self.rnd(i, 3)
+                    let raw = min(1, max(0, (elapsed - delay) / Self.flightSeconds))
+                    let e = 1 - pow(1 - raw, 3)                                        // ease-out: fast in, gentle landing
+                    let jx = (Self.rnd(i, 5) - 0.5) * 10, jy = (Self.rnd(i, 6) - 0.5) * 10
+                    let seat = CGPoint(x: origin.x + (CGFloat(i % Self.cols) + 0.5) * slotW + CGFloat(jx),
+                                       y: origin.y + (CGFloat(i / Self.cols) + 0.5) * slotH + CGFloat(jy))
+                    let from = start(i)
+                    let bob = raw >= 1 ? CGFloat(sin(elapsed * 1.3 + Double(i))) * 1.5 : 0
+                    // Posters near the middle sit back so the text reads; the rim stays bright.
+                    let dx = (seat.x - screen.width / 2) / (wall.width / 2), dy = (seat.y - screen.height / 2) / (wall.height / 2)
+                    let dim = 0.45 + 0.55 * min(1, Double(hypot(dx, dy)))
+                    tile(i, size: CGSize(width: slotW * 1.12, height: slotH * 1.12))
+                        .rotationEffect(.degrees((1 - e) * (Self.rnd(i, 4) - 0.5) * 700 + (Self.rnd(i, 7) - 0.5) * 10 * e))
+                        .scaleEffect(0.55 + 0.45 * e)
+                        .opacity(raw > 0 ? dim : 0)
+                        .position(x: from.x + (seat.x - from.x) * e, y: from.y + (seat.y - from.y) * e + bob)
                 }
             }
         }
+    }
+
+    @ViewBuilder private func tile(_ i: Int, size: CGSize) -> some View {
+        let img: NSImage? = images.isEmpty ? nil : images[i % images.count]
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(white: 0.16))
+            // Posters fill their slot edge to edge; the placeholder mark (no art cached) sits inset.
+            if let img {
+                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Image(nsImage: stationLogoPlaceholder).resizable().aspectRatio(contentMode: .fit).padding(14)
+            }
+        }
+        .frame(width: size.width - 3, height: size.height - 3)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
     }
 }
