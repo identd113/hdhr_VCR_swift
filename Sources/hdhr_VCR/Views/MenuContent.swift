@@ -155,13 +155,14 @@ struct MenuContent: View {
             // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —
             // not hwCount alone. Right after a recording or in-app VLC stream starts but before the
             // next status.json poll lands, hwCount is still the stale pre-start value; showing it
-            // as the headline number (with the correction relegated to the secondary "⚠ app expects
-            // N" suffix below) under-reported true occupancy for that window. mismatch still
-            // compares the raw hwCount, not this corrected liveCount, so the warning keeps firing in
-            // both directions — hw briefly lower than expected (this transient window) and hw
-            // higher than expected (e.g. another process/instance also using the tuner).
+            // as the headline number under-reported true occupancy for that window. The note after it
+            // (TunerSharing) compares the raw hwCount, not this corrected liveCount, so it still names
+            // both cases — hw higher than ours (another device using the tuner) and hw briefly lower
+            // (our own just-started stream, "starting…").
             let liveCount   = max(hwCount, appCount)
-            let mismatch    = liveInfo != nil && hwCount != appCount
+            // Tuners in use that this app doesn't hold (another Mac sharing the device, a third-party client) are named
+            // as such rather than flagged as an app/hardware "mismatch" — see TunerSharing.
+            let sharing     = TunerSharing.note(hardwareCount: liveInfo == nil ? nil : hwCount, appCount: appCount)
             let offline     = !device.isAvailable
             let noLineup    = !state.isStartingUp && !offline && (state.lineups[device.DeviceID]?.isEmpty ?? true)
             let noGuide     = !state.isStartingUp && !offline && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
@@ -171,7 +172,7 @@ struct MenuContent: View {
                                 .compactMap { $0 }.joined(separator: ", ")
             let hasWarn     = !warnings.isEmpty
             Text("\(device.DeviceID)  \(offline ? "—" : "\(liveCount)/\(slots)")" +
-                 (mismatch ? "  ⚠ app expects \(appCount)" : "") +
+                 (sharing.map { "  · \($0)" } ?? "") +
                  (hasWarn  ? "  ⚠ \(warnings)" : ""))
                 .foregroundStyle(offline  ? Color(NSColor.systemRed) :
                                  hasWarn  ? Color(NSColor.systemOrange) :
