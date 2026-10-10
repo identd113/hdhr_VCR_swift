@@ -285,6 +285,36 @@ def do_record_test(port, shows, series):
 
 
 # ── start (schedule a now-airing entry and leave it recording) ────────────────
+def mock_recording(shows):
+    """The `[MOCK]` show that is recording right now with a growing file, or None."""
+    for s in shows:
+        path = s.get("show_recording_path")
+        if (s.get("show_title", "").startswith(MOCK_PREFIX) and s.get("show_recording") and path
+                and os.path.exists(path) and os.path.getsize(path) > 0):
+            return s
+    return None
+
+
+def do_status(shows):
+    """Exit 0 (printing the recording) if a `[MOCK]` recording is running, 1 if not."""
+    running = mock_recording(shows)
+    if running:
+        print(f"RECORDING {running['show_recording_path']}")
+        sys.exit(0)
+    print("not recording")
+    sys.exit(1)
+
+
+def do_ensure(port, shows, series):
+    """Idempotent `start`: leave a `[MOCK]` recording that is already running alone (one recording serves a whole
+    UI-test run), otherwise start one. Same exit codes as `start`; prints `RECORDING <path> (dev X ch N)`."""
+    running = mock_recording(shows)
+    if running:
+        print(f"RECORDING {running['show_recording_path']}  (dev {running.get('hdhr_record')} ch {running.get('show_channel')}) already running")
+        sys.exit(0)
+    do_start(port, shows, series)
+
+
 def do_start(port, shows, series):
     airing = guide_blocks(port, airing_now=True)
     if series:
@@ -312,7 +342,7 @@ def do_start(port, shows, series):
             show = next((s for s in load_shows() if s.get("show_title") == title), None)
             path = show.get("show_recording_path") if show else None
             if show and show.get("show_recording") and path and os.path.exists(path) and os.path.getsize(path) > 0:
-                print(f"RECORDING {path}")
+                print(f"RECORDING {path}  (dev {blk['device']} ch {blk['channel']})")
                 sys.exit(0)
         print("FAIL — no growing recording file appeared within 40s; cleaning up.")
         cleanup_mock_shows(port, [s for s in load_shows() if s.get("show_title") == title])
@@ -433,7 +463,7 @@ def nudge(port):
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(description="Plant/remove mock app states to demo or test guide + scheduling behavior.")
-    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "start", "plant", "list", "clean"],
+    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "start", "ensure", "status", "plant", "list", "clean"],
                     help="scenario to mock (or list/clean)")
     ap.add_argument("--series", help="restrict to a series whose title contains this text")
     ap.add_argument("--device", help="device id for `conflict` (default: first device in the guide)")
@@ -456,6 +486,10 @@ def main():
             do_record_test(args.port, shows, args.series)
         elif args.cmd == "start":
             do_start(args.port, shows, args.series)
+        elif args.cmd == "status":
+            do_status(shows)
+        elif args.cmd == "ensure":
+            do_ensure(args.port, shows, args.series)
         elif args.cmd == "plant":
             do_plant(args.port, args.file)
         elif args.cmd == "clean":

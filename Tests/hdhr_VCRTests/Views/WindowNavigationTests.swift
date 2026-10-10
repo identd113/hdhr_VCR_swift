@@ -44,12 +44,43 @@ import AppKit
 // by position, and why it searches for whichever show's submenu happens to contain that item
 // rather than assuming a fixed menu index for "the first show".
 
+/// `entire contents of <window>` returns an EMPTY list on this macOS build (confirmed 2026-10-10 against the live
+/// Watch Now window: 0 elements, ~2 s per call). A search loop built on it therefore never finds anything — it burns
+/// its whole retry budget (the ~111 s each the Watch Now / player / PiP tests used to take) and the test passes
+/// vacuously on a "nothing to watch" return. For the Watch Now / player / PiP-picker windows (small trees; the
+/// Add Show web view's thousands of tiles are deliberately left alone) this rewrites those calls to `my axAll(...)`,
+/// a depth-first walk over `UI elements` — the same technique `pipAXHandlers.findWhere` uses — and adds its handler.
+func axCompatible(_ script: String) -> String {
+    let pattern = #"entire contents of (window "Watch Now"|playerWin|pipWin)"#
+    guard script.range(of: pattern, options: .regularExpression) != nil else { return script }
+    let rewritten = script.replacingOccurrences(of: pattern, with: "my axAll($1)", options: .regularExpression)
+    return axAllHandler + "\n" + rewritten
+}
+
+private let axAllHandler = """
+on axAll(el)
+    tell application "System Events"
+        set out to {}
+        try
+            set kids to UI elements of el
+        on error
+            return {}
+        end try
+        repeat with k in kids
+            set end of out to (contents of k)
+            set out to out & my axAll(k)
+        end repeat
+        return out
+    end tell
+end axAll
+"""
+
 /// Runs `script` via `osascript -e`, returning trimmed stdout (empty string if the script itself
 /// returned nothing) or nil if osascript exited non-zero.
 func runAppleScript(_ script: String) -> String? {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    task.arguments = ["-e", script]
+    task.arguments = ["-e", axCompatible(script)]
     let outPipe = Pipe()
     let errPipe = Pipe()
     task.standardOutput = outPipe
@@ -342,6 +373,42 @@ repeat with i from 1 to rowCount
 end repeat
 resultsStr
 """
+
+/// The one `[MOCK]` recording the recording-dependent UI tests share (instead of each test skipping — after a
+/// long, useless search — whenever nothing happens to be recording). `ensure()` is idempotent: it starts a recording
+/// only if none is running, so a run uses a single recording from the first dependent test to the last; the final
+/// test (`stopRecordingFromTheMenu`) stops it through the real menu and cleans up.
+enum MockRecording {
+    static let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+
+    static func run(_ args: [String]) -> (status: Int32, output: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        task.arguments = [repoRoot.appendingPathComponent("tools/mock_scenario.py").path] + args
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        do { try task.run() } catch { return (-1, "\(error)") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        return (task.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// The tool's output (`RECORDING <path> (dev X ch N)`) once a `[MOCK]` recording is running; nil when the
+    /// environment can't provide one (nothing airing / tuner full — a skip, like the rest of the suite) or the tool
+    /// failed (an Issue is recorded).
+    static func ensure() -> String? {
+        let r = run(["ensure"])
+        if r.status == 0 { return r.output }
+        if r.status != 2 { Issue.record("mock_scenario.py ensure failed (\(r.status)): \(r.output)") }
+        return nil
+    }
+
+    static var isRecording: Bool { run(["status"]).status == 0 }
+    static func clean() { _ = run(["clean"]) }
+}
 
 @Suite("Window navigation smoke test (requires running app + Accessibility permission — invoke via --filter, not part of default swift test)", .serialized)
 struct WindowNavigationTests {
@@ -938,6 +1005,7 @@ struct WindowNavigationTests {
     /// different case from these compound icon+`Label` `.buttonStyle(.plain)`-family buttons.
     @Test func watchNowRowButtonsAreAccessible() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1137,6 +1205,7 @@ struct WindowNavigationTests {
     /// the way SwiftUI's own modifier names might suggest.
     @Test func vlcPlayerControlsAreAccessible() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1270,6 +1339,7 @@ struct WindowNavigationTests {
     /// further — see the tests below for the actual PiP behavior coverage, which is solid.
     @Test func pipPickerOpensFromPlayerContextMenu() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1349,6 +1419,7 @@ struct WindowNavigationTests {
     /// other environment-dependent skip in this file.
     @Test func addingLiveChannelAsPipSecondaryShowsAndRemovesThumbnail() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1448,6 +1519,7 @@ struct WindowNavigationTests {
     /// pipActionTrailing). Doesn't add anything; a pure observation test.
     @Test func pipPickerShowsNowPlayingForTheAlreadyPrimaryRecording() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1511,6 +1583,7 @@ struct WindowNavigationTests {
     /// survive the reposition (still present afterward), not just that the click didn't crash.
     @Test func pipCornerMenuOffersAllFourCornersAndRepositions() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1636,6 +1709,7 @@ struct WindowNavigationTests {
     /// (or happened but the title update regressed), not just "nothing visibly broke."
     @Test func pipTapToSwapChangesPlayerWindowTitle() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1734,6 +1808,7 @@ struct WindowNavigationTests {
     /// this test controls.
     @Test func pipChannelMenuSwitchesSecondaryChannel() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1890,19 +1965,6 @@ struct WindowNavigationTests {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let scenarioTool = repoRoot.appendingPathComponent("tools/mock_scenario.py").path
-        func runTool(_ args: [String]) -> (status: Int32, output: String) {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-            task.arguments = [scenarioTool] + args
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = pipe
-            do { try task.run() } catch { return (-1, "\(error)") }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
-            return (task.terminationStatus, String(data: data, encoding: .utf8) ?? "")
-        }
 
         // Synthetic right-click + key events for the PiP's native NSMenu (see tools/ui_events.swift).
         let uiEventsBinary = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ui_events").path
@@ -1925,18 +1987,13 @@ struct WindowNavigationTests {
             .appendingPathComponent("Library/Logs/hdhrVCRplus.log")
         let logOffset = (try? FileManager.default.attributesOfItem(atPath: logURL.path)[.size] as? UInt64) ?? 0
 
-        let started = runTool(["start"])
-        if started.status == 2 { return }   // nothing airing / tuner full — environment skip
-        guard started.status == 0 else {
-            Issue.record("mock_scenario.py start failed (\(started.status)): \(started.output)")
-            return
-        }
-        defer { _ = runTool(["clean"]) }
-        // "(dev X ch 4.1)" in start's output: the recorded channel. The primary's source change must
+        // The shared [MOCK] recording (started only if none is running; the final test stops it).
+        guard let startedOutput = MockRecording.ensure() else { return }   // nothing airing / tuner full — environment skip
+        // "(dev X ch 4.1)" in the tool's output: the recorded channel. The primary's source change must
         // not pick it — the app plays that one from disk, which would leave a recording relay (no
         // Channel submenu) in the PiP after the swap back.
-        let recordedChannel = started.output.range(of: #"ch (\S+)\)"#, options: .regularExpression)
-            .map { String(started.output[$0]).dropFirst(3).dropLast() } .map(String.init) ?? ""
+        let recordedChannel = startedOutput.range(of: #"ch (\S+)\)"#, options: .regularExpression)
+            .map { String(startedOutput[$0]).dropFirst(3).dropLast() } .map(String.init) ?? ""
 
         // Warm-up: the player's right-click AXShowMenu is unreliable until this process has already
         // driven other windows through System Events (see pipPickerOpensFromPlayerContextMenu's
@@ -2145,6 +2202,58 @@ struct WindowNavigationTests {
 
     /// Shared helper for the simple single-instance windows (Add Show, Watch Now) that open
     /// directly from a flat top-level menu item with no per-show submenu to navigate.
+    /// Last test of the run (declaration order — the suite is `.serialized`): stops the shared `[MOCK]` recording the
+    /// way a user does — the recording's own submenu in the menu bar → "Skip" — and checks it really stops. Needs a
+    /// recording, so it starts one itself if an earlier skip/stop left none (stopping and starting are both fair game).
+    /// Always cleans the `[MOCK]` show up afterwards.
+    @Test func stopRecordingFromTheMenu() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        guard MockRecording.ensure() != nil else { return }
+        defer { MockRecording.clean() }
+
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                click menu bar item 1 of menu bar 2
+                delay 0.6
+                set mi to missing value
+                try
+                    set mi to first menu item of menu 1 of menu bar item 1 of menu bar 2 whose name contains "[MOCK]"
+                end try
+                if mi is missing value then
+                    key code 53
+                    return "NO_MOCK_MENU_ITEM"
+                end if
+                set nm to name of mi
+                click mi
+                delay 0.6
+                try
+                    click menu item "Skip" of menu 1 of menu item nm of menu 1 of menu bar item 1 of menu bar 2
+                on error
+                    key code 53
+                    key code 53
+                    return "NO_SKIP_ITEM"
+                end try
+                return "CLICKED"
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("stop-recording menu script failed to run")
+            return
+        }
+        #expect(result == "CLICKED", "couldn't reach the recording's Skip item: \(result)")
+        guard result == "CLICKED" else { return }
+
+        var stopped = false
+        for _ in 0..<20 {
+            Thread.sleep(forTimeInterval: 1)
+            if !MockRecording.isRecording { stopped = true; break }
+        }
+        #expect(stopped, "the recording was still running 20 s after choosing Skip")
+    }
+
     private func openAndCloseTopLevelWindow(menuItemName: String) throws -> (title: String, windowCountAfter: Int) {
         let script = """
         tell application "System Events"

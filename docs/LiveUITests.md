@@ -66,7 +66,8 @@ settle time, and every per-second sample when a settle was slow).
 ## macOS 27 / environment gotchas (all hit while building these)
 
 - **`entire contents of <window>` returns an empty list** (for every app) while a recursive walk over `UI elements` works — all scripts use
-  `findWhere`/`findById`. The older tests in `WindowNavigationTests` still use `entire contents` and can therefore pass by skipping.
+  `findWhere`/`findById`. Since 2026-10-10 `runAppleScript` rewrites `entire contents of window "Watch Now" / playerWin / pipWin` into the same recursive walk (`axCompatible` → `axAll`), so those tests really search; the Add Show web view and Settings scripts still use plain `entire contents` (the web view's thousands of tiles would make a walk crawl). Before the rewrite the Watch Now / player / PiP tests each burned ~111 s retrying an empty list and then passed vacuously on a "nothing to watch" return — the suite took ~20 min; it now takes ~5 min.
+- **One shared `[MOCK]` recording** (`MockRecording.ensure()` → `tools/mock_scenario.py ensure`, idempotent) serves every recording-dependent test; stopping and starting between tests is fine. The last test, `stopRecordingFromTheMenu`, stops it the way a user does (the recording's submenu → Skip), checks it stops within 20 s (`mock_scenario.py status`), and always `clean`s.
 - **A direct `window "Name"` specifier can fail on the laptop** for a window that plainly exists; `windowNamed(nm)` walks `windows` instead,
   and every `name of w` loop is wrapped in `try` (a window can vanish mid-loop, e.g. the picker dismissing itself).
 - **The PiP's right-click menu is a native `NSMenu` that AX can't see or trigger** — `tools/ui_events.swift` sends a real right-click and
