@@ -669,21 +669,12 @@ struct WatchNowRow: View {
                 // aren't worth a window here. quickRecordMenu (GuideViewHelpers.swift) is shared
                 // with VLCPlayerView's toolbar Record button, so the two don't duplicate the
                 // Menu-building code or the four description strings.
-                quickRecordMenu(state: state, entry: entry, device: device, channel: channel,
-                                 tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm) {
-                    Label("Record", systemImage: "record.circle").font(.caption.bold())
-                }
+                // A real red Button that pops the pull-down up (quickRecordButton, GuideViewHelpers.swift) —
+                // not a Menu, which macOS draws plain grey unless Increase Contrast is on.
+                quickRecordButton(state: state, entry: entry, device: device, channel: channel,
+                                  tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm)
                 .accessibilityLabel("Record \(entry.Title)")
                 .help("Record \(entry.Title)")
-                // A SwiftUI Menu given only a button style is drawn as a pop-up *bar* stretched across
-                // the row (grey, full width) on macOS 27 instead of the compact red button this is meant
-                // to be. Asking for the button menu style and a fixed (content) size gives every other
-                // button in this row's look and width.
-                .menuStyle(.button)
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .controlSize(.small)
-                .fixedSize()
             }
         }
     }

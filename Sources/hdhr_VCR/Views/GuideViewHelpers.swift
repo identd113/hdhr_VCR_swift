@@ -89,6 +89,75 @@ private func handleQuickRecordFailure(
     }
 }
 
+/// Runs one quick-record pick, routing a failure to the tuner-full alert / the "stop watching and record?"
+/// confirmation exactly as the menu items always have.
+@MainActor
+private func performQuickRecord(
+    _ type: ShowState, state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
+    tunerFullAlert: Binding<Bool>, yieldWatchNowConfirm: Binding<QuickRecordYieldRequest?>
+) {
+    if !state.quickRecord(type: type, entry: entry, device: device, channel: channel) {
+        handleQuickRecordFailure(type, state: state, entry: entry, device: device, channel: channel,
+                                  tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+    }
+}
+
+/// A real red "Record ⌄" button (same look as the row's blue Watch button) that pops the four-type
+/// pull-down up under the pointer when clicked. A SwiftUI `Menu` can't be the control: on macOS it strips
+/// a custom label down to plain icon + text and ignores .borderedProminent/.tint unless the Mac has
+/// Accessibility → Display → "Increase contrast" on — so the same Menu was red on one Mac and plain grey
+/// on another. A Button always honors its style; the pull-down is a native NSMenu built at click time.
+/// Same four picks, subtitles and accessibility actions as `quickRecordMenu` below.
+@MainActor @ViewBuilder
+func quickRecordButton(
+    state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
+    tunerFullAlert: Binding<Bool>, yieldWatchNowConfirm: Binding<QuickRecordYieldRequest?> = .constant(nil)
+) -> some View {
+    if entry.isInfomercial {
+        EmptyView()   // same paid-programming withholding as quickRecordMenu
+    } else {
+        Button {
+            let menu = NSMenu()
+            for type in ShowState.allCases {
+                let item = ClosureMenuItem(title: type.rawValue) {
+                    MainActor.assumeIsolated {
+                        performQuickRecord(type, state: state, entry: entry, device: device, channel: channel,
+                                           tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+                    }
+                }
+                item.subtitle = recordTypeDescription[type] ?? ""
+                menu.addItem(item)
+            }
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        } label: {
+            HStack(spacing: 4) {
+                Label("Record", systemImage: "record.circle")
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .heavy))
+            }
+            .font(.caption.bold())
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+        .controlSize(.small)
+        .accessibilityAction(named: Text(ShowState.single.rawValue)) {
+            performQuickRecord(.single, state: state, entry: entry, device: device, channel: channel,
+                               tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+        }
+        .accessibilityAction(named: Text(ShowState.dateTime.rawValue)) {
+            performQuickRecord(.dateTime, state: state, entry: entry, device: device, channel: channel,
+                               tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+        }
+        .accessibilityAction(named: Text(ShowState.seriesChannel.rawValue)) {
+            performQuickRecord(.seriesChannel, state: state, entry: entry, device: device, channel: channel,
+                               tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+        }
+        .accessibilityAction(named: Text(ShowState.seriesAll.rawValue)) {
+            performQuickRecord(.seriesAll, state: state, entry: entry, device: device, channel: channel,
+                               tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+        }
+    }
+}
+
 @MainActor @ViewBuilder
 func quickRecordMenu<Content: View>(
     state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
