@@ -18,10 +18,10 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ### 📦 Latest: [v2.6.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.6.0/hdhrVCRplus-2.6.0.dmg)
-- **New: a much smoother player** — pause with the space bar, place and resize the picture-in-picture, scrub back through another Mac's recording (FEED), Cast to Chromecast (Beta)
-- New: exclude recordings from Time Machine, and a heads-up before a scheduled recording needs your tuner
-- Recording fixes: series shows no longer lose their first seconds, normal endings aren't logged as failures, and Bonus Time no longer doubles after a restart
-- FEED is much faster over the network, and your config now survives a hostname change. Apple Silicon only.
+- **FEED grows up:** scrub back through another Mac's recording, automatic reconnect after a network blip, and delivery at full network speed (it was ~1.6 Mbps in 2.5.0)
+- **Picture-in-picture you control:** open it where you right-click, drag its corner to resize, and swaps keep your scrub position and audio output; streams now start on their own
+- Recordings that no longer lose their first seconds, a heads-up before a recording needs your tuner, Cast to Chromecast (Beta), and exclude recordings from Time Machine
+- Apple Silicon only.
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 

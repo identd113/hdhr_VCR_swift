@@ -8,6 +8,37 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ## v2.6.0 (2026-10-10)
 
+### The headline: FEED and picture-in-picture grow up
+
+2.5.0 introduced two big ideas: **Recording FEED** (watch a show that's recording on another Mac,
+without a second tuner) and **picture-in-picture** (two streams at once). Both shipped as Beta, with
+rough edges. 2.6.0 is the release where they get good.
+
+**Why it needed work.** The point of FEED is simple: one tuner, several Macs, and you want to watch
+from wherever you are while it records. In real use that exposed three problems. The built-in web
+server was handing video to other Macs at about 1.6 Mbps — a fraction of an HD broadcast's ~11 Mbps —
+because of a macOS networking quirk, so viewers stalled; the cause was found and fixed, and it now runs
+at full network speed (the web guide loads faster from other devices too). A FEED could only join at the
+live edge, with no way back if you missed a moment. And a dropped connection ended the FEED for good.
+Picture-in-picture had its own limits: a fixed corner, a fixed size, and audio or scrub position that
+could be lost when you swapped streams.
+
+**How it matured.**
+- **Scrub a FEED** like a recording — rewind and fast-forward within what you've watched so far.
+- **It reconnects by itself** after a network blip and keeps filling the same scrub-back cache.
+- **It's steadier:** no more slow memory leak, it works with Sharing turned off, the right episode title
+  and description show even after the other Mac restarts, only one Mac relays a shared tuner, and
+  deleting a recording shuts its FEED down instead of leaving an empty one running.
+- **Picture-in-picture goes where you want it** (right-click the video), **resizes by dragging its
+  corner**, remembers your size, and scales with the window.
+- **Swapping keeps what matters:** your scrub position, your chosen audio output, and correct sound.
+- **Streams start by themselves** — picture and sound together, no Start button — and switching
+  channels on a busy tuner waits for the tuner instead of ending playback.
+
+These were shaken out with a lot of real use plus new automated stress tests that open, swap and close
+players and picture-in-pictures while checking, after every step, that your tuners are counted correctly.
+FEED is still labeled Beta, but it's far steadier than it was in 2.5.0.
+
 ### Removed
 - **Intel Mac support.** Release builds are Apple Silicon (arm64) only. macOS 15.0 or later is
   still required.
