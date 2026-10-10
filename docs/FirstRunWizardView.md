@@ -544,7 +544,7 @@ alongside the step split above, replacing an earlier version that palette-swappe
 `NetworkFlowDiagram`'s own two-device shape. Web LAN's real relationship (one Mac serving many
 different *kinds* of devices) is genuinely different from Recording FEED's (one Mac connecting to
 one specific other Mac), so this fans out instead: "this Mac" on the left (green badge, ripple
-rings — same broadcasting language `NetworkFlowDiagram`/`SignalRing` use) connects via three
+rings — same broadcasting language `NetworkFlowDiagram` uses) connects via three
 separate dashed lines to three device icons on the right (`desktopcomputer`/`ipad`/`iphone`,
 `watchNowBlue`), each receiving its own small traveling packet at a staggered phase offset (0,
 0.33, 0.66 of the packet cycle) so the three arrivals read as a continuous fan-out rhythm rather
@@ -584,8 +584,7 @@ whatever width its container gives it. A single `TimelineView(.animation)` drive
 looping effects, each run twice at a half-cycle phase offset so the line/device never sits visibly
 empty between beats:
 - **Ripple rings** — expanding, fading circles centered on the left ("this Mac") device, colored by
-  `leftBadgeColor` (red for "Recording") — the same "broadcasting outward" language `SettingsView`'s
-  About-tab `SignalRing` already uses for the app icon's own pulse effect.
+  `leftBadgeColor` (red for "Recording") — the same "broadcasting outward" language `NetworkFlowDiagram` uses.
 - **Packets** — small dots traveling along the line from the left device to the right one, colored
   by `rightBadgeColor` (`watchNowBlue` by default — "whoever's receiving it"), fading in/out over
   the first/last 15% of the line so they don't pop at either device's edge.
