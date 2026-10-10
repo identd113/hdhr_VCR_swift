@@ -42,6 +42,7 @@ WebServer.swift            NWListener LAN web server (port 1980) — guide HTML,
 Models.swift               All data types + glog() logging function
 DiscordNotifier.swift      sendDiscordEmbed() — posts embeds to a Discord webhook URL
 ChannelIconCache.swift     Actor: async disk-backed cache for channel logos
+CachePruner.swift          Pure, injectable stale-file pruner (guide cache, --dump-header temp files) — see docs/GuideStore.md, docs/RecordingManager.md
 ChannelSignalStore.swift   Actor-like @MainActor store: per-channel SNQ history + stats
 VirtualTunerService.swift  UDP discovery responder for the recording-relay virtual tuner (see docs/VirtualTunerService.md)
 LocalRelay.swift           URL shapes for the in-process /api/watch-recording and FEED-cache relays the player reads from
@@ -58,6 +59,7 @@ Views/
   GuideViewHelpers.swift   Shared guide-view utilities + SignalBarsView
   NativeContextMenu.swift  NSMenu-at-click-time right-click host (immune to SwiftUI re-renders)
   PiPPickerView.swift      "Add Picture-in-Picture…" picker (Recording Now / FEED / Live TV sections)
+  KeyboardShortcutsOverlay.swift  Generic translucent "?" shortcuts card (player; docs/VLCPlayerView.md)
   RecordingDefaultsFields.swift  Shared default-recording fields (transcode, Time Machine, Bonus Time…) for Settings and the first-run wizard
 ```
 

@@ -25,8 +25,8 @@ test` runs alongside the rest of the project's suite.
 
 A full-screen terminal view of the guide for one tuner at a time — browse channels/times and
 schedule a recording without opening the app UI or a browser. It talks only to hdhrVCRplus's own
-LAN web server over plain HTTP (`127.0.0.1:1980`, hardcoded — a custom `Web_server_port` isn't
-supported yet), the same way `AppState.watchRecordingInApp`'s relay URL does. See "MAS Compliance"
+LAN web server over plain HTTP (`127.0.0.1:1980` by default; the `HDHR_GUIDE_PORT` env var, 1–65535, overrides it — the app's own
+`Web_server_port` setting isn't read), the same way `AppState.watchRecordingInApp`'s relay URL does. See "MAS Compliance"
 below for why bundling a second executable here doesn't add a sandbox blocker.
 
 ## Screenshots
