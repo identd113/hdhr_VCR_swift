@@ -27,7 +27,7 @@ public let tuiShortcuts: [TUIShortcut] = [
 ]
 
 /// Plain-text bordered box (no ANSI), at most `maxWidth` columns wide.
-public func shortcutsBoxLines(maxWidth: Int) -> [String] {
+public func shortcutsBoxLines(maxWidth: Int, maxHeight: Int = Int.max) -> [String] {
     let keyW = (tuiShortcuts.map { $0.keys.count }.max() ?? 0)
     let descW = (tuiShortcuts.map { $0.description.count }.max() ?? 0)
     let inner = max(10, min(keyW + 2 + descW + 2, maxWidth - 2))
@@ -37,6 +37,13 @@ public func shortcutsBoxLines(maxWidth: Int) -> [String] {
     lines.append(row(""))
     lines.append(row(" Press any key to close"))
     lines.append("+" + String(repeating: "-", count: inner) + "+")
+    // Too short for the full card: drop shortcut rows from the bottom of the list (keeping the title, the
+    // footer and both borders) rather than clipping the footer/border off the end of the screen.
+    if lines.count > maxHeight, maxHeight >= 6 {
+        let drop = lines.count - maxHeight
+        let keepTop = lines.count - 3 - drop      // index just past the last kept shortcut row
+        lines = Array(lines[0..<keepTop]) + Array(lines[(lines.count - 3)...])
+    }
     return lines
 }
 
@@ -49,7 +56,7 @@ public func stripANSI(_ s: String) -> String {
 public func overlayShortcuts(onto frame: String, cols: Int, rows: Int) -> String {
     var lines = frame.components(separatedBy: "\n").map { stripANSI($0) }
     while lines.count < rows { lines.append("") }
-    let box = shortcutsBoxLines(maxWidth: cols)
+    let box = shortcutsBoxLines(maxWidth: cols, maxHeight: rows)
     let boxW = box.first?.count ?? 0
     let top = max(0, (min(rows, lines.count) - box.count) / 2)
     let left = max(0, (cols - boxW) / 2)

@@ -1502,12 +1502,20 @@ var GUIDE_SHORTCUTS=[
   ['Space  Enter','Open the focused program'],
   ['?','Show this card']
 ];
+var _kbCardOpen=false; // plain flag so the capture-phase keydown below costs no DOM lookup per keystroke
+// True when focus is in a control that takes typed text (or a native type-to-jump <select>).
+function isEditableFocus(){
+  var ae=document.activeElement;
+  return !!(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable));
+}
 function closeShortcutsCard(){
+  _kbCardOpen=false;
   var c=document.getElementById('kb-card');
   if(c)c.remove();
 }
 function showShortcutsCard(){
-  if(document.getElementById('kb-card'))return;
+  if(_kbCardOpen)return;
+  _kbCardOpen=true;
   var c=document.createElement('div');
   c.id='kb-card';
   var h='<div class="kb-panel"><div class="kb-title">Keyboard Shortcuts</div>';
@@ -1520,16 +1528,16 @@ function showShortcutsCard(){
   document.body.appendChild(c);
 }
 document.addEventListener('keydown',function(e){
-  if(document.getElementById('kb-card')){
-    if(e.key==='Shift'||e.key==='Control'||e.key==='Alt'||e.key==='Meta')return; // modifier alone isn't "a key"
+  if(_kbCardOpen){
+    // A modifier alone isn't "a key", and a modifier chord (Cmd+R, Ctrl+F…) is a real browser shortcut —
+    // let both through untouched, same courtesy as the type-to-search listener below.
+    if(e.key==='Shift'||e.key==='Control'||e.key==='Alt'||e.key==='Meta'||e.metaKey||e.ctrlKey||e.altKey)return;
     e.preventDefault();e.stopPropagation();
     closeShortcutsCard();
     return;
   }
   if(e.key!=='?'||e.metaKey||e.ctrlKey||e.altKey)return;
-  var ae=document.activeElement;
-  var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable);
-  if(editable||anyGuideModalOpen())return;
+  if(isEditableFocus()||anyGuideModalOpen())return;
   e.preventDefault();e.stopPropagation();
   showShortcutsCard();
 },true);
@@ -1556,11 +1564,9 @@ document.addEventListener('keydown',function(e){
   if(anyGuideModalOpen())return;
   var inp=document.getElementById('search-in');
   if(!inp||document.activeElement===inp)return; // already open — let the input's own handler run
-  var ae=document.activeElement;
-  // SELECT included even though it's not "editable" text — a focused <select> (e.g. #genre-sel)
-  // has its own native type-to-jump-to-option behavior that this listener would otherwise break.
-  var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable);
-  if(editable)return; // don't steal keystrokes aimed at a genuinely different form control
+  // isEditableFocus() includes SELECT even though it's not "editable" text — a focused <select> (e.g.
+  // #genre-sel) has its own native type-to-jump-to-option behavior that this listener would otherwise break.
+  if(isEditableFocus())return; // don't steal keystrokes aimed at a genuinely different form control
   e.preventDefault(); // also stops Firefox's own "quick find" from opening on '/' or "'"
   // "/" is the dedicated "open search" key (matching hdhr_guide's own Mode.search entry point,
   // docs/TUIGuide.md's "Search / channel-jump") — it opens/focuses the box but isn't itself typed
