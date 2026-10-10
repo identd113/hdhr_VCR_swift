@@ -575,6 +575,11 @@ private struct AddShowWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "record")
         config.userContentController.add(context.coordinator, name: "appearanceChanged")
+        // Mark the page as the in-app view before it paints, so guide.css's `html.native` rules (native scrollbars,
+        // no frame around the grid) apply without a flash. LAN browsers never get this class.
+        config.userContentController.addUserScript(WKUserScript(
+            source: "document.documentElement.classList.add('native');",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
         wv.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
