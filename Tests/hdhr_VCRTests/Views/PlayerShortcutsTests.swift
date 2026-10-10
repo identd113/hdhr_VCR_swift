@@ -12,12 +12,13 @@ struct PlayerShortcutsTests {
 
     @Test func listsEveryKeyThePlayerHandles() {
         let keys = Set(rows().flatMap(\.keys))
-        #expect(keys == ["←", "→", "Space", "Tab", "Esc", "i", "?"])
+        #expect(keys == ["←", "→", "Space", "Tab", "Esc", "Right-click", "i", "?"])
     }
 
     @Test func everythingAvailable_whenEverythingApplies() {
-        let all = rows()
-        #expect(all.allSatisfy { $0.isAvailable })
+        // Tab needs a PiP open and Right-click needs none, so "everything" is two states, not one.
+        #expect(rows(pip: true).filter { !$0.isAvailable }.map(\.keys) == [["Right-click"]])
+        #expect(rows(pip: false).filter { !$0.isAvailable }.map(\.keys) == [["Tab"]])
     }
 
     @Test func seekAndPause_needADiskBackedStream() {
@@ -30,6 +31,11 @@ struct PlayerShortcutsTests {
     @Test func tab_needsAPictureInPicture() {
         #expect(row("Tab", in: rows(pip: false))?.isAvailable == false)
         #expect(row("Tab", in: rows(pip: true))?.isAvailable == true)
+    }
+
+    @Test func rightClick_onlyWhenNoPictureInPictureIsOpen() {
+        #expect(row("Right-click", in: rows(pip: false))?.isAvailable == true)
+        #expect(row("Right-click", in: rows(pip: true))?.isAvailable == false)
     }
 
     @Test func esc_onlyMattersInFullScreen() {

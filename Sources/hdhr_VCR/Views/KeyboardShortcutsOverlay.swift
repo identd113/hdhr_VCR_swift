@@ -108,6 +108,8 @@ enum PlayerShortcuts {
                         note: "Needs a picture-in-picture open", isAvailable: hasPiP),
             ShortcutRow(keys: ["Esc"], title: "Leave full screen",
                         note: "Only while in full screen", isAvailable: isFullScreen),
+            ShortcutRow(keys: ["Right-click"], title: "Add a picture-in-picture",
+                        note: "Only while no picture-in-picture is open", isAvailable: !hasPiP),
             ShortcutRow(keys: ["i"], title: "Show what's playing"),
             ShortcutRow(keys: ["?"], title: "Show this help"),
         ]
