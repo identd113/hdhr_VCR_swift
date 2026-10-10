@@ -908,6 +908,12 @@ struct SettingsView: View {
                     openWindow(id: "first-run-wizard")
                     return "First-run setup wizard reopened"
                 }
+                maintenanceRow("Preview Launch Splash",
+                               "Play the launch splash now — show posters fly in, the checklist fills, and the logo flies to the menu bar icon") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "launch-splash")
+                    return "Launch splash playing"
+                }
             }
             Section("Shows") {
                 maintenanceRow("Reactivate Paused Shows",

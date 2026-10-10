@@ -7,6 +7,8 @@
 - **Poster source:** `posterURLs()` takes `onAirNow` art across the recordable tuners. The list is saved to `UserDefaults` (`launchSplashPosterURLs`) at the end of every splash, so the next launch has it instantly (the images are in `ChannelIconCache` on disk); fresh posters are merged in if the guide is up within ~1 s, and fetching is capped at ~1.5 s. No posters at all → cached station logos (`ChannelIconCache.sampleCachedImages`), then the app's placeholder mark.
 - **Finale:** the wall fades, the logo shrinks and flies to the menu-bar icon, a ring pulses there, and the window closes — "I'm loaded; I live up here". The icon's position is found from our own `NSStatusBarWindow` (private class, matched loosely) with a top-right-of-screen fallback.
 
+**On demand:** Settings → Maintenance → *Preview Launch Splash* opens the same window any time (it ignores the enable toggle).
+
 ## Timing
 `LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (7 s) — so a missing tuner can't hold it up.
 

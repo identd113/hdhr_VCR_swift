@@ -327,6 +327,7 @@ See [WebServer.md](WebServer.md) for full route and feature documentation.
 One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
 
 **Setup section:**
+- **Preview Launch Splash** — activates the app and opens the `launch-splash` window on demand (works whether or not the splash is enabled or first-run is done); see `docs/LaunchSplash.md`.
 - **Reset First-Run Setup** — clears `state.config.First_run_wizard_shown` and immediately calls
   `openWindow(id: "first-run-wizard")` to reopen `FirstRunWizardView` (`docs/FirstRunWizardView.md`),
   prefilled with whatever's currently configured — a "review what's set" re-run, not a
