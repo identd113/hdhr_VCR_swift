@@ -113,6 +113,7 @@ struct LaunchSplashView: View {
             window = w
             Self.configure(w)
         })
+        .onAppear { if let w = window { Self.configure(w) } }
     }
 
     private var logo: some View {
@@ -222,6 +223,10 @@ struct LaunchSplashView: View {
     }
 
     @MainActor private func run(in size: CGSize) async {
+        // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
+        // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
+        var reset = Transaction(); reset.disablesAnimations = true
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; tiles = [] }
         tiles = await loadPosters()
         started = Date()                                                       // tiles start flying now
         try? await Task.sleep(for: .milliseconds(Int((MosaicTiles.assembleSeconds + 0.1) * 1000)))
