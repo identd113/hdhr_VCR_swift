@@ -2,12 +2,14 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## v2.6.0 — 2026-10-09
+## v2.6.0 — 2026-10-10
 
 Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.
 
 ### Player & picture-in-picture (`VLCPlayerView`, `VLCBridge`, `PiPPickerView`)
 
+- *Updated* — **Fixed: switching channel on a full tuner could leave the player stuck** — after "All Tuners Busy" it sat on "Connecting…" forever; it now puts the picker back and re-opens what was playing, and a stale internal flag could make a later pick stop a FEED that held no tuner.
+- *Updated* — **Fixed: closing the player during a FEED transcode toggle leaked a `curl` puller and a multi-GB cache file** until the app quit. Late Chromecast discovery results after teardown are released, and closing no longer reopens a real tuner stream first.
 - *Added* — **Space bar pauses and resumes** a recording (Watch Now) or a FEED in the in-app player, with a pause symbol over the video. Live TV isn't pausable — there's no live-TV buffer to resume from.
 - *Added* — **Cast to Chromecast.** The in-app player's "…" menu now has a "Cast" entry that finds Chromecast devices on your LAN and sends Watch Now/FEED playback to them — pick "This Mac" to return to local playback. Not yet tested against a real Chromecast (built and verified via `swift build`/`swift test` only).
 - *Added* — **Open a picture-in-picture where you want it.** Right-click the video and choose "Add Picture-in-Picture…" — the PiP opens in the quadrant of the video you clicked.
@@ -45,6 +47,8 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 
 ### Recording engine & scheduling (`AppState`, `RecordingManager`)
 
+- *Updated* — **Fixed: a New Only skip a few seconds before a date/time airing was repeated every tick** (duplicate "Recording Skipped" notices and Discord cards until the airing passed). A skipped airing now moves straight to the next one.
+- *Updated* — **Fixed: on the third attempt at an airing, an earlier partial counted as "already recorded"** and the rest of that airing was never recorded. Every file written during the airing is now ignored for that check, and 0-byte leftovers from failed attempts are deleted.
 - *Added* — **A heads-up before a scheduled recording needs the tuner you're watching live on.** About 3 minutes ahead you get a notice; nothing stops until the recording actually starts. If you're watching the same channel, playback simply switches over to the recording. Skipped when the recording won't happen anyway (a rerun with New Only on, an episode already recorded, etc.).
 - *Added* — **Exclude recordings from Time Machine.** Settings → Recording (and the first-run wizard) has a new "Exclude from Time Machine" option — Off, Each Recording, or Show's Folder — so TB-scale recordings don't silently bloat someone's backup. "Show's Folder" tags the containing directory once and automatically covers future episodes; "Each Recording" tags every output file individually, for anyone who wants other files sharing that folder (an `.nfo`, a poster) still backed up.
 - *Updated* — **Scheduling fixes (beyond the ones above):** a recurring date/time show no longer drifts a minute early at some times of day; a show with no valid air days is deactivated instead of left paused; an already-recorded or New Only rerun that's still airing no longer retries in a loop; live TV is only stopped for a recording that will really happen (the skip checks run first, and the 3-minute heads-up uses the same ones); and sports shows started with the Watch Now toolbar's Record button now get Bonus Time like any other.
@@ -71,6 +75,8 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 
 ### Web guide & Discord (`WebServer`, `Resources/guide.*`, `DiscordNotifier`)
 
+- *Updated* — **Fixed: a tuner dropdown could miss a pause/add** when two updates were decoded out of order; each tuner dropdown now tracks its own ordering.
+- *Updated* — **Fixed: a router-assigned name like `macmini.fritz.box` was refused (403).** The Host check now also accepts names under this network's own DNS domain (from `/etc/resolv.conf`) — not "any name that resolves to this Mac", which would defeat the DNS-rebinding protection. The `?` shortcuts card also lets Cmd/Ctrl shortcuts through.
 - *Added* — **Press `?` in the web guide or the terminal guide for a keyboard-shortcuts card**, same idea as the player's. Web: a themed card over the guide (`GUIDE_SHORTCUTS` in `guide.js`); terminal: a bordered box over the dimmed grid (`tuiShortcuts`). Any key closes it.
 - *Added* — **`/api/tuner-status.json`** — a structured JSON endpoint giving per-tuner occupancy (recording/watching-live/other breakdown) and Recording/Up Next/Scheduled/Paused shows with poster art, for external pollers like Home Assistant. Off by default — enable in Settings → Sharing → Home Assistant.
 - *Updated* — **The web guide and Discord stay in sync with recordings:** a show paused after repeated failures, or skipped because the disk is full, now shows that in the web guide immediately instead of looking unchanged; Discord recording cards use the right episode information; airing-day edits are rejected as a whole if any day is invalid instead of silently dropping the bad ones; and the guide only refreshes the affected tuner's dropdown on a change.

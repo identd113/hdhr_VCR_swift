@@ -6,7 +6,7 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
-## v2.6.0 (2026-10-09)
+## v2.6.0 (2026-10-10)
 
 ### Removed
 - **Intel Mac support.** Release builds are Apple Silicon (arm64) only. macOS 15.0 or later is
@@ -56,6 +56,12 @@ What's new in each version. For the fuller list of changes within a version, see
 - **Fixed: a bad or empty guide reply could wipe your guide.**
 - **Fixed: recordings refused on a big drive that was merely "93% full"** — only your "Minimum free
   disk" setting decides now.
+- **Fixed: a New Only skip right before a date/time recording repeated every few seconds**, and **a
+  retry could skip the rest of an airing** because its own earlier partial counted as "already recorded".
+- **Fixed: the player could get stuck on "Connecting…"** after "All Tuners Busy", and **closing it during
+  a FEED transcode switch left a download running** until you quit the app.
+- **Fixed: opening the web guide by a router-assigned name** (like `macmini.fritz.box`) was refused.
+- **Old temporary files are cleaned up** — stale guide caches and leftover recording-header files.
 - **Fixed: switching channels while a tuner is busy no longer ends playback**, and switching from a
   FEED to a real channel keeps the FEED playing until the new stream is ready. Fewer false
   "playback stalled" reconnects, and no silent audio after a picture-in-picture swap.
