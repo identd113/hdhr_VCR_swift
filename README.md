@@ -121,7 +121,7 @@ record — plus one-click **Pause**/**Delete**, right from the menu bar.
 
 | Add Show — Details | Edit Show |
 |--------------------|-----------|
-| ![Add Show details step with SeriesID type, Channel/All scope, New Only, and Other Upcoming Airings](docs/screenshots/addshow_details.png) | ![Edit Show window with SeriesID scope, New Only, and starburst bonus time badge](docs/screenshots/edit_show.png) |
+| ![Add Show details step with SeriesID type, Channel/All scope, and New Only](docs/screenshots/addshow_details.png) | ![Edit Show window with SeriesID scope, New Only, and starburst bonus time badge](docs/screenshots/edit_show.png) |
 
 Scheduling by **SeriesID** (not just title matching) means reruns and retitled episodes still get
 caught — the **Channel / All** toggle decides whether that series only records on the channel you
