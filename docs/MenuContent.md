@@ -117,6 +117,8 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 
 ## Menu Bar Icon States
 
+(Settings → About shows the same light live and carries this table as a legend.)
+
 | State | Icon | Condition |
 |---|---|---|
 | Starting up | Dimmed (30% opacity) idle mark | `isReady == false` |

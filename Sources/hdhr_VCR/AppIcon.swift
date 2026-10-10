@@ -7,16 +7,16 @@ let appIconImage: NSImage? = {
 }()
 
 // Recording / up-next variants — same mark, only the built-in status light differs
-// (dim → red / amber). Used by the menu bar only; the About tab always shows the idle mark.
-private let appIconRecordingImage: NSImage? = {
+// (dim → red / amber / blue). The menu bar uses scaled copies; the About tab shows these full-size to mirror the live light.
+let appIconRecordingImage: NSImage? = {
     guard let url = Bundle.main.url(forResource: "app-recording", withExtension: "jpg") else { return nil }
     return NSImage(contentsOf: url)
 }()
-private let appIconUpNextImage: NSImage? = {
+let appIconUpNextImage: NSImage? = {
     guard let url = Bundle.main.url(forResource: "app-upnext", withExtension: "jpg") else { return nil }
     return NSImage(contentsOf: url)
 }()
-private let appIconFeedImage: NSImage? = {
+let appIconFeedImage: NSImage? = {
     guard let url = Bundle.main.url(forResource: "app-feed", withExtension: "jpg") else { return nil }
     return NSImage(contentsOf: url)
 }()
