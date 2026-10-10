@@ -271,6 +271,50 @@ struct GuideStoreMockNetworkTests {
             #expect(fresh.channels(deviceId: device.DeviceID).isEmpty)
         }
 
+        // The 2026-10-09 outage surfaced as NSURLErrorSecureConnectionFailed (-1200) with a peer-trust
+        // error. It must read as a certificate problem, not a generic "API error".
+        @Test(arguments: [
+            URLError.Code.secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+            .serverCertificateUntrusted, .serverCertificateHasUnknownRoot,
+        ])
+        func tlsErrorsClassifyAsCertificateProblems(_ code: URLError.Code) {
+            guard case .certificate = GuideStore.classify(URLError(code)) else {
+                Issue.record("\(code) was not classified as a certificate problem"); return
+            }
+        }
+
+        @Test func ordinaryNetworkErrorsAreNotCertificateProblems() {
+            guard case .network = GuideStore.classify(URLError(.notConnectedToInternet)) else {
+                Issue.record("a plain offline error must stay a network failure"); return
+            }
+            guard case .network = GuideStore.classify(URLError(.timedOut)) else {
+                Issue.record("a timeout must stay a network failure"); return
+            }
+        }
+
+        @Test @MainActor func lastFailureRecordsTheReason_andClearsOnSuccess() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { _ in throw URLError(.serverCertificateHasBadDate) }
+            _ = await store.load(for: device)
+            guard case .certificate = store.lastFailure[device.DeviceID] else {
+                Issue.record("expected a certificate failure, got \(String(describing: store.lastFailure[device.DeviceID]))"); return
+            }
+            MockURLProtocol.requestHandler = { req in (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            _ = await store.load(for: device)
+            #expect(store.lastFailure[device.DeviceID] == nil, "a successful fetch ends the failure")
+        }
+
+        @Test @MainActor func aNon200Answer_isRecordedAsHttp() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (HTTPURLResponse(url: req.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
+            }
+            _ = await store.load(for: device)
+            #expect(store.lastFailure[device.DeviceID] == .http(503))
+        }
+
         @Test @MainActor func load_badJSON_doesNotCrash() async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()

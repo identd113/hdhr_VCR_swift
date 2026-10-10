@@ -58,6 +58,12 @@ What's new in each version. For the fuller list of changes within a version, see
   "playback stalled" reconnects, and no silent audio after a picture-in-picture swap.
 - **FEED playback is much smoother.** The web server was delivering to other Macs at about 1.6 Mbps
   because of a macOS dual-stack networking issue; it now delivers at full network speed.
+- **The guide survives the guide service being down.** If SiliconDust's guide servers can't be reached
+  (their certificate expired on 2026-10-09), a relaunch now loads your last saved guide instead of
+  starting empty, and you get a plain notification and Discord message about it — then another when it
+  recovers.
+- **A scrubbed position survives a picture-in-picture swap**, and Watch Now's Record button is a compact
+  button again.
 - **Faster startup, fewer calls to the public guide service, and more resilient device discovery.**
 - **Smaller fixes:** Edit Show no longer saves a Length of 0, Import Config tells you to restart,
   launch-at-login no longer leaves Settings on "unsaved changes", the web guide's tuner count

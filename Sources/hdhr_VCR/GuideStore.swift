@@ -228,7 +228,8 @@ final class GuideStore {
         // reported (return false → the usual retry cadence continues), and loadTimestamps keeps the
         // file's own age so isFresh stays false. A guide already in memory is never replaced by an
         // older disk copy.
-        func failed() async -> Bool {
+        func failed(_ why: LoadFailure) async -> Bool {
+            lastFailure[id] = why
             if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
                let modified = await applyDiskCache(id: id, file: cacheFile, maxAge: Self.staleFallbackMaxAge,
                                                    epochAtStart: epochAtStart, parse: parse) {
@@ -248,12 +249,12 @@ final class GuideStore {
 
             guard status == 200 else {
                 glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
-                return await failed()
+                return await failed(.http(status))
             }
 
             guard !data.isEmpty else {
                 glog("[\(id)] ERROR: empty response body", level: .error)
-                return await failed()
+                return await failed(.badResponse)
             }
 
             // JSON/XMLTV decode + per-channel sort scale with GuideHours/lineup size (~1.4MB,
@@ -264,7 +265,7 @@ final class GuideStore {
             guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
                 guard let channels = parse(data) else { return nil }
                 return Self.prepareIndex(deviceId: id, channels: channels)
-            }).value else { return await failed() }
+            }).value else { return await failed(.badResponse) }
 
             // A call to invalidateAll() while the fetch/decode above was suspended means this
             // result is now stale — a fresh, correct reload for this device may have already
@@ -280,13 +281,44 @@ final class GuideStore {
 
             applyIndex(prepared)
             loadTimestamps[id] = Date()
+            lastFailure.removeValue(forKey: id)
             if let cacheFile { Self.writeCache(data, to: cacheFile) }
             glog("[\(id)] index built and timestamp set — guide ready")
             return true
 
         } catch {
             glog("[\(id)] NETWORK ERROR: \(error)", level: .error)
-            return await failed()
+            return await failed(Self.classify(error))
+        }
+    }
+
+    /// Why a device's last guide fetch failed — lets the caller say something useful instead of a
+    /// generic "API error" (a certificate problem is on the guide server's side, not the user's).
+    enum LoadFailure: Equatable {
+        case certificate(String)   // TLS/certificate trouble reaching the guide service (the reason, user-readable)
+        case network(String)       // anything else that kept the request from completing
+        case http(Int)             // the service answered, but not with 200
+        case badResponse           // empty or undecodable body
+    }
+
+    /// The most recent failure per device; cleared when a network fetch for it succeeds.
+    private(set) var lastFailure: [String: LoadFailure] = [:]
+
+    /// 2026-10-09: SiliconDust's *.hdhomerun.com certificate expired and every guide call failed with
+    /// NSURLErrorSecureConnectionFailed (-1200) carrying a peer-trust error — a generic "API error"
+    /// hid that completely.
+    nonisolated static func classify(_ error: Error) -> LoadFailure {
+        let ns = error as NSError
+        guard ns.domain == NSURLErrorDomain else { return .network(ns.localizedDescription) }
+        switch ns.code {
+        case URLError.Code.serverCertificateHasBadDate.rawValue, URLError.Code.serverCertificateNotYetValid.rawValue:
+            return .certificate("its certificate has expired or isn't valid yet")
+        case URLError.Code.serverCertificateUntrusted.rawValue, URLError.Code.serverCertificateHasUnknownRoot.rawValue:
+            return .certificate("its certificate isn't trusted")
+        case URLError.Code.secureConnectionFailed.rawValue:
+            return .certificate("a TLS error — usually an expired or untrusted certificate")
+        default:
+            return .network(ns.localizedDescription)
         }
     }
 

@@ -1779,7 +1779,7 @@ final class AppState: ObservableObject {
         let guideFetchDevices = newDevices.filter { !$0.isVirtualRelay }
         let results = await guideStore.loadAll(devices: guideFetchDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         for (deviceId, ok) in results {
-            if ok { guideApiBackoff.removeValue(forKey: deviceId) }
+            if ok { handleGuideLoadSuccess(deviceId: deviceId) }
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         guideByDevice = guideStore.channelsByDevice
@@ -1905,7 +1905,7 @@ final class AppState: ObservableObject {
         // Seed per-device backoff state from startup results (no notification — user may not have
         // granted permission yet; ensureGuideLoaded will notify when it retries and fails again).
         for (deviceId, ok) in results {
-            if ok { guideApiBackoff.removeValue(forKey: deviceId) }
+            if ok { handleGuideLoadSuccess(deviceId: deviceId) }
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
@@ -1944,7 +1944,7 @@ final class AppState: ObservableObject {
         // Update per-device backoff; notify once per failure streak
         for (deviceId, ok) in results {
             if ok {
-                guideApiBackoff.removeValue(forKey: deviceId)
+                handleGuideLoadSuccess(deviceId: deviceId)
             } else {
                 handleGuideLoadFailure(deviceId: deviceId)
             }
@@ -1976,7 +1976,7 @@ final class AppState: ObservableObject {
             // leaves channels empty. Assigning guideByDevice unconditionally fires didSet →
             // rebuildMenuEntries → SwiftUI re-eval → ensureGuideLoaded again → 403 → loop.
             if ok {
-                guideApiBackoff.removeValue(forKey: deviceId)
+                handleGuideLoadSuccess(deviceId: deviceId)
                 guideByDevice = guideStore.channelsByDevice
                 await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
             } else {
@@ -5109,8 +5109,43 @@ final class AppState: ObservableObject {
         backoff.notifiedUser = true
         guideApiBackoff[deviceId] = backoff
         let mins = backoff.minutesUntilRetry
-        notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
-        discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
+        let (title, subtitle, detail, color) = Self.guideFailureMessage(guideStore.lastFailure[deviceId],
+                                                                        deviceId: deviceId, retryMinutes: mins)
+        notify(title, body: deviceId, subtitle: subtitle)
+        discordError(title, detail: detail, color: color, enabled: config.Discord_on_guide_error)
+    }
+
+    /// Words for a guide-fetch failure. A certificate/TLS failure gets its own, plainer alert — it is
+    /// on the guide service's side (2026-10-09: SiliconDust's certificate expired), recordings that are
+    /// already scheduled keep running off the last saved guide, and it clears by itself.
+    nonisolated static func guideFailureMessage(_ failure: GuideStore.LoadFailure?, deviceId: String, retryMinutes mins: Int)
+        -> (title: String, subtitle: String, detail: String, color: Int) {
+        switch failure {
+        case .certificate(let reason):
+            return ("Guide Service Certificate Problem",
+                    "Using the saved guide — retrying every few minutes",
+                    "🔒 The HDHomeRun guide service (api.hdhomerun.com) is failing its secure connection: \(reason). "
+                  + "That's on SiliconDust's side, not your network. Device \(deviceId): hdhrVCRplus is using the last saved "
+                  + "guide where it has one and retries automatically (next try in about \(mins) min); scheduled recordings keep "
+                  + "running. You'll get a message when it recovers.",
+                    0xE67E22)
+        case .http(let status):
+            return ("Guide Load Failed", "The guide service answered \(status) — retry in \(mins) min",
+                    "Device \(deviceId) — the guide service answered HTTP \(status), retry in \(mins) min", 0x95A5A6)
+        default:
+            return ("Guide Load Failed", "API error — retry in \(mins) min",
+                    "Device \(deviceId) — API error, retry in \(mins) min", 0x95A5A6)
+        }
+    }
+
+    /// A guide fetch succeeded: clear the failure streak, and say so if the user had been told about it.
+    private func handleGuideLoadSuccess(deviceId: String) {
+        if guideApiBackoff[deviceId]?.notifiedUser == true {
+            notify("Guide Service Recovered", body: deviceId, subtitle: "The guide loaded normally again")
+            discordError("✅ Guide service recovered", detail: "Device \(deviceId) — the guide loaded normally again.",
+                         color: 0x2ECC71, enabled: config.Discord_on_guide_error)
+        }
+        guideApiBackoff.removeValue(forKey: deviceId)
     }
 
     private func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
