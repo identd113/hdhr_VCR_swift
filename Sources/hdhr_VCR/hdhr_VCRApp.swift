@@ -97,6 +97,10 @@ struct hdhr_VCRApp: App {
     // that value is guaranteed live — openDonationNagIfNeeded() reads this, not the live config, so
     // its own suppression guard is race-free at every call site, not just the launch-time one.
     @State private var needsFirstRunWizard: Bool
+    // Returning-user launch splash (docs/LaunchSplash.md): decided once from the same synchronous config peek
+    // as needsFirstRunWizard, opened at most once per run from whichever launch hook fires first.
+    private let launchSplashWanted: Bool
+    @State private var launchSplashOpened = false
 
     init() {
         glog("=== hdhrVCRplus launched ===")
@@ -116,6 +120,10 @@ struct hdhr_VCRApp: App {
         let dockMode = cfg?.Dock_icon_mode ?? "auto"
         let localNetworkConfirmed = cfg?.Local_network_confirmed ?? false
         _needsFirstRunWizard = State(initialValue: !(cfg?.First_run_wizard_shown ?? false))
+        launchSplashWanted = LaunchSplashPlan.shouldShow(
+            firstRunDone: cfg?.First_run_wizard_shown ?? false, enabled: cfg?.Show_launch_splash ?? true,
+            underTests: runningUnderTests,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         let showDock: Bool
         switch dockMode {
         case "always": showDock = true
@@ -157,6 +165,7 @@ struct hdhr_VCRApp: App {
                     // The wizard check runs first so a genuinely first launch shows it before the
                     // donation nag (which stays suppressed until the wizard is dismissed — see
                     // openDonationNagIfNeeded()'s own guard).
+                    openLaunchSplashIfNeeded()   // no-op if the label's onAppear already opened it
                     if !launchFirstRunWizardShown {
                         launchFirstRunWizardShown = true
                         openFirstRunWizardIfNeeded()
@@ -193,6 +202,8 @@ struct hdhr_VCRApp: App {
             StatusLightObserver(light: appState.statusLight) { kind, on in
                 statusLabel(kind: kind, lightOn: on)
             }
+            // The status item renders at launch even though nothing opens the menu — the earliest reliable hook.
+            .onAppear { openLaunchSplashIfNeeded() }
         }
         .menuBarExtraStyle(.menu)
 
@@ -279,6 +290,15 @@ struct hdhr_VCRApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        // Launch splash for returning users — see LaunchSplashView / docs/LaunchSplash.md.
+        Window("hdhrVCRplus", id: "launch-splash") {
+            LaunchSplashView()
+                .environmentObject(appState)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 900, height: 600)
     }
 
     // nil ("auto") lets each window follow the system appearance the normal SwiftUI way — only
@@ -301,6 +321,13 @@ struct hdhr_VCRApp: App {
     private func activateAndOpen(windowId: String) {
         NSApplication.shared.activate(ignoringOtherApps: true)
         openWindow(id: windowId)
+    }
+
+    // Opens the launch splash once per run (returning users only — see LaunchSplashPlan.shouldShow).
+    private func openLaunchSplashIfNeeded() {
+        guard launchSplashWanted, !launchSplashOpened else { return }
+        launchSplashOpened = true
+        activateAndOpen(windowId: "launch-splash")
     }
 
     // No-op once Donation_unlocked is set.

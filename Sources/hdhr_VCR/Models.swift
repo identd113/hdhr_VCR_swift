@@ -655,6 +655,7 @@ struct AppConfig: Equatable {
 
     // Menu bar icon
     var Status_light_blink_enabled: Bool = false  // blink the built-in status light while recording/up-next
+    var Show_launch_splash: Bool = true           // brief logo splash on launch (returning users only; docs/LaunchSplash.md)
 
     // Player
     var PiP_width_fraction: Double = 0   // user-dragged picture-in-picture width as a fraction of the video pane (0 = automatic)
@@ -742,6 +743,7 @@ extension AppConfig: Codable {
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false
+        Show_launch_splash          = (try? c.decode(Bool.self, forKey: .Show_launch_splash))          ?? true
         PiP_width_fraction          = (try? c.decode(Double.self, forKey: .PiP_width_fraction))        ?? 0
         Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
         Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false

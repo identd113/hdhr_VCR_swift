@@ -80,6 +80,19 @@ actor ChannelIconCache {
         return result
     }
 
+    /// Up to `limit` randomly chosen images straight off the disk cache — station logos and any show posters
+    /// Watch Now / the wizard already fetched. Disk only: never touches the network, so the launch splash can
+    /// paint its backdrop offline. Files that don't decode are skipped.
+    func sampleCachedImages(limit: Int) -> [NSImage] {
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).shuffled()
+        var out: [NSImage] = []
+        for n in names {
+            guard out.count < limit else { break }
+            if let img = NSImage(contentsOf: dir.appendingPathComponent(n)), img.size.width > 1 { out.append(img) }
+        }
+        return out
+    }
+
     /// True while `url`'s last failure is inside its retry window; an expired entry is dropped so
     /// the next call re-attempts the download.
     private func hasRecentFailure(_ url: String) -> Bool {

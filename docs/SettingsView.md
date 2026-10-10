@@ -170,6 +170,7 @@ Sidebar entries (with SF Symbol icons):
 ### General
 
 - **Launch at Login** — uses `SMAppService.mainApp` (`register()`/`unregister()`), Apple's Login Item API — not a hand-written LaunchAgents plist. `launchAtLoginRegistered` reads `SMAppService.mainApp.status` and counts both `.enabled` **and** `.requiresApproval` as registered (`register()` succeeded and macOS is waiting for the user to approve the login item in System Settings → Login Items — treating that as "not registered" left the draft permanently differing from the live value, so "Unsaved changes" never cleared and closing prompted every time); the toggle only calls register/unregister on Save if the draft value differs from that live status. Toggle reverts to the actual registered state on a thrown error; the error's `localizedDescription` is shown in red below the toggle.
+- **Show launch splash** — `Toggle` bound to `draft.Show_launch_splash` (default on). Shows the logo splash at launch once first-run setup is done; see `docs/LaunchSplash.md`.
 - **Blink menu bar icon** — `Toggle` bound to `draft.Status_light_blink_enabled` (off by default). When on, the menu bar icon's built-in status light blinks on a 6s cycle (5s lit, 1s off) instead of staying lit continuously while a recording is in progress or a show is starting within an hour (`nextShowMinutes <= 60`). It does **not** govern the blue FEED light: a FEED that is merely available always flashes, and watching one is always solid (see `docs/MenuContent.md`). Takes effect live — no restart or window reopen needed. Driven by `AppState.statusLightTimer`/`tickStatusLight()`, a dedicated 1Hz timer independent of the idle loop; see [MenuContent.md](MenuContent.md#menu-bar-icon-states).
 
 ---
@@ -347,6 +348,8 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 ---
 
 ### About
+
+**Live light + legend (2026-10-10).** The logo mirrors the menu-bar icon *as it is right now* — `AboutLogo` observes `appState.statusLight` (`StatusLightModel`) only, never `AppState` (menu-rebuild churn, review #21) — using the full-size lit images in `AppIcon.swift` (`fullSizeStatusImage(for:lit:)`). Below the version, `StatusLightLegend` (`Views/StatusLightLegend.swift`) lists every light — none/idle, red recording, amber up-next, blue flashing FEED available, blue solid watching a FEED — with its blink behaviour (reflecting the "Blink menu bar icon" setting) and a note that several lights take turns, 6 s each, recording/FEED outranking up-next.
 
 - **App logo** — `ZStack`: three `SignalRing` views stacked behind the logo image (or `antenna.radiowaves.left.and.right` fallback). Tapping the logo increments `logoTapCount`; each `SignalRing` reacts via `.task(id: logoTapCount)` — three concentric circles expand and fade, staggered 150 ms apart, producing a broadcast-signal pulse. `SignalRing` is a private `View` struct at file scope; it sets `opacity = 0.6` instantly on trigger, then animates `scale 0.5 → 1.75` and `opacity → 0` with `.easeOut(duration: 0.8)`.
 - **App name** — `.largeTitle` bold `"hdhrVCRplus"`

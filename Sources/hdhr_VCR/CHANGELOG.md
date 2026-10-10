@@ -2,6 +2,14 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+- *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over drifting cached station logos and posters, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on.
+- *Added* — **Settings → About explains the menu-bar light.** The logo now matches the light currently showing in the menu bar, and a legend lists what each light and blink pattern means.
+- *Updated* — The player's "?" card now lists right-click → "Add a picture-in-picture".
+- *Updated* — The Add Show guide uses native macOS scrollbars and sits flush to the window edge instead of in a bordered frame.
+- *Updated* — **Fixed: the first-run window was too short** — the Next button was clipped on the first page.
+
 ## v2.6.0 — 2026-10-10
 
 Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.
