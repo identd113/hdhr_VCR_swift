@@ -64,6 +64,7 @@ struct LaunchSplashView: View {
     @State private var phase: Phase = .showing
     @State private var assembled = false            // tiles have locked into the window: chrome, logo and text fade in
     @State private var started = Date()
+    @State private var tilesReady = false   // the wall isn't drawn until posters are loaded — no placeholder flash
     @State private var tiles: [NSImage] = []
     @State private var window: NSWindow?
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
@@ -79,8 +80,10 @@ struct LaunchSplashView: View {
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
-                MosaicTiles(images: tiles, started: started, screen: geo.size)
-                    .opacity(phase == .showing ? 1 : 0)
+                if tilesReady {
+                    MosaicTiles(images: tiles, started: started, screen: geo.size)
+                        .opacity(phase == .showing ? 1 : 0)
+                }
 
                 RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
                                startRadius: 40, endRadius: 270)
@@ -226,9 +229,10 @@ struct LaunchSplashView: View {
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; tiles = [] }
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; tiles = []; tilesReady = false }
         tiles = await loadPosters()
         started = Date()                                                       // tiles start flying now
+        tilesReady = true
         try? await Task.sleep(for: .milliseconds(Int((MosaicTiles.assembleSeconds + 0.1) * 1000)))
         withAnimation(.easeOut(duration: 0.6)) { assembled = true }
         while !LaunchSplashPlan.shouldFinish(elapsed: Date().timeIntervalSince(started), startupDone: !state.isStartingUp) {
