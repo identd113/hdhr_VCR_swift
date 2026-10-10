@@ -42,12 +42,12 @@ struct GuideFreshnessTests {
         let block = extract(#"var _evtSeq=0[\s\S]*?function applyGuidePayloadSeq\(seq,d,selOverride\)\{[\s\S]*?\n\}"#, from: src)
         try #require(!block.isEmpty)
         let out = try runNode("""
-        var applied=[]; function applyGuidePayload(d){applied.push(d);}
+        var applied=[]; function applyGuidePayload(d){applied.push(d.id);}
         \(block)
         var a=nextEvtSeq(), b=nextEvtSeq(), c=nextEvtSeq();   // three requests/events, in arrival order
-        var r1=applyGuidePayloadSeq(c,'C');                   // the newest finishes first
-        var r2=applyGuidePayloadSeq(a,'A');                   // the oldest (slow decode / slow fetch) finishes last
-        var r3=applyGuidePayloadSeq(b,'B');
+        var r1=applyGuidePayloadSeq(c,{id:'C'});              // the newest finishes first
+        var r2=applyGuidePayloadSeq(a,{id:'A'});              // the oldest (slow decode / slow fetch) finishes last
+        var r3=applyGuidePayloadSeq(b,{id:'B'});
         process.stdout.write(JSON.stringify({applied:applied,r:[r1,r2,r3]}));
         """)
         #expect(out == #"{"applied":["C"],"r":[true,false,false]}"#)
@@ -58,12 +58,33 @@ struct GuideFreshnessTests {
         let block = extract(#"var _evtSeq=0[\s\S]*?function applyGuidePayloadSeq\(seq,d,selOverride\)\{[\s\S]*?\n\}"#, from: try guideJS())
         try #require(!block.isEmpty)
         let out = try runNode("""
-        var applied=[]; function applyGuidePayload(d){applied.push(d);}
+        var applied=[]; function applyGuidePayload(d){applied.push(d.id);}
         \(block)
-        applyGuidePayloadSeq(nextEvtSeq(),'1'); applyGuidePayloadSeq(nextEvtSeq(),'2'); applyGuidePayloadSeq(nextEvtSeq(),'3');
+        applyGuidePayloadSeq(nextEvtSeq(),{id:'1'}); applyGuidePayloadSeq(nextEvtSeq(),{id:'2'}); applyGuidePayloadSeq(nextEvtSeq(),{id:'3'});
         process.stdout.write(applied.join(','));
         """)
         #expect(out == "1,2,3")
+    }
+
+    @Test func staleGridPayload_stillAppliesNewerPartialTunerDropdownFragments() throws {
+        guard nodeIsAvailable() else { return }
+        let block = extract(#"var _evtSeq=0[\s\S]*?function applyGuidePayloadSeq\(seq,d,selOverride\)\{[\s\S]*?\n\}"#, from: try guideJS())
+        try #require(!block.isEmpty)
+        // Event B (dev2 pause) arrives first, event A (dev1 add) second; A's grid is applied first, so B is stale for the
+        // grid — but B's dev2 dropdown fragment must still land, and an older fragment must never overwrite a newer one.
+        let out = try runNode("""
+        var bodies={'tdrop-body-d1':{innerHTML:''},'tdrop-body-d2':{innerHTML:''}};
+        var document={getElementById:function(id){return bodies[id]||null;}};
+        var gridApplied=[]; function applyGuidePayload(d){gridApplied.push(d.id+':'+Object.keys(d.tdrop).join('+'));
+          Object.keys(d.tdrop).forEach(function(k){bodies['tdrop-body-'+k].innerHTML=d.tdrop[k];});}
+        \(block)
+        var b=nextEvtSeq(), a=nextEvtSeq();
+        applyGuidePayloadSeq(a,{id:'A',tdrop:{d1:'a-d1'}});
+        var rb=applyGuidePayloadSeq(b,{id:'B',tdrop:{d2:'b-d2'}});
+        var stale=applyGuidePayloadSeq(b,{id:'B2',tdrop:{d1:'old-d1'}});   // older than A for d1: must not overwrite
+        process.stdout.write(JSON.stringify({grid:gridApplied,rb:rb,stale:stale,d1:bodies['tdrop-body-d1'].innerHTML,d2:bodies['tdrop-body-d2'].innerHTML}));
+        """)
+        #expect(out == #"{"grid":["A:d1"],"rb":false,"stale":false,"d1":"a-d1","d2":"b-d2"}"#)
     }
 
     @Test func cq_escapesQuotesAndBackslashes_whenCSSEscapeIsMissing() throws {

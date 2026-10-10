@@ -553,10 +553,20 @@ function decodeGzipB64(b64){
 // arriving late used to overwrite a newer grid and leave the page wrong until the next event).
 var _evtSeq=0,_appliedSeq=0,_lastApplyAt=Date.now();
 function nextEvtSeq(){return ++_evtSeq;}
+// tdrop is per-device and per-show events carry only THEIR device's fragment (partial), so a newer grid does NOT
+// necessarily contain an older event's tuner-dropdown change. The grid/sumph are whole-state snapshots (newer wins),
+// but each tuner dropdown is tracked by its own seq: a stale payload is dropped for the grid yet still applies any
+// device fragment newer than what that dropdown last received.
+var _tdropSeq={};
 function applyGuidePayloadSeq(seq,d,selOverride){
-  if(seq<_appliedSeq)return false;
+  var td=d.tdrop||{},fresh={};
+  Object.keys(td).forEach(function(dev){if(seq>=(_tdropSeq[dev]||0)){_tdropSeq[dev]=seq;fresh[dev]=td[dev];}});
+  if(seq<_appliedSeq){
+    Object.keys(fresh).forEach(function(dev){var el=document.getElementById('tdrop-body-'+dev);if(el)el.innerHTML=fresh[dev];});
+    return false;
+  }
   _appliedSeq=seq;_lastApplyAt=Date.now();
-  applyGuidePayload(d,selOverride);
+  applyGuidePayload(Object.assign({},d,{tdrop:fresh}),selOverride);
   return true;
 }
 function applyGuidePayload(d,selOverride){
