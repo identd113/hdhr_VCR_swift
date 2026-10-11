@@ -1726,7 +1726,7 @@ final class WebServer: @unchecked Sendable {
             let wallClockNeeded = Double(pacedBytes + chunkBytes) / observedBytesPerSecond - Self.lookaheadSeconds
             let delay = max(0, since.addingTimeInterval(wallClockNeeded).timeIntervalSince(now))
             guard delay > Self.maxHoldSeconds else { return delay }
-            glog("[WebServer] FEED pacer schedule had drifted \(String(format: "%.1f", delay))s ahead (rate estimate \(Int(observedBytesPerSecond)) B/s, \(pacedBytes) B paced) — re-anchoring instead of holding", level: .warning)
+            glog("[WebServer] FEED pacer schedule had drifted \(String(format: "%.1f", delay))s ahead (rate estimate \(Int(observedBytesPerSecond)) B/s, \(pacedBytes) B paced) — re-anchoring instead of holding")
             pacedSince = now
             pacedBytes = 0
             return max(0, Double(chunkBytes) / observedBytesPerSecond - Self.lookaheadSeconds)
