@@ -1739,6 +1739,7 @@ final class AppState: ObservableObject {
         // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
         // freshByID is empty when discovery threw — all existing devices count as unseen this cycle.
         let freshByID = Dictionary(firstWinsOf: (found ?? []).map { ($0.DeviceID, $0) })
+        var promotedRelays: [HDHRDevice] = []
         for i in devices.indices {
             if let fresh = freshByID[devices[i].DeviceID] {
                 let wasUnavailable = !devices[i].isAvailable
@@ -1760,6 +1761,16 @@ final class AppState: ObservableObject {
                 // per Models.swift), and without re-applying it here it stays nil for the whole
                 // session even once HTTP comes up, permanently forcing transcode=none for that device.
                 if fresh.ModelNumber != nil { devices[i].ModelNumber = fresh.ModelNumber }
+                // A relay first seen via UDP while its HTTP side wasn't ready is stored as an ordinary
+                // tuner; promote it once a probe reads its /discover.json, and refetch its lineup (the
+                // earlier fetch failed, leaving "no lineup"). The start time keeps tracking too.
+                if fresh.isVirtualRelay, !devices[i].isVirtualRelay {
+                    devices[i].isVirtualRelay = true
+                    if let name = fresh.FriendlyName { devices[i].FriendlyName = name }
+                    promotedRelays.append(devices[i])
+                    glog("[DeviceProbe] \(devices[i].DeviceID) is a recording relay, not a tuner — reclassified")
+                }
+                if fresh.isVirtualRelay { devices[i].recordingStartedAt = fresh.recordingStartedAt }
                 if wasUnavailable {
                     glog("[DeviceProbe] \(devices[i].DeviceID) is back online")
                     webServer.broadcastDeviceBarEvent(type: "deviceOnline", deviceId: devices[i].DeviceID, state: self)
@@ -1842,6 +1853,10 @@ final class AppState: ObservableObject {
             webServer.broadcastDeviceBarEvent(type: "deviceRemoved", deviceId: staleIDs.joined(separator: ","), state: self)
         }
 
+        if !promotedRelays.isEmpty {
+            await fetchAllLineups(for: promotedRelays)
+            webServer.broadcastDeviceBarEvent(type: "deviceOnline", deviceId: promotedRelays.map { $0.DeviceID }.joined(separator: ","), state: self)
+        }
         let newDevices = (found ?? []).filter { !existingIDs.contains($0.DeviceID) }
         guard !newDevices.isEmpty else { return }
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
