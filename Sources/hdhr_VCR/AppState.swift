@@ -1764,13 +1764,10 @@ final class AppState: ObservableObject {
                 // A relay first seen via UDP while its HTTP side wasn't ready is stored as an ordinary
                 // tuner; promote it once a probe reads its /discover.json, and refetch its lineup (the
                 // earlier fetch failed, leaving "no lineup"). The start time keeps tracking too.
-                if fresh.isVirtualRelay, !devices[i].isVirtualRelay {
-                    devices[i].isVirtualRelay = true
-                    if let name = fresh.FriendlyName { devices[i].FriendlyName = name }
+                if devices[i].adoptRelayIdentity(from: fresh) {
                     promotedRelays.append(devices[i])
                     glog("[DeviceProbe] \(devices[i].DeviceID) is a recording relay, not a tuner — reclassified")
                 }
-                if fresh.isVirtualRelay { devices[i].recordingStartedAt = fresh.recordingStartedAt }
                 if wasUnavailable {
                     glog("[DeviceProbe] \(devices[i].DeviceID) is back online")
                     webServer.broadcastDeviceBarEvent(type: "deviceOnline", deviceId: devices[i].DeviceID, state: self)

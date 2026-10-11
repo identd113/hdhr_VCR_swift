@@ -875,6 +875,18 @@ extension HDHRDevice {
     /// transcode off (`supportsTranscode` needs ModelNumber) until the next successful probe. A numeric
     /// address is never traded for an mDNS hostname, and a relay stays a relay. `missedProbes` resets.
     /// (2026-10-05 triage T05.)
+    /// A relay first seen via UDP (HTTP not ready) is stored as an ordinary tuner. When a later probe reads its
+    /// /discover.json and it IS a relay, adopt that identity here. Returns true only on the tuner→relay flip
+    /// (the caller then refetches the lineup); an already-known relay just keeps its start time current.
+    mutating func adoptRelayIdentity(from fresh: HDHRDevice) -> Bool {
+        guard fresh.isVirtualRelay else { return false }
+        recordingStartedAt = fresh.recordingStartedAt
+        guard !isVirtualRelay else { return false }
+        isVirtualRelay = true
+        if let name = fresh.FriendlyName { FriendlyName = name }
+        return true
+    }
+
     func mergingFresh(_ fresh: HDHRDevice) -> HDHRDevice {
         var merged = fresh
         merged.TunerCount      = fresh.TunerCount      ?? TunerCount

@@ -96,3 +96,5 @@ Run back-to-back (`WindowNavigationTests` ≈ 22 min, then `PiPTunerChurnTests`)
 Add a case to `Op`, its precondition to `allowed()`, its model transition to `apply()`, and an AppleScript body to `script(for:)` (handlers
 from `pipAXHandlers` + `churnHandlers` are prepended by `wrap`). Keep every op ending in `OK` on success — anything else aborts the walk
 with the op named in the failure.
+
+**Locked laptop screen:** with the laptop locked, Accessibility sees zero windows, so `feedFromTheMiniShowsOnTheLaptop` fails `NO_PLAYER_WINDOW` even though playback runs. Unlock it and keep it awake (`caffeinate -d`). The churn tests also print "skipped: nothing airing / no free tuner" and pass when another device or a real recording holds a tuner — read stderr, a fast pass is a skip.
