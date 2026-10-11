@@ -1655,7 +1655,7 @@ final class WebServer: @unchecked Sendable {
     // @unchecked Sendable — same posture as WebServer itself. A given instance is only ever touched
     // sequentially (fileIOQueue's read step, then queue's send/schedule step, one at a time per
     // connection, never concurrently) even though those two hops run on different queues.
-    private final class FeedRelayPacer: @unchecked Sendable {
+    final class FeedRelayPacer: @unchecked Sendable {
         // Anchored at the first *paced* send, and only paced bytes are counted (2026-10-01 review
         // finding #6). Anchoring at connection start and counting the unpaced backlog drain (e.g.
         // ~7 MB right after a scrub) made the first live chunk wait out that whole backlog at the
@@ -1681,7 +1681,12 @@ final class WebServer: @unchecked Sendable {
         // enough not to add a second, separately-perceptible lag on top of the relay's existing
         // "few seconds behind live" delay (docs/VirtualTunerService.md's Known limitation).
         private static let lookaheadSeconds: TimeInterval = 0.5
-
+        /// The longest any single chunk may be held. The schedule below is cumulative (start + all paced bytes ÷ the
+        /// *current* rate estimate), so when the estimate falls — one low 2 s window after a source hiccup — all
+        /// history is re-priced and the schedule jumps ahead by (bytes sent) × Δ(1/rate): tens of seconds late in a
+        /// session, with data sitting on disk and VLC starved (live 2026-10-11: a 57 s freeze). Past this cap the
+        /// schedule is re-anchored to now instead of being waited out.
+        static let maxHoldSeconds: TimeInterval = 1.0
         init(initialFileSize: Int, seedBytesPerSecond: Double?) {
             lastMeasuredSize = initialFileSize
             observedBytesPerSecond = seedBytesPerSecond ?? Self.fallbackSeedBytesPerSecond
@@ -1692,9 +1697,8 @@ final class WebServer: @unchecked Sendable {
         // and called unconditionally on every tick (this method's own 2s internal gate makes that a
         // no-op the rest of the time), so it self-throttles regardless of how often pumpGrowingFile
         // itself ticks (every 20ms once caught up to the live edge).
-        func maybeUpdateObservedRate(currentFileSize: Int) {
+        func maybeUpdateObservedRate(currentFileSize: Int, now: Date = Date()) {
             lock.lock(); defer { lock.unlock() }
-            let now = Date()
             let elapsed = now.timeIntervalSince(lastMeasuredAt)
             guard elapsed >= Self.measureInterval else { return }
             let delta = currentFileSize - lastMeasuredSize
@@ -1715,13 +1719,17 @@ final class WebServer: @unchecked Sendable {
         // moment the underlying disk read happened to succeed. Returns 0 (send immediately) whenever
         // delivery is already at or behind pace — this only ever holds bytes back, never speeds
         // anything up beyond what pumpGrowingFile's own read cadence already provides.
-        func delayBeforeSending(chunkBytes: Int) -> TimeInterval {
+        func delayBeforeSending(chunkBytes: Int, now: Date = Date()) -> TimeInterval {
             lock.lock(); defer { lock.unlock() }
-            let now = Date()
             let since = pacedSince ?? now
             pacedSince = since
             let wallClockNeeded = Double(pacedBytes + chunkBytes) / observedBytesPerSecond - Self.lookaheadSeconds
-            return max(0, since.addingTimeInterval(wallClockNeeded).timeIntervalSince(now))
+            let delay = max(0, since.addingTimeInterval(wallClockNeeded).timeIntervalSince(now))
+            guard delay > Self.maxHoldSeconds else { return delay }
+            glog("[WebServer] FEED pacer schedule had drifted \(String(format: "%.1f", delay))s ahead (rate estimate \(Int(observedBytesPerSecond)) B/s, \(pacedBytes) B paced) — re-anchoring instead of holding", level: .warning)
+            pacedSince = now
+            pacedBytes = 0
+            return max(0, Double(chunkBytes) / observedBytesPerSecond - Self.lookaheadSeconds)
         }
 
         func recordPacedSend(_ n: Int) { lock.lock(); pacedBytes += n; lock.unlock() }
