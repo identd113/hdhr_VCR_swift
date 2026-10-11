@@ -1361,7 +1361,18 @@ final class WebServer: @unchecked Sendable {
                 // Both hops land on MainActor since AppState isn't otherwise safe to touch from
                 // fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected(showId: showId) }
-                self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
+                // Raw passthrough joins `feedJoinBackoffSeconds` behind the write position, not exactly at it: a viewer
+                // exactly at the live edge has zero cushion, so any jitter in delivery rebuffers (measured live
+                // 2026-10-10: ~15-20% of 3-second playback ticks stalled on a FEED with data arriving at exactly the
+                // stream rate). The backlog is only ~8 s of data, a small burst unlike the byte-0 case above. The
+                // transcode path above still joins at the live edge.
+                // The file's own creation time is when its bytes actually began — the scheduled `show_next` is wrong
+                // for a recording that started late (restart/reattach, Record Now on an airing already in progress),
+                // which would make the estimated rate, and so the cushion, far too small.
+                let fileStart = ((try? FileManager.default.attributesOfItem(atPath: path))?[.creationDate] as? Date) ?? show.show_next
+                let joinOffset = Self.feedJoinOffset(currentSize: currentSize, recordingStart: fileStart)
+                glog("[VirtualTuner] /auto/v\(logChannel) joining \(currentSize - joinOffset) bytes behind the write position (file \(currentSize) bytes)")
+                self.streamGrowingFile(path: path, showId: showId, startOffset: joinOffset, conn: conn,
                                         durationSeconds: durationSeconds,
                                         knownFileSizeAtOffsetComputation: currentSize,
                                         stillActiveCheck: { [weak self] in
@@ -1372,6 +1383,21 @@ final class WebServer: @unchecked Sendable {
                 })
             }
         }
+    }
+
+    /// How far behind the write position a raw FEED viewer joins. Zero cushion (the live edge) made delivery jitter
+    /// rebuffer; see the call site in `handleVirtualTunerStream`.
+    static let feedJoinBackoffSeconds: Double = 8
+
+    /// Byte offset at which a raw FEED viewer joins: `backoff` seconds behind `currentSize`, estimated from the
+    /// recording's average rate (bytes so far / seconds since `recordingStart`), TS-packet aligned. Only once there
+    /// is more than `backoff` seconds on disk; a younger recording (or an unknown start) joins at the live edge.
+    static func feedJoinOffset(currentSize: Int, recordingStart: Date?, now: Date = Date(),
+                               backoff: Double = feedJoinBackoffSeconds) -> Int {
+        guard currentSize > 0, let recordingStart else { return currentSize }
+        let elapsed = now.timeIntervalSince(recordingStart)
+        guard elapsed > backoff else { return currentSize }
+        return AppState.byteOffset(forTargetSeconds: elapsed - backoff, elapsedSeconds: elapsed, fileSizeBytes: currentSize)
     }
 
     // Starts (or joins) a VLCBridge headless transcode session for showId+profile and proxies its
