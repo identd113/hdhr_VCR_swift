@@ -11,7 +11,7 @@ Default size **480×620** (widened from 420 once a recording row's action row gr
 `HStack` with 14pt horizontal and 10pt vertical padding:
 - `play.tv.fill` SF Symbol in `watchNowBlue` (`Color(red: 0.2, green: 0.6, blue: 1.0)`), `.title3`
 - `"Watch Now"` in `.headline`
-- **Segmented tuner picker** — sits immediately after the title (not pushed to the far right) so it reads as part of the header, not a trailing toolbar control; only shown when `state.devices.count > 1`; selecting a segment changes `selectedDeviceId`
+- **Segmented tuner picker** — sits immediately after the title (not pushed to the far right) so it reads as part of the header, not a trailing toolbar control; only shown when `state.availableDevices.count > 1` (reachable real tuners only — `AppState.availableDevices`; an unreachable tuner is never offered, 2026-10-10; the PiP picker's Live TV tuner picker and Add Show's default tuner use the same list); selecting a segment changes `selectedDeviceId`
 - **Spacer**
 - **Refresh button** — `arrow.clockwise` plain button; sets `now = Date()` to force an immediate re-evaluation of on-air channels
 

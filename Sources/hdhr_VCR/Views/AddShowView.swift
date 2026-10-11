@@ -117,7 +117,7 @@ struct AddShowView: View {
             } else if let pending = state.pendingAddChannel {
                 applyPendingChannel(pending)
             } else {
-                if selectedDevice == nil { selectedDevice = state.recordableDevices.first }
+                if selectedDevice == nil { selectedDevice = state.availableDevices.first }
                 step = .guide
             }
         }
@@ -194,7 +194,7 @@ struct AddShowView: View {
         // empty (the `guard let device` returns immediately), and never re-fire once a real tuner
         // shows up moments later since devices.isEmpty stays false from that point on.
         .task(id: state.recordableDevices.isEmpty) {
-            guard let device = selectedDevice ?? state.recordableDevices.first else { return }
+            guard let device = selectedDevice ?? state.availableDevices.first else { return }
             await state.ensureLineupLoaded(for: device)
         }
     }

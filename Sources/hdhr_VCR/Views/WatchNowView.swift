@@ -31,8 +31,8 @@ struct WatchNowView: View {
         // from recordableDevices (the Picker/onAppear below) or stay "", but resolving the primary
         // lookup against raw `devices` here would silently start treating a relay as directly
         // browsable/watchable the moment any future caller sets watchNowDeviceId to one.
-        state.recordableDevices.first { $0.DeviceID == selectedDeviceId }
-            ?? state.recordableDevices.first
+        state.availableDevices.first { $0.DeviceID == selectedDeviceId }
+            ?? state.availableDevices.first
     }
 
     // Returns one (channel, entry) pair per unique on-air channel.
@@ -51,7 +51,7 @@ struct WatchNowView: View {
         }
         .onAppear {
             selectedDeviceId = state.watchNowDeviceId
-                ?? state.recordableDevices.first?.DeviceID ?? ""
+                ?? state.availableDevices.first?.DeviceID ?? ""
         }
         .onChange(of: state.watchNowDeviceId) { _, newId in
             if let id = newId { selectedDeviceId = id }
@@ -207,9 +207,9 @@ struct WatchNowView: View {
             // dedicated "Recording on Another Mac" row (AppState.watchRemoteRelay) — it has no
             // real lineup/guide data, so it doesn't belong in this picker's "browse a live tuner's
             // channels" flow.
-            if state.recordableDevices.count > 1 {
+            if state.availableDevices.count > 1 {
                 Picker("Tuner", selection: $selectedDeviceId) {
-                    ForEach(state.recordableDevices) { d in
+                    ForEach(state.availableDevices) { d in
                         Text(d.DeviceID).tag(d.DeviceID)
                     }
                 }

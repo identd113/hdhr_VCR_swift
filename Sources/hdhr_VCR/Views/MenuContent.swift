@@ -142,7 +142,7 @@ struct MenuContent: View {
         // so an unfiltered loop here would show a permanent, unfixable "⚠ no guide" warning for a
         // tuner the user never added. It already gets its own correct, dedicated treatment in the
         // "Recording on Another Mac" section below.
-        ForEach(state.recordableDevices) { device in
+        ForEach(state.displayableDevices) { device in
             let slots       = device.TunerCount ?? 1
             // Sums both slots, matching AppState.activeTunerCount(for:)'s own vlc term — a PiP
             // secondary stream watching a real live-tuner channel occupies a tuner exactly like
@@ -236,7 +236,7 @@ struct MenuContent: View {
         if !availableRecording.isEmpty {
             groupedByDeviceSection(singleTitle: "Recording Now", multiTitlePrefix: "Recording",
                                     items: availableRecording, devices: availableDevices,
-                                    multiDevice: state.recordableDevices.count > 1,
+                                    multiDevice: state.displayableDevices.count > 1,
                                     filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { recs in
                 ForEach(recs) { recordingMenu($0) }
             }
@@ -373,7 +373,7 @@ struct MenuContent: View {
         if !nextUpGroups.isEmpty {
             groupedByDeviceSection(singleTitle: "Up Next", multiTitlePrefix: "Up Next",
                                     items: nextUpGroups, devices: availableDevices,
-                                    multiDevice: state.recordableDevices.count > 1,
+                                    multiDevice: state.displayableDevices.count > 1,
                                     filter: { group, device -> (time: Date, shows: [Show])? in
                                         let filtered = group.shows.filter { $0.hdhr_record == device.DeviceID }
                                         return filtered.isEmpty ? nil : (time: group.time, shows: filtered)
@@ -399,7 +399,7 @@ struct MenuContent: View {
             if !remainingActive.isEmpty {
                 groupedByDeviceSection(singleTitle: "Scheduled", multiTitlePrefix: "Scheduled",
                                         items: remainingActive, devices: availableDevices,
-                                        multiDevice: state.recordableDevices.count > 1,
+                                        multiDevice: state.displayableDevices.count > 1,
                                         filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
                     ForEach(shows) { scheduledMenu($0) }
                 }
@@ -407,7 +407,7 @@ struct MenuContent: View {
             if !availablePaused.isEmpty {
                 groupedByDeviceSection(singleTitle: "Paused", multiTitlePrefix: "Paused",
                                         items: availablePaused, devices: availableDevices,
-                                        multiDevice: state.recordableDevices.count > 1,
+                                        multiDevice: state.displayableDevices.count > 1,
                                         filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
                     ForEach(shows) { pausedMenu($0) }
                 }

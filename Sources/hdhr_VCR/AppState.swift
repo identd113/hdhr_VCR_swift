@@ -484,6 +484,17 @@ final class AppState: ObservableObject {
     // relay is not, by design) is watch-only and has no real lineup/guide data, so listing it
     // alongside real tuners lets a user pick it as if it were one.
     var recordableDevices: [HDHRDevice] { devices.filter { !$0.isVirtualRelay } }
+    // Reachable real tuners only — what a picker should offer for watching or recording *now*. A device that
+    // has stopped answering stays in `devices` (it may come back, and shows may reference it) but must never be
+    // offered as a choice: Watch Now / the PiP picker would list a dead tuner you can't tune.
+    var availableDevices: [HDHRDevice] { recordableDevices.filter { $0.isAvailable } }
+    // What the menu bar header lists: reachable tuners, plus an unreachable one only while a show is still assigned
+    // to it (that show's "⚠ unavailable" tuner must stay visible — CLAUDE.md "Web guide offline devices"). An
+    // unreachable tuner nothing depends on drops out immediately instead of lingering until the hourly prune.
+    var displayableDevices: [HDHRDevice] {
+        let held = Set(shows.map(\.hdhr_record))
+        return recordableDevices.filter { $0.isAvailable || held.contains($0.DeviceID) }
+    }
 
     // Single-device backstop check, for a caller that only has a deviceId (not yet a resolved
     // HDHRDevice) — addShow/updateShow/vlcOccupiesTuner funnel through this instead of each

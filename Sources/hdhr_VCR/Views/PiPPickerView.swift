@@ -24,8 +24,8 @@ struct PiPPickerView: View {
     @State private var selectedDeviceId: String = ""
 
     private var selectedDevice: HDHRDevice? {
-        state.recordableDevices.first { $0.DeviceID == selectedDeviceId }
-            ?? state.recordableDevices.first
+        state.availableDevices.first { $0.DeviceID == selectedDeviceId }
+            ?? state.availableDevices.first
     }
 
     var body: some View {
@@ -40,7 +40,7 @@ struct PiPPickerView: View {
             .listStyle(.inset)
         }
         .onAppear {
-            selectedDeviceId = state.recordableDevices.first?.DeviceID ?? ""
+            selectedDeviceId = state.availableDevices.first?.DeviceID ?? ""
         }
         .frame(minWidth: 380, minHeight: 300)
     }
@@ -141,12 +141,12 @@ struct PiPPickerView: View {
     @ViewBuilder
     private var liveTVSection: some View {
         Section("Live TV") {
-            if state.recordableDevices.isEmpty {
+            if state.availableDevices.isEmpty {
                 Text("No tuners available").foregroundStyle(.secondary)
             } else {
-                if state.recordableDevices.count > 1 {
+                if state.availableDevices.count > 1 {
                     Picker("Tuner", selection: $selectedDeviceId) {
-                        ForEach(state.recordableDevices) { d in
+                        ForEach(state.availableDevices) { d in
                             Text(d.DeviceID).tag(d.DeviceID)
                         }
                     }
