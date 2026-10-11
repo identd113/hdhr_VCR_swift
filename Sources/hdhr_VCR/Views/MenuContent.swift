@@ -279,6 +279,17 @@ struct MenuContent: View {
                         }
                         .disabled(!vlcReady)
                         .accessibilityLabel(gatedLabel(watchAccessibilityLabel, met: vlcReady, requirement: "VLC"))
+                        // Only when the relay publishes the recording's real start — without it the scrub bar couldn't be
+                        // anchored, and a plain live-edge join is all that's safe.
+                        if pair.device.recordingStartedAt != nil {
+                            Button {
+                                state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device, fromBeginning: true)
+                            } label: {
+                                Label(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC"), systemImage: "backward.end.fill")
+                            }
+                            .disabled(!vlcReady)
+                            .accessibilityLabel(gatedLabel("Watch \(title) from the beginning", met: vlcReady, requirement: "VLC"))
+                        }
                         if !alreadyModern {
                             Button {
                                 // "auto" (any non-empty, non-"none" string) only tells the remote

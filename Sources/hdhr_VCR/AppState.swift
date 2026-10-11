@@ -5449,6 +5449,10 @@ final class AppState: ObservableObject {
         let title: String
         let cachePath: String
         let startedAt: Date
+        /// Seconds of the recording that precede the first byte in the cache (0 for a normal live-edge join; the
+        /// age of the recording for "Watch from Beginning"). The scrub bar's time axis starts `mediaLeadSeconds`
+        /// before `startedAt`, so a cache that begins at the recording's own start maps position 0 to byte 0.
+        var mediaLeadSeconds: Double = 0
     }
     private var feedCacheSessions: [String: FeedCacheSession] = [:]   // primary-only, non-persisted
     /// First time `maintainFeedCacheSessions` saw playback of this session reach its end while a window was still
@@ -5519,7 +5523,7 @@ final class AppState: ObservableObject {
     /// VLCPlayerWindowManager's feed-tracking fields for `slot` on success, same as the old
     /// startFeedLocalRelay did — callers don't need to do that themselves.
     func startFeedCacheSession(remoteURL: String, device: HDHRDevice, title: String,
-                                slot: VLCBridge.PlayerSlot = .primary) async
+                                slot: VLCBridge.PlayerSlot = .primary, mediaLeadSeconds: Double = 0) async
         -> (url: String, sessionId: String, startedAt: Date)? {
         let mgr = VLCPlayerWindowManager.shared
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
@@ -5565,7 +5569,8 @@ final class AppState: ObservableObject {
         }
         let startedAt = Date()
         feedCacheSessions[sessionId] = FeedCacheSession(id: sessionId, remoteURL: remoteURL, device: device,
-                                                         title: title, cachePath: cachePath, startedAt: startedAt)
+                                                         title: title, cachePath: cachePath, startedAt: startedAt,
+                                                         mediaLeadSeconds: mediaLeadSeconds)
 
         // Wait for either the puller to have actually written something, or to have already died
         // (a bad remote URL/host) — without this, a bad remoteURL degrades from "libvlc eventually
@@ -5609,7 +5614,8 @@ final class AppState: ObservableObject {
         } else {
             mgr.setSecondaryFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
         }
-        return (LocalRelay.watchRecordingURL(port: webServer.activePort, showId: sessionId), sessionId, startedAt)
+        // startedAt here is the scrub axis' origin (callers hand it to beginRecordingSeek), so it includes the media lead.
+        return (LocalRelay.watchRecordingURL(port: webServer.activePort, showId: sessionId), sessionId, startedAt.addingTimeInterval(-mediaLeadSeconds))
     }
 
     /// Kills the puller, unregisters from WebServer, deletes the cache file, and forgets the
@@ -5814,21 +5820,29 @@ final class AppState: ObservableObject {
     /// synthetic channel has no guide entry to compute a one-shot duration from the way watchInApp's
     /// live-channel case does, so it's covered instead by maintainVLCSleepAssertionIfNeeded()'s
     /// per-idleLoop-tick renewal (keyed off currentFeedRemoteURL, set by startFeedCacheSession above).
-    func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
+    /// `fromBeginning`: ask the source Mac for the recording from its first byte (`&back=` — raw passthrough only) and
+    /// anchor the scrub bar at the recording's real start, so you can scrub anywhere from the beginning. Needs the
+    /// relay to publish its recording start (`device.recordingStartedAt`); without it the request is ignored and the
+    /// normal live-edge join is used.
+    func watchRemoteRelay(url: String, title: String, device: HDHRDevice, fromBeginning: Bool = false) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
-        if mgr.secondaryIsShowing(feedRemoteURL: url) {
+        let recordingStart = fromBeginning ? device.recordingStartedAt : nil
+        let fromBeginning = recordingStart != nil
+        let url = fromBeginning ? url + (url.contains("?") ? "&" : "?") + "back=\(WebServer.feedMaxBackSeconds)" : url
+        let mediaLead = recordingStart.map { max(0, Date().timeIntervalSince1970 - $0) } ?? 0
+        if !fromBeginning, mgr.secondaryIsShowing(feedRemoteURL: url) {
             mgr.promoteSecondaryToPrimary(reason: "FEED '\(title)' is already in the PiP")
             return
         }
         // Dedup against the true remote URL, not bridge.currentURL — once startFeedCacheSession
         // succeeds below, currentURL holds the LOCAL relay URL, not this one.
-        if mgr.currentDeviceID == device.DeviceID && mgr.currentFeedRemoteURL == url {
+        if !fromBeginning, mgr.currentDeviceID == device.DeviceID && mgr.currentFeedRemoteURL == url {
             mgr.focus()
             return
         }
         Task {
-            guard let session = await startFeedCacheSession(remoteURL: url, device: device, title: title) else { return }
+            guard let session = await startFeedCacheSession(remoteURL: url, device: device, title: title, mediaLeadSeconds: mediaLead) else { return }
             glog("[Watch] remote relay '\(title)' on \(device.DeviceID) via local disk cache")
             mgr.open(url: session.url, title: title, device: device, appState: self)
             // Deferred to the next run-loop turn — same reasoning as watchRecordingInApp's own
@@ -6029,7 +6043,7 @@ final class AppState: ObservableObject {
     private func feedCacheByteOffset(for session: FeedCacheSession, atSeconds targetSeconds: Double) -> Int? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: session.cachePath),
               let size = attrs[.size] as? Int, size > 0 else { return nil }
-        let elapsed = max(1, Date().timeIntervalSince(session.startedAt))
+        let elapsed = max(1, Date().timeIntervalSince(session.startedAt) + session.mediaLeadSeconds)
         return Self.byteOffset(forTargetSeconds: targetSeconds, elapsedSeconds: elapsed, fileSizeBytes: size)
     }
 
@@ -6044,7 +6058,7 @@ final class AppState: ObservableObject {
         var recordingStart: Date {
             switch self {
             case .show(let show): return show.show_next ?? Date()
-            case .feedCache(let session): return session.startedAt
+            case .feedCache(let session): return session.startedAt.addingTimeInterval(-session.mediaLeadSeconds)
             }
         }
         var title: String {
@@ -6064,7 +6078,7 @@ final class AppState: ObservableObject {
     private func recordingRelayElapsedSeconds(_ source: RecordingRelaySource) -> Double {
         switch source {
         case .show(let show): return recordingElapsedSeconds(show)
-        case .feedCache(let session): return max(1, Date().timeIntervalSince(session.startedAt))
+        case .feedCache(let session): return max(1, Date().timeIntervalSince(session.startedAt) + session.mediaLeadSeconds)
         }
     }
 

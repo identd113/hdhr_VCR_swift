@@ -42,3 +42,33 @@ struct FeedJoinOffsetTests {
         #expect(off >= 0 && off <= size)
     }
 }
+
+// An explicit `back=<seconds>` (Watch from Beginning on another Mac) joins that far behind, or at byte 0 when it reaches
+// past the start of the file.
+@Suite("WebServer.feedBackOffset")
+struct FeedBackOffsetTests {
+    private let now = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test func backPastTheStart_isByteZero() {
+        #expect(WebServer.feedBackOffset(currentSize: 600_000_000, recordingStart: now.addingTimeInterval(-600), backSeconds: 600, now: now) == 0)
+        #expect(WebServer.feedBackOffset(currentSize: 600_000_000, recordingStart: now.addingTimeInterval(-600), backSeconds: 999_999, now: now) == 0)
+    }
+
+    @Test func backWithinTheFile_joinsThatFarBehind() {
+        let size = 600_000_000   // 1 MB/s over 600 s
+        let off = WebServer.feedBackOffset(currentSize: size, recordingStart: now.addingTimeInterval(-600), backSeconds: 120, now: now)
+        #expect(off % 188 == 0)
+        #expect(abs(Double(size - off) - 120_000_000) < 400_000, "joined \(size - off) bytes behind, expected ~120 MB")
+    }
+
+    @Test func unknownStartOrEmptyFile_joinsAtTheLiveEdge() {
+        #expect(WebServer.feedBackOffset(currentSize: 1_000_000, recordingStart: nil, backSeconds: 60, now: now) == 1_000_000)
+        #expect(WebServer.feedBackOffset(currentSize: 0, recordingStart: now.addingTimeInterval(-600), backSeconds: 60, now: now) == 0)
+    }
+
+    @Test func backZero_isTheLiveEdgeNotTheDefaultCushion() {
+        let size = 600_000_000
+        let off = WebServer.feedBackOffset(currentSize: size, recordingStart: now.addingTimeInterval(-600), backSeconds: 0, now: now)
+        #expect(size - off < 1_000, "back=0 should join at the write position, got \(size - off) bytes behind")
+    }
+}

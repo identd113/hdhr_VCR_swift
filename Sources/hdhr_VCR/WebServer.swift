@@ -1230,7 +1230,7 @@ final class WebServer: @unchecked Sendable {
         return (wantsTranscode, wantsTranscode ? configuredDefault : requested)
     }
 
-    private func handleVirtualTunerStream(channel: String, deviceId: String?, durationSeconds: Int?, transcode: String?, conn: NWConnection) {
+    private func handleVirtualTunerStream(channel: String, deviceId: String?, durationSeconds: Int?, transcode: String?, backSeconds: Int? = nil, conn: NWConnection) {
         guard let state = appState else { send(.badRequest("app state unavailable"), on: conn); return }
         // `channel` is client-controlled (a percent-decoded URL path segment, LAN-reachable, no
         // auth) — logged with newlines/control characters stripped so a crafted request (e.g.
@@ -1370,7 +1370,8 @@ final class WebServer: @unchecked Sendable {
                 // for a recording that started late (restart/reattach, Record Now on an airing already in progress),
                 // which would make the estimated rate, and so the cushion, far too small.
                 let fileStart = ((try? FileManager.default.attributesOfItem(atPath: path))?[.creationDate] as? Date) ?? show.show_next
-                let joinOffset = Self.feedJoinOffset(currentSize: currentSize, recordingStart: fileStart)
+                let joinOffset = backSeconds.map { Self.feedBackOffset(currentSize: currentSize, recordingStart: fileStart, backSeconds: $0) }
+                    ?? Self.feedJoinOffset(currentSize: currentSize, recordingStart: fileStart)
                 glog("[VirtualTuner] /auto/v\(logChannel) joining \(currentSize - joinOffset) bytes behind the write position (file \(currentSize) bytes)")
                 self.streamGrowingFile(path: path, showId: showId, startOffset: joinOffset, conn: conn,
                                         durationSeconds: durationSeconds,
@@ -1398,6 +1399,20 @@ final class WebServer: @unchecked Sendable {
         let elapsed = now.timeIntervalSince(recordingStart)
         guard elapsed > backoff else { return currentSize }
         return AppState.byteOffset(forTargetSeconds: elapsed - backoff, elapsedSeconds: elapsed, fileSizeBytes: currentSize)
+    }
+
+    /// Upper bound on a requested `back=` (seconds) — a week; anything longer just means "from the start".
+    static let feedMaxBackSeconds = 7 * 24 * 3600
+
+    /// Byte offset for an explicit `back=<seconds>` request: that many seconds behind `currentSize`, estimated from the
+    /// file's average rate; a request reaching back past the start of the file (or beyond what's on disk) is byte 0.
+    /// An unknown start can't be estimated, so it joins at the live edge rather than guessing.
+    static func feedBackOffset(currentSize: Int, recordingStart: Date?, backSeconds: Int, now: Date = Date()) -> Int {
+        guard currentSize > 0, let recordingStart else { return currentSize }
+        let elapsed = now.timeIntervalSince(recordingStart)
+        guard elapsed >= 1 else { return currentSize }
+        guard Double(backSeconds) < elapsed else { return 0 }
+        return AppState.byteOffset(forTargetSeconds: elapsed - Double(backSeconds), elapsedSeconds: elapsed, fileSizeBytes: currentSize)
     }
 
     // Starts (or joins) a VLCBridge headless transcode session for showId+profile and proxies its
@@ -2333,7 +2348,10 @@ final class WebServer: @unchecked Sendable {
                 // sharing a channel number — see handleVirtualTunerStream's own comment. Absent for
                 // a client hitting a hand-typed/older-shaped URL; falls back to channel-only match.
                 let dev = query.first(where: { $0.name == "dev" })?.value
-                self.handleVirtualTunerStream(channel: channel, deviceId: dev, durationSeconds: duration, transcode: transcode, conn: conn); return
+                // back= (seconds, optional): join that far behind the write position instead of the default cushion —
+                // "Watch from Beginning" on another Mac sends a large value, which clamps to byte 0. Raw passthrough only.
+                let back = query.first(where: { $0.name == "back" }).flatMap { Int($0.value ?? "") }.map { min(max(0, $0), Self.feedMaxBackSeconds) }
+                self.handleVirtualTunerStream(channel: channel, deviceId: dev, durationSeconds: duration, transcode: transcode, backSeconds: back, conn: conn); return
             }
             // Reuse the connection only when we fully understand the request's framing and the
             // response is safe to follow with another: HTTP/1.1, a method whose response body the
