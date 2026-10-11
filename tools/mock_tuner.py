@@ -350,6 +350,14 @@ class Handler(BaseHTTPRequestHandler):
                               f"<html><head><title>{d['FriendlyName']}</title></head><body>"
                               f"<h1>{d['FriendlyName']}</h1><p>{d['ModelNumber']} · {d['DeviceID']} · "
                               f"{d['FirmwareVersion']} (mock_tuner.py)</p></body></html>")
+        if path == "/guide.json" and ARGS.guide_file:
+            # Opt-in local guide (older, DeviceAuth-less HDHomeRuns serve one; a real EXTEND doesn't).
+            # Re-read per request so editing the file takes effect on the app's next guide refresh.
+            try:
+                with open(ARGS.guide_file) as f:
+                    return self._json(json.load(f))
+            except (OSError, ValueError) as e:
+                return self._text("500 Internal Server Error", "text/plain", f"guide file unreadable: {e}\n")
         return self._not_found()   # incl. /guide.json — a real device has none
 
     def do_POST(self):
@@ -651,6 +659,8 @@ def main() -> None:
     ap.add_argument("--device-auth", help="pin DeviceAuth to this value")
     ap.add_argument("--auth-rotate", type=int, default=300, help="rotate synthetic DeviceAuth every N s (0 = never)")
     ap.add_argument("--no-auth", action="store_true", help="advertise no DeviceAuth (local-guide device)")
+    ap.add_argument("--guide-file", help="serve this guide.json array at /guide.json (pair with --no-auth so the "
+                    "app fetches the guide from this device instead of the cloud)")
     ap.add_argument("--scan-seconds", type=float, default=6)
     ap.add_argument("--ts-file", help="MPEG-TS file to stream (looped); default is paced TS null packets")
     ap.add_argument("--bitrate-mbps", type=float, default=12.0, help="stream pacing rate (default 12)")
@@ -666,6 +676,8 @@ def main() -> None:
             log(f"[warn] {args.device_id} fails libhdhomerun's DeviceID checksum — some clients ignore such devices")
     else:
         args.device_id = make_valid_device_id()
+    if args.guide_file and not os.path.isfile(args.guide_file):
+        sys.exit(f"--guide-file not found: {args.guide_file}")
     if args.ts_file and not os.path.isfile(args.ts_file):
         sys.exit(f"--ts-file not found: {args.ts_file}")
 
