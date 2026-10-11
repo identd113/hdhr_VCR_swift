@@ -6,6 +6,12 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# FEED relay stuck as an ordinary tuner on the viewer — 2026-10-11
+
+- **Symptom:** if a relay's UDP announcement reached a viewer before the relay's HTTP side was ready, the viewer stored it as a normal tuner with "no lineup"; "Recording on Another Mac" never appeared until the viewer restarted. Cause: `probeForNewDevices` only refreshed auth/address/capacity on known devices and never re-checked `isVirtualRelay`. Fix (`78afddb`): a later probe that reads `/discover.json` promotes the device to a relay, takes its name and `recordingStartedAt`, and refetches its lineup. No unit test (private, network-driven); not exercised live.
+
+---
+
 # Live two-Mac testing (PiPTunerChurnTests) — three fixes — 2026-10-06
 
 - **FEED relay left advertising after deleting the last recording (`2f2869e`):** `deleteShow` removed the show but never re-ran `updateVirtualTunerPresence()` on that path, so `/discover.json` kept answering with `TunerCount: 0` and an empty lineup and the relay never logged `stopped advertising` (a natural stop did). Because only one Mac's relay may be live per shared tuner (first recorder wins), the stale relay also made a *second* Mac that began recording back off, so it never got a FEED. Reproduced deterministically (start a recording, delete the show); fix = re-run `updateVirtualTunerPresence()` once the show is actually removed. Verified live: `stopped advertising` logged, `/discover.json` → 404.
