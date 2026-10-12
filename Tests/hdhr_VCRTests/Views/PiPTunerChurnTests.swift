@@ -207,10 +207,16 @@ private func recordedChannel(_ startOutput: String) -> String {
 
 private func discoverDeviceID() -> String? {
     let page = curl("http://127.0.0.1:1980/", timeout: 10)
-    guard let r = page.range(of: #""([0-9A-F]{8})":\{"nt":"#, options: .regularExpression) ?? page.range(of: #""([0-9A-F]{8})":\{[^}]*"surl""#, options: .regularExpression)
-    else { return nil }
-    let ids = page[r].split(separator: "\"").map(String.init).filter { $0.count == 8 }
-    return ids.first
+    // Every device the guide embeds a tuner object for, in page order; the first whose own status.json answers
+    // wins — a stale or unreachable device (e.g. a left-over mock) must not become the device under test.
+    guard let re = try? NSRegularExpression(pattern: #""([0-9A-F]{8})":\{[^}]*"surl":"([^"]*)""#) else { return nil }
+    let ns = page as NSString
+    for m in re.matches(in: page, range: NSRange(location: 0, length: ns.length)) {
+        let id = ns.substring(with: m.range(at: 1))
+        let surl = ns.substring(with: m.range(at: 2)).replacingOccurrences(of: "\\/", with: "/")
+        if !curl(surl, timeout: 4).isEmpty { return id }
+    }
+    return nil
 }
 
 private func tunerSnapshot(deviceID: String, page: String) -> Tuners {
@@ -551,7 +557,7 @@ private func geometryScript(uiEvents: String, expectThumb: Bool) -> String {
     set names to ""
     repeat with w in windows
         try
-            set names to names & (name of w) & ";"
+            set names to names & (name of w) & "|"
         end try
     end repeat
     if pw is missing value then return "-|-|" & names
@@ -696,7 +702,7 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ta
                     if !onScreen { problems.append("step \(n) \(op.rawValue): player window \(win) is entirely off-screen") }
                 }
             }
-            let extra = names.split(separator: ";").map(String.init).filter { !["Watch Now", "Add Picture-in-Picture", "Support hdhrVCRplus"].contains($0) }
+            let extra = names.split(separator: "|").map(String.init).filter { !["Watch Now", "Add Picture-in-Picture", "Support hdhrVCRplus"].contains($0) }
             if extra.count > 1 { problems.append("step \(n) \(op.rawValue): \(extra.count) player windows open (\(extra))") }
             if names.contains("Add Picture-in-Picture") { problems.append("step \(n) \(op.rawValue): the PiP picker window was left open") }
         }
@@ -721,7 +727,14 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ta
 
     // The apps' own logs for the run (the viewer, and the recorder if it is a different Mac).
     for (label, text) in [(target.name, target.logSince(appLogOffset))] + (recorder.map { [($0.name, $0.logSince(recorderLogOffset))] } ?? []) {
-        let errors = text.split(separator: "\n").filter { $0.contains("[ERROR]") }
+        // An error tagged with some OTHER device's ID (a left-over mock or an unreachable second tuner) isn't this run's.
+        let errors = text.split(separator: "\n").filter { line in
+            guard line.contains("[ERROR]") else { return false }
+            if let tag = line.range(of: #"\[ERROR\] \[([0-9A-F]{8})\]"#, options: .regularExpression) {
+                return line[tag].contains(deviceID)
+            }
+            return true
+        }
         if !errors.isEmpty { problems.append("the \(label) app logged \(errors.count) [ERROR] line(s) during the run, e.g. \(errors.prefix(3).joined(separator: " ⏎ "))") }
         let tunerRefusals = text.split(separator: "\n").filter { $0.contains("All Tuners") || $0.contains("tuner refused") }
         if !tunerRefusals.isEmpty { problems.append("the device refused a stream on the \(label) (all tuners busy) \(tunerRefusals.count)× — \(tunerRefusals.first!)") }

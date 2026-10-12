@@ -39,6 +39,7 @@ single/dateTime/seriesChannel/seriesAll (default single). Optional passthrough f
 """
 import argparse
 import glob
+import html
 import json
 import os
 import re
@@ -141,7 +142,7 @@ def guide_blocks(port, future_only=False, airing_now=False):
         if airing_now and not (s <= now < e):
             continue
         out.append({"start": s, "end": e, "device": dev.group(1), "channel": num.group(1),
-                    "title": tit.group(1), "managed": mgd, "winstart": ws, "winsec": wsec})
+                    "title": html.unescape(tit.group(1)), "managed": mgd, "winstart": ws, "winsec": wsec})
     return out
 
 
