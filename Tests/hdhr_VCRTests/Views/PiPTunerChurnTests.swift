@@ -205,6 +205,14 @@ private func recordedChannel(_ startOutput: String) -> String {
     return String(startOutput[r].dropFirst(3).dropLast())
 }
 
+/// Channel of a recording already in progress on the mini (any show, mock or real), from the web guide's own markers.
+private func runningRecordingChannel() -> String? {
+    let page = curl("http://127.0.0.1:1980/api/guide-refresh", timeout: 10)
+    guard let r = page.range(of: #"data-num=\\?"([^"\\]+)\\?"[^>]*data-recording=\\?"1\\?"|data-recording=\\?"1\\?"[^>]*data-num=\\?"([^"\\]+)\\?""#, options: .regularExpression),
+          let n = page[r].range(of: #"data-num=\\?"([^"\\]+)"#, options: .regularExpression) else { return nil }
+    return String(page[n]).replacingOccurrences(of: "data-num=", with: "").replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "")
+}
+
 private func discoverDeviceID() -> String? {
     let page = curl("http://127.0.0.1:1980/", timeout: 10)
     // Every device the guide embeds a tuner object for, in page order; the first whose own status.json answers
@@ -373,15 +381,34 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
             delay 1
         end repeat
         if feedItem is missing value then return "NO_FEED_MENU_ITEM"
+        -- With two recordings there are two relay rows, and a row's submenu can be stale ("Invalid index") while the
+        -- menu re-renders; try every relay row in turn, repeatedly, until one yields a Watch item.
         set watchItem to missing value
-        repeat with sub in (every menu item of menu 1 of feedItem)
+        repeat 8 times
             try
-                set nm to name of sub
-                if nm starts with "Watch" and nm does not contain "alongside" and watchItem is missing value then set watchItem to sub
+                set rowCount to count of menu items of mn
+                repeat with k from 1 to rowCount
+                    try
+                        set mi to menu item k of mn
+                        set nm to name of mi
+                        if nm starts with "Recording on " and nm contains " — " then
+                            repeat with sub in (every menu item of menu 1 of mi)
+                                set sn to name of sub
+                                if sn starts with "Watch" and sn does not contain "alongside" and sn does not contain "Beginning" and sn does not contain "H.264" then
+                                    click sub
+                                    set watchItem to sub
+                                    exit repeat
+                                end if
+                            end repeat
+                        end if
+                    end try
+                    if watchItem is not missing value then exit repeat
+                end repeat
             end try
+            if watchItem is not missing value then exit repeat
+            delay 0.7
         end repeat
         if watchItem is missing value then return "NO_FEED_WATCH_ITEM"
-        click watchItem
         set pw to missing value
         repeat 40 times
             delay 0.25
@@ -852,8 +879,17 @@ struct PiPTunerChurnTests {
         let laptopTool = "cd ~/GitHub/hdhr_VCR_swift && python3 tools/mock_scenario.py"
         _ = sh("/usr/bin/ssh", ["laptop", "\(laptopTool) clean"], timeout: 60)     // the laptop must NOT be recording — the mini feeds
         _ = sh("/usr/bin/python3", [tool, "clean"])
-        let started = sh("/usr/bin/python3", [tool, "start"])
-        if started.status == 2 { say("feedFromTheMiniShowsOnTheLaptop skipped: nothing airing / no free tuner"); return }
+        // A recording that is already running (a real one) is the FEED source: a FEED costs no tuner, and a mock started
+        // on top of it would usually land on the SAME channel — two relay rows with identical URLs, which the protocol
+        // can't tell apart (docs/VirtualTunerService.md, the `dev=` note). Only start a mock when nothing is recording.
+        var started: (status: Int32, out: String)
+        if let ch = runningRecordingChannel() {
+            say("feedFromTheMiniShowsOnTheLaptop: feeding from the recording already running on ch \(ch)")
+            started = (status: 0, out: "RECORDING (adopted) (dev - ch \(ch))")
+        } else {
+            started = sh("/usr/bin/python3", [tool, "start"])
+            if started.status == 2 { say("feedFromTheMiniShowsOnTheLaptop skipped: nothing airing / no free tuner / no recording already running"); return }
+        }
         guard started.status == 0 else { Issue.record("mock_scenario.py start failed (\(started.status))"); return }
         defer { _ = sh("/usr/bin/python3", [tool, "clean"]); _ = sh("/usr/bin/ssh", ["laptop", "\(laptopTool) clean"], timeout: 60) }
 
