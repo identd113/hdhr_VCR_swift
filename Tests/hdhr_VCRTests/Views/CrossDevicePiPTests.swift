@@ -49,7 +49,7 @@ struct CrossDevicePiPTests {
 
     private func deviceIDsInPage(_ page: String) -> [String] {
         var seen: [String] = []
-        let re = try! NSRegularExpression(pattern: #""([0-9A-F]{8})":\{"(?:a|t)":\d"#)
+        let re = try! NSRegularExpression(pattern: #""([0-9A-F]{8})":\{[^}]*"surl""#)   // key order inside the object isn't stable
         for m in re.matches(in: page, range: NSRange(page.startIndex..., in: page)) {
             if let r = Range(m.range(at: 1), in: page) {
                 let id = String(page[r])
