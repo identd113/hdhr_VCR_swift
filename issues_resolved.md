@@ -6,6 +6,54 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# T15, T24, T25 — player fixes — 2026-10-13
+
+- **T15 — VLCBridge edge cases:** a nil `libvlc_media_new_location` now publishes the error state (it left "Connecting…" forever with timers stopped); a stream's commit is matched by player object + URL (`VLCBridge.owningSlot`), so a PiP swap while it was connecting no longer drops its state reset and timers; a second `play()` of the same URL releases the media the first one committed; stats/fast-poll ticks no longer run for a stopped slot (they raced the async stop and could set `isPlaying` again). Tests: `OwningSlotTests`.
+- **T24 — window geometry:** a re-fit/resize slides the frame back inside the screen's visible area (`VLCPlayerWindowManager.frame(_:keptWithin:)`) instead of growing under the Dock; the screen clamp now beats the 640 minimum width on small displays; leaving fullscreen re-runs the aspect re-fit that fullscreen skipped. Tests in `VLCPlayerViewPipThumbnailSizeTests.swift`.
+- **T25 — audio output:** the player follows the system default output (headphones/AirPods/speaker switches) until the user picks a device; a pinned device that disappears falls back to following; new "System Default" row in More options → Audio Output. A second CoreAudio listener watches the default-output property. Tests: `AudioTargetResolutionTests`.
+
+---
+
+# T28 — "Measure Signal" buttons all scanned every tuner — 2026-10-13
+
+- **Symptom:** Settings → Advanced → Signal Strength Scan showed one "Measure Signal: <device>" button per tuner, but each called `startSignalScan(force: true)` with no device and scanned all of them.
+- **Fix:** a **Tuner** pulldown ("All Tuners" or one device) plus a single **Measure Signal** button; `AppState.startSignalScan(force:deviceId:)` filters to that device (nil = all, as the idle loop and web UI still call it). No unit test — the scan is an async network loop against live `status.json`; verified by build and by reading. `docs/SettingsView.md` updated.
+
+---
+
+# T08 — Watch skipped its tuner check when the primary was a disk relay — 2026-10-13
+
+- **Symptom:** with Watch Now playing a recording from disk (or a FEED bound to the same device), choosing a live channel on that device from Watch Now or the menu skipped the "All Tuners Busy" check; on a full device it ended in 805 / "Playback Ended" with no alert.
+- **Cause:** `AppState.watchInApp` skipped its pre-flight whenever `currentDeviceID == device.DeviceID`, but a relay primary is bound to that device without holding a tuner.
+- **Fix:** `watchInApp` now uses `VLCPlayerView.reusesExistingTuner(...)`, the rule the player's channel picker already used (also requires no `recordingShowId`, no FEED, and something playing). The decision is covered by `VLCPlayerViewTunerReuseTests`; the call site itself has no unit seam (it needs the player windows), so it is verified by reading, not by a test.
+
+---
+
+# T16 and T20 — 2026-10-13
+
+- **T16 — organize-series mis-filed another show's recordings (`7160aea`):** `organizeSeriesRecordings` matched `hasPrefix("Law & Order ")`, so "Law & Order SVU_…" files moved into "Law & Order/". Now `AppState.recordingFilename(_:belongsToSeries:)`: `Title_…`, or legacy `Title SxxExx …` only. Tests: `SeriesFilenameMatchTests`.
+- **T20 — Discord senders:** a 429 is now waited out (`Retry-After`, else body `retry_after`, clamped 0.1–15 s) and retried up to twice; `http://` webhooks are refused (token in the clear); the edit URL keeps `?thread_id=` after the path (`discordEditURL`). Tests in `DiscordNotifierTests`.
+
+---
+
+# T02 — unmounted volume root recorded to the boot disk — 2026-10-13
+
+- **Symptom:** a show whose folder is a volume root (`/Volumes/Raid6`) recorded to a plain `/Volumes/Raid6` folder on the startup disk while the drive was unmounted, with no fallback warning.
+- **Cause:** `Show.posixRecordDir` only checked that the folder's parent existed; for a volume root that is `/Volumes`, which always does.
+- **Fix:** `Show.pathIsOnMountedVolume` — under `/Volumes/<name>` the name must be in `FileManager.mountedVolumeURLs` (symlinks resolved, so `Macintosh HD` → `/` counts); elsewhere the parent check stays. `Show.recordDir(primary:fallback:isMounted:)` takes the check as a parameter for tests (`ShowRecordDirMountTests`). The old `hfsPathOnMountedVolume` test relied on a made-up volume name counting as mounted, so it now uses a real mounted volume.
+
+---
+
+# Triage cleanup — T12, T19, T23, T33, part of T41 — 2026-10-13
+
+- **T33 — "Clear Guide Cache" left the saved guides on disk (`5459f17`):** the pruning half was already done (`CachePruner`); `GuideStore.invalidateAll()` now also deletes the `*.guide` files so the next load can't restore what was just cleared. Test: `invalidateAll_alsoDeletesTheSavedGuideFiles`.
+- **T19 — `/api/record` input checks (`5459f17`):** `airDays` is validated against `Show.weekdayNames` like `handleEdit` does, and `?duration=` on `/auto/v*` is clamped to 7 days. (Title length/control characters were already handled by `sanitizedShowTitle`.)
+- **T23 — tuner-wait leftovers:** re-checked 2026-10-13; `ownStreamStoppedForSwitch` is cleared on every superseding pick path, and the timeout/Busy branch puts the picker back and re-opens the previous channel. Already fixed with the 2026-10 "stuck on Connecting…" player fix.
+- **T12 — closed as not an issue:** tuner-count changes are written regardless of `menuIsOpen`; only a change landing while the menu is open waits out a 30 s cooldown, a deliberate trade against menu-rebuild glitches (see the comment at `fetchDeviceStatusUncached`).
+- **T41 (part) — `ps` runner and Discord request building (`5459f17`):** `AppState.processListing()` replaces two identical `ps -Axo pid,args` blocks; `discordJSONRequest` replaces three copies of the embed-encode/request-build code.
+
+---
+
 # FEED relay stuck as an ordinary tuner on the viewer — 2026-10-11
 
 - **Symptom:** if a relay's UDP announcement reached a viewer before the relay's HTTP side was ready, the viewer stored it as a normal tuner with "no lineup"; "Recording on Another Mac" never appeared until the viewer restarted. Cause: `probeForNewDevices` only refreshed auth/address/capacity on known devices and never re-checked `isVirtualRelay`. Fix (`78afddb`): a later probe that reads `/discover.json` promotes the device to a relay, takes its name and `recordingStartedAt`, and refetches its lineup. No unit test (private, network-driven); not exercised live.

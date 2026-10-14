@@ -260,7 +260,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 **Signal Strength Scan section** (only visible when Signal Quality toggle is on):
 - Brief description: *"Briefly tunes each channel to measure signal quality. Results are stored and shown as bars in the guide."*
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
-- At rest: one **Measure Signal: {DeviceID}** button per discovered device. Calls `state.startSignalScan(force: true)` — `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
+- At rest: a **Tuner** pulldown ("All Tuners", then each recordable device as `FriendlyName (DeviceID)`; a selection whose device has gone away behaves as "All Tuners") followed by one **Measure Signal** button (disabled with no devices). Calls `state.startSignalScan(force: true, deviceId:)` — `deviceId` is nil for "All Tuners", else only that device is scanned; `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
 ---
 

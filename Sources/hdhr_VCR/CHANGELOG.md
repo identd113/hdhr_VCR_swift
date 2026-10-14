@@ -9,6 +9,23 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - *Updated* — The player's "?" card now lists right-click → "Add a picture-in-picture".
 - *Updated* — The Add Show guide uses native macOS scrollbars and sits flush to the window edge instead of in a bordered frame.
 - *Updated* — **Fixed: the first-run window was too short** — the Next button was clipped on the first page.
+- *Added* — **Watch from Beginning for a FEED.** Joined a recording partway through? Right-click the FEED and choose Watch from Beginning to scrub back to where it started. It appears only when the recording Mac reports its start time.
+- *Updated* — **A FEED now starts about 8 seconds behind the live edge** (once that much is on disk), giving playback a cushion so delivery hiccups no longer cause stutter. Transcoded FEEDs are unchanged.
+- *Updated* — **Fixed: a FEED could freeze for tens of seconds** while the recording was still growing, after the source's measured data rate dipped briefly. Playback now recovers within a second.
+- *Updated* — **Fixed: a FEED relay could be listed as an ordinary tuner** if it was first seen before it was ready to answer; it's now reclassified on the next probe.
+- *Updated* — **Unreachable tuners are no longer listed or offered.** Watch Now, picture-in-picture and Add Show only offer tuners that respond, and the menu shows an unreachable one only while a show is assigned to it — instead of lingering for up to an hour.
+- *Updated* — The menu header names tuners in use by another device instead of showing "⚠ app expects N".
+- *Updated* — **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's folder was the drive itself (for example `/Volumes/Raid6`), an unmounted drive wasn't noticed and the recording went into a plain folder of that name on the Mac's own disk. It now falls back to the local recording folder, as it already did for subfolders.
+- *Updated* — **Fixed: "Organize series recordings" could file one show's recordings under another** whose title starts the same way (such as "Law & Order SVU" under "Law & Order").
+- *Updated* — **Fixed: Watch Now / the menu could skip the "All Tuners Busy" notice** when you switched from a recording playing from disk to a live channel on a full tuner; it ended in "Playback Ended" instead.
+- *Updated* — **Clear Guide Cache now also deletes the saved copies on disk**, so the next load fetches fresh guide data instead of restoring the old one.
+- *Updated* — **Discord notifications wait out Discord's rate limit** and retry instead of dropping the card when several shows start or stop at once. Webhook URLs must now be `https://`, and editing a card works with a thread webhook (`?thread_id=`).
+- *Updated* — **Settings → Advanced → Signal Strength Scan has a Tuner pulldown** ("All Tuners" or one tuner) and a single Measure Signal button. Before, every tuner's button scanned all of them.
+- *Updated* — **The player's sound now follows your Mac's output.** Plug in headphones or switch to AirPods or another speaker and playback moves with it. Pick a specific device in More options → Audio Output to pin it; "System Default" goes back to following. An unplugged pinned device falls back to the default.
+- *Updated* — **Fixed: the player window could grow under the Dock** when it re-fit to a new picture shape or after a resize, could be pushed off a small screen by its minimum width, and skipped the re-fit when the channel changed shape in full screen.
+- *Updated* — **Fixed: the player could sit on "Connecting…" forever** if VLC couldn't open the stream, and a stream opened right before a picture-in-picture swap could lose its state.
+- *Updated* — **A picture-in-picture in the lower-left corner steps up out of the way** while the "i" info banner is showing, then returns.
+- *Updated* — The web guide's Record request now rejects invalid air-day names, and a stream request's `duration` is capped at 7 days.
 
 ## v2.6.0 — 2026-10-10
 
