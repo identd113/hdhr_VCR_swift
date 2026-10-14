@@ -241,6 +241,17 @@ struct GuideStoreMockNetworkTests {
             #expect(!fresh.isFresh(deviceId: device.DeviceID), "stamped with the file's age, so it is retried")
         }
 
+        @Test @MainActor func invalidateAll_alsoDeletesTheSavedGuideFiles() async {
+            let device = makeLocalDevice()
+            let dir = await cacheDirWithGuide(for: device)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let file = dir.appendingPathComponent("\(device.DeviceID)-json-12h.guide")
+            #expect(FileManager.default.fileExists(atPath: file.path))
+            let store = GuideStore(session: makeSession(), diskCacheDir: dir)
+            store.invalidateAll()
+            #expect(!FileManager.default.fileExists(atPath: file.path), "Clear Guide Cache must not leave a copy the next load restores")
+        }
+
         @Test @MainActor func networkFailure_neverReplacesAGuideAlreadyInMemory() async {
             let device = makeLocalDevice()
             let dir = await cacheDirWithGuide(for: device)

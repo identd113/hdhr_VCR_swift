@@ -220,6 +220,21 @@ struct VLCPlayerWindowAspectLockTests {
                                                                current: current, nativePixelSize: hd)
         #expect(r.width == VLCPlayerWindowManager.playerMinContentWidth)
     }
+    @Test func narrowScreen_beatsTheMinimumWidth() {
+        // A display (or visible area) narrower than the 640 minimum used to get a 640-wide window anyway.
+        let r = VLCPlayerWindowManager.contentSize(width: 900, nativePixelSize: hd, maxContent: CGSize(width: 500, height: 900))
+        #expect(r.width == 500)
+    }
+    @Test func shortScreen_beatsTheMinimumWidth() {
+        // 16:9 at 640 wide needs 360+44 high; a 300-high area caps the width at (300-44)*16/9.
+        let r = VLCPlayerWindowManager.contentSize(width: 900, nativePixelSize: hd, maxContent: CGSize(width: 2000, height: 300))
+        #expect(r.height <= 300)
+        #expect(r.width < VLCPlayerWindowManager.playerMinContentWidth)
+    }
+    @Test func roomyScreen_stillEnforcesTheMinimum() {
+        let r = VLCPlayerWindowManager.contentSize(width: 300, nativePixelSize: hd, maxContent: CGSize(width: 2000, height: 1200))
+        #expect(r.width == VLCPlayerWindowManager.playerMinContentWidth)
+    }
     @Test func clampsToScreen() {
         let r = VLCPlayerWindowManager.aspectLockedContentSize(proposed: CGSize(width: 4000, height: 2300),
                                                                current: current, nativePixelSize: hd,
@@ -227,5 +242,51 @@ struct VLCPlayerWindowAspectLockTests {
         #expect(r.width <= 1400)
         #expect(r.height <= 800)
         #expect(abs(r.width / (r.height - 44) - 16.0/9.0) < 0.01)
+    }
+}
+
+// T24: a re-fit that grows the window must not slide it under the Dock or off the screen.
+@Suite("VLCPlayerWindowManager.frame(_:keptWithin:)")
+struct VLCPlayerWindowFrameClampTests {
+    private let visible = CGRect(x: 0, y: 80, width: 1600, height: 820)     // Dock (80pt) along the bottom
+
+    @Test func frameInside_isUnchanged() {
+        let f = CGRect(x: 100, y: 200, width: 800, height: 500)
+        #expect(VLCPlayerWindowManager.frame(f, keptWithin: visible) == f)
+    }
+    @Test func growingDownIntoTheDock_slidesUp() {
+        let f = CGRect(x: 100, y: 20, width: 800, height: 500)              // bottom edge under the Dock
+        #expect(VLCPlayerWindowManager.frame(f, keptWithin: visible).origin.y == 80)
+    }
+    @Test func pastTheRightEdge_slidesLeft() {
+        let f = CGRect(x: 1200, y: 200, width: 800, height: 500)
+        #expect(VLCPlayerWindowManager.frame(f, keptWithin: visible).maxX == 1600)
+    }
+    @Test func pastTheTop_slidesDown() {
+        let f = CGRect(x: 100, y: 600, width: 800, height: 500)
+        #expect(VLCPlayerWindowManager.frame(f, keptWithin: visible).maxY == 900)
+    }
+    @Test func oversizedFrame_staysPinnedTopLeft() {
+        let f = CGRect(x: 300, y: 0, width: 2000, height: 1000)
+        let r = VLCPlayerWindowManager.frame(f, keptWithin: visible)
+        #expect(r.minX == 0)
+        #expect(r.maxY == 900)
+    }
+}
+
+// The PiP steps up out of the lower-left corner while the info ("i") banner shows.
+@Suite("VLCPlayerView.pipAvoidsInfoBanner")
+struct VLCPlayerViewPipBannerAvoidanceTests {
+    @Test func onlyTheBannersCorner_andOnlyWhileItShows() {
+        #expect(VLCPlayerView.pipAvoidsInfoBanner(corner: .bottomLeading, bannerVisible: true))
+        #expect(!VLCPlayerView.pipAvoidsInfoBanner(corner: .bottomLeading, bannerVisible: false))
+        for c in [PipCorner.bottomTrailing, .topLeading, .topTrailing] {
+            #expect(!VLCPlayerView.pipAvoidsInfoBanner(corner: c, bannerVisible: true))
+        }
+    }
+    @Test func offset_isTheTravelBetweenTheBottomAndTopCorners() {
+        // 600pt pane, 180pt thumbnail, 16pt padding each side → 600 - 180 - 32.
+        #expect(VLCPlayerView.pipBannerAvoidanceOffset(containerHeight: 600, thumbHeight: 180) == 388)
+        #expect(VLCPlayerView.pipBannerAvoidanceOffset(containerHeight: 100, thumbHeight: 180) == 0)
     }
 }

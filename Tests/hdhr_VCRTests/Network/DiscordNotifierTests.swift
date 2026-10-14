@@ -45,6 +45,7 @@ struct DiscordNotifierTests {
         // isDiscordHost uses hasSuffix("." + domain), not a bare hasSuffix(domain) — guards
         // against "notdiscord.com" (no "." boundary) being accepted as a discord.com host.
         "https://notdiscord.com/webhook",  // spoofedHostWithoutDotBoundary_returnsNilWithoutNetworkCall
+        "http://discord.com/api/webhooks/1/token",  // plain http would send the token in the clear
     ])
     func invalidWebhookURL_returnsNilWithoutNetworkCall(_ webhookURL: String) async {
         DiscordMockURLProtocol.requestCount = 0
@@ -137,5 +138,52 @@ struct DiscordNotifierTests {
     @Test func editDiscordEmbed_emptyMessageId_doesNotCrash() {
         editDiscordEmbed(webhookURL: "https://discord.com/api/webhooks/1/token", messageId: "", embed: ["title": "x"])
         editDiscordEmbed(webhookURL: "", messageId: "123", embed: ["title": "x"])
+    }
+
+    // MARK: - Rate limiting, edit URL (T20)
+
+    @Test func rateLimited429_isRetriedAfterRetryAfter_thenSucceeds() async {
+        DiscordMockURLProtocol.requestCount = 0
+        DiscordMockURLProtocol.requestHandler = { req in
+            if DiscordMockURLProtocol.requestCount == 1 {
+                let r = HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: "HTTP/1.1", headerFields: ["Retry-After": "0"])!
+                return (r, Data(#"{"retry_after":0}"#.utf8))
+            }
+            return (discordOKResponse(for: req.url!), Data(#"{"id":"m1"}"#.utf8))
+        }
+        let id = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
+        #expect(id == "m1")
+        #expect(DiscordMockURLProtocol.requestCount == 2)
+    }
+
+    @Test func persistent429_givesUpAfterTwoRetries() async {
+        DiscordMockURLProtocol.requestCount = 0
+        DiscordMockURLProtocol.requestHandler = { req in
+            (HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: "HTTP/1.1", headerFields: ["Retry-After": "0"])!, Data("{}".utf8))
+        }
+        let id = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
+        #expect(id == nil)
+        #expect(DiscordMockURLProtocol.requestCount == 3)
+    }
+
+    @Test func retryDelay_prefersHeader_thenBody_andIsClamped() {
+        #expect(discordRetryDelay(retryAfterHeader: "2", body: Data()) == 2)
+        #expect(discordRetryDelay(retryAfterHeader: nil, body: Data(#"{"retry_after":1.5}"#.utf8)) == 1.5)
+        #expect(discordRetryDelay(retryAfterHeader: nil, body: Data()) == 1)
+        #expect(discordRetryDelay(retryAfterHeader: "9999", body: Data()) == 15)
+        #expect(discordRetryDelay(retryAfterHeader: "0", body: Data()) == 0.1)
+    }
+
+    @Test func editURL_keepsThreadIdQueryAfterThePath() {
+        let url = discordEditURL(webhookURL: "https://discord.com/api/webhooks/1/token?thread_id=99", messageId: "555")
+        #expect(url?.absoluteString == "https://discord.com/api/webhooks/1/token/messages/555?thread_id=99")
+        #expect(discordEditURL(webhookURL: "https://discord.com/api/webhooks/1/token/", messageId: "555")?.absoluteString
+                == "https://discord.com/api/webhooks/1/token/messages/555")
+    }
+
+    @Test func editURL_rejectsPlainHttp_otherHosts_andEmptyId() {
+        #expect(discordEditURL(webhookURL: "http://discord.com/api/webhooks/1/t", messageId: "5") == nil)
+        #expect(discordEditURL(webhookURL: "https://evil.com/api/webhooks/1/t", messageId: "5") == nil)
+        #expect(discordEditURL(webhookURL: "https://discord.com/api/webhooks/1/t", messageId: "") == nil)
     }
 }

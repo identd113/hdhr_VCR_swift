@@ -43,6 +43,7 @@ private typealias vlc_mp_set_nso_fn      = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_mp_play_fn         = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_stop_fn         = @convention(c) (OpaquePointer?) -> Void
 private typealias vlc_audio_set_vol_fn   = @convention(c) (OpaquePointer?, Int32) -> Int32
+private typealias vlc_audio_get_vol_fn   = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
@@ -494,6 +495,7 @@ final class VLCBridge: ObservableObject {
     private let _mpPlay:       vlc_mp_play_fn?
     private let _mpStop:       vlc_mp_stop_fn?
     private let _audioSetVol:  vlc_audio_set_vol_fn?
+    private let _audioGetVol:  vlc_audio_get_vol_fn?
     private let _adevSet:      vlc_adev_set_fn?
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
     private let _mpSetRate:     vlc_mp_set_rate_fn?
@@ -551,6 +553,7 @@ final class VLCBridge: ObservableObject {
         _mpPlay       = sym("libvlc_media_player_play")
         _mpStop       = sym("libvlc_media_player_stop")
         _audioSetVol  = sym("libvlc_audio_set_volume")
+        _audioGetVol  = sym("libvlc_audio_get_volume")
         _adevSet      = sym("libvlc_audio_output_device_set")
         _mediaAddOpt  = sym("libvlc_media_add_option")
         _mpSetRate    = sym("libvlc_media_player_set_rate")
@@ -918,6 +921,10 @@ final class VLCBridge: ObservableObject {
             if let oldMedia { mediaReleaseFn?(oldMedia) }
             guard let media = url.withCString({ mediaNLFn?(inst, $0) }) else {
                 glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
+                // Surface it: otherwise the player sits on "Connecting…" forever (no media, so no state ever
+                // changes, and the poll timers were stopped above).
+                nonisolated(unsafe) let failedMp = mp
+                Task { @MainActor [weak self] in self?.markPlayFailed(url: url, on: failedMp, preferring: slot) }
                 return
             }
             for opt in ["--network-caching=\(networkCachingMs)", "--prefetch-buffer-size=\(prefetchBufferKiB)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
@@ -951,15 +958,19 @@ final class VLCBridge: ObservableObject {
             nonisolated(unsafe) let mediaForCommit = media
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let stillCurrent = slot == .primary ? self.currentURL == url : self.secondaryURL == url
-                guard stillCurrent else {
+                // Matched by player object, not just the slot this call started on: a PiP swap while the
+                // stream was connecting moves the player (and its URL) to the other slot.
+                guard let owner = self.owningSlot(of: url, on: mp, preferring: slot) else {
                     // Superseded by a newer play() call before this one's reconnect landed —
                     // don't leak the native media object we just created for it.
                     mediaReleaseFn?(mediaForCommit)
                     return
                 }
-                self[slot].currentMedia = mediaForCommit
-                if slot == .primary {
+                // Two play() calls for the same URL in a row both commit; the later one used to overwrite
+                // the earlier one's media without releasing it.
+                if let previous = self[owner].currentMedia, previous != mediaForCommit { mediaReleaseFn?(previous) }
+                self[owner].currentMedia = mediaForCommit
+                if owner == .primary {
                     self.estimatedLagSec = 0.0
                     self.currentRate     = targetMinRate
                     self.lastCorrupted   = 0
@@ -977,6 +988,36 @@ final class VLCBridge: ObservableObject {
                     self.startStatsTimer()
                 }
             }
+        }
+    }
+
+    /// Which slot a just-created stream belongs to: the one whose player object is `mp` and whose current URL is
+    /// still `url` (the slot the call started on is tried first). nil = superseded.
+    private func owningSlot(of url: String, on mp: OpaquePointer, preferring slot: PlayerSlot) -> PlayerSlot? {
+        Self.owningSlot(of: url, on: mp, preferring: slot,
+                        primary: (primaryState.mediaPlayer, currentURL), secondary: (secondaryState.mediaPlayer, secondaryURL))
+    }
+
+    nonisolated static func owningSlot<P: Equatable>(of url: String, on mp: P, preferring slot: PlayerSlot,
+                                                     primary: (mp: P?, url: String?), secondary: (mp: P?, url: String?)) -> PlayerSlot? {
+        let other: PlayerSlot = slot == .primary ? .secondary : .primary
+        for s in [slot, other] {
+            let candidate = s == .primary ? primary : secondary
+            if candidate.mp == mp, candidate.url == url { return s }
+        }
+        return nil
+    }
+
+    /// `libvlc_media_new_location` returned nil: show the error state for the stream that was being opened.
+    private func markPlayFailed(url: String, on mp: OpaquePointer, preferring slot: PlayerSlot) {
+        guard let owner = owningSlot(of: url, on: mp, preferring: slot) else { return }
+        if owner == .primary {
+            hasError  = true
+            isPlaying = false
+            stopTimersForPrimaryTerminalState()
+        } else {
+            secondaryHasError  = true
+            secondaryIsPlaying = false
         }
     }
 
@@ -1393,7 +1434,9 @@ final class VLCBridge: ObservableObject {
     /// own guard whenever no secondary player exists, so calling this unconditionally every tick
     /// costs nothing when PiP isn't active.
     private func tickSecondary() {
-        guard let mp = secondaryState.mediaPlayer, let getState = _mpGetState else { return }
+        // secondaryURL == nil: the slot was stopped (soft stop keeps the player object) — libvlc may still report
+        // Playing for a moment while its async stop runs, which would resurrect secondaryIsPlaying.
+        guard secondaryURL != nil, let mp = secondaryState.mediaPlayer, let getState = _mpGetState else { return }
         let state = getState(mp)
         if state == 7 {  // libvlc_Error
             if !secondaryHasError { glog("[VLC] secondary stream error state — publishing secondaryHasError", level: .error) }
@@ -1489,7 +1532,7 @@ final class VLCBridge: ObservableObject {
                 // timer both live and untracked (a future stopStatsTimer() can no longer reach it).
                 // Found in review 2026-09-26.
                 guard let self, self.fastPollTimer === timer else { return }
-                guard let mp = self.primaryState.mediaPlayer else {
+                guard self.currentURL != nil, let mp = self.primaryState.mediaPlayer else {
                     timer.invalidate()
                     self.fastPollTimer = nil
                     return
@@ -1537,7 +1580,8 @@ final class VLCBridge: ObservableObject {
     }
 
     private func tickPrimary() {
-        guard let mp = primaryState.mediaPlayer else { return }
+        // currentURL == nil: stopped (see tickSecondary) — don't let a tick race the async stop and set state.
+        guard currentURL != nil, let mp = primaryState.mediaPlayer else { return }
         // Already terminal — with the timer kept alive for a PiP secondary, don't re-detect (and
         // re-log) the same Ended/Error every tick.
         if hasEnded || hasError { return }
@@ -1823,6 +1867,18 @@ final class VLCBridge: ObservableObject {
         _ = _audioSetVol?(mp, Int32(clamped * 2))
     }
 
+    /// What each player is really set to (read back from libvlc, 0–100), logged after a PiP swap so "audio follows the
+    /// primary" can be checked from the log: the stream shown as primary should be audible, the corner one 0. Slot-level
+    /// `setVolume` logging can't show this — the slot's number is the same before and after a swap while the player
+    /// behind it changes.
+    func logAudioVolumes(after event: String) {
+        func vol(_ slot: PlayerSlot) -> String {
+            guard let mp = self[slot].mediaPlayer, let get = _audioGetVol else { return "n/a" }
+            return String(Int(get(mp)) / 2)
+        }
+        glog("[VLC] audio after \(event): primary vol=\(vol(.primary)) url=\(currentURL ?? "none") | secondary vol=\(vol(.secondary)) url=\(secondaryURL ?? "none")")
+    }
+
     // MARK: - Audio device
 
     // Primary only — by design the secondary is always muted (setVolume(0, slot: .secondary)), so
@@ -1833,6 +1889,12 @@ final class VLCBridge: ObservableObject {
     /// PiP swap — code review 2026-10-03), and `ensurePlayer` creates players with no device set.
     private var chosenAudioOutput: (output: String, deviceId: String)?
 
+    /// True until the user picks a specific output: the player then follows System Settings → Sound → Output
+    /// (headphones/AirPods plugged in, a speaker switched) instead of staying on whatever was the default
+    /// when the window opened. Picking a device pins it; picking "System Default" (or that device
+    /// disappearing) goes back to following.
+    private(set) var audioFollowsSystemDefault = true
+
     private func reapplyChosenAudioDevice() {
         guard let chosen = chosenAudioOutput, let mp = primaryState.mediaPlayer else { return }
         chosen.output.withCString { outp in
@@ -1842,14 +1904,46 @@ final class VLCBridge: ObservableObject {
     }
 
     func setAudioDevice(output: String, deviceId: String) {
+        audioFollowsSystemDefault = false      // an explicit pick pins the device
+        applyAudioDevice(output: output, deviceId: deviceId)
+    }
+
+    private func applyAudioDevice(output: String, deviceId: String) {
         chosenAudioOutput = (output, deviceId)
         guard let mp = primaryState.mediaPlayer else { return }
-        glog("[VLC] setAudioDevice output=\(output) device=\(deviceId)")
+        glog("[VLC] setAudioDevice output=\(output) device=\(deviceId) following-default=\(audioFollowsSystemDefault)")
         output.withCString { outp in
             deviceId.withCString { devp in
                 _adevSet?(mp, outp, devp)
             }
         }
+    }
+
+    /// Back to following the system default output (the "System Default" menu row).
+    func followSystemDefaultAudioDevice() { audioFollowsSystemDefault = true }
+
+    /// Pure decision: which output UID the player should use now. Following → the system default (else the first
+    /// device); pinned → the chosen device while it is still present, otherwise back to following the default.
+    nonisolated static func resolveAudioTarget(followsSystemDefault: Bool, chosen: String?, available: [String],
+                                               systemDefault: String?) -> (deviceId: String?, follows: Bool) {
+        if !followsSystemDefault, let chosen, available.contains(chosen) { return (chosen, false) }
+        let def = systemDefault.flatMap { available.contains($0) ? $0 : nil } ?? available.first
+        return (def, true)
+    }
+
+    /// Re-resolves and applies the output after the device list or the system default changed (and on window
+    /// open). Returns the UID now in use, for the menu's checkmark; nil when there are no output devices.
+    @discardableResult
+    func syncAudioDevice(available: [String]) -> String? {
+        let target = Self.resolveAudioTarget(followsSystemDefault: audioFollowsSystemDefault,
+                                             chosen: chosenAudioOutput?.deviceId, available: available,
+                                             systemDefault: systemDefaultOutputUID())
+        audioFollowsSystemDefault = target.follows
+        guard let uid = target.deviceId else { return nil }
+        if chosenAudioOutput?.deviceId != uid || primaryState.mediaPlayer == nil {
+            applyAudioDevice(output: "auhal", deviceId: uid)
+        }
+        return uid
     }
 
     // MARK: - System Audio Devices (CoreAudio HAL)
@@ -1913,6 +2007,14 @@ final class VLCBridge: ObservableObject {
         AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &addr,
                                        audioDeviceChangeProc,
                                        Unmanaged.passUnretained(ctx).toOpaque())
+        // The system default output changing (headphones plugged in, a speaker picked in Sound settings)
+        // doesn't alter the device list, so it needs its own listener — same context and callback.
+        var defaultAddr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                     mScope:    kAudioObjectPropertyScopeGlobal,
+                                                     mElement:  kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &defaultAddr,
+                                       audioDeviceChangeProc,
+                                       Unmanaged.passUnretained(ctx).toOpaque())
     }
 
     func stopDeviceChangeMonitoring() {
@@ -1921,6 +2023,12 @@ final class VLCBridge: ObservableObject {
                                               mScope:    kAudioObjectPropertyScopeGlobal,
                                               mElement:  kAudioObjectPropertyElementMain)
         AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &addr,
+                                          audioDeviceChangeProc,
+                                          Unmanaged.passUnretained(ctx).toOpaque())
+        var defaultAddr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                     mScope:    kAudioObjectPropertyScopeGlobal,
+                                                     mElement:  kAudioObjectPropertyElementMain)
+        AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &defaultAddr,
                                           audioDeviceChangeProc,
                                           Unmanaged.passUnretained(ctx).toOpaque())
         deviceChangeContext = nil

@@ -273,12 +273,31 @@ struct Show: Identifiable, Equatable {
     var posixPrimaryDir: String { Self.toPosix(show_dir.isEmpty ? Self.localFallbackDir : show_dir) }
 
     var posixRecordDir: String {
-        let primary  = Self.toPosix(show_dir.isEmpty      ? Self.localFallbackDir : show_dir)
-        let fallback = Self.toPosix(show_temp_dir.isEmpty ? Self.localFallbackDir : show_temp_dir)
+        Self.recordDir(primary: Self.toPosix(show_dir.isEmpty      ? Self.localFallbackDir : show_dir),
+                       fallback: Self.toPosix(show_temp_dir.isEmpty ? Self.localFallbackDir : show_temp_dir))
+    }
+
+    /// The primary folder when its volume is mounted, else the fallback. `isMounted` is injectable for tests.
+    static func recordDir(primary: String, fallback: String, isMounted: (String) -> Bool = Show.pathIsOnMountedVolume) -> String {
         guard primary != fallback else { return primary }
-        // Use primary only when its parent directory exists (i.e. the volume is mounted)
-        let parent = URL(fileURLWithPath: primary).deletingLastPathComponent().path
-        return FileManager.default.fileExists(atPath: parent) ? primary : fallback
+        return isMounted(primary) ? primary : fallback
+    }
+
+    /// Whether `path` can be written without landing on the boot disk by accident. Under `/Volumes/<name>`
+    /// that means `<name>` is a real mounted volume — checking only that the parent exists is not enough:
+    /// `/Volumes` always exists, so for a folder that IS a volume root (`/Volumes/Raid6`) an unmounted drive
+    /// passed the check and `createDirectory` quietly made a plain folder of that name on the startup disk.
+    /// Anywhere else, the parent directory existing is the best available signal.
+    static func pathIsOnMountedVolume(_ path: String) -> Bool {
+        let parts = URL(fileURLWithPath: path).standardized.pathComponents    // ["/", "Volumes", "Raid6", …]
+        if parts.count >= 3, parts[1] == "Volumes" {
+            // Resolve symlinks on both sides: "/Volumes/Macintosh HD" is a link to "/".
+            let root = URL(fileURLWithPath: "/Volumes/" + parts[2]).resolvingSymlinksInPath().path
+            let mounts = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []
+            return mounts.contains { $0.resolvingSymlinksInPath().path == root }
+        }
+        let parent = URL(fileURLWithPath: path).deletingLastPathComponent().path
+        return FileManager.default.fileExists(atPath: parent)
     }
 
     /// True when this show's configured folder is offline and recording is being redirected to the

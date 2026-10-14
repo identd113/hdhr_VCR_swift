@@ -184,6 +184,7 @@ struct VLCPlayerView: View {
     @State private var pipHandleHovered = false
     @State private var systemDevices: [(id: String, name: String, isAirPlay: Bool)] = []
     @State private var selectedDevice: String = ""
+    @State private var audioFollowsDefault = true      // mirrors VLCBridge.audioFollowsSystemDefault for the menu checkmark
     @State private var availableScreens: [NSScreen] = []
     @State private var posterHidden: Bool = false
     @State private var posterNSImage: NSImage? = nil
@@ -632,6 +633,7 @@ struct VLCPlayerView: View {
         // dance — there's no reconnect here for that dance to apply to.
         bridge.setVolume(0, slot: .secondary)
         bridge.setVolume(Int(volume), slot: .primary)
+        bridge.logAudioVolumes(after: "PiP swap")
 
         // No posterHidden/posterNSImage reset needed (unlike the old reconnect-based swap) — the
         // newly-primary stream was already playing with its poster long since dismissed; forcing
@@ -1561,6 +1563,18 @@ struct VLCPlayerView: View {
 
     // GeometryReader added 2026-09-29 (alongside the fixed→proportional maxWidth change above) —
     // the only reason this overlay needs its container's actual size at all.
+    private var pipAvoidsInfoBanner: Bool { Self.pipAvoidsInfoBanner(corner: pipCorner, bannerVisible: infoOverlayVisible) }
+
+    /// Pure: whether the PiP must step out of the way of the info banner — only the lower-left corner, the banner's.
+    nonisolated static func pipAvoidsInfoBanner(corner: PipCorner, bannerVisible: Bool) -> Bool {
+        bannerVisible && corner == .bottomLeading
+    }
+
+    /// Pure: how far up a bottom-corner thumbnail moves to reach the top corner (the overlay's own 16pt padding on both sides).
+    nonisolated static func pipBannerAvoidanceOffset(containerHeight: CGFloat, thumbHeight: CGFloat, padding: CGFloat = 16) -> CGFloat {
+        max(0, containerHeight - thumbHeight - 2 * padding)
+    }
+
     private var pipOverlay: some View {
         GeometryReader { geo in
         // Computed once per body evaluation rather than re-derived at each of its three use sites
@@ -1644,6 +1658,11 @@ struct VLCPlayerView: View {
                     pipResizeHandle(startWidth: thumbSize.width, aspect: thumbAspect, containerSize: geo.size)
                 }
                 .onHover { pipHovered = $0 }
+                // The info ("i") banner sits lower-left; a PiP in that corner steps up to the top while it shows
+                // and drops back when it auto-hides. Offset (not a different corner) so it slides, and the saved
+                // corner / resize math are untouched.
+                .offset(y: pipAvoidsInfoBanner ? -Self.pipBannerAvoidanceOffset(containerHeight: geo.size.height, thumbHeight: thumbSize.height) : 0)
+                .animation(.easeOut(duration: 0.35), value: pipAvoidsInfoBanner)
                 if pipCorner.isLeading { Spacer() }
             }
             if pipCorner.isTop { Spacer() }
@@ -2113,6 +2132,14 @@ struct VLCPlayerView: View {
                     }
                     if hasOutputChoice {
                         Menu {
+                            Button {
+                                VLCBridge.shared.followSystemDefaultAudioDevice()
+                                refreshAudioDevices()
+                            } label: {
+                                if audioFollowsDefault { Label("System Default", systemImage: "checkmark") }
+                                else { Text("System Default") }
+                            }
+                            Divider()
                             ForEach(systemDevices, id: \.id) { dev in
                                 // AirPlay speakers get a name suffix, not a second icon — a Menu
                                 // row only renders one Label/systemImage slot (checkmark or
@@ -2120,9 +2147,10 @@ struct VLCPlayerView: View {
                                 let label = dev.isAirPlay ? "\(dev.name) (AirPlay)" : dev.name
                                 Button {
                                     selectedDevice = dev.id
+                                    audioFollowsDefault = false
                                     VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: dev.id)
                                 } label: {
-                                    if dev.id == selectedDevice { Label(label, systemImage: "checkmark") }
+                                    if dev.id == selectedDevice && !audioFollowsDefault { Label(label, systemImage: "checkmark") }
                                     else { Text(label) }
                                 }
                             }
@@ -2867,12 +2895,10 @@ struct VLCPlayerView: View {
     private func refreshAudioDevices() {
         systemDevices = VLCBridge.shared.systemAudioOutputDevices()
         guard !systemDevices.isEmpty else { return }
-        // Pre-select system default; fall back to first device if default isn't in the list.
-        if selectedDevice.isEmpty || !systemDevices.contains(where: { $0.id == selectedDevice }) {
-            let uid = VLCBridge.shared.systemDefaultOutputUID() ?? systemDevices[0].id
-            selectedDevice = uid
-            VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: uid)
-        }
+        // Follows the system default until the user picks a device; a pinned device that disappears falls back
+        // to following (VLCBridge.resolveAudioTarget). Runs on open, on device-list changes and on default changes.
+        if let uid = VLCBridge.shared.syncAudioDevice(available: systemDevices.map(\.id)) { selectedDevice = uid }
+        audioFollowsDefault = VLCBridge.shared.audioFollowsSystemDefault
     }
 }
 
@@ -3475,8 +3501,15 @@ final class VLCPlayerWindowManager {
                                         maxContent: CGSize? = nil) -> CGSize {
         let aspect = native.width / native.height
         var w = width
-        if let maxContent { w = min(w, maxContent.width, max(0, maxContent.height - toolbarHeight) * aspect) }
-        w = max(w, minContentWidth)
+        var floorW = minContentWidth
+        if let maxContent {
+            // The screen wins over the minimum: on a display narrower than the minimum, the minimum used to be
+            // applied after the screen clamp and pushed the window off the edge.
+            let screenW = min(maxContent.width, max(0, maxContent.height - toolbarHeight) * aspect)
+            w = min(w, screenW)
+            floorW = min(floorW, screenW)
+        }
+        w = max(w, floorW)
         return CGSize(width: w.rounded(), height: (w / aspect + toolbarHeight).rounded())
     }
 
@@ -3536,7 +3569,20 @@ final class VLCPlayerWindowManager {
               abs(current.width - content.width) > 0.5 || abs(current.height - content.height) > 0.5 else { return }
         var frame = win.frameRect(forContentRect: NSRect(origin: .zero, size: content))
         frame.origin = NSPoint(x: win.frame.minX, y: win.frame.maxY - frame.height)   // keep the top edge fixed
+        // Growing downward/rightward must not push the picture under the Dock or off the screen.
+        if let visible = (win.screen ?? NSScreen.main)?.visibleFrame { frame = Self.frame(frame, keptWithin: visible) }
         win.setFrame(frame, display: true, animate: animate)
+    }
+
+    /// Pure: `frame` slid (never resized) to lie inside `visible`. A frame larger than `visible` is pinned to its
+    /// top-left so the title bar and toolbar stay reachable.
+    nonisolated static func frame(_ frame: CGRect, keptWithin visible: CGRect) -> CGRect {
+        var f = frame
+        f.origin.x = min(f.origin.x, visible.maxX - f.width)
+        f.origin.x = max(f.origin.x, visible.minX)
+        f.origin.y = max(f.origin.y, visible.minY)
+        f.origin.y = min(f.origin.y, visible.maxY - f.height)
+        return f
     }
 
     /// Re-fits the window to the stream's native aspect (keeping its width and top-left corner) when
@@ -3634,6 +3680,8 @@ private final class WindowCloseObserver: NSObject, NSWindowDelegate {
     }
     func windowDidExitFullScreen(_ notification: Notification) {
         NotificationCenter.default.post(name: .vlcFullScreenChanged, object: nil, userInfo: ["isFullScreen": false])
+        // A channel change to a different picture shape (HD → SD) while fullscreen skipped the re-fit; do it now.
+        manager?.conformWindowToVideoAspect()
     }
 }
 

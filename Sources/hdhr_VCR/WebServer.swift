@@ -2350,7 +2350,7 @@ final class WebServer: @unchecked Sendable {
                 let channel = String(cleanPath.dropFirst("/auto/v".count)).removingPercentEncoding
                     ?? String(cleanPath.dropFirst("/auto/v".count))
                 let query = URLComponents(string: path)?.queryItems ?? []
-                let duration = query.first(where: { $0.name == "duration" }).flatMap { Int($0.value ?? "") }.map { max(0, $0) }
+                let duration = query.first(where: { $0.name == "duration" }).flatMap { Int($0.value ?? "") }.map { min(max(0, $0), 7 * 86_400) }
                 let transcode = query.first(where: { $0.name == "transcode" })?.value
                 // dev= (buildVirtualTunerLineupJSON's own addition) disambiguates two real devices
                 // sharing a channel number — see handleVirtualTunerStream's own comment. Absent for
@@ -2834,6 +2834,10 @@ final class WebServer: @unchecked Sendable {
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
         let airDays   = obj["airDays"]   as? [String]
+        // Same check handleEdit makes: a bad name otherwise creates a show that silently auto-pauses ("No air days configured").
+        if let airDays, !airDays.allSatisfy({ Show.weekdayNames.contains($0) }) {
+            return json(["ok": false, "error": "airDays contains an invalid weekday name"])
+        }
         // Validate against the real profile whitelist — this endpoint has no auth beyond
         // LAN-subnet matching, and an unvalidated value is interpolated directly into the tuner's
         // curl request URL by RecordingManager.start(transcode:).

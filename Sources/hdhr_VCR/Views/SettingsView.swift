@@ -40,6 +40,7 @@ struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
+    @State private var signalScanDeviceID: String = ""      // Signal Strength Scan picker; "" = all tuners
     @State private var draft: AppConfig = AppConfig()
     // Snapshot of state.config at the moment `draft` was last (re)synced — lets
     // resyncIfUntouched() below prove "draft still equals what it started as" (safe to silently
@@ -679,10 +680,17 @@ struct SettingsView: View {
                     } else {
                         // recordableDevices — a discovered virtual relay device (VirtualTunerService.swift)
                         // has no real signal to measure; see AppState.startSignalScan's own comment.
-                        ForEach(state.recordableDevices) { device in
-                            // force=true: manual scan always re-measures, even channels with fresh data
-                            Button("Measure Signal: \(device.DeviceID)") { state.startSignalScan(force: true) }
+                        // "" = every tuner. A selection whose device has gone away behaves as "All Tuners".
+                        let scanTarget = state.recordableDevices.contains { $0.DeviceID == signalScanDeviceID } ? signalScanDeviceID : ""
+                        Picker("Tuner", selection: $signalScanDeviceID) {
+                            Text("All Tuners").tag("")
+                            ForEach(state.recordableDevices) { device in
+                                Text(device.FriendlyName.map { "\($0) (\(device.DeviceID))" } ?? device.DeviceID).tag(device.DeviceID)
+                            }
                         }
+                        // force=true: manual scan always re-measures, even channels with fresh data
+                        Button("Measure Signal") { state.startSignalScan(force: true, deviceId: scanTarget.isEmpty ? nil : scanTarget) }
+                            .disabled(state.recordableDevices.isEmpty)
                     }
                 }
             }

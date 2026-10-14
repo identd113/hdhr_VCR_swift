@@ -1417,9 +1417,10 @@ final class AppState: ObservableObject {
         glog("[Startup] \(shows.count) show(s) loaded from config")
     }
 
-    private func reattachRecordings() async {
-        // Run the blocking ps call off the main actor so the UI stays responsive.
-        let output = await Task.detached(priority: .utility) { () -> String in
+    /// `ps -Axo pid,args`, run off the main actor so the UI stays responsive. Used by the startup scans that
+    /// find orphaned curl children (reattachRecordings, sweepOrphanedFeedCachePullers). "" if ps can't run.
+    private static func processListing() async -> String {
+        await Task.detached(priority: .utility) { () -> String in
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/ps")
             task.arguments = ["-Axo", "pid,args"]
@@ -1432,6 +1433,10 @@ final class AppState: ObservableObject {
             task.waitUntilExit()
             return String(data: data, encoding: .utf8) ?? ""
         }.value
+    }
+
+    private func reattachRecordings() async {
+        let output = await Self.processListing()
 
         let now    = Date()
 
@@ -4592,6 +4597,17 @@ final class AppState: ObservableObject {
         return String(filename[tagRange].dropFirst())  // drop leading "_" or " "
     }
 
+    /// Whether a recording filename was written for the series folder `folderTitle`: new format
+    /// `Title_…` (`outputPath`), or legacy `Title SxxExx guests_…`. A bare prefix match is not enough —
+    /// "Law & Order" would also claim "Law & Order SVU_5.1_….ts" (a different show) and file it in the wrong folder.
+    nonisolated static func recordingFilename(_ filename: String, belongsToSeries folderTitle: String) -> Bool {
+        guard !folderTitle.isEmpty else { return false }
+        if filename.hasPrefix(folderTitle + "_") { return true }
+        guard filename.hasPrefix(folderTitle + " ") else { return false }
+        let rest = filename.dropFirst(folderTitle.count + 1)
+        return rest.range(of: #"^S\d+(E\d+)?(?![A-Za-z0-9])"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     func organizeSeriesRecordings() -> String {
         // Paths currently being written to — never touch these.
         let activePaths = Set(shows.filter { $0.show_recording }
@@ -4614,7 +4630,7 @@ final class AppState: ObservableObject {
             // Scan the flat root for files belonging to this show.
             // Match both new format (title_channel_date) and old format (title SxxExx guests_channel_date).
             guard let files = try? FileManager.default.contentsOfDirectory(atPath: baseDir) else { continue }
-            for filename in files where (filename.hasPrefix("\(safeFolderTitle)_") || filename.hasPrefix("\(safeFolderTitle) "))
+            for filename in files where Self.recordingFilename(filename, belongsToSeries: safeFolderTitle)
                                     && Show.isRecordingFile(filename) {
                 let src = (baseDir as NSString).appendingPathComponent(filename)
                 guard !activePaths.contains(src) else { continue }
@@ -5376,8 +5392,15 @@ final class AppState: ObservableObject {
             if isAlreadyPlaying() { mgr.focus(); return }
 
             // Switching channels in an already-open player on this device reuses the same slot —
-            // skip the availability check so we don't block a legal channel switch.
-            if mgr.currentDeviceID != device.DeviceID {
+            // skip the availability check so we don't block a legal channel switch. A disk-relay primary
+            // (Watch Now of a recording) or a FEED is bound to this device but holds no tuner, so going from
+            // one to a live channel is a brand-new tuner request and needs the check (same rule as the
+            // player's own channel picker — VLCPlayerView.reusesExistingTuner).
+            let reusesTuner = VLCPlayerView.reusesExistingTuner(
+                currentDeviceID: mgr.currentDeviceID, targetDeviceID: device.DeviceID,
+                recordingShowId: VLCBridge.shared.recordingShowId,
+                currentFeedRemoteURL: mgr.currentFeedRemoteURL, currentURL: VLCBridge.shared.currentURL)
+            if !reusesTuner {
                 guard await tunerAvailable(device, context: title) else { onRefused?(); return }
             }
             // Re-check after the await above: neither currentDeviceID nor currentURL change until
@@ -5743,18 +5766,7 @@ final class AppState: ObservableObject {
     /// process this scan matches is unconditionally stale, and every file already in this directory
     /// at startup can only have been written by one of them (no window survives a relaunch).
     private func sweepOrphanedFeedCachePullers() async {
-        let output = await Task.detached(priority: .utility) { () -> String in
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/ps")
-            task.arguments = ["-Axo", "pid,args"]
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError  = FileHandle.nullDevice
-            guard (try? task.run()) != nil else { return "" }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
-            return String(data: data, encoding: .utf8) ?? ""
-        }.value
+        let output = await Self.processListing()
 
         var killedCount = 0
         for line in output.components(separatedBy: "\n") {
@@ -6654,7 +6666,8 @@ final class AppState: ObservableObject {
                                 && !$0.show_recording && ($0.show_next.map { $0 <= horizon } ?? false) }
     }
 
-    func startSignalScan(force: Bool = false) {
+    /// `deviceId`: scan only that tuner (Settings → Advanced's picker); nil = every tuner (idle loop, web UI).
+    func startSignalScan(force: Bool = false, deviceId: String? = nil) {
         signalScanTask?.cancel()
         signalScanTask = Task {
             // Only scan channels that don't already have fresh data — lets us resume a
@@ -6667,6 +6680,7 @@ final class AppState: ObservableObject {
             // every one of its channels would always fall into the "never locked" branch below and
             // overwrite the REAL channel's signal history with a bogus snq=0 sample.
             let pendingByDevice: [(HDHRDevice, [LineupEntry])] = recordableDevices.compactMap { device in
+                if let deviceId, device.DeviceID != deviceId { return nil }
                 let entries = lineups[device.DeviceID] ?? []
                 let needed = force ? entries : entries.filter {
                     ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)

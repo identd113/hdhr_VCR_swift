@@ -799,6 +799,14 @@ final class GuideStore {
         seriesIndex = [:]
         unsortedSeries = []
         loadTimestamps = [:]
+        // The saved copies too — otherwise the next load() quietly restores the very data this was
+        // asked to throw away. Synchronous (a handful of files) so it can't race a load started right after.
+        if let dir = diskCacheDir {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            for name in names where name.hasSuffix(".guide") {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+            }
+        }
         glog("All guide caches invalidated")
     }
 
