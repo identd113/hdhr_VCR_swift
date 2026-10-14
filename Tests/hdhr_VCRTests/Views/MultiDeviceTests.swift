@@ -84,7 +84,11 @@ struct MultiDeviceTests {
     @Test func watchNowTunerPickerOffersEveryUsableDevice() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
         guard let ids = skipUnlessTwoDevices(usableMenuDeviceIDs()) else { return }
+        // findWhere (PiPAXHelpers) locates the radio group natively via ax_query; a System Events walk of the
+        // whole Watch Now window (every channel row) took minutes and `entire contents` returns nothing here.
         let script = """
+        \(pipAXHandlers(uiEvents: ""))
+
         tell application "System Events"
             tell process "hdhr_VCR"
                 \(dismissDonationNagSnippet)
@@ -98,20 +102,16 @@ struct MultiDeviceTests {
                 set names to "NO_PICKER"
                 repeat 12 times
                     try
-                        set allEls to entire contents of window "Watch Now"
-                        repeat with e in allEls
-                            try
-                                if role of e is "AXRadioGroup" then
-                                    set found to {}
-                                    repeat with rb in (UI elements of e)
-                                        set end of found to (description of rb as text)
-                                    end repeat
-                                    set AppleScript's text item delimiters to "|"
-                                    set names to found as text
-                                    exit repeat
-                                end if
-                            end try
-                        end repeat
+                        set rg to my findWhere(window "Watch Now", "role", "AXRadioGroup")
+                        if rg is not missing value then
+                            set found to {}
+                            repeat with rb in (UI elements of rg)
+                                set end of found to (description of rb as text)
+                            end repeat
+                            set AppleScript's text item delimiters to "|"
+                            set names to found as text
+                            set AppleScript's text item delimiters to ""
+                        end if
                     end try
                     if names is not "NO_PICKER" then exit repeat
                     delay 0.25

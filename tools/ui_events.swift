@@ -1,6 +1,7 @@
 // ui_events.swift — synthetic input for UI tests that Accessibility can't reach.
 //
 //   ui_events rightclick X Y     right-click at a screen point (global coordinates, top-left origin)
+//   ui_events move X Y           move the pointer to a screen point (hover — e.g. reveals the PiP's hover-only close button)
 //   ui_events keys CODE [CODE…]  tap virtual key codes, delivered straight to the app's own process
 //
 // Why it exists: the PiP thumbnail's context menu is a native NSMenu popped at click time
@@ -36,6 +37,10 @@ case "rightclick":
     post(.rightMouseDown)
     usleep(100_000)
     post(.rightMouseUp)
+case "move":
+    guard args.count == 3, let x = Double(args[1]), let y = Double(args[2]) else { fail("usage: move X Y") }
+    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)?
+        .post(tap: .cghidEventTap)
 case "keys":
     guard args.count >= 2 else { fail("usage: keys CODE [CODE…]") }
     guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else {

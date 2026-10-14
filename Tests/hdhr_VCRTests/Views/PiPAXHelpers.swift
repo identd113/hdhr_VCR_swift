@@ -9,14 +9,93 @@ import Foundation
 //  • AppleScript reserved words bite: `which`, `named`, `pick`, `th` are all taken — don't reuse them.
 
 /// The handler block (everything that goes *before* the top-level `tell`). `uiEvents` is the path of the
-/// compiled tools/ui_events.swift binary.
-func pipAXHandlers(uiEvents: String) -> String {
+/// compiled tools/ui_events.swift binary; `axQuery` the compiled tools/ax_query.swift ("" = always use the slow walk).
+func pipAXHandlers(uiEvents: String, axQuery: String = axQueryPath) -> String {
     return #"""
     -- Depth-first walk over `UI elements` rather than `entire contents`: on this macOS build
     -- `entire contents of <window>` returns an empty list (for every app, Terminal included)
     -- while the per-element walk still sees the whole tree. mode is "id" (AXIdentifier equals
-    -- key) or "help" (AXHelp starts with key) or "pipLive" (a Watch Now live-channel PiP button).
+    -- key) or "help" (AXHelp starts with key) or "role" (AXRole equals key) or "pipLive" (a Watch Now live-channel PiP button).
+    --
+    -- findWhere is the fast path: tools/ax_query.swift finds the element natively (well under a second, stops at the
+    -- first hit) and prints its child-index path from the window; that path is then walked with `UI element N of …`
+    -- to get a normal System Events reference. The slow recursive walk (findWhereSlow, one Apple event per element —
+    -- minutes on a Watch Now window listing every channel) is only the fallback for a missing binary / non-window `el`
+    -- / a path that doesn't resolve. `el` must be a window.
+    property axQuery : "\#(axQuery)"
+
+    -- Is the ax_query binary usable on the machine this script runs on? (The FEED churn test runs the same script on
+    -- the laptop, where the mini's path doesn't exist — that must fall back to the slow walk, not read as "not found".)
+    property axChecked : false
+    property axUsable : false
+    on axOK()
+        if axChecked then return axUsable
+        set axChecked to true
+        if axQuery is "" then return false
+        try
+            do shell script "test -x " & (quoted form of axQuery)
+            set axUsable to true
+        end try
+        return axUsable
+    end axOK
+
     on findWhere(el, mode, key)
+        set r to my findWhereOpt(el, mode, key, false)
+        if class of r is text then return my findWhereSlow(el, mode, key)
+        return r
+    end findWhere
+
+    -- Fast lookup. Returns the element, `missing value` (searched, nothing there), or the text "NOFAST" when ax_query can't be
+    -- used here (callers then fall back to their own slow walk). wantLast = the last match in document order instead of the first.
+    on findWhereOpt(el, mode, key, wantLast)
+        if not my axOK() then return "NOFAST"
+        set winName to ""
+        try
+            tell application "System Events" to set winName to name of el
+        end try
+        if winName is "" or winName is missing value then return "NOFAST"
+        if mode is "id" then
+            set spec to "id=" & key
+        else if mode is "role" then
+            set spec to "role=" & key
+        else if mode is "recPrimary" then
+            set spec to "help^=Play the in-progress recording of&help$=starting near live"
+        else if mode is "pipLive" then
+            set spec to "help^=Watch &help$=alongside what's already open"
+        else
+            set spec to "help^=" & key
+        end if
+        set cmd to (quoted form of axQuery) & " find " & (quoted form of winName) & " " & (quoted form of spec)
+        if wantLast then set cmd to cmd & " --last"
+        set hit to ""
+        try
+            set hit to do shell script cmd
+        on error errMsg number errNum
+            -- exit status 1 = searched and found nothing; anything else = the tool itself failed
+            if errNum is 1 then return missing value
+            return "NOFAST"
+        end try
+        if hit is "" then return "NOFAST"
+        try
+            set AppleScript's text item delimiters to "|"
+            set pathStr to last text item of hit
+            set AppleScript's text item delimiters to "/"
+            set idxs to text items of pathStr
+            set AppleScript's text item delimiters to ""
+            tell application "System Events"
+                set cur to el
+                repeat with i in idxs
+                    set cur to UI element (i as integer) of cur
+                end repeat
+            end tell
+            return cur
+        on error
+            set AppleScript's text item delimiters to ""
+            return "NOFAST"
+        end try
+    end findWhereOpt
+
+    on findWhereSlow(el, mode, key)
         tell application "System Events"
             try
                 set kids to UI elements of el
@@ -37,12 +116,12 @@ func pipAXHandlers(uiEvents: String) -> String {
                         if ((help of k) as string) starts with key then return k
                     end if
                 end try
-                set hit to my findWhere(k, mode, key)
+                set hit to my findWhereSlow(k, mode, key)
                 if hit is not missing value then return hit
             end repeat
         end tell
         return missing value
-    end findWhere
+    end findWhereSlow
 
     on findById(win, ident)
         return my findWhere(win, "id", ident)

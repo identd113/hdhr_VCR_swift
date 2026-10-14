@@ -215,13 +215,19 @@ private func runningRecordingChannel() -> String? {
 
 private func discoverDeviceID() -> String? {
     let page = curl("http://127.0.0.1:1980/", timeout: 10)
-    // Every device the guide embeds a tuner object for, in page order; the first whose own status.json answers
-    // wins — a stale or unreachable device (e.g. a left-over mock) must not become the device under test.
-    guard let re = try? NSRegularExpression(pattern: #""([0-9A-F]{8})":\{[^}]*"surl":"([^"]*)""#) else { return nil }
+    // Every device the guide embeds a tuner object for. The page lists them in no fixed order, and the mini's own FEED
+    // relay (0 tuners, "t":0) answers its status.json too — it must never become the device under test, or the soak
+    // runs against a "device" with no tuners and silently skips every live step. So: a real tuner count (t > 0) whose
+    // own status.json answers (a stale or unreachable device, e.g. a left-over mock, is skipped too).
+    guard let re = try? NSRegularExpression(pattern: #""([0-9A-F]{8})":\{([^}]*)\}"#) else { return nil }
     let ns = page as NSString
     for m in re.matches(in: page, range: NSRange(location: 0, length: ns.length)) {
         let id = ns.substring(with: m.range(at: 1))
-        let surl = ns.substring(with: m.range(at: 2)).replacingOccurrences(of: "\\/", with: "/")
+        let body = ns.substring(with: m.range(at: 2))
+        guard let t = body.range(of: #""t":(\d+)"#, options: .regularExpression),
+              let count = Int(body[t].dropFirst(4)), count > 0,
+              let u = body.range(of: #""surl":"([^"]*)""#, options: .regularExpression) else { continue }
+        let surl = String(body[u]).dropFirst(8).dropLast().replacingOccurrences(of: "\\/", with: "/")
         if !curl(surl, timeout: 4).isEmpty { return id }
     }
     return nil
@@ -296,6 +302,13 @@ end waitPlaying
 -- Last element (document order) with the given AXIdentifier. The PiP picker's sections run Recording Now, FEED,
 -- then Live TV, all sharing one add-button id — so the last one is a live channel.
 on findLastById(el, ident)
+    -- Fast path: ax_query --last (the picker lists every channel; the slow walk below took over a minute).
+    set r to my findWhereOpt(el, "id", ident, true)
+    if class of r is text then return my findLastByIdSlow(el, ident)
+    return r
+end findLastById
+
+on findLastByIdSlow(el, ident)
     tell application "System Events"
         set found to missing value
         try
@@ -307,12 +320,12 @@ on findLastById(el, ident)
             try
                 if ((value of attribute "AXIdentifier" of k) as string) is ident then set found to k
             end try
-            set inner to my findLastById(k, ident)
+            set inner to my findLastByIdSlow(k, ident)
             if inner is not missing value then set found to inner
         end repeat
         return found
     end tell
-end findLastById
+end findLastByIdSlow
 
 on closeExtraWindows()
     tell application "System Events" to tell process "hdhr_VCR"
@@ -325,9 +338,13 @@ on closeExtraWindows()
 end closeExtraWindows
 """#
 
+/// Where the helper binaries live on the laptop (compiled there by `compileLaptopHelper`; the mini's paths don't exist on it).
+private let laptopUiEventsPath = "/tmp/hdhr_ui_events"
+private let laptopAxQueryPath = "/tmp/hdhr_ax_query"
+
 private func wrap(_ uiEvents: String, _ body: String) -> String {
     """
-    \(pipAXHandlers(uiEvents: uiEvents))
+    \(pipAXHandlers(uiEvents: uiEvents, axQuery: uiEvents == laptopUiEventsPath ? laptopAxQueryPath : axQueryPath))
     \(churnHandlers)
     tell application "System Events"
         tell process "hdhr_VCR"
@@ -815,7 +832,13 @@ struct PiPTunerChurnTests {
         }
         let r = sh("/usr/bin/ssh", ["laptop", "xcrun swiftc -O /tmp/hdhr_ui_events.swift -o /tmp/hdhr_ui_events"], timeout: 180)
         if r.status != 0 { Issue.record("could not compile ui_events on the laptop: \(r.out)"); return nil }
-        return "/tmp/hdhr_ui_events"
+        // ax_query too: findWhere asks it for elements (fast); without it on the laptop it would fall back to the slow walk.
+        let axSrc = root.appendingPathComponent("tools/ax_query.swift").path
+        if sh("/usr/bin/scp", ["-q", "-o", "BatchMode=yes", axSrc, "laptop:/tmp/hdhr_ax_query.swift"], timeout: 30).status == 0 {
+            let ax = sh("/usr/bin/ssh", ["laptop", "xcrun swiftc -O /tmp/hdhr_ax_query.swift -o \(laptopAxQueryPath)"], timeout: 180)
+            if ax.status != 0 { say("could not compile ax_query on the laptop (lookups will use the slow walk): \(ax.out)") }
+        }
+        return laptopUiEventsPath
     }
 
     /// True when this Mac's config has the Recording FEED relay switched on (Settings → Sharing → Recording FEED).

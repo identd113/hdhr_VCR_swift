@@ -57,6 +57,66 @@ func axCompatible(_ script: String) -> String {
     return axAllHandler + "\n" + rewritten
 }
 
+/// Native Accessibility query binary (`tools/ax_query.swift`), compiled once per test process; "" if it can't be built.
+/// A System Events walk costs one Apple event per element — minutes for Watch Now / the PiP picker once several
+/// lineups are listed — while this finds an element in well under a second and stops at the first hit.
+let axQueryPath: String = {
+    let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+    let bin = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ax_query").path
+    let compile = Process()
+    compile.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    compile.arguments = ["swiftc", "-O", repoRoot.appendingPathComponent("tools/ax_query.swift").path, "-o", bin]
+    compile.standardError = FileHandle.nullDevice
+    guard (try? compile.run()) != nil else { return "" }
+    compile.waitUntilExit()
+    return compile.terminationStatus == 0 ? bin : ""
+}()
+
+/// AppleScript statement running `ax_query <verb> '<window>' '<match>' [--press]`. `do shell script` raises on exit 1
+/// (not found), so wrap it in `try`; the result of `count` is the printed number.
+func axShell(_ verb: String, window: String, match: String, last: Bool = false, press: Bool = false) -> String {
+    "do shell script (quoted form of \"\(axQueryPath)\") & \" \(verb) '\(window)' '\(match)'\(last ? " --last" : "")\(press ? " --press" : "")\""
+}
+
+/// `tools/ui_events.swift` (synthetic right-click / key events) compiled once per test process; "" if it can't be built.
+let uiEventsPath: String = {
+    let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+    let bin = FileManager.default.temporaryDirectory.appendingPathComponent("hdhr_ui_events").path
+    let compile = Process()
+    compile.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    compile.arguments = ["swiftc", "-O", repoRoot.appendingPathComponent("tools/ui_events.swift").path, "-o", bin]
+    compile.standardError = FileHandle.nullDevice
+    guard (try? compile.run()) != nil else { return "" }
+    compile.waitUntilExit()
+    return compile.terminationStatus == 0 ? bin : ""
+}()
+
+/// Clean slate before a test: close every window an earlier test (or a failed run) left open, except the donation nag
+/// (`dismissDonationNagSnippet` handles that one). The "…opens and closes" tests assert zero windows afterwards, so a
+/// stray one from the previous test fails them for a reason that has nothing to do with the window under test.
+func closeStrayWindows() {
+    guard let out = runAppleScript("""
+    tell application "System Events"
+        tell process "hdhr_VCR"
+            repeat 3 times
+                repeat with w in windows
+                    try
+                        click (first button of w whose description is "close button")
+                    end try
+                end repeat
+                delay 0.2
+            end repeat
+            return count of windows
+        end tell
+    end tell
+    """) else { return }
+    _ = out
+}
+
 private let axAllHandler = """
 on axAll(el)
     tell application "System Events"
@@ -146,18 +206,8 @@ end repeat
 set watchBtn to missing value
 repeat 20 times
     try
-        set allEls to entire contents of window "Watch Now"
-        repeat with e in allEls
-            try
-                if role of e is "AXButton" then
-                    set h to (help of e) as string
-                    if h starts with "Play the in-progress recording" then
-                        set watchBtn to e
-                        exit repeat
-                    end if
-                end if
-            end try
-        end repeat
+        \(axShell("find", window: "Watch Now", match: "role=AXButton&help^=Play the in-progress recording", press: true))
+        set watchBtn to true
     end try
     if watchBtn is not missing value then exit repeat
     delay 0.25
@@ -168,7 +218,6 @@ if watchBtn is missing value then
     end try
     return "NO_RECORDING_TO_WATCH"
 end if
-click watchBtn
 repeat 20 times
     delay 0.25
     if (count of windows) > 1 then exit repeat
@@ -223,23 +272,39 @@ delay 0.5
 /// way that more polling, re-issuing the action, or even full close/reopen retries don't fix — not
 /// something this snippet can itself work around, so it isn't tried here.
 private let openPipPickerFromPlayerContextMenuSnippet = """
-perform action "AXShowMenu" of playerWin
+try
+    perform action "AXShowMenu" of playerWin
+end try
 set pipMenuItem to missing value
-repeat 20 times
+repeat 8 times
     try
         set pipMenuItem to menu item "Add Picture-in-Picture…" of menu 1 of playerWin
         exit repeat
     end try
     delay 0.25
 end repeat
-if pipMenuItem is missing value then return "NO_PIP_CONTEXT_MENU_ITEM"
-click pipMenuItem
 set pipWin to missing value
-repeat 20 times
+if pipMenuItem is not missing value then
+    click pipMenuItem
+else
+    -- AXShowMenu is unreliable as a process's first AX interaction (see pipPickerOpensFromPlayerContextMenu). A real
+    -- right-click + Return does what a user does and works cold. Aimed left/below centre: an overlay (Spotlight, a
+    -- clipboard popup) is often parked over the exact middle and swallows the click.
+    set p to position of playerWin
+    set sz to size of playerWin
+    set cx to ((item 1 of p) + ((item 1 of sz) * 0.2)) as integer
+    set cy to ((item 2 of p) + ((item 2 of sz) * 0.6)) as integer
+    do shell script (quoted form of "\(uiEventsPath)") & " rightclick " & cx & " " & cy
+    delay 1.2
+    do shell script (quoted form of "\(uiEventsPath)") & " keys 125 36"
+end if
+repeat 24 times
     delay 0.25
     try
-        set pipWin to window "Add Picture-in-Picture"
-        exit repeat
+        if (do shell script (quoted form of "\(axQueryPath)") & " windows") contains "Add Picture-in-Picture" then
+            set pipWin to window "Add Picture-in-Picture"
+            exit repeat
+        end if
     end try
 end repeat
 if pipWin is missing value then return "NO_PIP_PICKER_WINDOW"
@@ -261,15 +326,8 @@ private let addFirstLiveTVSecondarySnippet = """
 set addBtn to missing value
 repeat 10 times
     try
-        set allEls to entire contents of pipWin
-        repeat with e in allEls
-            try
-                if (value of attribute "AXIdentifier" of e) as string is "pip-picker-add-button" then
-                    set addBtn to e
-                    exit repeat
-                end if
-            end try
-        end repeat
+        \(axShell("find", window: "Add Picture-in-Picture", match: "id=pip-picker-add-button", last: true, press: true))
+        set addBtn to true
     end try
     if addBtn is not missing value then exit repeat
     delay 0.25
@@ -280,7 +338,6 @@ if addBtn is missing value then
     end try
     return "NO_PIP_TARGET_AVAILABLE"
 end if
-click addBtn
 -- pipWin closes itself (PiPPickerView's own dismiss()) — wait for it to actually go rather than
 -- assuming the click was instant, then give the secondary's own connection a moment to come up
 -- (bridge.secondaryIsPlaying/pipOverlay's own spinner state — this test only needs the thumbnail
@@ -420,6 +477,7 @@ struct WindowNavigationTests {
     /// other test's own dismiss snippet is what actually guarantees a clean slate for them.
     @Test func donationNagReachableAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -473,6 +531,7 @@ struct WindowNavigationTests {
     /// reasons, take the BEFORE-phase assertions below with it rather than deleting them.
     @Test func guideSourceToggleDoesNotBreakWindows() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
 
         // Selects a sidebar row by name and *polls the window title until it actually changes*
         // instead of a flat delay. Selecting a row rebuilds the SwiftUI List's AX tree (same fact
@@ -721,6 +780,7 @@ struct WindowNavigationTests {
     /// change that added this test, and would fail again if a tab-specific override crept back in.
     @Test func infoButtonSpacingIsConsistentAcrossTabs() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
 
         // Same shape as guideSourceToggleDoesNotBreakWindows' own copy above — not shared at file
         // scope, so each test's local tweaks (if any) can't affect the other.
@@ -853,6 +913,7 @@ struct WindowNavigationTests {
 
     @Test func addShowOpensAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         let (title, windowCountAfter) = try openAndCloseTopLevelWindow(menuItemName: "Add Show…")
         #expect(title == "Add Show")
         #expect(windowCountAfter == 0)
@@ -885,6 +946,7 @@ struct WindowNavigationTests {
     /// could be verified without a live run.
     @Test func addShowGuideSearchBoxIsAccessibleAndTypingDoesNotAutoSelect() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -980,6 +1042,7 @@ struct WindowNavigationTests {
 
     @Test func watchNowOpensAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         let (title, windowCountAfter) = try openAndCloseTopLevelWindow(menuItemName: "Watch Now…")
         #expect(title == "Watch Now")
         #expect(windowCountAfter == 0)
@@ -1005,6 +1068,7 @@ struct WindowNavigationTests {
     /// different case from these compound icon+`Label` `.buttonStyle(.plain)`-family buttons.
     @Test func watchNowRowButtonsAreAccessible() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1034,22 +1098,10 @@ struct WindowNavigationTests {
                     -- exact race this poll exists to tolerate) used to `return "ERROR: ..."` on the
                     -- very first iteration, aborting the whole script instead of ever reaching a retry.
                     try
-                        set allEls to entire contents of window "Watch Now"
-                        repeat with e in allEls
-                            try
-                                if role of e is "AXButton" then
-                                    set h to "?"
-                                    try
-                                        set h to (help of e) as string
-                                    end try
-                                    if h starts with "Watch " or h starts with "Play the in-progress recording" then
-                                        set watchCount to watchCount + 1
-                                    end if
-                                    if h starts with "Record " then set recordCount to recordCount + 1
-                                    if h starts with "Edit " then set editCount to editCount + 1
-                                end if
-                            end try
-                        end repeat
+                        set watchCount to (\#(axShell("count", window: "Watch Now", match: "role=AXButton&help^=Watch "))) as integer
+                        set watchCount to watchCount + ((\#(axShell("count", window: "Watch Now", match: "role=AXButton&help^=Play the in-progress recording"))) as integer)
+                        set recordCount to (\#(axShell("count", window: "Watch Now", match: "role=AXButton&help^=Record "))) as integer
+                        set editCount to (\#(axShell("count", window: "Watch Now", match: "role=AXButton&help^=Edit "))) as integer
                     end try
                     if watchCount > 0 then exit repeat
                     delay 0.25
@@ -1090,6 +1142,7 @@ struct WindowNavigationTests {
     /// live recording.
     @Test func editShowOpensAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
@@ -1205,6 +1258,7 @@ struct WindowNavigationTests {
     /// the way SwiftUI's own modifier names might suggest.
     @Test func vlcPlayerControlsAreAccessible() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1218,18 +1272,8 @@ struct WindowNavigationTests {
                 set watchBtn to missing value
                 repeat 20 times
                     try
-                        set allEls to entire contents of window "Watch Now"
-                        repeat with e in allEls
-                            try
-                                if role of e is "AXButton" then
-                                    set h to (help of e) as string
-                                    if h starts with "Play the in-progress recording" then
-                                        set watchBtn to e
-                                        exit repeat
-                                    end if
-                                end if
-                            end try
-                        end repeat
+                        \#(axShell("find", window: "Watch Now", match: "role=AXButton&help^=Play the in-progress recording", press: true))
+                        set watchBtn to true
                     end try
                     if watchBtn is not missing value then exit repeat
                     delay 0.25
@@ -1240,7 +1284,6 @@ struct WindowNavigationTests {
                     end try
                     return "NO_RECORDING_TO_WATCH"
                 end if
-                click watchBtn
                 repeat 20 times
                     delay 0.25
                     if (count of windows) > 1 then exit repeat
@@ -1339,6 +1382,7 @@ struct WindowNavigationTests {
     /// further — see the tests below for the actual PiP behavior coverage, which is solid.
     @Test func pipPickerOpensFromPlayerContextMenu() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1350,16 +1394,12 @@ struct WindowNavigationTests {
                 set sawNoTuners to false
                 repeat 10 times
                     try
-                        set allEls to entire contents of pipWin
-                        repeat with e in allEls
-                            try
-                                if role of e is "AXStaticText" then
-                                    set t to (name of e) as string
-                                    if t is "Live TV" then set sawLiveTV to true
-                                    if t is "No tuners available" then set sawNoTuners to true
-                                end if
-                            end try
-                        end repeat
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'Live TV'"
+                        set sawLiveTV to true
+                    end try
+                    try
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'No tuners available'"
+                        set sawNoTuners to true
                     end try
                     if sawLiveTV or sawNoTuners then exit repeat
                     delay 0.25
@@ -1419,6 +1459,7 @@ struct WindowNavigationTests {
     /// other environment-dependent skip in this file.
     @Test func addingLiveChannelAsPipSecondaryShowsAndRemovesThumbnail() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1442,6 +1483,38 @@ struct WindowNavigationTests {
                     if (count of idsAfterAdd) > 0 then exit repeat
                     delay 0.25
                 end repeat
+                -- The close button is invisible (opacity 0) until the pointer is over the PiP, and SwiftUI drops a
+                -- hidden view from the AX tree — so hover the thumbnail first, then collect the ids again.
+                set thumbEl to missing value
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
+                                set thumbEl to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                end try
+                if thumbEl is not missing value then
+                    set tp to position of thumbEl
+                    set tsz to size of thumbEl
+                    set hx to ((item 1 of tp) + (item 1 of tsz) / 2) as integer
+                    set hy to ((item 2 of tp) + (item 2 of tsz) / 2) as integer
+                    do shell script (quoted form of "\#(uiEventsPath)") & " move " & hx & " " & hy
+                    delay 0.8
+                    set idsAfterAdd to {}
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                set idVal to (value of attribute "AXIdentifier" of e) as string
+                                if idVal starts with "vlc-pip-" then set end of idsAfterAdd to idVal
+                            end try
+                        end repeat
+                    end try
+                end if
                 -- idsAfterAdd only carries identifier strings (AppleScript lists can't carry
                 -- element refs across the loop above) — re-find the close button by identifier.
                 set closeBtn to missing value
@@ -1519,6 +1592,7 @@ struct WindowNavigationTests {
     /// pipActionTrailing). Doesn't add anything; a pure observation test.
     @Test func pipPickerShowsNowPlayingForTheAlreadyPrimaryRecording() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1533,14 +1607,8 @@ struct WindowNavigationTests {
                     set sawNowPlaying to false
                     set sawMatchingAddButton to false
                     try
-                        set allEls to entire contents of pipWin
-                        repeat with e in allEls
-                            try
-                                if role of e is "AXStaticText" and (name of e as string) is "Now Playing" then
-                                    set sawNowPlaying to true
-                                end if
-                            end try
-                        end repeat
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'Now Playing'"
+                        set sawNowPlaying to true
                     end try
                     if sawNowPlaying then exit repeat
                     delay 0.25
@@ -1576,130 +1644,6 @@ struct WindowNavigationTests {
             "PiP picker for player '\(parts[0])' showed no 'Now Playing' row — the Recording Now section's own duplicate-primary guard (isCurrentRecording) may not be dimming the currently-playing show")
     }
 
-    /// The corner-repositioning combination: adds a Live TV secondary, right-clicks its thumbnail
-    /// (`AXShowMenu`, same technique/caveat as openPipPickerFromPlayerContextMenuSnippet), confirms
-    /// all four `PipCorner.allCases` display names are offered, then clicks a corner different from
-    /// whatever's currently checked to reposition it — confirming the thumbnail/close button both
-    /// survive the reposition (still present afterward), not just that the click didn't crash.
-    @Test func pipCornerMenuOffersAllFourCornersAndRepositions() throws {
-        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
-        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
-        let script = #"""
-        tell application "System Events"
-            tell process "hdhr_VCR"
-                \#(dismissDonationNagSnippet)
-                \#(openRecordingRelayPlayerSnippet)
-                \#(openPipPickerFromPlayerContextMenuSnippet)
-                \#(addFirstLiveTVSecondarySnippet)
-                set thumb to missing value
-                repeat 20 times
-                    try
-                        set allEls to entire contents of playerWin
-                        repeat with e in allEls
-                            try
-                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
-                                    set thumb to e
-                                    exit repeat
-                                end if
-                            end try
-                        end repeat
-                    end try
-                    if thumb is not missing value then exit repeat
-                    delay 0.25
-                end repeat
-                if thumb is missing value then return "NO_PIP_THUMBNAIL"
-                perform action "AXShowMenu" of thumb
-                set cornerNames to {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}
-                set foundCount to 0
-                set targetItem to missing value
-                repeat 10 times
-                    set foundCount to 0
-                    set targetItem to missing value
-                    try
-                        set menuItems to every menu item of menu 1 of thumb
-                        repeat with mi in menuItems
-                            set miName to "?"
-                            try
-                                set miName to name of mi
-                            end try
-                            repeat with cn in cornerNames
-                                if miName contains (cn as string) then
-                                    set foundCount to foundCount + 1
-                                    if targetItem is missing value then set targetItem to mi
-                                end if
-                            end repeat
-                        end repeat
-                    end try
-                    if foundCount = 4 then exit repeat
-                    delay 0.25
-                end repeat
-                if targetItem is not missing value then click targetItem
-                delay 0.3
-                set idsAfterReposition to {}
-                try
-                    set allEls to entire contents of playerWin
-                    repeat with e in allEls
-                        try
-                            set idVal to (value of attribute "AXIdentifier" of e) as string
-                            if idVal starts with "vlc-pip-" then set end of idsAfterReposition to idVal
-                        end try
-                    end repeat
-                end try
-                -- Clean up: close the secondary, then the player, then Watch Now.
-                set closeBtn to missing value
-                try
-                    set allEls to entire contents of playerWin
-                    repeat with e in allEls
-                        try
-                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
-                                set closeBtn to e
-                                exit repeat
-                            end if
-                        end try
-                    end repeat
-                end try
-                try
-                    if closeBtn is not missing value then click closeBtn
-                end try
-                try
-                    click (first button of playerWin whose description is "close button")
-                end try
-                repeat 20 times
-                    delay 0.2
-                    if (count of windows) = 1 then exit repeat
-                end repeat
-                try
-                    click (first button of window "Watch Now" whose description is "close button")
-                end try
-                set idList to ""
-                repeat with i in idsAfterReposition
-                    set idList to idList & i & ","
-                end repeat
-                return (foundCount as string) & "===SPLIT===" & idList
-            end tell
-        end tell
-        """#
-        guard let result = runAppleScript(script) else {
-            Issue.record("PiP corner menu script failed to run")
-            return
-        }
-        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
-            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
-            || result == "NO_PIP_TARGET_AVAILABLE" { return }
-        if result == "NO_PIP_THUMBNAIL" {
-            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
-            return
-        }
-        let halves = result.components(separatedBy: "===SPLIT===")
-        #expect(halves.count == 2, "unexpected script output shape: \(result)")
-        guard halves.count == 2, let foundCount = Int(halves[0]) else { return }
-        #expect(foundCount == 4,
-            "PiP thumbnail's right-click menu offered \(foundCount)/4 corner options — expected all of PipCorner.allCases (Top Left/Top Right/Bottom Left/Bottom Right)")
-        let idsAfterReposition = Set(halves[1].split(separator: ",").map(String.init))
-        #expect(idsAfterReposition.contains("vlc-pip-thumbnail"),
-            "PiP thumbnail disappeared after repositioning to a different corner")
-    }
-
     /// The tap-to-swap combination: adds a Live TV secondary, captures the player window's title
     /// (the recording's own title, set when Watch Now opened it), clicks the thumbnail itself (a
     /// plain click, not AXShowMenu — `pipOverlay`'s thumbnail Button calls
@@ -1709,6 +1653,7 @@ struct WindowNavigationTests {
     /// (or happened but the title update regressed), not just "nothing visibly broke."
     @Test func pipTapToSwapChangesPlayerWindowTitle() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
         let script = #"""
         tell application "System Events"
@@ -1798,151 +1743,6 @@ struct WindowNavigationTests {
             "player window title '\(titleBefore)' was unchanged after clicking the PiP thumbnail to swap — swapTrackingFieldsForPiPSwap may not be updating window.title, or the swap itself didn't fire")
     }
 
-    /// The channel-switching-within-PiP combination: adds a Live TV secondary, right-clicks its
-    /// thumbnail, and — since the secondary is a genuine live channel (secondaryChannelNumber !=
-    /// nil, the exact gate `pipChannelMenu` itself checks) — confirms a "Channel" submenu is
-    /// offered, then picks a different channel from it (`playSecondaryChannel`, the function fixed
-    /// earlier this session to reuse the same tuner-availability gate as the primary picker — see
-    /// VLCPlayerViewTunerReuseTests.swift). Only checks the thumbnail survives the switch, not which
-    /// exact channel ends up playing — the real device's own live lineup content isn't something
-    /// this test controls.
-    @Test func pipChannelMenuSwitchesSecondaryChannel() throws {
-        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
-        guard MockRecording.ensure() != nil else { return }   // one shared [MOCK] recording — see MockRecording
-        let script = #"""
-        tell application "System Events"
-            tell process "hdhr_VCR"
-                \#(dismissDonationNagSnippet)
-                \#(openRecordingRelayPlayerSnippet)
-                \#(openPipPickerFromPlayerContextMenuSnippet)
-                \#(addFirstLiveTVSecondarySnippet)
-                set thumb to missing value
-                repeat 20 times
-                    try
-                        set allEls to entire contents of playerWin
-                        repeat with e in allEls
-                            try
-                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
-                                    set thumb to e
-                                    exit repeat
-                                end if
-                            end try
-                        end repeat
-                    end try
-                    if thumb is not missing value then exit repeat
-                    delay 0.25
-                end repeat
-                if thumb is missing value then return "NO_PIP_THUMBNAIL"
-                perform action "AXShowMenu" of thumb
-                set channelMenu to missing value
-                repeat 10 times
-                    try
-                        set channelMenu to menu 1 of menu item "Channel" of menu 1 of thumb
-                        exit repeat
-                    end try
-                    delay 0.25
-                end repeat
-                if channelMenu is missing value then
-                    -- Not every secondary is a live channel (FEED/Watch Now secondaries never show
-                    -- this submenu, per pipChannelMenu's own guard) — but addFirstLiveTVSecondarySnippet
-                    -- specifically adds one from Live TV, so this is a real finding, not expected.
-                    set closeBtn0 to missing value
-                    try
-                        set allEls to entire contents of playerWin
-                        repeat with e in allEls
-                            try
-                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
-                                    set closeBtn0 to e
-                                    exit repeat
-                                end if
-                            end try
-                        end repeat
-                    end try
-                    try
-                        if closeBtn0 is not missing value then click closeBtn0
-                    end try
-                    try
-                        click (first button of playerWin whose description is "close button")
-                    end try
-                    try
-                        click (first button of window "Watch Now" whose description is "close button")
-                    end try
-                    return "NO_CHANNEL_SUBMENU"
-                end if
-                set channelItems to every menu item of channelMenu
-                set switchedOk to false
-                if (count of channelItems) > 0 then
-                    click (item 1 of channelItems)
-                    set switchedOk to true
-                end if
-                delay 0.5
-                set idsAfterSwitch to {}
-                try
-                    set allEls to entire contents of playerWin
-                    repeat with e in allEls
-                        try
-                            set idVal to (value of attribute "AXIdentifier" of e) as string
-                            if idVal starts with "vlc-pip-" then set end of idsAfterSwitch to idVal
-                        end try
-                    end repeat
-                end try
-                set closeBtn to missing value
-                try
-                    set allEls to entire contents of playerWin
-                    repeat with e in allEls
-                        try
-                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
-                                set closeBtn to e
-                                exit repeat
-                            end if
-                        end try
-                    end repeat
-                end try
-                try
-                    if closeBtn is not missing value then click closeBtn
-                end try
-                try
-                    click (first button of playerWin whose description is "close button")
-                end try
-                repeat 20 times
-                    delay 0.2
-                    if (count of windows) = 1 then exit repeat
-                end repeat
-                try
-                    click (first button of window "Watch Now" whose description is "close button")
-                end try
-                set idList to ""
-                repeat with i in idsAfterSwitch
-                    set idList to idList & i & ","
-                end repeat
-                return (switchedOk as string) & "===SPLIT===" & idList
-            end tell
-        end tell
-        """#
-        guard let result = runAppleScript(script) else {
-            Issue.record("PiP channel-switch script failed to run")
-            return
-        }
-        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
-            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
-            || result == "NO_PIP_TARGET_AVAILABLE" { return }
-        if result == "NO_PIP_THUMBNAIL" {
-            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
-            return
-        }
-        if result == "NO_CHANNEL_SUBMENU" {
-            Issue.record("A Live-TV-sourced PiP secondary's right-click menu offered no 'Channel' submenu — pipChannelMenu's secondaryChannelNumber != nil gate may be broken for this case")
-            return
-        }
-        let halves = result.components(separatedBy: "===SPLIT===")
-        #expect(halves.count == 2, "unexpected script output shape: \(result)")
-        guard halves.count == 2 else { return }
-        #expect(halves[0] == "true", "no channel menu items were available to click")
-        let idsAfterSwitch = Set(halves[1].split(separator: ",").map(String.init))
-        #expect(idsAfterSwitch.contains("vlc-pip-thumbnail"),
-            "PiP thumbnail disappeared after switching the secondary's channel")
-    }
-
     // MARK: - Full PiP workout against a live recording
 
     /// End-to-end PiP sequence on the machine the app is running on (the Mac mini):
@@ -1961,6 +1761,7 @@ struct WindowNavigationTests {
     /// airing, no free tuner, or no addable live channel — same convention as the rest of the suite.
     @Test func pipFullWorkoutOverLiveRecording() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
 
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -2208,6 +2009,7 @@ struct WindowNavigationTests {
     /// Always cleans the `[MOCK]` show up afterwards.
     @Test func stopRecordingFromTheMenu() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        closeStrayWindows()
         guard MockRecording.ensure() != nil else { return }
         defer { MockRecording.clean() }
 
