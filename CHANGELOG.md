@@ -4,6 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **Fixed: Watch Now could miss the "Watch Now!" / "Watch from Beginning" buttons for up to 30 seconds** when you reopened it after a show had changed (it briefly listed the previous airing).
 - *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over show posters flying in from every edge of the screen, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on. Settings → Maintenance → "Preview Launch Splash" plays it on demand.
 - *Updated* — **A new install now opens with the launch splash too, and the setup wizard opens on top of its poster wall.** The splash's logo glides into the wizard's header while the wizard fades in; the show posters stay behind it as a still backdrop (and step aside when you switch to another app) until you finish setup, then the wall fades and a ring pulses at the menu-bar icon. The wizard also takes on the splash's look: always dark, a soft glow, the same logo and rounded title.
 - *Removed* — **The setup wizard's own opening animation** (the tile animation with a Skip button, and the double-click-the-logo replay) — a new install sees the launch splash and then goes straight to the first setup step. Turning off "Show launch splash" (or Reduce Motion) opens the wizard directly, as before.

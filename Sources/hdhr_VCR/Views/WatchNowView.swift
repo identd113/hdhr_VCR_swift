@@ -139,6 +139,11 @@ struct WatchNowView: View {
     // Runs until the view disappears. Keeps now fresh every 30s (so mid-half-hour show endings
     // clear promptly), pre-fetches upcoming posters before each boundary to avoid placeholder flash.
     private func boundaryRefreshLoop() async {
+        // `now` is @State, so it survives the window being closed and reopened. Without this the
+        // first refresh is a 30 s sleep away (or the next :00/:30 boundary, inside its last minute)
+        // and a window reopened after an airing changed lists the previous airing — no relay
+        // buttons for the show that is actually recording.
+        now = Date()
         while !Task.isCancelled {
             let boundary = Self.nextBoundary()
             // Sleep in 30s chunks to keep now within 30s of real time.
