@@ -27,36 +27,6 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 
 ---
 
-### 📡 New: Recording FEED (Beta) — one tuner, every Mac in the house
-
-You've got one HDHomeRun tuner and more than one Mac. Normally that means whoever's not near the
-recording machine is out of luck until it's done. Recording FEED fixes that: while a show is
-recording, that Mac quietly rebroadcasts it as a small virtual tuner on your LAN — no disk copy,
-no second tuner opened, no waiting for the recording to finish.
-
-Any other Mac running hdhrVCRplus just sees it appear under **"Recording on Another Mac —
-`<hostname>`"** within about a second of the recording starting — pick a plain MPEG-2 **Watch**, or
-an on-the-fly-transcoded **Watch (H.264)** if the raw stream doesn't play nicely for you. A live
-viewer count and an estimated signal-strength reading (pulled from the *source* Mac's own tuner)
-ride along so you know what you're tuning into before you click.
-
-It's watch-only by construction — a FEED relay can never be used to start a new recording, only to
-watch one already in progress — and it's opt-in per Mac: off by default, turn it on in
-**Settings → Sharing → "Rebroadcast In-Progress Recordings."** Beta caveats: occasional playback
-hiccups, switching audio tracks mid-watch may not stick, and the transcoded option is best treated
-as one viewer at a time (several concurrent transcoded viewers plus a live recording can push CPU
-noticeably higher).
-
-**And it plugs straight into picture-in-picture.** A FEED is just another source PiP knows about —
-right alongside live TV and your own in-progress recordings — so any combination works: watch a
-friend's recording full-size while your own live channel plays in the corner, keep your own show
-front and center while peeking at what's recording on another Mac, or even two different Macs'
-FEEDs at once, one full-size and one in the corner. Tap the thumbnail to swap which one has full
-controls and audio, instantly. It's the closest thing to real multi-room DVR this app has —
-built from two independent features that happen to compose perfectly.
-
----
-
 ![Cable TV-style guide grid with show summary panel](docs/screenshots/guide.png)
 
 The full LAN web guide — channels down the side, time across the top, tiles color-coded by genre.
@@ -133,20 +103,6 @@ long.
 A standard macOS settings window (General/Recording/Guide/Notifications/Advanced/Web
 Server/Maintenance/About) — Launch at Login, menu bar icon blinking, and the guide format used to
 pull program data all live here.
-
-### Terminal Guide
-
-| Channel grid | Schedule recording |
-|--------------|---------------------|
-| ![Full-screen channel grid with genre-tinted tiles, selection box, summary panel, and signal-dot gutter](docs/screenshots/tui_guide_grid.png) | ![Recording summary screen with the four scheduling scope options](docs/screenshots/tui_guide_schedule.png) |
-
-The whole cable guide, in a terminal — SSH in from anywhere on your network and schedule recordings
-without a browser. The selected tile gets a full white box drawn right onto its genre color, a
-per-channel signal dot in the gutter mirrors the web guide's own bars, and hitting `Enter` drops into
-a dedicated recording screen with the same four scope options (Once / Weekly / Series-this-channel /
-Series-any-channel) as the web and native pickers. Every glyph is plain ASCII on purpose — no
-box-drawing characters that render one column too wide on some remote terminals — so it looks right
-whether you're on Terminal.app or three hops away over SSH.
 
 ---
 
