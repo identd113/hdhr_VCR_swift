@@ -82,6 +82,13 @@ final class VirtualTunerService {
     // first keeps the relay, the later one backs off (see that function's own doc comment).
     static let recordingStartedAtKey = "HdhrVCRplusRecordingStartedAt"
 
+    /// Per-lineup-entry (one show): epoch seconds of when THAT show's recording file began — its creation date, the very
+    /// value `WebServer.recordingFileStart` uses to turn a viewer's `back=` into a byte offset. A viewer's "Watch from
+    /// Beginning" anchors its scrub axis on this, so the axis and the bytes it was served share one clock. (The
+    /// device-level `recordingStartedAtKey` above is the earliest start across every running recording — right for
+    /// resolving the two-Macs-relaying race, wrong for one specific show when two record at once.)
+    static let fileStartedAtKey = "HdhrVCRplusFileStartedAt"
+
     private let queue = DispatchQueue(label: "hdhrVCRplus.virtualtuner.udp", qos: .utility)
     private var sock: Int32 = -1
     private var readSource: DispatchSourceRead?

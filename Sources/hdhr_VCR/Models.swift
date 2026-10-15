@@ -954,6 +954,14 @@ extension HDHRDevice: Codable {
 
 // MARK: - Guide / Lineup
 
+/// The tuner id a picker should show and bind: `preferred` while that device is still available, else `current` if it
+/// still is, else the first available one ("" when none). A picker whose bound id isn't one of its tags shows nothing
+/// selected while the view displays a different tuner (Watch Now / PiP picker, found in the 2.6.5 review).
+func pickerDeviceId(preferred: String? = nil, current: String = "", available: [String]) -> String {
+    for candidate in [preferred ?? "", current] where !candidate.isEmpty && available.contains(candidate) { return candidate }
+    return available.first ?? ""
+}
+
 struct LineupEntry: Codable, Identifiable {
     var id: String { GuideNumber }
     var GuideNumber: String
@@ -1022,6 +1030,10 @@ struct LineupEntry: Codable, Identifiable {
     var virtualRelayEpisodeNumber: String?
     var virtualRelaySynopsis: String?
     var virtualRelayImageURL: String?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — epoch seconds when this specific show's
+    // recording file began (VirtualTunerService.fileStartedAtKey). nil for every real device and for a relay running an
+    // older build; "Watch from Beginning" then falls back to the device-level recordingStartedAt.
+    var virtualRelayFileStartedAt: TimeInterval?
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
@@ -1034,6 +1046,7 @@ struct LineupEntry: Codable, Identifiable {
         case virtualRelayEpisodeNumber = "HdhrVCRplusEpisodeNumber"
         case virtualRelaySynopsis = "HdhrVCRplusSynopsis"
         case virtualRelayImageURL = "HdhrVCRplusImageURL"
+        case virtualRelayFileStartedAt = "HdhrVCRplusFileStartedAt"
     }
 }
 

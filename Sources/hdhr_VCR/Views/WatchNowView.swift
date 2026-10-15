@@ -26,6 +26,8 @@ struct WatchNowView: View {
         return date.addingTimeInterval(TimeInterval(max(1, secsToNext)))
     }
 
+    private var availableDeviceIds: [String] { state.availableDevices.map(\.DeviceID) }
+
     private var selectedDevice: HDHRDevice? {
         // recordableDevices for both halves — selectedDeviceId can currently only ever be seeded
         // from recordableDevices (the Picker/onAppear below) or stay "", but resolving the primary
@@ -50,11 +52,14 @@ struct WatchNowView: View {
             content
         }
         .onAppear {
-            selectedDeviceId = state.watchNowDeviceId
-                ?? state.availableDevices.first?.DeviceID ?? ""
+            selectedDeviceId = pickerDeviceId(preferred: state.watchNowDeviceId, available: availableDeviceIds)
         }
         .onChange(of: state.watchNowDeviceId) { _, newId in
-            if let id = newId { selectedDeviceId = id }
+            if let id = newId { selectedDeviceId = pickerDeviceId(preferred: id, current: selectedDeviceId, available: availableDeviceIds) }
+        }
+        // A tuner that drops out (or returns) while the window is open: keep the picker's binding on a tag it still has.
+        .onChange(of: availableDeviceIds) { _, ids in
+            selectedDeviceId = pickerDeviceId(current: selectedDeviceId, available: ids)
         }
         .task(id: selectedDeviceId) { await prefetchPosters() }
         .task { await boundaryRefreshLoop() }

@@ -1643,15 +1643,20 @@ struct VLCPlayerView: View {
                     Button {
                         VLCPlayerWindowManager.shared.closeSecondary()
                     } label: {
+                        // Hidden by colour, NOT opacity(0): SwiftUI drops an opacity-0 view from the accessibility
+                        // tree, which left the close button unreachable for VoiceOver / keyboard users (and for AX
+                        // automation) until the pointer happened to be over the PiP. A clear symbol is invisible but
+                        // still a labelled button; the content shape keeps its hit area the same when hidden.
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundStyle(.white, .black.opacity(0.6))
+                            .foregroundStyle(pipHovered ? Color.white : Color.clear,
+                                             pipHovered ? Color.black.opacity(0.6) : Color.clear)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(4)
                     .accessibilityIdentifier("vlc-pip-close-button")
                     .accessibilityLabel("Close picture-in-picture")
-                    .opacity(pipHovered ? 1 : 0)
                     .animation(.easeInOut(duration: 0.2), value: pipHovered)
                 }
                 .overlay(alignment: pipResizeHandleAlignment) {

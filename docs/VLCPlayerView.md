@@ -442,8 +442,11 @@ its last frame forever with no indication at all), and a small "×" close button
 (`VLCPlayerWindowManager.closeSecondary()`) — one of two ways to stop the secondary without
 swapping it to primary first (the other is the right-click menu's own "Close Picture-in-Picture"
 item, see "Positioning the thumbnail" below). **Hover-revealed, added 2026-09-29** — hidden
-(opacity, not conditional rendering — same idiom as the recording scrub bar/fullscreen toolbar
-overlays above) until `.onHover` on the thumbnail's own `ZStack` reports true, so the corner stays
+until `.onHover` on the thumbnail's own `ZStack` reports true — **by colour (a clear symbol), not by
+`opacity(0)`, since 2026-10-14**: SwiftUI drops an opacity-0 view from the accessibility tree, which left the
+button unreachable for VoiceOver/keyboard users and AX automation until the pointer was over the PiP; it is now
+always a labelled button (`vlc-pip-close-button`, "Close picture-in-picture") and only its look changes. (The
+recording scrub bar and the fullscreen toolbar overlay still use the opacity idiom and have the same property), so the corner stays
 visually clean until you're actually near it; hovering the thumbnail itself reveals it, not just
 the button, so there's no chicken-and-egg problem where the close button would need to already be
 visible to be hovered. Since hiding it behind hover costs some discoverability, the right-click

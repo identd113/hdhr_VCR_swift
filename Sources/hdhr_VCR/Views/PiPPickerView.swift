@@ -40,7 +40,11 @@ struct PiPPickerView: View {
             .listStyle(.inset)
         }
         .onAppear {
-            selectedDeviceId = state.availableDevices.first?.DeviceID ?? ""
+            selectedDeviceId = pickerDeviceId(current: selectedDeviceId, available: state.availableDevices.map(\.DeviceID))
+        }
+        // A tuner that drops out (or returns) while the picker is open: keep the Tuner picker's binding on a tag it has.
+        .onChange(of: state.availableDevices.map(\.DeviceID)) { _, ids in
+            selectedDeviceId = pickerDeviceId(current: selectedDeviceId, available: ids)
         }
         .frame(minWidth: 380, minHeight: 300)
     }

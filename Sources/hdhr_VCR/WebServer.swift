@@ -1369,7 +1369,7 @@ final class WebServer: @unchecked Sendable {
                 // The file's own creation time is when its bytes actually began — the scheduled `show_next` is wrong
                 // for a recording that started late (restart/reattach, Record Now on an airing already in progress),
                 // which would make the estimated rate, and so the cushion, far too small.
-                let fileStart = ((try? FileManager.default.attributesOfItem(atPath: path))?[.creationDate] as? Date) ?? show.show_next
+                let fileStart = Self.recordingFileStart(path: path, fallback: show.show_next)
                 let joinOffset = backSeconds.map { Self.feedBackOffset(currentSize: currentSize, recordingStart: fileStart, backSeconds: $0) }
                     ?? Self.feedJoinOffset(currentSize: currentSize, recordingStart: fileStart)
                 glog("[VirtualTuner] /auto/v\(logChannel) joining \(currentSize - joinOffset) bytes behind the write position (file \(currentSize) bytes)")
@@ -1399,6 +1399,13 @@ final class WebServer: @unchecked Sendable {
         let elapsed = now.timeIntervalSince(recordingStart)
         guard elapsed > backoff else { return currentSize }
         return AppState.byteOffset(forTargetSeconds: elapsed - backoff, elapsedSeconds: elapsed, fileSizeBytes: currentSize)
+    }
+
+    /// When a recording's bytes began: the file's creation date, else `fallback` (the show's scheduled start). The single
+    /// clock behind both the byte offset a `back=` request resolves to and the per-show start the lineup publishes
+    /// (`VirtualTunerService.fileStartedAtKey`) for the viewer's scrub axis — they can't drift apart if they share this.
+    static func recordingFileStart(path: String, fallback: Date?) -> Date? {
+        ((try? FileManager.default.attributesOfItem(atPath: path))?[.creationDate] as? Date) ?? fallback
     }
 
     /// Upper bound on a requested `back=` (seconds) — a week; anything longer just means "from the start".
@@ -4264,6 +4271,12 @@ final class WebServer: @unchecked Sendable {
                 // case for this one, so it's set unconditionally rather than only when present.
                 VirtualTunerService.sourceHostnameKey: ProcessInfo.processInfo.hostName,
             ]
+            // This show's own file-start (not the relay-wide earliest the device-level key carries) — the same clock the
+            // `back=` byte offset uses, so a viewer's "Watch from Beginning" scrub axis matches the bytes it is served.
+            // Omitted when neither the file nor a scheduled start is known.
+            if let start = Self.recordingFileStart(path: show.show_recording_path, fallback: show.show_next) {
+                entry[VirtualTunerService.fileStartedAtKey] = start.timeIntervalSince1970
+            }
             // Standard field (VideoCodec), not a custom Hdhr... key — a discovering hdhrVCRplus
             // instance's own LineupEntry decode already recognizes it from a real device's lineup,
             // so no client-side change is needed to surface the source's actual codec (MPEG2/

@@ -5846,12 +5846,14 @@ final class AppState: ObservableObject {
     /// per-idleLoop-tick renewal (keyed off currentFeedRemoteURL, set by startFeedCacheSession above).
     /// `fromBeginning`: ask the source Mac for the recording from its first byte (`&back=` — raw passthrough only) and
     /// anchor the scrub bar at the recording's real start, so you can scrub anywhere from the beginning. Needs the
-    /// relay to publish its recording start (`device.recordingStartedAt`); without it the request is ignored and the
-    /// normal live-edge join is used.
-    func watchRemoteRelay(url: String, title: String, device: HDHRDevice, fromBeginning: Bool = false) {
+    /// relay to publish this recording's start — the lineup entry's own `recordingStartedAt` (`HdhrVCRplusFileStartedAt`,
+    /// the same clock the source uses for the `back=` offset), else the relay-wide `device.recordingStartedAt` of an older
+    /// build; without either the request is ignored and the normal live-edge join is used.
+    func watchRemoteRelay(url: String, title: String, device: HDHRDevice, fromBeginning: Bool = false,
+                          recordingStartedAt: TimeInterval? = nil) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
-        let recordingStart = fromBeginning ? device.recordingStartedAt : nil
+        let recordingStart = fromBeginning ? (recordingStartedAt ?? device.recordingStartedAt) : nil
         let fromBeginning = recordingStart != nil
         let url = fromBeginning ? url + (url.contains("?") ? "&" : "?") + "back=\(WebServer.feedMaxBackSeconds)" : url
         let mediaLead = recordingStart.map { max(0, Date().timeIntervalSince1970 - $0) } ?? 0

@@ -1483,38 +1483,9 @@ struct WindowNavigationTests {
                     if (count of idsAfterAdd) > 0 then exit repeat
                     delay 0.25
                 end repeat
-                -- The close button is invisible (opacity 0) until the pointer is over the PiP, and SwiftUI drops a
-                -- hidden view from the AX tree — so hover the thumbnail first, then collect the ids again.
-                set thumbEl to missing value
-                try
-                    set allEls to entire contents of playerWin
-                    repeat with e in allEls
-                        try
-                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
-                                set thumbEl to e
-                                exit repeat
-                            end if
-                        end try
-                    end repeat
-                end try
-                if thumbEl is not missing value then
-                    set tp to position of thumbEl
-                    set tsz to size of thumbEl
-                    set hx to ((item 1 of tp) + (item 1 of tsz) / 2) as integer
-                    set hy to ((item 2 of tp) + (item 2 of tsz) / 2) as integer
-                    do shell script (quoted form of "\#(uiEventsPath)") & " move " & hx & " " & hy
-                    delay 0.8
-                    set idsAfterAdd to {}
-                    try
-                        set allEls to entire contents of playerWin
-                        repeat with e in allEls
-                            try
-                                set idVal to (value of attribute "AXIdentifier" of e) as string
-                                if idVal starts with "vlc-pip-" then set end of idsAfterAdd to idVal
-                            end try
-                        end repeat
-                    end try
-                end if
+                -- The close button is hidden by colour, not opacity, so it is in the AX tree without the pointer being over the
+                -- PiP (an opacity-0 view was dropped from the tree, which left it unreachable for VoiceOver). No hover here on
+                -- purpose: this is the regression guard for that.
                 -- idsAfterAdd only carries identifier strings (AppleScript lists can't carry
                 -- element refs across the loop above) — re-find the close button by identifier.
                 set closeBtn to missing value

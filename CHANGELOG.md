@@ -25,6 +25,10 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - *Updated* — **Fixed: the player window could grow under the Dock** when it re-fit to a new picture shape or after a resize, could be pushed off a small screen by its minimum width, and skipped the re-fit when the channel changed shape in full screen.
 - *Updated* — **Fixed: the player could sit on "Connecting…" forever** if VLC couldn't open the stream, and a stream opened right before a picture-in-picture swap could lose its state.
 - *Updated* — **A picture-in-picture in the lower-left corner steps up out of the way** while the "i" info banner is showing, then returns.
+- *Updated* — **Fixed: "Watch from Beginning" on a FEED could be off by seconds when two shows were recording at once** — the later show's scrub bar was anchored on the earlier show's start. Each recording now publishes its own start.
+- *Updated* — **Fixed: Add Show could stay on an empty guide** if a tuner was unreachable when the window opened and came back later.
+- *Updated* — **Fixed: the Tuner picker in Watch Now and the picture-in-picture picker could show nothing selected** when the remembered tuner had gone offline; it now moves to one that is available.
+- *Updated* — **The picture-in-picture "×" close button is now reachable with VoiceOver** (and keyboard/automation) even when the pointer isn't over the PiP; it is still only drawn on hover.
 - *Updated* — The web guide's Record request now rejects invalid air-day names, and a stream request's `duration` is capped at 7 days.
 
 ## v2.6.0 — 2026-10-10
