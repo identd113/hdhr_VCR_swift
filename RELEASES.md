@@ -77,13 +77,6 @@ General, and skipped when macOS Reduce Motion is on.
   Strength Scan has a tuner pulldown; the first-run window is tall enough for the Next button; the
   picture-in-picture close button works with VoiceOver.
 
-<!-- readme-latest
-- **Fixes and polish:** nothing freezes the app any more — alerts, confirmations and file pickers are sheets, so the web guide, FEED viewers and recording scheduling keep running while one is open
-- **Idle means idle:** a hidden, still-animating window is gone — 0 % CPU when idle, ~15 MB less memory, and no more half-second hitch every ten seconds
-- **Steadier FEED and Watch Now:** FEED starts with an 8-second cushion and recovers from slow patches; Watch Now shows a recording correctly the moment it starts
-- Recordings no longer land on the startup disk when an external drive is unplugged; plus a small new launch splash
--->
-
 ---
 
 ## v2.6.0 (2026-10-10)

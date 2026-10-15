@@ -9,7 +9,7 @@ checklist around it: the checks before the build and the notes / GitHub Release 
                                                                sync the bundled copy + RELEASES' date (re-run keeps it)
   release_checklist.py notes     <version>                      write dist/release-<version>/notes.md (Release notes)
   release_checklist.py publish   <version> [--yes] [--live]     create the GitHub Release from the DMG; with --live
-                                                               also point README's "Latest" section at it.
+                                                               also update README's "Latest" heading + link.
                                                                Dry run unless --yes; a DRAFT unless --live.
 
 Typical day:
@@ -19,7 +19,7 @@ Typical day:
   4. tools/release_checklist.py notes 2.6.5
   5. git push (commit Version.swift first), then
      tools/release_checklist.py publish 2.6.5 --yes            # draft Release with the DMG; review it on GitHub
-     tools/release_checklist.py publish 2.6.5 --yes --live     # publish it and update README's Latest section
+     tools/release_checklist.py publish 2.6.5 --yes --live     # publish it and update README's Latest heading + link
 
 It never pushes, tags by itself, builds or edits anything outside the repo. Set RELEASE_REPO_ROOT to run
 it against a copy (that is how it is tested).
@@ -98,11 +98,6 @@ def releases_section(version):
     return text[m.start():end]
 
 
-def readme_bullets(section):
-    m = re.search(r"<!-- readme-latest\n(.*?)-->", section, re.S)
-    return [l.rstrip() for l in m.group(1).splitlines() if l.strip()] if m else []
-
-
 # ── live app state (same source the live UI tests use) ──────────────────────
 
 def live_config_shows():
@@ -161,8 +156,6 @@ def preflight(args):
         say(BAD, f"RELEASES.md has no '## v{v} (date)' entry")
     else:
         say(OK if len(sec.splitlines()) >= 15 else WARN, f"RELEASES.md entry: {len(sec.splitlines())} lines")
-        b = readme_bullets(sec)
-        say(OK if 3 <= len(b) <= 4 else BAD, f"README 'Latest' bullets in the entry: {len(b)} (want 3–4)")
     readme = read(README)
     m = re.search(r"### 📦 Latest: \[v([0-9.]+)\]", readme)
     if m:
@@ -277,7 +270,7 @@ def notes(args):
     sec = releases_section(v)
     if not sec:
         sys.exit(f"RELEASES.md has no '## v{v} (date)' entry")
-    body = re.sub(r"<!-- readme-latest.*?-->\n?", "", sec, flags=re.S)
+    body = sec
     body = re.sub(r"^## v.*\n+", "", body, count=1)            # GitHub shows the title itself
     body = re.sub(r"\n---\s*$", "", body.rstrip()).rstrip()
     body += (f"\n\n---\n**Download** `hdhrVCRplus-{v}.dmg` below — Apple Silicon, macOS 15 or later, notarized. "
@@ -297,7 +290,6 @@ def publish(args):
     dmg = os.path.join(DIST, f"hdhrVCRplus-{v}.dmg")
     notes_path = os.path.join(DIST, f"release-{v}", "notes.md")
     sec = releases_section(v)
-    bullets = readme_bullets(sec) if sec else []
     plan = []
     if not os.path.exists(dmg):
         sys.exit(f"{dmg} not found — run ./deploy_release.sh {v} first")
@@ -314,9 +306,7 @@ def publish(args):
     gh_create.append(dmg)
     plan.append(" ".join(gh_create))
     if args.live:
-        if len(bullets) < 3:
-            sys.exit("RELEASES entry has no readme-latest bullets")
-        plan.append(f"README.md 'Latest' → v{v} (+{len(bullets)} bullets), then `git commit` (not pushed)")
+        plan.append(f"README.md 'Latest' heading → v{v} + new download link (the bullets under it are NOT touched), then `git commit` (not pushed)")
     print("Plan:" if not args.yes else "Doing:")
     for p in plan:
         print("  •", p)
@@ -327,15 +317,15 @@ def publish(args):
     print(f"GitHub Release v{v} {'published' if args.live else 'created as a draft — review it, then run again with --live'}")
     if args.live:
         text = read(README)
-        block = (f"### 📦 Latest: [v{v}](https://github.com/{REPO_SLUG}/releases/download/v{v}/hdhrVCRplus-{v}.dmg)\n"
-                 + "\n".join(bullets) + "\n")
-        new, n = re.subn(r"### 📦 Latest: \[v[0-9.]+\]\(.*?\)\n(?:- .*\n)+", block, text, count=1)
+        heading = f"### 📦 Latest: [v{v}](https://github.com/{REPO_SLUG}/releases/download/v{v}/hdhrVCRplus-{v}.dmg)\n"
+        new, n = re.subn(r"### 📦 Latest: \[v[0-9.]+\]\(.*?\)\n", heading, text, count=1)
         if not n:
-            sys.exit("could not find README's '### 📦 Latest' block")
+            sys.exit("could not find README's '### 📦 Latest' heading")
         write(README, new)
         sh(["git", "add", "README.md"], check=True)
         sh(["git", "commit", "-q", "-m", f"docs: README latest release is v{v}"], check=True)
-        print("README.md updated and committed (push it when you are ready).")
+        print("README.md heading + download link updated and committed (push it when you are ready).")
+        print(f"! The 3-4 bullets under README's 'Latest' heading still describe the previous release — rewrite them for v{v}.")
 
 
 def main():
