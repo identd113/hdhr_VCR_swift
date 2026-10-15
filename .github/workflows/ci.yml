@@ -3,8 +3,40 @@ name: CI
 on:
   push:
     branches: [main]
+    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md and
+    # Sources/hdhr_VCR/CHANGELOG.md are deliberately NOT listed: a unit test requires them to be byte-identical and
+    # the second one is bundled into the app as a resource (Package.swift).
+    paths-ignore:
+      - README.md
+      - RELEASES.md
+      - ISSUES.md
+      - issues_resolved.md
+      - TODO.md
+      - FAILED_APPROACHES.md
+      - CLAUDE.md
+      - LICENSE
+      - docs/**
+      - .claude/**
+      - .github/*.md
+      - .github/ISSUE_TEMPLATE/**
   pull_request:
     branches: [main]
+    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md and
+    # Sources/hdhr_VCR/CHANGELOG.md are deliberately NOT listed: a unit test requires them to be byte-identical and
+    # the second one is bundled into the app as a resource (Package.swift).
+    paths-ignore:
+      - README.md
+      - RELEASES.md
+      - ISSUES.md
+      - issues_resolved.md
+      - TODO.md
+      - FAILED_APPROACHES.md
+      - CLAUDE.md
+      - LICENSE
+      - docs/**
+      - .claude/**
+      - .github/*.md
+      - .github/ISSUE_TEMPLATE/**
 
 # Least privilege: this workflow only reads the repository.
 permissions:
