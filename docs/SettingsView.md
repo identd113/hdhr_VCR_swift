@@ -142,7 +142,7 @@ private var isDirty: Bool {
 - **Save** → `applyAndSave()` sets `state.config` to `codableApplyingEdits(live: state.config, original: draftBaseline, edited: draft)` — only the fields edited in this window are applied onto the live config (2026-10-01 review #22: saving the whole draft reverted anything changed elsewhere meanwhile, e.g. the donation unlock or the guide's appearance bridge), then resets `draft`/`draftBaseline` to that merged value — calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
 - **Save & Close** → if `canSave` (`isDirty && !webhookNeedsTest && !webPortInvalid`), calls `applyAndSave()`, then always closes the window regardless. **Disabled** (not always enabled) when the Discord webhook needs testing or the web port is out of range — closing without saving in that state is still possible via the window's own close button, just not this one. Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
-- **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
+- **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows a sheet (`Dialogs`, never `runModal()`): Save / Discard / Cancel
 
 The Save button turns **orange** when `canSave` is true (`.tint(canSave ? .orange : .accentColor)`). `canSave = isDirty && !webhookNeedsTest && !webPortInvalid` — dirty changes alone don't enable Save if the webhook hasn't been tested or the port is invalid.
 
@@ -382,27 +382,23 @@ An `NSViewRepresentable` that attaches an `NSWindowDelegate` to the settings win
 
 ```swift
 func windowShouldClose(_ sender: NSWindow) -> Bool {
-    guard isDirty else { return true }
-    let alert = NSAlert()
-    if canSave {
-        // Normal dirty state: offer Save / Discard / Cancel
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:  onSave(); return true
-        case .alertSecondButtonReturn: return true
-        default:                       return false
+    guard isDirty, !allowClose else { return true }
+    guard !promptShowing else { return false }
+    promptShowing = true
+    Task { @MainActor in
+        // A sheet on this window (Dialogs.present) — never runModal(), so the web server keeps answering.
+        switch await promptUnsavedChanges(title: "Unsaved Settings", canSave: canSave, …, on: sender) {
+        case .save:    onSave(); allowClose = true; sender.close(); allowClose = false
+        case .discard: allowClose = true; sender.close(); allowClose = false
+        case .cancel:  break
         }
-    } else {
-        // Validation error blocks saving (untested webhook or invalid port)
-        alert.informativeText = "Settings can't be saved yet — fix the validation error first. Discard changes?"
-        alert.addButton(withTitle: "Discard Changes")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        promptShowing = false
     }
+    return false          // refuse this close now; close for real once the user has chosen
 }
 ```
+
+With `canSave` the sheet offers Save / Discard / Cancel; without it (untested Discord webhook or out-of-range web port) it offers only Discard Changes / Cancel, with a generic "fix the validation error first" message.
 
 `canSave` is `!webhookNeedsTest && !webPortInvalid` — false when the Discord webhook is untested **or** the web server port is out of range. The alert message is generic so it applies to either validation failure.
 

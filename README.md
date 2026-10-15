@@ -74,20 +74,16 @@ step through its other airings — all without leaving the page.
 
 You already paid for an HDHomeRun tuner, so you shouldn't have to pay again just to record TV.
 
-| | hdhrVCRplus | SiliconDust DVR Service | Plex DVR | Channels DVR | EyeTV |
+| | hdhrVCRplus | SiliconDust DVR | Plex DVR | Channels DVR | EyeTV |
 |---|---|---|---|---|---|
-| **Cost** | **Free** | $35/yr | $6.99/mo (Plex Pass) | $8/mo or $80/yr | $79.99 + guide sub |
-| **Runs on** | Menu bar | Cloud + app | Media server | Media server | App |
-| **macOS menu bar** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Series recording** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Cable guide grid** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Built-in player** | ✅ VLC | ✅ | ✅ | ✅ | ✅ |
-| **Discord notifications** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **LAN web UI** | ✅ guide/schedule | ✅ + stream | ✅ + stream | ✅ + stream | ❌ |
+| **Cost** | **Free** | $35/yr | $7/mo | $8/mo | $80 + guide |
+| **Runs on** | Menu bar | Cloud + app | Server | Server | App |
+| **Discord alerts** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **LAN web guide** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Cloud-free** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Open source** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-**The short version:** hdhrVCRplus does everything the paid services do, costs nothing, runs entirely on your Mac, and gets out of your way in the menu bar.
+**The short version:** series recording, a guide grid and a built-in player are standard everywhere, so they aren't listed. hdhrVCRplus has all of them, costs nothing, runs entirely on your Mac, and stays out of your way in the menu bar.
 
 ---
 
@@ -163,6 +159,8 @@ whether you're on Terminal.app or three hops away over SSH.
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch. Shows that fail too often are automatically paused.
 - **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
 - **Native Apple Silicon** — built for arm64.
+- **Never blocked by a dialog** — alerts and file pickers are sheets, so the web guide, FEED viewers and scheduling keep running while one is open. An idle app uses no CPU.
+- **Launch splash** — a short animated hello (show posters, a live tuner/channel/guide checklist). Turn it off in Settings → General.
 
 ### Scheduling
 
@@ -205,14 +203,16 @@ whether you're on Terminal.app or three hops away over SSH.
 
 ## What's New
 
-**v2.5.0's headline feature: Recording FEED (Beta).** While a show is recording, that Mac can
-rebroadcast it as a small virtual tuner on your LAN — any other hdhrVCRplus instance sees it show
-up under "Recording on Another Mac" and can watch it live, without opening a second real tuner.
-Off by default per Mac; turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings."
+**v2.6.5 — fixes and polish.** Nothing freezes the app any more: alerts and file pickers are sheets, so the
+web guide, FEED viewers and scheduling keep running behind them. The idle app now uses no CPU, Watch Now shows
+a recording correctly the moment it starts, and FEED is steadier. A small new launch splash greets you at startup.
 
-Also new this release: **picture-in-picture** (watch two live streams at once, in a swappable,
-repositionable corner thumbnail) and an **Info button** on the player — press "i", like a TV
-remote, for the show name, episode title, and air date.
+**v2.6.0** made FEED and picture-in-picture grow up: scrub back through a FEED, automatic reconnect, full network
+speed, and a picture-in-picture you place and resize.
+
+**v2.5.0** introduced Recording FEED (Beta) — a recording Mac rebroadcasts a show as a small virtual tuner on your
+LAN, so any other Mac can watch it without a second tuner (Settings → Sharing → "Rebroadcast In-Progress
+Recordings") — and picture-in-picture.
 
 See **[RELEASES.md](RELEASES.md)** for the rest of what changed in the current release and every
 version before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.

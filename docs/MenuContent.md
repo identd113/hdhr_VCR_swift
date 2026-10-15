@@ -309,7 +309,7 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 All delete actions in menus and `EditShowView` call `AppState.confirmAndDeleteShow(_ show:, then completion:)`. It:
 1. Looks up the show's poster URL from the guide cache (`nextGuideEpisode` for series, title match for singles)
 2. Fetches the image async via `URLSession`
-3. Shows an `NSAlert` with `alert.icon = image`, "Delete / Cancel" buttons
+3. Shows an alert (`await Dialogs.present`, a sheet or floating window — never `runModal()`) with `alert.icon = image`, "Delete / Cancel" buttons
 4. Calls `deleteShow(show)` (which also calls `recordingManager.stop`) + `completion()` on confirm
 
 `EditShowView` passes `{ dismiss() }` as the completion so the window closes after deletion. Menu callers pass `{}` (default).

@@ -20,7 +20,7 @@ White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 
 ### Nav bar (bottom, ~52pt tall)
 `HStack` with 16pt padding. `Divider` above.
-- **Left**: `"Delete"` button in destructive red — triggers `confirmAndDeleteShow` (async poster fetch + NSAlert)
+- **Left**: `"Delete"` button in destructive red — triggers `confirmAndDeleteShow` (async poster fetch + a `Dialogs` sheet)
 - **Right**: `"Save"` button in `.borderedProminent` (accent color / blue)
 
 Both buttons are always visible; Delete is enabled any time a show is loaded, but Save is gated by `canSave` — non-empty title, `show_length` within 1…1440 minutes (the same bound the web guide's edit path enforces — 0 or negative used to save and record for no time), and (when the assigned device's lineup is known, and the show isn't `.seriesAll`, whose Channel field is hidden) the channel number must exist on that lineup; when the lineup isn't currently known (tuner offline/undetected), only the non-empty check applies. Escape triggers a dirty-check alert; the button set depends on `canSave` — Save / Discard / Cancel when the current edits pass `canSave`, but only Discard Changes / Cancel (no Save option) when they don't.
@@ -58,7 +58,7 @@ ScrollView {
   }
 }
 navBar: [Delete] ... [Save]
-Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` when unsaved changes exist (Save / Discard / Cancel if `canSave`, else Discard Changes / Cancel); dismisses immediately if clean
+Escape key: `.onExitCommand` on root Group — shows a dirty-check sheet (`Dialogs`, async) when unsaved changes exist (Save / Discard / Cancel if `canSave`, else Discard Changes / Cancel); dismisses immediately if clean
 ```
 
 ---
@@ -107,7 +107,7 @@ Applies `airDays` and series type flags to the local `show`, applies `recordFold
 
 ### Delete
 
-Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based deletion: fetches the show's poster image async, shows an `NSAlert` with the image and "Delete / Cancel" buttons, then stops any in-progress recording and removes the show on confirm. The window dismisses after deletion via the completion closure.
+Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based deletion: fetches the show's poster image async, shows an alert (a `Dialogs` sheet, awaited) with the image and "Delete / Cancel" buttons, then stops any in-progress recording and removes the show on confirm. The window dismisses after deletion via the completion closure.
 
 ### Folder Picker — `chooseFolder()`
 
