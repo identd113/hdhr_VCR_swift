@@ -30,9 +30,11 @@ struct ShowBonusPaddedEndTests {
 @Suite("Show.isRecordingToFallback")
 struct ShowRecordingFallbackTests {
     @Test func hfsPathOnMountedVolume_isNotFallback() throws {
-        // A volume that is really mounted right now (the startup volume is always listed, as "/").
-        let vol = try #require(FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
-            .first { $0.path.hasPrefix("/Volumes/") })
+        // A volume that is really mounted right now. Needs a drive under /Volumes (the startup volume is "/", not
+        // there): a CI runner or a Mac with no external disk has none, so this skips instead of failing — same as
+        // startupVolumeAlias_isMounted below. (GitHub CI failed here from 2026-10-14 until this guard.)
+        guard let vol = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
+            .first(where: { $0.path.hasPrefix("/Volumes/") }) else { return }
         var show = Show.blank(channel: "5.1", device: "DEV1")
         show.show_dir = vol.lastPathComponent + ":"      // legacy HFS form -> /Volumes/<name>
         show.show_temp_dir = Show.localFallbackDir
@@ -79,8 +81,9 @@ struct ShowRecordDirMountTests {
     }
 
     @Test func realMountedVolume_isMounted_atRootAndBelow() throws {
-        let vol = try #require(FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
-            .first { $0.path.hasPrefix("/Volumes/") })
+        // Skips (does not fail) when nothing is mounted under /Volumes — CI runners have no external disk.
+        guard let vol = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
+            .first(where: { $0.path.hasPrefix("/Volumes/") }) else { return }
         #expect(Show.pathIsOnMountedVolume(vol.path))
         #expect(Show.pathIsOnMountedVolume(vol.path + "/Some/New/Folder"))
     }
