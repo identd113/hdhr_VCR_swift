@@ -10,29 +10,72 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ### The headline: fixes and polish
 
-2.6.0 made FEED and picture-in-picture good. 2.6.5 is a reliability release: it fixes the rough edges that turned up in daily use and in a lot of new automated testing, and it makes the app cost nothing when it is idle. There is one small new thing, a launch splash, described at the end.
+2.6.0 made FEED and picture-in-picture good. 2.6.5 is the release that makes the whole app steadier: it
+fixes the rough edges that turned up in daily use and in a lot of new automated testing, and it makes the
+app cost nothing when it is idle. There is one small new touch, a launch splash, mentioned at the end.
 
-**The fixes that matter most**
-- **Nothing freezes the app any more.** "No Tuner Available", "Quit while recording?", delete confirmations and file pickers used to stop the web guide, any Mac watching a FEED, and recording scheduling until you clicked OK. They are now sheets on the window you are using (or a small floating window when none is open), so everything keeps running behind them.
-- **Idle means idle.** After the launch splash finished, its window was only hidden and kept animating out of sight: about a fifth of a CPU core spent doing nothing, and a half-second hitch every ten seconds in the menu, the web guide and the player. That is gone — 0 % CPU when idle, and about 15 MB of memory comes back.
-- **Watch Now stays correct.** A recording that had just started could still show as "scheduled to record" without its Watch Now! / Watch from Beginning buttons until you restarted the app, and a window reopened after a show changed listed the previous airing for up to 30 seconds.
-- **FEED is steadier.** It starts about 8 seconds behind live so delivery hiccups don't stutter, recovers within a second after a slow patch instead of freezing, and is never mistaken for an ordinary tuner.
-- **Recordings are safer.** If an external drive is unplugged, a recording no longer lands in a look-alike folder on the startup disk — it falls back to your local recording folder. "Organize series recordings" no longer files one show under another whose title starts the same (such as "Law & Order SVU" under "Law & Order").
+**Why it needed work.** Three things stood out. A dialog — "No Tuner Available", "Quit while recording?",
+a delete confirmation, a file picker — froze everything behind it: the web guide, any Mac watching a FEED
+and recording scheduling all stopped until you clicked OK, so an unattended Mac with a stray alert looked
+hung. The launch splash never really went away: its window was only hidden, and its poster wall kept
+animating out of sight — about a fifth of a CPU core spent doing nothing, and a half-second hitch every ten
+seconds in the menu, the web guide and the player. And Watch Now could go stale: a recording that had just
+started could still read "scheduled to record" without its Watch Now! / Watch from Beginning buttons until
+you restarted the app.
 
-The fixes were checked with new tests that drive the real app on two Macs: dialogs staying non-blocking, Watch Now rows updating, idle CPU, and a 30-step FEED soak that checks the tuner count after every step.
+**How it got better.**
+- **Dialogs are sheets** on the window you are using (or a small floating window when none is open), so
+  everything keeps running while one is up.
+- **Idle means idle:** the hidden window is now destroyed when the splash ends — 0 % CPU when idle, about
+  15 MB of memory back, and no more periodic hitch.
+- **Watch Now is right the moment a recording starts**, and a window reopened after a show changes no
+  longer lists the previous airing.
+- **FEED is steadier:** it starts about 8 seconds behind live so delivery hiccups don't stutter, recovers
+  within a second after a slow patch instead of freezing, and is never mistaken for an ordinary tuner.
+- **Recordings are safer** when an external drive is unplugged or two series share the start of a title.
 
-### Updated
-- **Tuners are listed honestly:** unreachable tuners are no longer offered in Watch Now, picture-in-picture or Add Show; the menu names tuners that another device is using; and the Tuner pickers always land on an available tuner.
-- **The player's sound follows your Mac's output** — plug in headphones or switch to AirPods and playback moves with it; pin a device in More options → Audio Output.
-- **Discord cards wait out Discord's rate limit** instead of being dropped when several shows start at once; webhook URLs must be `https://`.
-- **Smaller fixes:** the player window no longer grows under the Dock or sits on "Connecting…" forever; the "All Tuners Busy" notice appears when switching from a recording to a live channel; Clear Guide Cache also clears the saved copies on disk; Add Show recovers if a tuner comes back after the window opened; Signal Strength Scan has a tuner pulldown; the first-run window is tall enough for the Next button; the picture-in-picture close button works with VoiceOver.
+These were checked with new automated tests that drive the real app on two Macs — dialogs staying
+non-blocking, Watch Now rows updating, idle CPU, and a 30-step FEED soak that checks, after every step, that
+your tuners are counted correctly.
+
+The small new touch: a short **launch splash** when you open the app — the logo, a live checklist and show
+posters flying in, then the logo flies up to the menu-bar icon. It is off with one switch in Settings →
+General, and skipped when macOS Reduce Motion is on.
+
+### Removed
+- **The setup wizard's own opening animation.** A new install now sees the launch splash and goes straight
+  to the first setup step.
 
 ### Added
+- **A launch splash** — the logo, version and a live checklist (tuner, channels, guide) over show posters
+  flying in from every edge, then the logo flies to the menu-bar icon. A new install gets it too, and it
+  flows into the setup wizard. Turn it off in Settings → General → "Show launch splash".
 - **Watch from Beginning for a FEED** — right-click a FEED to scrub back to where the recording started.
-- **Settings → About explains the menu-bar light** — the logo matches the light now showing, with a legend of every light and blink pattern.
+- **Settings → About explains the menu-bar light** — the logo matches the light now showing, with a
+  legend of every light and blink pattern.
 
-### A small new touch: the launch splash
-When you open the app, a short splash shows the logo, a live checklist (tuner, channels, guide) and show posters flying in, then the logo flies up to the menu-bar icon. A new install gets it too, and it flows into the setup wizard (whose own opening animation is gone). Turn it off in Settings → General → "Show launch splash"; it is skipped when macOS Reduce Motion is on.
+### Updated
+- **Fixed: no dialog freezes the app any more**, and **idle CPU is 0 %** (see above).
+- **Fixed: Watch Now could show a recording as "scheduled to record"** without its relay buttons, or list
+  the previous airing for up to 30 seconds after a reopen.
+- **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's
+  folder was the drive itself, the recording went into a look-alike folder on the Mac's own disk; it now
+  falls back to your local recording folder.
+- **Fixed: "Organize series recordings" could file one show under another** whose title starts the same
+  way (such as "Law & Order SVU" under "Law & Order").
+- **Fixed: a FEED could freeze for tens of seconds**, and "Watch from Beginning" could be off by seconds
+  when two shows were recording at once.
+- **Unreachable tuners are no longer offered** in Watch Now, picture-in-picture or Add Show; the menu names
+  tuners that another device is using; and the Tuner pickers always land on an available tuner.
+- **The player's sound follows your Mac's output** — plug in headphones or switch to AirPods and playback
+  moves with it; pin a device in More options → Audio Output.
+- **Discord cards wait out Discord's rate limit** instead of being dropped when several shows start at
+  once; webhook URLs must be `https://`.
+- **Smaller fixes:** the player window no longer grows under the Dock or sits on "Connecting…" forever; the
+  "All Tuners Busy" notice appears when switching from a recording to a live channel; Clear Guide Cache also
+  clears the saved copies on disk; Add Show recovers if a tuner comes back after the window opened; Signal
+  Strength Scan has a tuner pulldown; the first-run window is tall enough for the Next button; the
+  picture-in-picture close button works with VoiceOver.
 
 <!-- readme-latest
 - **Fixes and polish:** nothing freezes the app any more — alerts, confirmations and file pickers are sheets, so the web guide, FEED viewers and recording scheduling keep running while one is open
