@@ -50,6 +50,26 @@ settle time, and every per-second sample when a settle was slow).
   Direction matters: a shared tuner only ever has one Mac's FEED relay (the first recorder keeps it), so the recording Mac must be the one
   whose relay is on.
 
+## Dialog / main-thread / Watch Now tests (`DialogsAndWatchNowLiveTests.swift`, 2026-10-15)
+
+Five tests in an extension of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
+
+| Test | What it proves | ~Time |
+|---|---|---|
+| `watchNowRowGainsRelayButtonsWhenARecordingStartsWithTheWindowOpen` | with Watch Now already open, a recording that starts turns its row into "<title>, recording now" with the two relay buttons within 10 s (guards the stale-row / `.id` fix and the stale-`now` fix) | 8 s |
+| `unsavedSettingsPromptIsASheetAndTheWebServerKeepsAnswering` | dirty Settings can't be closed silently; the prompt is a sheet; `GET /` < 1 s while it is up; Cancel keeps the window; flipping the switch back closes cleanly | 5 s |
+| `quitPromptDoesNotBlockAndGoBackKeepsTheAppAndTheRecording` | Quit during a recording asks; web server answers meanwhile; a second Quit click doesn't stack a prompt; Go Back leaves app + recording running | 7 s |
+| `exportConfigPanelIsASheetAndTheWebServerKeepsAnswering` | the save panel is a sheet, the web server answers, Cancel dismisses it | 4 s |
+| `mainThreadStaysResponsive` | `GET /` every 100 ms for 20 s: no unanswered probe, worst < 2.5 s (baseline: the idle tick stalls ~0.6 s every 10 s) | 20 s |
+
+Mutation-checked: re-introducing `alert.runModal()` in `quit()` makes `quitPromptDoesNotBlock…` fail with "web server did not answer while the quit prompt was up". `NoBlockingDialogsTests` (unit) bans `runModal()` in the sources.
+
+**Guard against real recordings:** `MockRecording.ensure()` and `churnWhileTheMiniIsRecording` now skip (message on stderr) when a *real* show is recording or due to start within 12 minutes (`MockRecording.realRecordingConflict()`, read from the live config) — a real recording holds a tuner, so the tests used to fail confusingly ("No Tuner Available", `NO_RECORDING_TO_WATCH`) and `stopRecordingFromTheMenu` could have stopped the real show. `feedFromTheMiniShowsOnTheLaptop` is different: it *adopts* a recording that is already running (real or mock), so it can run beside one real recording.
+
+**Where the time goes (20 tests, ~216 s):** `pipFullWorkoutOverLiveRecording` 49 s (corner moves, four source changes, swaps — verified from the log), `guideSourceToggleDoesNotBreakWindows` 25 s (8 tabs × 2 passes, each waits for the tab title to change), `pipTapToSwap…` 17 s, `addingLiveChannel…` 14 s, `addShowGuideSearchBox…` 13 s. A PiP test's floor is ~7 s: mock ensure 2.5 s + Watch Now row 1.2 s + player start 3.4 s. Replacing the player-start wait's System Events walk with `ax_query` changed nothing measurable — the stream start dominates. The only "large unexpected" waits left are the churn/FEED settle windows (20–35 s on some steps): the *mini's* cached guide page lags the hardware by its 15 s rebuild cooldown + the 10 s poll (ISSUES.md, 2026-10-14); the window is 35 s, so it is tight.
+
+**Not covered live (known gaps):** the "No Tuner Available" sheet (needs both tuners busy), the Save branch of the unsaved-changes sheet (would change real settings), Edit Show's unsaved prompts, the delete / import-config confirmations, the other file pickers, and the reopen-across-a-:00/:30-boundary case (time-dependent; reproduced by hand, see ISSUES.md).
+
 ## Prerequisites
 
 - **Tuners idle.** Both must be free of *everyone* (no real recording, nothing watching on any device) — the test needs a free tuner for its

@@ -862,6 +862,7 @@ struct PiPTunerChurnTests {
         let e = env()
         guard let bin = compileLocalHelper(e.repoRoot) else { return }
         let tool = scenarioTool(e.repoRoot)
+        if let why = MockRecording.realRecordingConflict() { say("churnWhileTheMiniIsRecording skipped (needs both tuners): \(why)"); return }
         _ = sh("/usr/bin/python3", [tool, "clean"])
         let started = sh("/usr/bin/python3", [tool, "start"])
         if started.status == 2 { say("churnWhileTheMiniIsRecording skipped: nothing airing / no free tuner"); return }

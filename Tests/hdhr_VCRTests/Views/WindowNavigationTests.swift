@@ -237,19 +237,15 @@ if playerWin is missing value then return "NO_PLAYER_WINDOW"
 -- poster is gone and the primary is genuinely playing, unmuted — before any caller proceeds.
 -- (Found live 2026-09-19 that PiP tests must not proceed while the primary is still behind the
 -- poster, muted.) 60 × 0.25s = 15s: a cold start is ~2–3s, plus a slow tuner's connect.
+-- Native AX lookup (`ax_query find` exits 1 when the element is gone) instead of a System Events walk of the
+-- whole player window on every poll: that walk cost ~1 s per iteration and `entire contents` is empty here.
 set stillStarting to true
 repeat 60 times
-    set stillStarting to false
+    set stillStarting to true
     try
-        set allEls to entire contents of playerWin
-        repeat with e in allEls
-            try
-                if (value of attribute "AXIdentifier" of e) as string is "vlc-start-status" then
-                    set stillStarting to true
-                    exit repeat
-                end if
-            end try
-        end repeat
+        \(axShell("find", window: "", match: "id=vlc-start-status"))
+    on error
+        set stillStarting to false
     end try
     if not stillStarting then exit repeat
     delay 0.25
@@ -457,6 +453,10 @@ enum MockRecording {
     /// environment can't provide one (nothing airing / tuner full — a skip, like the rest of the suite) or the tool
     /// failed (an Issue is recorded).
     static func ensure() -> String? {
+        if let why = realRecordingConflict() {
+            FileHandle.standardError.write("SKIP (live test needs both tuners): \(why)\n".data(using: .utf8)!)
+            return nil
+        }
         let r = run(["ensure"])
         if r.status == 0 { return r.output }
         if r.status != 2 { Issue.record("mock_scenario.py ensure failed (\(r.status)): \(r.output)") }
@@ -465,6 +465,32 @@ enum MockRecording {
 
     static var isRecording: Bool { run(["status"]).status == 0 }
     static func clean() { _ = run(["clean"]) }
+
+    /// Why a live test must not start a mock recording right now, or nil when it is safe: a REAL (non-`[MOCK]`) show is
+    /// recording, or one is due to start within `leadMinutes`. A real recording holds a tuner, so a test that needs
+    /// the second one fails confusingly (a "No Tuner Available" alert, `NO_RECORDING_TO_WATCH`), and
+    /// `stopRecordingFromTheMenu` clicks Stop on whichever show is recording first.
+    static func realRecordingConflict(leadMinutes: Double = 12) -> String? {
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/hdhrVCRplus")
+        let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("hdhr_VCR-") && $0.pathExtension == "json" }
+            .sorted { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                    > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+        guard let file = files.first, let data = try? Data(contentsOf: file),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let shows = root["shows"] as? [[String: Any]] else { return nil }
+        let iso = ISO8601DateFormatter()
+        for show in shows {
+            let title = show["show_title"] as? String ?? ""
+            if title.hasPrefix("[MOCK]") { continue }
+            if show["show_recording"] as? Bool == true { return "a real recording is running: \(title)" }
+            guard show["show_active"] as? Bool == true, show["show_paused"] as? Bool != true,
+                  let next = (show["show_next"] as? String).flatMap(iso.date(from:)) else { continue }
+            let minutes = next.timeIntervalSinceNow / 60
+            if minutes > -2 && minutes < leadMinutes { return "a real recording starts in \(Int(minutes)) min: \(title)" }
+        }
+        return nil
+    }
 }
 
 @Suite("Window navigation smoke test (requires running app + Accessibility permission — invoke via --filter, not part of default swift test)", .serialized)

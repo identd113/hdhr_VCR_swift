@@ -92,8 +92,13 @@ struct WatchNowView: View {
         }
     }
 
+    /// `section` and the row's state are part of its identity (`.id`): a row that starts recording moves from the
+    /// Favorites / other `ForEach` into the Recording one inside the same `LazyVStack`, and with the bare
+    /// `channel.id` SwiftUI kept rendering the old row — "scheduled to record", no relay buttons — while the parent
+    /// had already computed `recording` (found 2026-10-14 with a logging build: parent `ring=recording`, row body
+    /// `ring=scheduled`; reproduced every time by the full `WindowNavigationTests` run).
     @ViewBuilder
-    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice,
+    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice, section: String,
                              ringState: GuideRingState, managedShow: Show?) -> some View {
         let (ch, entry) = pair
         WatchNowRow(
@@ -104,6 +109,7 @@ struct WatchNowView: View {
             ringState: ringState,
             managedShow: managedShow
         )
+        .id("\(section)|\(ch.id)|\(ringState)|\(managedShow?.show_recording ?? false)|\(managedShow?.show_id ?? "-")")
         .task(id: entry.ImageURL) {
             guard let urlStr = entry.ImageURL,
                   posterCache[urlStr] == nil else { return }
@@ -268,19 +274,19 @@ struct WatchNowView: View {
                         recTopBorder
                         ForEach(recording, id: \.channel.id) { pair in
                             let info = rowInfo[pair.channel.id]!
-                            channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
+                            channelRow(pair, device: device, section: "rec", ringState: info.ringState, managedShow: info.managedShow)
                         }
                     }
                     if !favs.isEmpty {
                         favTopBorder
                         ForEach(favs, id: \.channel.id) { pair in
                             let info = rowInfo[pair.channel.id]!
-                            channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
+                            channelRow(pair, device: device, section: "fav", ringState: info.ringState, managedShow: info.managedShow)
                         }
                     }
                     ForEach(others, id: \.channel.id) { pair in
                         let info = rowInfo[pair.channel.id]!
-                        channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
+                        channelRow(pair, device: device, section: "oth", ringState: info.ringState, managedShow: info.managedShow)
                     }
                 }
             }

@@ -91,3 +91,5 @@ Poster images: fetched via `ChannelIconCache.shared` (disk-backed actor with in-
 ## Intent
 
 `WatchNowView` is a live "what's on" grid that shows only channels with a currently-airing show. It is browse-and-watch focused: the primary action is **Watch** (in-app VLC player) rather than recording. It complements the full web guide (accessed via a browser, or embedded in the Add Show wizard's guide step) by being compact and quick to open — no scrolling through empty grid slots.
+
+**Row identity (2026-10-14):** `channelRow` gives each row `.id("<section>|<channel.id>|<ringState>|<show_recording>|<show_id>")`. A recording starting moves its row from the Favorites/other `ForEach` to the Recording `ForEach` of the same `LazyVStack`; keyed only by `channel.id`, SwiftUI kept rendering the stale row ("scheduled to record", no "Watch Now!"/"Watch from Beginning") although the parent had already computed `.recording`. Don't drop the state from the id. `boundaryRefreshLoop` also sets `now = Date()` before its first sleep (a reopened window otherwise lists the previous airing for up to 30 s).
