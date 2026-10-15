@@ -4,39 +4,67 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.
+
+### Responsiveness & performance (`Dialogs`, `LaunchSplashView`)
+
 - *Updated* — **Fixed: the app used about a fifth of a CPU core doing nothing, and briefly stalled every 10 seconds.** After the launch splash finished, its window was only hidden and its poster wall kept animating invisibly in the background. The splash window is now destroyed when it ends (on a first run, once setup is done): idle CPU is 0 %, about 15 MB of memory is freed, and the menu, web guide and player no longer hitch.
 - *Updated* — **Fixed: no dialog freezes the app any more.** Alerts ("No Tuner Available", the quit / relaunch / delete confirmations, "Unsaved changes", import / export, …) and the file pickers used to stop the web guide, FEED viewers and recording scheduling until you answered. They are now sheets on the open window (or a small floating window when none is open), so everything keeps running while one is up.
-- *Updated* — Removed the unused `Player_buffer_min_rate` setting from the config file (playback has run at exactly real time since 2026-10-03; an old config that still contains it loads normally).
-- *Updated* — **Fixed: Watch Now could miss the "Watch Now!" / "Watch from Beginning" buttons for up to 30 seconds** when you reopened it after a show had changed (it briefly listed the previous airing).
-- *Updated* — **Fixed: Watch Now could keep showing a recording as "scheduled to record", without its "Watch Now!" / "Watch from Beginning" buttons,** after the recording started — the row stayed stale until the app was restarted.
+
+### Launch splash & first run (`LaunchSplashView`, `FirstRunWizardView`)
+
 - *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over show posters flying in from every edge of the screen, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on. Settings → Maintenance → "Preview Launch Splash" plays it on demand.
 - *Updated* — **A new install now opens with the launch splash too, and the setup wizard opens on top of its poster wall.** The splash's logo glides into the wizard's header while the wizard fades in; the show posters stay behind it as a still backdrop (and step aside when you switch to another app) until you finish setup, then the wall fades and a ring pulses at the menu-bar icon. The wizard also takes on the splash's look: always dark, a soft glow, the same logo and rounded title.
 - *Removed* — **The setup wizard's own opening animation** (the tile animation with a Skip button, and the double-click-the-logo replay) — a new install sees the launch splash and then goes straight to the first setup step. Turning off "Show launch splash" (or Reduce Motion) opens the wizard directly, as before.
-- *Added* — **Settings → About explains the menu-bar light.** The logo now matches the light currently showing in the menu bar, and a legend lists what each light and blink pattern means.
-- *Updated* — The player's "?" card now lists right-click → "Add a picture-in-picture".
-- *Updated* — The Add Show guide uses native macOS scrollbars and sits flush to the window edge instead of in a bordered frame.
 - *Updated* — **Fixed: the first-run window was too short** — the Next button was clipped on the first page.
-- *Added* — **Watch from Beginning for a FEED.** Joined a recording partway through? Right-click the FEED and choose Watch from Beginning to scrub back to where it started. It appears only when the recording Mac reports its start time.
-- *Updated* — **A FEED now starts about 8 seconds behind the live edge** (once that much is on disk), giving playback a cushion so delivery hiccups no longer cause stutter. Transcoded FEEDs are unchanged.
-- *Updated* — **Fixed: a FEED could freeze for tens of seconds** while the recording was still growing, after the source's measured data rate dipped briefly. Playback now recovers within a second.
-- *Updated* — **Fixed: a FEED relay could be listed as an ordinary tuner** if it was first seen before it was ready to answer; it's now reclassified on the next probe.
+
+### Watch Now & tuners (`WatchNowView`, `PiPPickerView`, `AddShowView`, `HDHRManager`)
+
+- *Updated* — **Fixed: Watch Now could miss the "Watch Now!" / "Watch from Beginning" buttons for up to 30 seconds** when you reopened it after a show had changed (it briefly listed the previous airing).
+- *Updated* — **Fixed: Watch Now could keep showing a recording as "scheduled to record", without its "Watch Now!" / "Watch from Beginning" buttons,** after the recording started — the row stayed stale until the app was restarted.
 - *Updated* — **Unreachable tuners are no longer listed or offered.** Watch Now, picture-in-picture and Add Show only offer tuners that respond, and the menu shows an unreachable one only while a show is assigned to it — instead of lingering for up to an hour.
-- *Updated* — The menu header names tuners in use by another device instead of showing "⚠ app expects N".
-- *Updated* — **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's folder was the drive itself (for example `/Volumes/Raid6`), an unmounted drive wasn't noticed and the recording went into a plain folder of that name on the Mac's own disk. It now falls back to the local recording folder, as it already did for subfolders.
-- *Updated* — **Fixed: "Organize series recordings" could file one show's recordings under another** whose title starts the same way (such as "Law & Order SVU" under "Law & Order").
 - *Updated* — **Fixed: Watch Now / the menu could skip the "All Tuners Busy" notice** when you switched from a recording playing from disk to a live channel on a full tuner; it ended in "Playback Ended" instead.
-- *Updated* — **Clear Guide Cache now also deletes the saved copies on disk**, so the next load fetches fresh guide data instead of restoring the old one.
-- *Updated* — **Discord notifications wait out Discord's rate limit** and retry instead of dropping the card when several shows start or stop at once. Webhook URLs must now be `https://`, and editing a card works with a thread webhook (`?thread_id=`).
-- *Updated* — **Settings → Advanced → Signal Strength Scan has a Tuner pulldown** ("All Tuners" or one tuner) and a single Measure Signal button. Before, every tuner's button scanned all of them.
+- *Updated* — **Fixed: the Tuner picker in Watch Now and the picture-in-picture picker could show nothing selected** when the remembered tuner had gone offline; it now moves to one that is available.
+
+### Player & picture-in-picture (`VLCPlayerView`, `VLCBridge`, `PiPPickerView`)
+
+- *Updated* — The player's "?" card now lists right-click → "Add a picture-in-picture".
 - *Updated* — **The player's sound now follows your Mac's output.** Plug in headphones or switch to AirPods or another speaker and playback moves with it. Pick a specific device in More options → Audio Output to pin it; "System Default" goes back to following. An unplugged pinned device falls back to the default.
 - *Updated* — **Fixed: the player window could grow under the Dock** when it re-fit to a new picture shape or after a resize, could be pushed off a small screen by its minimum width, and skipped the re-fit when the channel changed shape in full screen.
 - *Updated* — **Fixed: the player could sit on "Connecting…" forever** if VLC couldn't open the stream, and a stream opened right before a picture-in-picture swap could lose its state.
 - *Updated* — **A picture-in-picture in the lower-left corner steps up out of the way** while the "i" info banner is showing, then returns.
-- *Updated* — **Fixed: "Watch from Beginning" on a FEED could be off by seconds when two shows were recording at once** — the later show's scrub bar was anchored on the earlier show's start. Each recording now publishes its own start.
-- *Updated* — **Fixed: Add Show could stay on an empty guide** if a tuner was unreachable when the window opened and came back later.
-- *Updated* — **Fixed: the Tuner picker in Watch Now and the picture-in-picture picker could show nothing selected** when the remembered tuner had gone offline; it now moves to one that is available.
 - *Updated* — **The picture-in-picture "×" close button is now reachable with VoiceOver** (and keyboard/automation) even when the pointer isn't over the PiP; it is still only drawn on hover.
+
+### FEED & relay (`VirtualTunerService`, `RecordingManager` FEED cache, `WebServer` relay routes)
+
+- *Added* — **Watch from Beginning for a FEED.** Joined a recording partway through? Right-click the FEED and choose Watch from Beginning to scrub back to where it started. It appears only when the recording Mac reports its start time.
+- *Updated* — **A FEED now starts about 8 seconds behind the live edge** (once that much is on disk), giving playback a cushion so delivery hiccups no longer cause stutter. Transcoded FEEDs are unchanged.
+- *Updated* — **Fixed: a FEED could freeze for tens of seconds** while the recording was still growing, after the source's measured data rate dipped briefly. Playback now recovers within a second.
+- *Updated* — **Fixed: a FEED relay could be listed as an ordinary tuner** if it was first seen before it was ready to answer; it's now reclassified on the next probe.
+- *Updated* — **Fixed: "Watch from Beginning" on a FEED could be off by seconds when two shows were recording at once** — the later show's scrub bar was anchored on the earlier show's start. Each recording now publishes its own start.
+
+### Recording engine & scheduling (`AppState`, `RecordingManager`)
+
+- *Updated* — **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's folder was the drive itself (for example `/Volumes/Raid6`), an unmounted drive wasn't noticed and the recording went into a plain folder of that name on the Mac's own disk. It now falls back to the local recording folder, as it already did for subfolders.
+- *Updated* — **Fixed: "Organize series recordings" could file one show's recordings under another** whose title starts the same way (such as "Law & Order SVU" under "Law & Order").
+
+### Guide, logos & discovery (`GuideStore`)
+
+- *Updated* — **Clear Guide Cache now also deletes the saved copies on disk**, so the next load fetches fresh guide data instead of restoring the old one.
+
+### Web guide & Discord (`WebServer`, `DiscordNotifier`)
+
+- *Updated* — **Discord notifications wait out Discord's rate limit** and retry instead of dropping the card when several shows start or stop at once. Webhook URLs must now be `https://`, and editing a card works with a thread webhook (`?thread_id=`).
 - *Updated* — The web guide's Record request now rejects invalid air-day names, and a stream request's `duration` is capped at 7 days.
+
+### Menu bar & Settings (`MenuContent`, `SettingsView`, `AddShowView`)
+
+- *Updated* — Removed the unused `Player_buffer_min_rate` setting from the config file (playback has run at exactly real time since 2026-10-03; an old config that still contains it loads normally).
+- *Added* — **Settings → About explains the menu-bar light.** The logo now matches the light currently showing in the menu bar, and a legend lists what each light and blink pattern means.
+- *Updated* — The Add Show guide uses native macOS scrollbars and sits flush to the window edge instead of in a bordered frame.
+- *Updated* — The menu header names tuners in use by another device instead of showing "⚠ app expects N".
+- *Updated* — **Settings → Advanced → Signal Strength Scan has a Tuner pulldown** ("All Tuners" or one tuner) and a single Measure Signal button. Before, every tuner's button scanned all of them.
+- *Updated* — **Fixed: Add Show could stay on an empty guide** if a tuner was unreachable when the window opened and came back later.
 
 ## v2.6.0 — 2026-10-10
 
