@@ -89,3 +89,49 @@ struct LocalHostVerifierTests {
         #expect(v.localHostNames() == ["new.local", "new"])
     }
 }
+
+// A rejected non-UTF-8 header block: silent for the smoke test's own probe from loopback, descriptive for anything else.
+@Suite("WebServer.nonUTF8RejectionLog")
+struct NonUTF8RejectionLogTests {
+    private func block(_ prefix: String, byte: UInt8, suffix: String = "") -> Data {
+        Data(Array(prefix.utf8) + [byte] + Array(suffix.utf8))
+    }
+    private let probePrefix = "GET /api/ping HTTP/1.1\r\nHost: evil.example.com\r\nX-T: "
+
+    @Test func firstInvalidOffset_isFound_andValidTextIsNil() {
+        #expect(WebServer.firstInvalidUTF8Offset(Data("héllo".utf8)) == nil)
+        #expect(WebServer.firstInvalidUTF8Offset(block("abc", byte: 0xE9, suffix: "def")) == 3)
+        #expect(WebServer.firstInvalidUTF8Offset(Data()) == nil)
+    }
+
+    @Test func selfTestProbeFromLoopback_isSilent() {
+        let probe = block(probePrefix, byte: WebServer.selfTestProbeByte)
+        #expect(WebServer.nonUTF8RejectionLog(headerSection: probe, endpoint: "127.0.0.1:51023") == nil)
+    }
+
+    @Test func sameProbeFromAnotherHost_isLoggedWithDetails() throws {
+        let probe = block(probePrefix, byte: WebServer.selfTestProbeByte)
+        let line = try #require(WebServer.nonUTF8RejectionLog(headerSection: probe, endpoint: "10.0.2.77:40000"))
+        #expect(line.contains("10.0.2.77:40000"))
+        #expect(line.contains("byte 0xE9 at offset 53 of 54"))
+        #expect(line.contains("GET /api/ping HTTP/1.1"))
+    }
+
+    @Test func differentByteOrOffsetFromLoopback_isLogged() throws {
+        let otherByte = block(probePrefix, byte: 0xFF)
+        let otherOffset = block("GET / HTTP/1.1\r\nX: ", byte: WebServer.selfTestProbeByte)
+        for data in [otherByte, otherOffset] {
+            let line = try #require(WebServer.nonUTF8RejectionLog(headerSection: data, endpoint: "127.0.0.1:1"))
+            #expect(line.contains("non-UTF-8 headers — byte 0x"))
+        }
+    }
+
+    @Test func nonPrintableBytesAreEscaped_andLongRequestLinesCut() throws {
+        let data = block(String(repeating: "A", count: 200), byte: 0x80)
+        let line = try #require(WebServer.nonUTF8RejectionLog(headerSection: data, endpoint: "10.0.0.1:2"))
+        #expect(line.contains("byte 0x80 at offset 200"))
+        #expect(line.contains("near «" + String(repeating: "A", count: 24) + "\\x80»"))
+        #expect(!line.contains(String(repeating: "A", count: 61)))
+    }
+}
+

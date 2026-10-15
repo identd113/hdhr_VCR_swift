@@ -366,7 +366,9 @@ struct WebServerSmokeTests {
         // A header block that isn't valid UTF-8 used to decode to "" — parsed as a bare `GET /` with
         // no Host/Origin, which skipped the anti-rebinding gate and served the full guide page.
         var bytes = Array("GET /api/ping HTTP/1.1\r\nHost: evil.example.com\r\nX-T: ".utf8)
-        bytes.append(0xE9)   // lone Latin-1 byte — invalid UTF-8
+        // The server stays silent for exactly this probe from loopback (WebServer.nonUTF8RejectionLog); keep them in step.
+        #expect(bytes.count == WebServer.selfTestProbeOffset)
+        bytes.append(WebServer.selfTestProbeByte)   // lone Latin-1 byte — invalid UTF-8
         bytes.append(contentsOf: Array("\r\n\r\n".utf8))
         let resp = rawRequest(bytes: bytes) ?? ""
         #expect(resp.contains("403"), "invalid-UTF-8 headers must be refused, got: \(resp.prefix(80))")

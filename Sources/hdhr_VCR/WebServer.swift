@@ -2239,7 +2239,9 @@ final class WebServer: @unchecked Sendable {
             // block parses as a bare `GET /` with no Host/Origin, which would skip the anti-rebinding
             // gate below (a browser fetch() can send Latin-1 header bytes).
             guard let headerText = String(data: headerSection, encoding: .utf8) else {
-                glog("[WebServer] rejected request from \(conn.endpoint): non-UTF-8 headers", level: .warning)
+                if let line = Self.nonUTF8RejectionLog(headerSection: headerSection, endpoint: "\(conn.endpoint)") {
+                    glog(line, level: .warning)
+                }
                 self.send(.forbidden("Malformed request headers"), on: conn)
                 return
             }
@@ -4734,6 +4736,47 @@ final class WebServer: @unchecked Sendable {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")
          .replacingOccurrences(of: "&",  with: "\\u0026")
+    }
+
+    // MARK: - Non-UTF-8 header rejection log
+
+    /// The post-deploy smoke test `nonUTF8HeaderBytes_areRejected_notTreatedAsBareGET` deliberately sends one invalid
+    /// byte — 0xE9 right after `X-T: ` (53 bytes into the header block) — from loopback to prove the guard works.
+    /// That exact probe is not worth a log line; the test asserts its own prefix length equals `selfTestProbeOffset`,
+    /// so editing the test cannot silently bring the noise back.
+    static let selfTestProbeByte: UInt8 = 0xE9
+    static let selfTestProbeOffset = 53
+
+    /// Offset of the first byte that is not valid UTF-8, or nil if the whole block is valid.
+    nonisolated static func firstInvalidUTF8Offset(_ data: Data) -> Int? {
+        var iterator = data.makeIterator()
+        var decoder = UTF8()
+        var offset = 0
+        while true {
+            switch decoder.decode(&iterator) {
+            case .scalarValue(let scalar): offset += UTF8.width(scalar)
+            case .emptyInput:              return nil
+            case .error:                   return offset
+            }
+        }
+    }
+
+    /// The warning for a rejected non-UTF-8 header block, or nil for the known self-test probe from loopback.
+    /// Otherwise it says what was wrong and where: the byte, its offset, the request line and the text around it.
+    nonisolated static func nonUTF8RejectionLog(headerSection: Data, endpoint: String) -> String? {
+        let bytes = [UInt8](headerSection)
+        guard let offset = firstInvalidUTF8Offset(headerSection), offset < bytes.count else {
+            return "[WebServer] rejected request from \(endpoint): non-UTF-8 headers"
+        }
+        let bad = bytes[offset]
+        if endpoint.hasPrefix("127.0.0.1:"), bad == selfTestProbeByte, offset == selfTestProbeOffset { return nil }
+        func printable(_ slice: ArraySlice<UInt8>) -> String {
+            slice.map { $0 >= 0x20 && $0 < 0x7F ? String(UnicodeScalar($0)) : String(format: "\\x%02X", $0) }.joined()
+        }
+        let requestLine = printable(bytes.prefix { $0 != 0x0D && $0 != 0x0A }.prefix(60)[...])
+        let near = printable(bytes[max(0, offset - 24)..<min(bytes.count, offset + 8)])
+        return "[WebServer] rejected request from \(endpoint): non-UTF-8 headers — byte 0x\(String(format: "%02X", bad)) "
+             + "at offset \(offset) of \(bytes.count), request line \"\(requestLine)\", near «\(near)»"
     }
 
     // MARK: - Cross-site / DNS-rebinding guard
