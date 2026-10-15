@@ -159,8 +159,6 @@ whether you're on Terminal.app or three hops away over SSH.
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch. Shows that fail too often are automatically paused.
 - **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
 - **Native Apple Silicon** — built for arm64.
-- **Never blocked by a dialog** — alerts and file pickers are sheets, so the web guide, FEED viewers and scheduling keep running while one is open. An idle app uses no CPU.
-- **Launch splash** — a short animated hello (show posters, a live tuner/channel/guide checklist). Turn it off in Settings → General.
 
 ### Scheduling
 
@@ -203,16 +201,14 @@ whether you're on Terminal.app or three hops away over SSH.
 
 ## What's New
 
-**v2.6.5 — fixes and polish.** Nothing freezes the app any more: alerts and file pickers are sheets, so the
-web guide, FEED viewers and scheduling keep running behind them. The idle app now uses no CPU, Watch Now shows
-a recording correctly the moment it starts, and FEED is steadier. A small new launch splash greets you at startup.
+**v2.6.0's headline: FEED and picture-in-picture grow up.** Recording FEED (Beta, introduced in 2.5.0) now lets you
+scrub back through another Mac's recording, reconnects by itself after a network blip, and delivers at full network
+speed. Picture-in-picture goes where you right-click, resizes by dragging its corner, and keeps your scrub position
+and audio output when you swap. Streams start on their own, with no Start button.
 
-**v2.6.0** made FEED and picture-in-picture grow up: scrub back through a FEED, automatic reconnect, full network
-speed, and a picture-in-picture you place and resize.
-
-**v2.5.0** introduced Recording FEED (Beta) — a recording Mac rebroadcasts a show as a small virtual tuner on your
-LAN, so any other Mac can watch it without a second tuner (Settings → Sharing → "Rebroadcast In-Progress
-Recordings") — and picture-in-picture.
+Also new: recordings no longer lose their first seconds, a heads-up before a recording needs your tuner, Cast to
+Chromecast (Beta), exclude recordings from Time Machine, and the space bar pauses a recording or FEED. Release builds
+are Apple Silicon only.
 
 See **[RELEASES.md](RELEASES.md)** for the rest of what changed in the current release and every
 version before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
