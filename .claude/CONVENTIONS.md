@@ -5,6 +5,7 @@ Overrides default Claude Code behavior.
 ## Commits
 - Group by theme; split unrelated concerns into separate commits with verbose messages.
 - Never push, tag, or set remote refs without explicit user permission.
+- Commit `Sources/hdhr_VCR/Version.swift` (the deploy build stamp) before every push. `.githooks/pre-push` (enable: `git config core.hooksPath .githooks`) enforces this and runs CI's build + unit tests locally first.
 
 ## Code Changes
 - Hard stop and explain before writing code that breaks an established convention. Seek permission.

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     # macos-latest for now; pin to a specific runner image (e.g. macos-15) if it stops
@@ -41,6 +45,12 @@ jobs:
         # machines/GPUs — there's no baseline for a fresh CI checkout to compare against, so this
         # suite is meant to be run and reviewed locally, not gated in CI.
         run: swift test --skip SnapshotTests
+
+      - name: Release build (arm64)
+        # deploy_release.sh builds exactly this (`swift build -c release --arch arm64`). Code behind `#if !DEBUG`
+        # (AppRelocator.swift, one block in WebServer.swift) is only compiled in a release build, so without this step a
+        # break there first shows up on release day. Debug `swift build` above never sees it.
+        run: swift build -c release --arch arm64
 
       - name: Strict concurrency check (hdhr_VCR, hdhr_guide_core, hdhr_guide)
         # Start of a Swift 6 strict-concurrency migration (2026-09-28) — kept as a separate,

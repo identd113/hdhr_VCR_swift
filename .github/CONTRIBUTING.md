@@ -33,3 +33,14 @@ This project's conventions (commit style, doc-update rules, architectural invari
 ## License
 
 By contributing, you agree your contribution is licensed under the project's [GPLv3 license](../LICENSE).
+
+## Before you push (one-time setup)
+
+CI runs the build and unit tests on every push. To catch a red run before it reaches GitHub, enable the pre-push hook once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-push` runs the same build and `swift test --skip SnapshotTests` as CI (about a minute), compiles the Python tools, syntax-checks the shell scripts, and refuses a push while `Sources/hdhr_VCR/Version.swift` (the deploy build stamp) has uncommitted changes. Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
+

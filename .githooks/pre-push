@@ -1,0 +1,28 @@
+#!/bin/bash
+# pre-push: run what CI runs, so a push that would go red is stopped here instead of on GitHub.
+# Mirrors .github/workflows/ci.yml (build + unit tests, snapshot tests skipped) plus the cheap script checks.
+# Also enforces the project rule that the deploy build stamp (Sources/hdhr_VCR/Version.swift) is committed before a push.
+#   Bypass once:   SKIP_PREPUSH=1 git push        (or: git push --no-verify)
+#   Enable once:   git config core.hooksPath .githooks
+[ -n "$SKIP_PREPUSH" ] && { echo "pre-push: skipped (SKIP_PREPUSH set)"; exit 0; }
+set -o pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if ! git diff --quiet -- Sources/hdhr_VCR/Version.swift || ! git diff --cached --quiet -- Sources/hdhr_VCR/Version.swift; then
+    echo "pre-push: Sources/hdhr_VCR/Version.swift has uncommitted changes — commit the version stamp before pushing." >&2
+    exit 1
+fi
+
+LOG=$(mktemp "${TMPDIR:-/tmp}/prepush.XXXXXX")
+trap 'rm -f "$LOG"' EXIT
+fail() { echo "pre-push: $1" >&2; [ -s "$LOG" ] && tail -n 40 "$LOG" >&2; echo "pre-push: push stopped (SKIP_PREPUSH=1 git push to override)." >&2; exit 1; }
+
+echo "pre-push: script checks…"
+for f in tools/*.py; do python3 -m py_compile "$f" >"$LOG" 2>&1 || fail "$f does not compile"; done
+for f in *.sh tools/*.sh .githooks/*; do bash -n "$f" >"$LOG" 2>&1 || fail "$f has a syntax error"; done
+
+echo "pre-push: swift build…"
+swift build >"$LOG" 2>&1 || fail "swift build failed"
+echo "pre-push: swift test (snapshot tests skipped, as in CI)…"
+swift test --skip SnapshotTests >"$LOG" 2>&1 || { grep -E "✘|error:" "$LOG" | head -20 >&2; fail "swift test failed"; }
+echo "pre-push: $(grep -E 'Test run with' "$LOG" | tail -1)"
