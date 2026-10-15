@@ -134,6 +134,12 @@ final class AppState: ObservableObject {
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
     @Published var isStartingUp: Bool = true
+    // First-run hand-off between the launch splash and the setup wizard (docs/LaunchSplash.md): on a brand-new install the
+    // splash opens the wizard itself when it finishes, instead of flying to the menu-bar icon.
+    // `launchSplashHandsOffToWizard` is set once, right before the splash opens; `firstRunWizardEntrance` is true while the
+    // wizard window is open-but-invisible, so it can fade in under the gliding logo.
+    var launchSplashHandsOffToWizard = false
+    @Published var firstRunWizardEntrance = false
     @Published var updateCheckResult: UpdateCheckResult?   // non-nil only when a newer GitHub release exists
     @Published var lastUpdateCheckDate: Date?               // nil = never checked this launch
     // Set to true in tests: startup() returns immediately, preventing idleLoop from running.
@@ -1967,10 +1973,9 @@ final class AppState: ObservableObject {
     // MARK: - Guide cache
 
     // Coalesces concurrent callers — only the first actually fetches; others await its Task
-    // directly instead of each firing their own guide.php round trip. Needed because this has three
-    // independent call sites (startup(), idleLoop()'s no-devices-yet retry, and
-    // FirstRunWizardView.prefetchIntroArtIfNeeded()) that can all observe an empty guideByDevice at
-    // once on a slow/cold launch — mirrors ensureLineupLoaded's loadingLineupTasks idiom above.
+    // directly instead of each firing their own guide.php round trip. Needed because this has more
+    // than one independent call site (startup(), idleLoop()'s no-devices-yet retry) that can both observe an empty
+    // guideByDevice at once on a slow/cold launch — mirrors ensureLineupLoaded's loadingLineupTasks idiom above.
     func fetchAllGuides() async {
         guard !devices.isEmpty else { return }
         if let existing = fetchAllGuidesTask {

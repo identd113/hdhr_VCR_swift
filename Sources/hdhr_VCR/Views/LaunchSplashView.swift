@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// Launch splash for returning users (first-run already done): logo, version, a live "finding your tuner /
+// Launch splash: logo, version, a live "finding your tuner /
 // loading the lineup / loading the guide" checklist over slowly drifting cached station logos and posters.
 // When startup has finished (never sooner than `minimumSeconds`, never later than `capSeconds`) the card
 // fades and the logo flies up to the menu-bar icon and pulses there — "I'm loaded, I live up here".
@@ -12,8 +12,10 @@ enum LaunchSplashPlan {
     static let minimumSeconds: TimeInterval = 3.4
     static let capSeconds: TimeInterval = 7.0
 
-    static func shouldShow(firstRunDone: Bool, enabled: Bool, underTests: Bool, reduceMotion: Bool) -> Bool {
-        firstRunDone && enabled && !underTests && !reduceMotion
+    /// Every launch, a brand-new install included (there it hands off to the setup wizard instead of flying to the
+    /// menu-bar icon — see `LaunchSplashView.handOffToWizard`).
+    static func shouldShow(enabled: Bool, underTests: Bool, reduceMotion: Bool) -> Bool {
+        enabled && !underTests && !reduceMotion
     }
 
     /// Long enough to read, short enough not to nag: wait for startup, but never under the minimum or past the cap.
@@ -45,6 +47,14 @@ enum LaunchSplashPlan {
         return [tuner, lineup, guide]
     }
 
+    /// Where the logo should land, in the splash window's own top-left (y-down) coordinates, to sit on a point `inset` from
+    /// the top-left of the wizard window (`wizardFrame`, screen coordinates, y up). `splashOrigin`/`splashHeight` are the
+    /// splash window's frame origin and height in the same screen coordinates.
+    static func wizardIconTarget(wizardFrame: NSRect, inset: CGPoint, splashOrigin: CGPoint, splashHeight: CGFloat) -> CGPoint {
+        CGPoint(x: wizardFrame.minX + inset.x - splashOrigin.x,
+                y: splashHeight - ((wizardFrame.maxY - inset.y) - splashOrigin.y))
+    }
+
     /// Where the menu-bar icon is, in screen coordinates (y up). Our own status item's window is found by class
     /// name (private AppKit type, so a loose match); falls back to the top-right of the menu-bar screen.
     @MainActor static func statusItemFrame() -> (frame: NSRect, found: Bool) {
@@ -59,8 +69,11 @@ enum LaunchSplashPlan {
 struct LaunchSplashView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
 
-    private enum Phase { case showing, flying, arrived }
+    // showing → (menu-bar finale: flying → arrived) or (first run: handoff → backdrop → arrived). `handoff`: the logo glides into the
+    // wizard's header while the wall stays; `backdrop`: the wizard is open on top of the (frozen) wall.
+    private enum Phase { case showing, handoff, backdrop, flying, arrived }
     @State private var phase: Phase = .showing
     @State private var assembled = false            // tiles have locked into the window: chrome, logo and text fade in
     @State private var started = Date()
@@ -69,6 +82,11 @@ struct LaunchSplashView: View {
     @State private var window: NSWindow?
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
     @State private var pulse = false
+    @State private var logoFaded = false            // first-run hand-off: the logo hands over to the wizard's own header icon
+    @State private var frozen = false               // first-run backdrop: the wall stops animating (no idle CPU/GPU while the wizard is open)
+    @State private var inWizardMode = false         // first-run hand-off under way: hide the wall whenever another app is frontmost
+    @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
+    @State private var ended = false
 
     private let cardSize = CGSize(width: 520, height: 340)
     private let logoSize: CGFloat = 108
@@ -81,8 +99,11 @@ struct LaunchSplashView: View {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
                 if tilesReady {
-                    MosaicTiles(images: tiles, started: started, screen: geo.size)
-                        .opacity(phase == .showing ? 1 : 0)
+                    MosaicTiles(images: tiles, started: started, screen: geo.size, frozen: frozen)
+                        .opacity(phase == .showing || phase == .handoff || phase == .backdrop ? 1 : 0)
+                    // First run: the wizard sits on this wall, so it is dimmed a little more once the wizard is coming.
+                    Color.black.opacity(phase == .handoff || phase == .backdrop ? 0.4 : 0)
+                        .allowsHitTesting(false)
                 }
 
                 RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
@@ -105,8 +126,8 @@ struct LaunchSplashView: View {
 
                 logo
                     .frame(width: logoSize, height: logoSize)
-                    .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
-                    .opacity(phase == .arrived ? 0 : (assembled ? 1 : 0))
+                    .scaleEffect(phase == .showing ? 1 : (phase == .handoff || phase == .backdrop ? FirstRunWizardView.headerIconSize / logoSize : 20 / logoSize))
+                    .opacity(phase == .arrived || logoFaded ? 0 : (assembled ? 1 : 0))
                     .position(phase == .showing ? logoHome : target)
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -117,6 +138,13 @@ struct LaunchSplashView: View {
             Self.configure(w)
         })
         .onAppear { if let w = window { Self.configure(w) } }
+        // While the wizard sits on the wall, the wall must not cover another app you switch to.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if inWizardMode { window?.alphaValue = 0 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            window?.alphaValue = 1
+        }
     }
 
     private var logo: some View {
@@ -199,7 +227,7 @@ struct LaunchSplashView: View {
     /// The show posters for the wall. Last launch's list is on hand instantly (and the images are on disk), so the
     /// splash never waits for the guide; fresh on-air posters are added if the guide is up within ~1 s. Fetches are
     /// capped at ~1.5 s overall — whatever has arrived by then is used. No posters at all → cached station logos.
-    @MainActor private func loadPosters() async -> [NSImage] {
+    @MainActor private func loadPosters() async -> (images: [NSImage], real: Bool) {
         let want = MosaicTiles.slotCount
         let saved = UserDefaults.standard.stringArray(forKey: Self.savedPostersKey) ?? []
         var fresh = posterURLs()
@@ -210,6 +238,14 @@ struct LaunchSplashView: View {
         }
         var urls = Array((fresh.shuffled() + saved.shuffled()).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.prefix(want))
         urls.shuffle()
+        let posters = await fetchImages(urls)
+        if !posters.isEmpty { return (posters, true) }
+        return (await ChannelIconCache.shared.sampleCachedImages(limit: want), false)
+    }
+
+    /// Downloads/loads the given poster URLs through the shared icon cache, capped at ~1.5 s overall — whatever has arrived
+    /// by then is returned.
+    @MainActor private func fetchImages(_ urls: [String]) async -> [NSImage] {
         final class Box: @unchecked Sendable { var images: [Int: NSImage] = [:]; var done = 0 }
         let box = Box()
         for (i, u) in urls.enumerated() {
@@ -220,17 +256,40 @@ struct LaunchSplashView: View {
         }
         var ticks = 0
         while box.done < urls.count, ticks < 15 { try? await Task.sleep(for: .milliseconds(100)); ticks += 1 }
-        let posters = box.images.sorted { $0.key < $1.key }.map(\.value)
-        if !posters.isEmpty { return posters }
-        return await ChannelIconCache.shared.sampleCachedImages(limit: want)
+        return box.images.sorted { $0.key < $1.key }.map(\.value)
+    }
+
+    /// A brand-new install has no saved poster list and usually no guide yet when the wall is built, so the wall starts as
+    /// placeholder tiles. Once the guide supplies on-air art, swap the real posters in (a slow cross-fade) — the wall is the
+    /// backdrop for the setup wizard, so it should end up as show images. Gives up after ~60 s.
+    @MainActor private func upgradeToRealPosters() async {
+        let want = MosaicTiles.slotCount
+        for _ in 0..<120 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if ended || Task.isCancelled { return }
+            let urls = posterURLs()
+            guard urls.count >= 8 else { continue }
+            let images = await fetchImages(Array(urls.shuffled().prefix(want)))
+            guard images.count >= 4, !ended else { continue }
+            glog("[Splash] wall upgraded from placeholders to \(images.count) show posters")
+            withAnimation(.easeInOut(duration: 0.9)) { tiles = images; wallHasPosters = true }
+            UserDefaults.standard.set(Array(urls.prefix(60)), forKey: Self.savedPostersKey)
+            return
+        }
     }
 
     @MainActor private func run(in size: CGSize) async {
+        defer { ended = true }
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; tiles = []; tilesReady = false }
-        tiles = await loadPosters()
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; logoFaded = false; frozen = false; inWizardMode = false; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
+        let loaded = await loadPosters()
+        tiles = loaded.images
+        wallHasPosters = loaded.real
+        if !loaded.real, state.launchSplashHandsOffToWizard {
+            Task { @MainActor in await upgradeToRealPosters() }
+        }
         started = Date()                                                       // tiles start flying now
         tilesReady = true
         try? await Task.sleep(for: .milliseconds(Int((MosaicTiles.assembleSeconds + 0.1) * 1000)))
@@ -241,6 +300,11 @@ struct LaunchSplashView: View {
         }
         let fresh = posterURLs()
         if !fresh.isEmpty { UserDefaults.standard.set(Array(fresh.prefix(60)), forKey: Self.savedPostersKey) }
+        // Brand-new install: no flight to the menu bar — the setup wizard is next, and the logo glides into its header.
+        if state.launchSplashHandsOffToWizard {
+            await handOffToWizard(in: size)
+            return
+        }
         // Where to land, in the window's own top-left coordinates.
         let item = LaunchSplashPlan.statusItemFrame().frame
         let origin = window?.frame.origin ?? .zero
@@ -251,6 +315,66 @@ struct LaunchSplashView: View {
         phase = .arrived
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
         try? await Task.sleep(for: .milliseconds(750))
+        dismiss()
+    }
+}
+
+extension LaunchSplashView {
+    /// First run: open the setup wizard (invisible), then — wall staying put as the backdrop — the text falls away while the
+    /// logo glides to where the wizard's header icon will be; the wizard fades in on top of the wall, over the logo. The splash
+    /// window stays open behind the wizard (wall frozen, hidden whenever another app is frontmost) until the wizard is
+    /// dismissed, then the wall fades and a ring pulses at the menu-bar icon: "set up, and living up here".
+    /// The wizard and the splash share one look (dark, glow, same logo), so this reads as one continuous opening.
+    @MainActor fileprivate func handOffToWizard(in size: CGSize) async {
+        state.launchSplashHandsOffToWizard = false     // decided — the app's fallback timer (openLaunchSplashIfNeeded) stands down
+        state.firstRunWizardEntrance = true            // the wizard renders fully transparent from its first frame
+        inWizardMode = true
+        // Wizard above the wall: the splash drops below the pop-up level it needs for the menu-bar flight (not wanted here),
+        // and the wizard goes one level above it.
+        window?.level = .modalPanel
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "first-run-wizard")
+        var wizard: NSWindow?
+        for _ in 0..<40 {                               // up to ~2 s for the scene to create its window
+            wizard = NSApp.windows.first { $0.title == "Welcome to hdhrVCRplus" }
+            if wizard != nil { break }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        wizard?.level = NSWindow.Level(rawValue: NSWindow.Level.modalPanel.rawValue + 1)
+        try? await Task.sleep(for: .milliseconds(200)) // its WindowAction sizes and centres it just after it appears
+        let origin = window?.frame.origin ?? .zero
+        let height = window?.frame.height ?? size.height
+        if let wizard {
+            // Screen coordinates are y-up; this view's are y-down from the splash window's top-left.
+            target = LaunchSplashPlan.wizardIconTarget(wizardFrame: wizard.frame, inset: FirstRunWizardView.headerIconCenter,
+                                                       splashOrigin: origin, splashHeight: height)
+        } else {
+            target = CGPoint(x: size.width / 2, y: size.height / 2)
+        }
+        withAnimation(.easeInOut(duration: 0.8)) { phase = .handoff }
+        try? await Task.sleep(for: .milliseconds(800))
+        withAnimation(.easeOut(duration: 0.5)) { state.firstRunWizardEntrance = false }
+        wizard?.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .milliseconds(250))
+        withAnimation(.easeOut(duration: 0.3)) { logoFaded = true }
+        try? await Task.sleep(for: .milliseconds(450))
+        phase = .backdrop
+        frozen = true                                   // the wall stops animating while the wizard is open
+        // Stay as the backdrop until the wizard is dismissed (Finish, Escape or the close button all set the flag).
+        while !state.config.First_run_wizard_shown, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        wizard?.level = .normal                         // a reopened wizard (Settings → Reset First-Run Setup) is an ordinary window
+        window?.level = .popUpMenu                      // back above the menu bar for the ring
+        window?.alphaValue = 1
+        inWizardMode = false
+        let item = LaunchSplashPlan.statusItemFrame().frame
+        let o = window?.frame.origin ?? .zero
+        let h = window?.frame.height ?? size.height
+        target = CGPoint(x: item.midX - o.x, y: h - (item.midY - o.y))
+        withAnimation(.easeOut(duration: 0.6)) { phase = .arrived }
+        withAnimation(.easeOut(duration: 0.7)) { pulse = true }
+        try? await Task.sleep(for: .milliseconds(800))
         dismiss()
     }
 }
@@ -269,6 +393,8 @@ private struct MosaicTiles: View {
     let images: [NSImage]
     let started: Date
     let screen: CGSize
+    /// True once the wall is seated and only serving as a backdrop: the timeline stops, so it costs nothing while idle.
+    var frozen: Bool = false
 
     /// Deterministic 0…1 jitter per tile and salt — stable across frames without storing state.
     private static func rnd(_ i: Int, _ salt: Int) -> Double {
@@ -287,7 +413,7 @@ private struct MosaicTiles: View {
         let wall = Self.wall
         let slotW = wall.width / CGFloat(Self.cols), slotH = wall.height / CGFloat(Self.rows)
         let origin = CGPoint(x: (screen.width - wall.width) / 2, y: (screen.height - wall.height) / 2)
-        TimelineView(.animation) { ctx in
+        TimelineView(.animation(paused: frozen)) { ctx in
             let elapsed = ctx.date.timeIntervalSince(started)
             ZStack {
                 ForEach(0..<Self.slotCount, id: \.self) { i in

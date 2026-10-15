@@ -97,7 +97,7 @@ struct hdhr_VCRApp: App {
     // that value is guaranteed live — openDonationNagIfNeeded() reads this, not the live config, so
     // its own suppression guard is race-free at every call site, not just the launch-time one.
     @State private var needsFirstRunWizard: Bool
-    // Returning-user launch splash (docs/LaunchSplash.md): decided once from the same synchronous config peek
+    // Launch splash (docs/LaunchSplash.md; every launch, a first run included): decided once from the same synchronous config peek
     // as needsFirstRunWizard, opened at most once per run from whichever launch hook fires first.
     private let launchSplashWanted: Bool
     @State private var launchSplashOpened = false
@@ -121,7 +121,7 @@ struct hdhr_VCRApp: App {
         let localNetworkConfirmed = cfg?.Local_network_confirmed ?? false
         _needsFirstRunWizard = State(initialValue: !(cfg?.First_run_wizard_shown ?? false))
         launchSplashWanted = LaunchSplashPlan.shouldShow(
-            firstRunDone: cfg?.First_run_wizard_shown ?? false, enabled: cfg?.Show_launch_splash ?? true,
+            enabled: cfg?.Show_launch_splash ?? true,
             underTests: runningUnderTests,
             reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         let showDock: Bool
@@ -286,7 +286,7 @@ struct hdhr_VCRApp: App {
         Window("Welcome to hdhrVCRplus", id: "first-run-wizard") {
             FirstRunWizardView()
                 .environmentObject(appState)
-                .preferredColorScheme(resolvedColorScheme)
+                .preferredColorScheme(.dark)   // the launch splash's look — always dark, whatever the Appearance setting
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -327,7 +327,23 @@ struct hdhr_VCRApp: App {
     private func openLaunchSplashIfNeeded() {
         guard launchSplashWanted, !launchSplashOpened else { return }
         launchSplashOpened = true
+        // Brand-new install: the splash opens the setup wizard itself when it finishes (see LaunchSplashView.handOffToWizard)
+        // instead of the wizard appearing on top of it at launch — openFirstRunWizardIfNeeded() stands down while it runs.
+        appState.launchSplashHandsOffToWizard = needsFirstRunWizard
         activateAndOpen(windowId: "launch-splash")
+        // Fallback: if the splash never gets as far as opening the wizard (its task cancelled, the window closed from
+        // outside), the wizard must still appear — nothing else opens it on this launch. The splash clears the flag the
+        // moment it starts its own hand-off (well inside this delay: cap 7 s + posters + ~2 s of flight).
+        if needsFirstRunWizard {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(14))
+                guard appState.launchSplashHandsOffToWizard else { return }
+                appState.launchSplashHandsOffToWizard = false
+                appState.firstRunWizardEntrance = false
+                glog("[Startup] launch splash never handed off — opening the setup wizard directly", level: .warning)
+                activateAndOpen(windowId: "first-run-wizard")
+            }
+        }
     }
 
     // No-op once Donation_unlocked is set.
@@ -345,6 +361,8 @@ struct hdhr_VCRApp: App {
     // No-op once needsFirstRunWizard is false. Same shape as openDonationNagIfNeeded() above.
     private func openFirstRunWizardIfNeeded() {
         guard needsFirstRunWizard else { return }
+        // The splash is running and will open the wizard when it finishes.
+        guard !(launchSplashOpened && appState.launchSplashHandsOffToWizard) else { return }
         activateAndOpen(windowId: "first-run-wizard")
     }
 

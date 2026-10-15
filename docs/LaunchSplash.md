@@ -1,6 +1,6 @@
-# LaunchSplash — returning-user launch screen
+# LaunchSplash — launch screen (and the first-run opening)
 
-`Views/LaunchSplashView.swift`. Shown at launch **only** when first-run setup is already complete, `AppConfig.Show_launch_splash` is on (Settings → General, default on), the app isn't under tests, and macOS "Reduce motion" is off. A brand-new install gets the first-run wizard instead.
+`Views/LaunchSplashView.swift`. Shown at every launch when `AppConfig.Show_launch_splash` is on (Settings → General, default on), the app isn't under tests, and macOS "Reduce motion" is off (`LaunchSplashPlan.shouldShow`). **A brand-new install gets it too** (changed 2026-10-14; it used to get only the wizard): the splash then flows into the setup wizard, which opens on top of the poster wall, instead of ending with the fly-to-the-menu-bar finale — see "First run" below.
 
 ## What it shows
 - **No window or panel.** On-air show posters (from the guide) fly in from every direction — random points on a ring outside the screen, spinning as they land — and settle into a loose 10×5 wall (slightly jittered and tilted, centre posters dimmed). The logo, "hdhrVCRplus", the release version (`CFBundleShortVersionString`, build stamp as fallback) and a three-line checklist float over it on a soft edgeless dark glow. The checklist flips to check marks as `AppState` publishes them — tuner found (name · tuner count), channel lineup (N channels), guide ready; no tuner after startup → "No tuner found".
@@ -8,6 +8,17 @@
 - **Finale:** the wall fades, the logo shrinks and flies to the menu-bar icon, a ring pulses there, and the window closes — "I'm loaded; I live up here". The icon's position is found from our own `NSStatusBarWindow` (private class, matched loosely) with a top-right-of-screen fallback.
 
 **On demand:** Settings → Maintenance → *Preview Launch Splash* opens the same window any time (it ignores the enable toggle).
+
+## First run (the wall stays as the setup wizard's backdrop)
+When first-run setup isn't done, `hdhr_VCRApp.openLaunchSplashIfNeeded()` sets `AppState.launchSplashHandsOffToWizard` before opening the splash and `openFirstRunWizardIfNeeded()` stands down (the splash opens the wizard itself). The splash plays exactly as above until startup finishes; then `LaunchSplashView.handOffToWizard`:
+1. sets `AppState.firstRunWizardEntrance` (the wizard renders fully transparent from its first frame), drops the splash window from `.popUpMenu` to `.modalPanel`, opens the `first-run-wizard` window and puts it one level higher — so the wizard sits **on top of the poster wall**;
+2. finds that window, waits ~0.2 s for its `WindowAction` to size/centre it, and works out where the wizard's header icon will be (`FirstRunWizardView.headerIconCenter`, `LaunchSplashPlan.wizardIconTarget`);
+3. the title/checklist fall away, the wall stays (a 40 % black scrim is added so the wizard reads) and the logo glides to that spot, shrinking to the header icon's size (0.8 s);
+4. the wizard fades in over it (0.5 s) and the logo fades out (the wizard's own header icon is where it was);
+5. phase `.backdrop`: the wall is **frozen** (`MosaicTiles(frozen:)` pauses its `TimelineView` — ~0 % CPU while the wizard is open) and the splash window stays up, click-through, until `First_run_wizard_shown` flips (Finish, Escape and the close button all set it). While another app is frontmost (`NSApplication.didResignActiveNotification`) the splash window is set to alpha 0 so the wall never covers it, and restored on `didBecomeActiveNotification`;
+6. when the wizard is dismissed the wall fades, the splash climbs back to `.popUpMenu`, a ring pulses at the menu-bar icon, and the window closes (~0.8 s).
+**Posters on a brand-new install:** there is no saved poster list and usually no guide yet when the wall is built, so it starts as placeholder tiles (or cached station logos). `upgradeToRealPosters()` polls the guide (≤ 60 s) and, once it supplies on-air art, swaps the real posters in with a 0.9 s animation (logged `[Splash] wall upgraded …`) and saves the list so the next launch has it instantly. (Not exercised in testing: the dev Mac already has a saved list.)
+The wizard and the splash share one look (always dark, glow, same logo, rounded title) — see `docs/FirstRunWizardView.md`'s "Look and first-run hand-off". Safety net: `hdhr_VCRApp.openLaunchSplashIfNeeded` starts a 14 s fallback timer; if the splash hasn't cleared `launchSplashHandsOffToWizard` by then (it clears it the moment it starts its own hand-off), the wizard is opened directly. (An `.onDisappear` safety net was tried first and removed: the splash window reconfigures itself at launch, which fires a spurious disappear and opened the wizard on top of the splash at ~2 s.) If the splash is off / skipped (Reduce Motion, tests), the wizard opens at launch as it always did.
 
 ## Timing
 `LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (7 s) — so a missing tuner can't hold it up.

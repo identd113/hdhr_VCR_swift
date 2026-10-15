@@ -326,7 +326,7 @@ struct SettingsView: View {
                     HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.") }
                 }
                 Toggle(isOn: $draft.Show_launch_splash) {
-                    HStack { Text("Show launch splash"); InfoButton("Show a brief logo screen when the app starts (after first-run setup), while it finds your tuner and loads the guide. It ends by pointing at the menu bar icon.") }
+                    HStack { Text("Show launch splash"); InfoButton("Show a brief logo screen when the app starts, while it finds your tuner and loads the guide. It ends by pointing at the menu bar icon — or, on a first run, by flowing into the setup wizard.") }
                 }
                 Picker(selection: $draft.Appearance_mode) {
                     Text("Auto").tag("auto")

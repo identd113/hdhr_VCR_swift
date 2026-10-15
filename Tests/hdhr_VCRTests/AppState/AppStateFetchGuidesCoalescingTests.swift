@@ -24,9 +24,8 @@ private let minimalGuideJSON = """
 [{"GuideNumber":"5.1","GuideName":"KVUE","Guide":[]}]
 """
 
-// Regression coverage for the race a pre-release review found: AppState.startup(),
-// idleLoop()'s no-devices-yet retry, and FirstRunWizardView.prefetchIntroArtIfNeeded() are three
-// independent call sites that can all observe an empty guideByDevice at once on a slow/cold
+// Regression coverage for the race a pre-release review found: AppState.startup() and
+// idleLoop()'s no-devices-yet retry are independent call sites that can both observe an empty guideByDevice at once on a slow/cold
 // launch and each call fetchAllGuides() themselves, doubling the guide.php round trip.
 // fetchAllGuides() now coalesces concurrent callers onto one in-flight Task
 // (AppState.swift's fetchAllGuidesTask, mirroring ensureLineupLoaded's loadingLineupTasks idiom)

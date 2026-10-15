@@ -16,22 +16,13 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case intro, recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
-    // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
-    // deliberately (see the .onAppear/.onChange below), so every "step starts at
-    // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
-    // and reduce-motion users never instantiate IntroSplashOverlay at all.
+    enum Step: Int, CaseIterable { case recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
     // closure, so the transition the next render picks up already reflects the right direction.
     @State private var goingForward = true
 
-    // Guards the one-time intro splash so it plays exactly once per wizard-open (reset alongside
-    // hasLoadedInitialValues/hasCheckedNetwork below). Reduce Motion skips the splash entirely — a
-    // different code path, not a faster version of the same one.
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasPlayedIntro = false
     // Finish-flourish: a one-shot glow pulse behind the header icon (keyframeAnimator, triggered
     // by incrementing this counter) + button-label morph, same visual language as DonationNagView's
     // own appear-glow. A trigger counter — not a plain "flourishing" Bool — because the glow must
@@ -76,7 +67,6 @@ struct FirstRunWizardView: View {
     private enum NetworkStatus { case checking, confirmed, notFound }
     @State private var networkStatus: NetworkStatus = .checking
     @State private var hasCheckedNetwork = false
-    @State private var hasPrefetchedIntroArt = false
 
     // Presentational device-aware view of the tri-state above, for TunerDiscoveryCard — this is
     // the only thing that changed about network detection; checkNetworkAccessIfNeeded()'s actual
@@ -111,7 +101,13 @@ struct FirstRunWizardView: View {
         }
     }
 
-    /// Fixed window height for every post-intro step: tall enough for the longest page, never taller than the screen.
+    /// Panel width and the header logo's size/position — shared with `LaunchSplashView`, whose logo glides to exactly this
+    /// spot (window top-left → centre of the 52pt glow ZStack: 20pt side padding + 26, 18pt top padding + 26) on a first run.
+    static let panelWidth: CGFloat = 460
+    static let headerIconSize: CGFloat = 44
+    static let headerIconCenter = CGPoint(x: 46, y: 44)
+
+    /// Fixed window height for every step: tall enough for the longest page, never taller than the screen.
     /// A fixed (bounded) height — not `nil` — is what makes the ScrollView below safe; an unbounded ideal height inside
     /// `.windowResizability(.contentSize)` is what crashed the Recording FEED step before. Header and Back/Next sit
     /// outside the scroll view, so the Next button can never be pushed off the bottom.
@@ -120,24 +116,17 @@ struct FirstRunWizardView: View {
     }
 
     @ViewBuilder private func stepScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        if step == .intro { content() } else { ScrollView { content() } }
+        ScrollView { content() }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if step != .intro {
-                header
-                Divider().opacity(0.5)
-            }
+            header
+            Divider().opacity(0.5)
 
             stepScroll {
             ZStack {
                 switch step {
-                case .intro:
-                    // Real content is the .overlay below (needs to render unclipped past this
-                    // VStack's own bounds) — this branch exists only so the switch stays
-                    // exhaustive and reserves no space of its own.
-                    Color.clear
                 case .recordingDefaults:
                     recordingDefaultsScreen
                         .transition(slideTransition)
@@ -167,74 +156,58 @@ struct FirstRunWizardView: View {
             }
             .clipped()
 
-            if step != .intro {
-                Divider().opacity(0.5)
-                HStack {
-                    if step != .recordingDefaults {
-                        Button("Back") { goBack() }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("wizard-back")
-                    }
-                    Spacer()
-                    if step != .notificationTiming {
-                        Button("Next") { goNext() }
-                            .buttonStyle(.borderedProminent)
-                            .accessibilityIdentifier("wizard-next")
-                    } else {
-                        finishButton
-                    }
+            Divider().opacity(0.5)
+            HStack {
+                if step != .recordingDefaults {
+                    Button("Back") { goBack() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("wizard-back")
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                Spacer()
+                if step != .notificationTiming {
+                    Button("Next") { goNext() }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("wizard-next")
+                } else {
+                    finishButton
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        // Width only normally — height follows content (see the old comment this replaces: the
-        // old fixed 460×460 left a dead gap below Step 1's rows). During .intro the frame grows to
-        // a fixed 640×480 "stage" so the splash's tiles have real room to fan out and fly off
-        // before the panel shrinks back down on hand-off — animated in the same withAnimation
-        // transaction as the step change (goNext()/goBack() already animate step this way; the
-        // intro hand-off in finishIntro() below does the same).
-        .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : Self.stepHeight)
-        // (Post-intro height is the fixed `stepHeight` above — a bounded frame, so the step's ScrollView is safe.)
-        // Keeps the window on-screen across steps whose content height differs a lot (see
+        // Fixed step height (a bounded frame — see stepHeight) and a fixed 460pt width.
+        .frame(width: Self.panelWidth, height: Self.stepHeight)
         // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
-        // varies per step by design (docs/FirstRunWizardView.md: "height follows content"), but
-        // `.windowResizability(.contentSize)` only resizes the window -- it doesn't reposition it,
-        // and AppKit's default resize keeps the window's top edge fixed and grows the bottom edge
-        // downward. A step tall enough to push that bottom edge past the visible screen hides the
-        // Next/Back/Finish row entirely, even though it's still present in the view tree (reported
-        // live for Step 4, Recording FEED -- the tallest step, combining a diagram, two paragraphs,
-        // and a Label). Centering after every step change means any extra height grows symmetrically
-        // off both the top and bottom instead of only downward, which is what actually keeps the
-        // button row on-screen. See Views/WindowAction.swift for the shared NSViewRepresentable
-        // idiom this and DonationNagView's floating-level setter both use.
+        // varies per step by design, but `.windowResizability(.contentSize)` only resizes the
+        // window -- it doesn't reposition it, and AppKit's default resize keeps the window's top edge
+        // fixed and grows the bottom edge downward, which can push the Back/Next row off-screen.
+        // Centering after every step change keeps any extra height growing symmetrically. The
+        // window is also made see-through (clear, non-opaque) so the rounded dark panel below floats
+        // like the launch splash does instead of sitting on a rectangular system window background.
+        // See Views/WindowAction.swift for the shared NSViewRepresentable idiom.
         .background(WindowAction(trigger: step) { w in
             // Pin the window to the size this step asks for. Left to `.windowResizability(.contentSize)` alone, a window
             // AppKit restored at an earlier (shorter) frame kept it — the Back/Next row sat below the bottom edge.
-            let isIntro = (step == .intro)
-            w.setContentSize(NSSize(width: isIntro ? 640 : 460, height: isIntro ? 480 : Self.stepHeight))
+            w.setContentSize(NSSize(width: Self.panelWidth, height: Self.stepHeight))
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = true
             w.center()
         })
-        // Same floating-panel chrome as DonationNagView — thickMaterial + 20pt rounded corners +
-        // a faint border + drop shadow — so this reads as the same "app's own chrome" rather than
-        // a bare Settings-style dialog in a hiddenTitleBar window with no material treatment.
-        .background(.thickMaterial)
+        // The launch splash's look: always dark, a soft warm glow from the logo corner and a vignette, white type —
+        // rounded 20pt panel with a faint border and the same drop shadow DonationNagView uses.
+        .background(WizardBackdrop())
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-        // Splash tiles live in a SECOND overlay, attached after the shadow/clip chain above rather
-        // than inside the clipped VStack — .overlay content is unclipped by default, so tiles can
-        // fly past the panel's own rounded-rect edges within the 640×480 stage. See
-        // docs/FirstRunWizardView.md's "Intro Splash" section.
-        .overlay {
-            if step == .intro {
-                IntroSplashOverlay(onFinished: finishIntro)
-            }
-        }
+        .environment(\.colorScheme, .dark)
+        // First run: the launch splash opens this window fully transparent and fades it in under the gliding logo
+        // (LaunchSplashView.handOffToWizard). Not set for any other way of opening the wizard.
+        .opacity(state.firstRunWizardEntrance ? 0 : 1)
         .onAppear {
             // This single-instance Window's @State persists across even a FULL close (Escape/red
             // button → dismiss()) — reopening later via openWindow(id:) still refires onAppear
@@ -249,17 +222,13 @@ struct FirstRunWizardView: View {
                 resetForFreshRun()
             }
             loadCurrentValuesIfNeeded()
-            playIntroIfNeeded()
         }
         .task { await checkNetworkAccessIfNeeded() }
-        .task { await prefetchIntroArtIfNeeded() }
         .onChange(of: state.config.First_run_wizard_shown) { oldValue, newValue in
             if oldValue && !newValue {
                 resetForFreshRun()
                 loadCurrentValuesIfNeeded()
-                playIntroIfNeeded()
                 Task { await checkNetworkAccessIfNeeded() }
-                Task { await prefetchIntroArtIfNeeded() }
             }
         }
         .onExitCommand { dismiss() }
@@ -274,7 +243,7 @@ struct FirstRunWizardView: View {
         }
     }
 
-    // MARK: - Intro splash
+    // MARK: - Fresh run
 
     // Shared by both onAppear and onChange above — see onAppear's own comment for why both call
     // sites are needed (they cover complementary reopen scenarios).
@@ -282,37 +251,7 @@ struct FirstRunWizardView: View {
         hasLoadedInitialValues = false
         hasFinished = false
         hasCheckedNetwork = false
-        hasPrefetchedIntroArt = false
-        hasPlayedIntro = false
         step = .recordingDefaults
-    }
-
-    // Entered deliberately (never the resting default — see `step`'s own comment). Reduce Motion
-    // skips straight past: a different code path, not a faster version of the same one.
-    private func playIntroIfNeeded() {
-        guard !hasPlayedIntro, !reduceMotion else { return }
-        hasPlayedIntro = true
-        withAnimation(.easeInOut(duration: 0.3)) { step = .intro }
-    }
-
-    // Splash's own hand-off — identical shape to goNext(): same withAnimation, same target step,
-    // so the panel's shrink-back-down and Step 1's slide-in ride the one transition mechanism the
-    // whole wizard already uses, not a second bespoke one.
-    private func finishIntro() {
-        goingForward = true
-        withAnimation(.easeInOut(duration: 0.25)) { step = .recordingDefaults }
-    }
-
-    // Double-click the header logo (any non-intro step — the intro has no header of its own) to replay
-    // the splash on demand. Deliberately does NOT go through playIntroIfNeeded()'s own
-    // !hasPlayedIntro guard — that guard exists to stop it firing a *second* time automatically,
-    // not to block an explicit, repeatable user request for one; hasPlayedIntro itself is left
-    // untouched so a later automatic reopen (e.g. via Settings → Maintenance → "Reset First-Run
-    // Setup", which calls resetForFreshRun() separately) still behaves exactly as documented
-    // there. Still respects Reduce Motion, same as every other path into `.intro`.
-    private func replayIntro() {
-        guard !reduceMotion else { return }
-        withAnimation(.easeInOut(duration: 0.3)) { step = .intro }
     }
 
     // MARK: - Header
@@ -345,25 +284,22 @@ struct FirstRunWizardView: View {
                                     LinearKeyframe(0.0, duration: 0.3)
                                 }
                             }
+                        // Same logo treatment as the launch splash (soft shadow, rounded corners); the splash's logo
+                        // glides to exactly this spot on a first run — keep Self.headerIconSize / headerIconCenter in step.
                         Image(nsImage: icon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 36, height: 36)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.2), lineWidth: 1)
-                            )
-                            .onTapGesture(count: 2) { replayIntro() }
-                            .help("Double-click to replay the intro animation")
-                            .accessibilityIdentifier("wizard-header-logo-replay-intro")
+                            .frame(width: Self.headerIconSize, height: Self.headerIconSize)
+                            .clipShape(RoundedRectangle(cornerRadius: Self.headerIconSize * 0.2, style: .continuous))
+                            .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+                            .accessibilityHidden(true)
                     }
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Welcome to hdhrVCRplus").font(.headline)
+                    Text("Welcome to hdhrVCRplus").font(.system(size: 20, weight: .bold, design: .rounded))
                     Text("A few defaults before you get started.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 0)
             }
@@ -379,7 +315,7 @@ struct FirstRunWizardView: View {
             // Derived from orderedSteps rather than a hardcoded "Step N of 5" per case, so adding,
             // removing, or reordering a wizard step can't leave this announcement silently stale
             // the way a hand-maintained switch could.
-            .accessibilityLabel(step == .intro ? "" : {
+            .accessibilityLabel({
                 let n = (orderedSteps.firstIndex(of: step) ?? 0) + 1
                 return "Step \(n) of \(orderedSteps.count): \(Self.stepTitle(step))"
             }())
@@ -736,7 +672,6 @@ struct FirstRunWizardView: View {
     private var orderedSteps: [Step] {
         Step.allCases.filter { step in
             switch step {
-            case .intro: return false   // shown separately, before this Next/Back sequence begins
             case .recordingRelay: return state.config.FEED_feature_enabled
             default: return true
             }
@@ -745,7 +680,6 @@ struct FirstRunWizardView: View {
 
     private static func stepTitle(_ step: Step) -> String {
         switch step {
-        case .intro:              return ""
         case .recordingDefaults:  return "Recording Defaults"
         case .vlcRequired:        return "VLC"
         case .webLAN:             return "Web LAN"
@@ -798,67 +732,6 @@ struct FirstRunWizardView: View {
             }
         }
         networkStatus = state.config.Local_network_confirmed ? .confirmed : .notFound
-    }
-
-    // While the intro splash plays (it runs from a separate `.task`, concurrently with
-    // checkNetworkAccessIfNeeded() above — see that function's own comment on why calling into
-    // discovery/lineup loading this way is safe), warm the image cache for a handful of channels'
-    // show posters plus their channel logos — favorites first, since those are what the
-    // user is most likely to land on in Watch Now or the guide right after finishing setup. Doesn't
-    // do its own device discovery (avoiding a second concurrent network scan for the same thing
-    // checkNetworkAccessIfNeeded() is already doing) — just waits briefly for `state.devices` to be
-    // populated by whichever of that function or AppState's own launch-time `startup()` gets there
-    // first. Purely best-effort with no UI binding of its own: nothing here is displayed by this
-    // view, so a slow network, an empty lineup, or Reduce Motion cutting the wait short all just
-    // mean less got warmed, never an error state.
-    private func prefetchIntroArtIfNeeded() async {
-        guard !hasPrefetchedIntroArt else { return }
-        hasPrefetchedIntroArt = true
-        for _ in 0..<20 where state.devices.isEmpty {
-            try? await Task.sleep(for: .milliseconds(200))
-        }
-        guard !state.devices.isEmpty else { return }
-        await withTaskGroup(of: Void.self) { group in
-            for device in state.devices {
-                group.addTask { await state.ensureLineupLoaded(for: device) }
-            }
-        }
-        // Only call if some device still has no guide data — fetchAllGuides() itself coalesces a
-        // concurrent call from startup()'s own launch-time fetch onto the same in-flight Task
-        // (see that function's own comment), so this check is purely to skip the call entirely
-        // once a prior run of this same function already populated every device.
-        // recordableDevices — a virtual relay device's guide can never populate (its guide fetch is
-        // deliberately skipped, see AppState.performFetchAllGuides), so an unfiltered check here
-        // would always see it as "still empty" and call fetchAllGuides() on every run even after
-        // every real device's guide has already loaded.
-        if state.recordableDevices.contains(where: { (state.guideByDevice[$0.DeviceID] ?? []).isEmpty }) {
-            await state.fetchAllGuides()
-        }
-        // state.onAirNow(for:) — the same lookup `/api/now.json` and the menu's own "on now" list
-        // use — already does exactly the favorite-first sort this wants (its own sort puts
-        // `channel.isFavorite` first, ties broken by channel number) and already resolves each
-        // channel's actual current `GuideEntry` the correct way (`guideEntries(deviceId:channelNum:)`,
-        // GuideStore's own per-channel/time-range index). `GuideChannel.Guide` on `guideByDevice`
-        // itself is never populated — the per-program data lives only in that separate index — so
-        // reading `channel.Guide` directly here (an earlier version of this function did) silently
-        // found nothing on every real device; `onAirNow` is the correct accessor other call sites
-        // already use for exactly this reason. `.prefix(10)` caps this at "a few posters," not a
-        // fetch of the whole on-air lineup.
-        var posterURLs: Set<String> = []
-        for device in state.recordableDevices {
-            for (_, entry) in state.onAirNow(for: device).prefix(10) {
-                if let url = entry.ImageURL, !url.isEmpty {
-                    posterURLs.insert(url)
-                }
-            }
-        }
-        guard !posterURLs.isEmpty else { return }
-        await withTaskGroup(of: Void.self) { group in
-            for url in posterURLs {
-                group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
-            }
-        }
-        glog("[Wizard] intro prefetch warmed \(posterURLs.count) show poster(s) across \(state.devices.count) device(s)")
     }
 
     // The `?Privacy_LocalNetwork` anchor that's supposed to deep-link straight to the Local
@@ -949,5 +822,18 @@ private struct FinishGlowValues: Animatable {
     var animatableData: AnimatablePair<CGFloat, Double> {
         get { AnimatablePair(scale, opacity) }
         set { scale = newValue.first; opacity = newValue.second }
+    }
+}
+
+/// The wizard panel's background — the launch splash's look: near-black, a soft warm glow from the logo corner (the
+/// logo is orange) and a vignette at the foot, no material. Drawn inside the rounded clip in `FirstRunWizardView.body`.
+private struct WizardBackdrop: View {
+    var body: some View {
+        ZStack {
+            Color(white: 0.075)
+            RadialGradient(colors: [Color.orange.opacity(0.20), .clear], center: UnitPoint(x: 0.10, y: 0.0),
+                           startRadius: 8, endRadius: 360)
+            LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
+        }
     }
 }
