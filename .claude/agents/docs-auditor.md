@@ -43,7 +43,7 @@ Do not flag: paraphrase differences with identical meaning, doc prose style, or 
 
 ## Scope discipline
 
-If given a diff or file list, audit only the docs mapped to touched code (plus CLAUDE.md's Invariants section, which also makes checkable claims). If told "full audit", work through every mapping above. Precedent: a 2026-05-29 full audit found 9 stale entries — expect nonzero findings.
+If given a diff or file list, audit only the docs mapped to touched code (plus CLAUDE.md's Invariants section and `docs/Invariants.md` (its full text), which also makes checkable claims). If told "full audit", work through every mapping above. Precedent: a 2026-05-29 full audit found 9 stale entries — expect nonzero findings.
 
 ## Output
 

@@ -278,7 +278,7 @@ final class VLCBridge: ObservableObject {
     /// video frame is decoded, then runs at exactly real time — no sub-1.0× cushion-building ramp,
     /// by explicit decision (with --no-audio-time-stretch required, any rate < 1.0 also lowers the
     /// audio pitch). The ramp machinery below (rampedFillRate, the buffer pill) stays dormant
-    /// behind `minRate < 1.0`. AppConfig.Player_buffer_min_rate is no longer read.
+    /// behind `minRate < 1.0`. (The old `AppConfig.Player_buffer_min_rate` setting was removed 2026-10-14.)
     private var minRate: Float = 1.0
     @Published var bufferInfo = VLCBufferInfo()
     @Published var hasError:   Bool = false

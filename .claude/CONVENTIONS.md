@@ -21,7 +21,7 @@ Overrides default Claude Code behavior.
 ## Deploy & Scripts
 - Update `deploy.sh` to compensate for build issues rather than working around manually.
 - Add unexpected build artifacts to `.gitignore` (targeted wildcard if parent scope is too broad).
-- Script any multi-step repeatable task; add `--help` flag; document in CLAUDE.md's `## Tools` table.
+- Script any multi-step repeatable task; add `--help` flag; document in CLAUDE.md's `## Tools` table (one-line summary) and `docs/Tools.md` (full description).
 
 ## Issue Tracking
 - Unrelated bugs found during work → `ISSUES.md` at repo root. Note commit hash on resolution.

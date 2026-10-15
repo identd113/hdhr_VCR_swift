@@ -282,7 +282,7 @@ before trying another relay-side mechanical fix — this session spent a lot of 
 plausible-sounding server-side theories (disk latency, chunk size, network bandwidth) that all
 measured out fine, while the client's own demux behavior was never directly instrumented.
 
-**Resolved (decision made), 2026-09-09**: `feedLiveEdgeCushionBytes` set to `0` after this same
+**Resolved (decision made), 2026-09-09** *(the `feedLiveEdgeCushionBytes` mechanism was later removed entirely; the current join backoff is `WebServer.feedJoinBackoffSeconds`, 8 s)*: `feedLiveEdgeCushionBytes` set to `0` after this same
 regression reproduced fresh in a follow-up cross-machine session, this time with a real thread-level
 capture (`sample <pid>` on the laptop, squarely mid-stall) confirming the client's own demux pipeline
 goes idle — not backed up, not blocked trying to read — while the relay keeps delivering bytes
