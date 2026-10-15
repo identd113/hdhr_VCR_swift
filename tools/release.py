@@ -6,7 +6,7 @@ checks and the doc edits around it, in the order of docs/Distribution.md's "Rele
 
   release.py preflight <version> [--tests] [--ui]   read-only readiness report (exit 1 on any ✗)
   release.py stamp     <version> [--date YYYY-MM-DD] turn CHANGELOG "## Unreleased" into "## v<version> — <date>",
-                                                      open a fresh "## Unreleased", sync the bundled copy and RELEASES' date
+                                                      sync the bundled copy and RELEASES' date (re-running keeps the date)
   release.py notes     <version>                     write dist/release-<version>/notes.md (the GitHub Release notes)
   release.py publish   <version> [--yes] [--live]    create the GitHub Release from the DMG; then (with --live)
                                                       point README's "Latest" section at it. Dry-run unless --yes.
@@ -233,20 +233,29 @@ def preflight(args):
 def stamp(args):
     v = args.version
     check_version(v)
-    date = args.date or datetime.date.today().isoformat()
     cl = read(CHANGELOG)
-    if re.search(rf"^## v{re.escape(v)} — ", cl, re.M):
-        print(f"CHANGELOG.md already has v{v}; nothing to stamp.")
+    existing = re.search(rf"^## v{re.escape(v)} — ([0-9-]+)\n", cl, re.M)
+    if existing:
+        date = args.date or existing.group(1)           # re-running never silently re-dates a stamped release
+        if date != existing.group(1):
+            cl = cl[:existing.start(1)] + date + cl[existing.end(1):]
+            write(CHANGELOG, cl)
+            print(f"CHANGELOG.md: v{v} re-dated to {date}")
+        else:
+            print(f"CHANGELOG.md already has v{v} — {date}; nothing to stamp.")
     else:
+        date = args.date or datetime.date.today().isoformat()
         m = re.search(r"^## Unreleased\n", cl, re.M)
         if not m:
             sys.exit("CHANGELOG.md has no '## Unreleased' section to stamp")
         body = re.search(r"^## Unreleased\n(.*?)(?=^## )", cl, re.S | re.M).group(1)
         if not any(l.startswith("- ") for l in body.splitlines()):
             sys.exit("'## Unreleased' has no entries")
-        cl = cl[:m.start()] + "## Unreleased\n\n" + f"## v{v} — {date}\n" + cl[m.end():]
+        # Precedent (v2.5.0, v2.6.0 at their tags): no Unreleased heading is left behind — the first change after the
+        # release adds one again, so the About screen never shows an empty section.
+        cl = cl[:m.start()] + f"## v{v} — {date}\n" + cl[m.end():]
         write(CHANGELOG, cl)
-        print(f"CHANGELOG.md: Unreleased → v{v} — {date} (fresh empty Unreleased on top)")
+        print(f"CHANGELOG.md: Unreleased → v{v} — {date}")
     write(CHANGELOG_COPY, read(CHANGELOG))
     print("Sources/hdhr_VCR/CHANGELOG.md synced")
     rel = read(RELEASES)
