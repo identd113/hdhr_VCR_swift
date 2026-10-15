@@ -219,8 +219,11 @@ func quickRecordMenu<Content: View>(
 // WindowCloseInterceptor — all three ran the same NSAlert shape independently before this.
 enum UnsavedChangesChoice { case save, discard, cancel }
 
+/// Non-blocking (`Dialogs.present` — a sheet on `window`/the frontmost window, never `runModal()`), so the
+/// web server and idle loop keep running while it is up.
 @MainActor
-func promptUnsavedChanges(title: String, canSave: Bool, savePrompt: String, blockedPrompt: String) -> UnsavedChangesChoice {
+func promptUnsavedChanges(title: String, canSave: Bool, savePrompt: String, blockedPrompt: String,
+                          on window: NSWindow? = nil) async -> UnsavedChangesChoice {
     let alert = NSAlert()
     alert.messageText = title
     if canSave {
@@ -228,7 +231,7 @@ func promptUnsavedChanges(title: String, canSave: Bool, savePrompt: String, bloc
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
+        switch await Dialogs.present(alert, on: window) {
         case .alertFirstButtonReturn:  return .save
         case .alertSecondButtonReturn: return .discard
         default:                       return .cancel
@@ -237,7 +240,7 @@ func promptUnsavedChanges(title: String, canSave: Bool, savePrompt: String, bloc
         alert.informativeText = blockedPrompt
         alert.addButton(withTitle: "Discard Changes")
         alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
+        switch await Dialogs.present(alert, on: window) {
         case .alertFirstButtonReturn: return .discard
         default:                      return .cancel
         }

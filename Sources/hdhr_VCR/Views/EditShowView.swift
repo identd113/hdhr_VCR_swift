@@ -64,14 +64,16 @@ struct EditShowView: View {
         }
         .onExitCommand {
             guard isDirty else { dismiss(); return }
-            switch promptUnsavedChanges(
-                title: "Unsaved Changes", canSave: canSave,
-                savePrompt: "Save your changes before closing?",
-                blockedPrompt: "This show can't be saved yet — fix the title/channel first. Discard changes?"
-            ) {
-            case .save:    saveWithoutDismiss(); dismiss()
-            case .discard: dismiss()
-            case .cancel:  break
+            Task { @MainActor in
+                switch await promptUnsavedChanges(
+                    title: "Unsaved Changes", canSave: canSave,
+                    savePrompt: "Save your changes before closing?",
+                    blockedPrompt: "This show can't be saved yet — fix the title/channel first. Discard changes?"
+                ) {
+                case .save:    saveWithoutDismiss(); dismiss()
+                case .discard: dismiss()
+                case .cancel:  break
+                }
             }
         }
         // No onBecomeKey use here (unlike SettingsView): isDirty compares two snapshots taken
@@ -89,14 +91,16 @@ struct EditShowView: View {
         .onChange(of: state.editingShowId) { oldValue, newValue in
             guard newValue != show?.show_id else { return } // reverted back to the loaded show (Cancel below) — nothing to do
             guard isDirty else { loadShow(); return }
-            switch promptUnsavedChanges(
-                title: "Unsaved Changes", canSave: canSave,
-                savePrompt: "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?",
-                blockedPrompt: "\"\(show?.show_title ?? "This show")\" can't be saved yet — fix the title/channel first. Discard changes?"
-            ) {
-            case .save:    saveWithoutDismiss(); loadShow()
-            case .discard: loadShow()
-            case .cancel:  state.editingShowId = oldValue // stay on the show currently being edited
+            Task { @MainActor in
+                switch await promptUnsavedChanges(
+                    title: "Unsaved Changes", canSave: canSave,
+                    savePrompt: "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?",
+                    blockedPrompt: "\"\(show?.show_title ?? "This show")\" can't be saved yet — fix the title/channel first. Discard changes?"
+                ) {
+                case .save:    saveWithoutDismiss(); loadShow()
+                case .discard: loadShow()
+                case .cancel:  state.editingShowId = oldValue // stay on the show currently being edited
+                }
             }
         }
     }
@@ -224,7 +228,7 @@ struct EditShowView: View {
     private func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url { recordFolder = url }
+        Dialogs.choose(panel) { url in if let url { recordFolder = url } }
     }
 
     private func saveWithoutDismiss() {

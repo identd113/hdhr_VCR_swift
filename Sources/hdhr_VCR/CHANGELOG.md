@@ -4,6 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **Fixed: no dialog freezes the app any more.** Alerts ("No Tuner Available", the quit / relaunch / delete confirmations, "Unsaved changes", import / export, …) and the file pickers used to stop the web guide, FEED viewers and recording scheduling until you answered. They are now sheets on the open window (or a small floating window when none is open), so everything keeps running while one is up.
 - *Updated* — Removed the unused `Player_buffer_min_rate` setting from the config file (playback has run at exactly real time since 2026-10-03; an old config that still contains it loads normally).
 - *Updated* — **Fixed: Watch Now could miss the "Watch Now!" / "Watch from Beginning" buttons for up to 30 seconds** when you reopened it after a show had changed (it briefly listed the previous airing).
 - *Added* — **A launch splash.** When you open the app (after first-run setup), a short splash shows the logo, version and a live checklist — tuner found, channels, guide — over show posters flying in from every edge of the screen, then the logo flies up to the menu-bar icon to show it's ready. Turn it off in Settings → General → "Show launch splash"; it's skipped when macOS Reduce Motion is on. Settings → Maintenance → "Preview Launch Splash" plays it on demand.

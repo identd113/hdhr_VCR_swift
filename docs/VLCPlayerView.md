@@ -704,7 +704,7 @@ func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: 
         // tuner check (reuses the same slot) — only a device switch needs one.
         if mgr.currentDeviceID != device.DeviceID {
             await fetchDeviceStatus(for: device)
-            if tunersFull(for: device.DeviceID) { alertTunerFull(...); return }
+            if tunersFull(for: device.DeviceID) { alertTunerFull(...); return }   // alertTunerFull is non-blocking (`Dialogs.show`), never runModal — see docs/AppState.md
         }
         // Re-check after the await — a second concurrent call (e.g. a double-click)
         // could have already opened the player while this one was suspended.

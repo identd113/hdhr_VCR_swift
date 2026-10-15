@@ -454,3 +454,5 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 - **Version stamp only on deploy** — running `swift build` directly won't update `Version.swift`. A Xcode pre-build phase or Swift Package Manager build plugin would make the version always current.
 
 - **Settings window size is fixed** — `560×520` is hardcoded. On smaller displays this can crowd the form content.
+
+**Dialogs (2026-10-14):** the unsaved-changes prompt on window close is a sheet on the Settings window, not `runModal()` (`WindowCloseInterceptor.windowShouldClose` returns `false`, asks via `promptUnsavedChanges(…on:)`, then `close()`s once answered); Export/Import Config and the folder/script pickers are `Dialogs.choose` sheets; the "Config imported — restart required" alert is `Dialogs.show`. Nothing in Settings blocks the main thread, so the web server keeps answering while any of them is open.

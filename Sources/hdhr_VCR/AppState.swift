@@ -4512,7 +4512,7 @@ final class AppState: ObservableObject {
             alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
             alert.alertStyle = .warning
-            if alert.runModal() == .alertFirstButtonReturn {
+            if await Dialogs.present(alert) == .alertFirstButtonReturn {
                 deleteShow(show)
                 completion()
             }
@@ -5371,7 +5371,7 @@ final class AppState: ObservableObject {
             alert.informativeText = "\"\(title)\" has no stream URL in the current lineup — try refreshing the lineup or guide."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            Dialogs.show(alert)
             onRefused?()
             return
         }
@@ -5591,7 +5591,7 @@ final class AppState: ObservableObject {
             alert.informativeText = message
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            Dialogs.show(alert)
             return nil
         }
 
@@ -6205,7 +6205,7 @@ final class AppState: ObservableObject {
             alert.informativeText = "\"\(title)\" has started recording but hasn't written any video yet. Try Watch Now again in a moment."
             alert.alertStyle = .informational
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            Dialogs.show(alert)
         }
     }
 
@@ -6393,13 +6393,17 @@ final class AppState: ObservableObject {
                                              seekBaseSeconds: recordingRelayElapsedSeconds(source))
     }
 
+    /// Non-blocking (`Dialogs.show`), never `runModal()`: a modal alert parks the main thread in its own
+    /// event loop, so every web-server handler (the guide, SSE, other Macs' FEED viewers) stops answering
+    /// until someone clicks OK — found 2026-10-14 when a stray "No Tuner Available" froze `:1980`
+    /// (`sample`: watchAsSecondary → tunerAvailable → alertTunerFull → runModal).
     private func alertTunerFull(tunerCount: Int, deviceId: String) {
         let alert = NSAlert()
         alert.messageText = "No Tuner Available"
         alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(deviceId) are in use. Stop a recording or close another stream to free up a tuner."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        Dialogs.show(alert)
     }
 
     // MARK: - Tuner signal status
@@ -7057,11 +7061,20 @@ final class AppState: ObservableObject {
         alert.addButton(withTitle: "Relaunch")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .informational
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        glog("=== hdhrVCRplus relaunching for VLC (recordings kept running) ===")
-        teardownForExit(stopRecordings: false, thenStop: launchAndTerminate)
+        guard !exitPromptShowing else { return }
+        exitPromptShowing = true
+        Task { @MainActor in
+            let response = await Dialogs.present(alert)
+            exitPromptShowing = false
+            guard response == .alertFirstButtonReturn else { return }
+            glog("=== hdhrVCRplus relaunching for VLC (recordings kept running) ===")
+            teardownForExit(stopRecordings: false, thenStop: launchAndTerminate)
+        }
     }
+
+    /// True while the quit / relaunch "Recordings in progress" prompt is up, so a second click on Quit
+    /// doesn't stack another one now that the prompt no longer blocks the main thread.
+    private var exitPromptShowing = false
 
     func quit() {
         guard isRecording else {
@@ -7077,18 +7090,23 @@ final class AppState: ObservableObject {
         alert.addButton(withTitle: "Stop Recordings & Quit")
         alert.addButton(withTitle: "Go Back")
         alert.alertStyle = .warning
-        NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:  // keep recordings running, quit
-            glog("=== hdhrVCRplus quit (recordings kept running) ===")
-            teardownForExit(stopRecordings: false)
-            NSApplication.shared.terminate(nil)
-        case .alertSecondButtonReturn: // stop all, then quit
-            glog("=== hdhrVCRplus quit (recordings stopped) ===")
-            teardownForExit(stopRecordings: true)
-            NSApplication.shared.terminate(nil)
-        default:                       // Go Back — cancel
-            break
+        guard !exitPromptShowing else { return }
+        exitPromptShowing = true
+        Task { @MainActor in
+            let response = await Dialogs.present(alert)
+            exitPromptShowing = false
+            switch response {
+            case .alertFirstButtonReturn:  // keep recordings running, quit
+                glog("=== hdhrVCRplus quit (recordings kept running) ===")
+                teardownForExit(stopRecordings: false)
+                NSApplication.shared.terminate(nil)
+            case .alertSecondButtonReturn: // stop all, then quit
+                glog("=== hdhrVCRplus quit (recordings stopped) ===")
+                teardownForExit(stopRecordings: true)
+                NSApplication.shared.terminate(nil)
+            default:                       // Go Back — cancel
+                break
+            }
         }
     }
 }

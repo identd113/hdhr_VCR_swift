@@ -808,7 +808,7 @@ struct FirstRunWizardView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
-        if panel.runModal() == .OK, let url = panel.url { saveFolder = url.path }
+        Dialogs.choose(panel) { url in if let url { saveFolder = url.path } }
     }
 }
 

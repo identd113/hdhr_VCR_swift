@@ -486,7 +486,8 @@ struct AddShowView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
-        if panel.runModal() == .OK, let url = panel.url {
+        Dialogs.choose(panel) { url in
+            guard let url else { return }
             recordFolder = url
             UserDefaults.standard.set(url.path, forKey: "defaultSaveDirectory")
         }
@@ -550,7 +551,7 @@ struct AddShowView: View {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        Dialogs.show(alert)
     }
 }
 

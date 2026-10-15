@@ -1230,12 +1230,14 @@ struct SettingsView: View {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = (state.configManager.configPath as NSString).lastPathComponent
         panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try state.configManager.exportConfig(to: url)
-            configIOStatus = "Exported to \(url.lastPathComponent)"
-        } catch {
-            configIOStatus = "Error: \(error.localizedDescription)"
+        Dialogs.choose(panel) { url in
+            guard let url else { return }
+            do {
+                try state.configManager.exportConfig(to: url)
+                configIOStatus = "Exported to \(url.lastPathComponent)"
+            } catch {
+                configIOStatus = "Error: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -1246,7 +1248,13 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a previously exported hdhrVCRplus config JSON file"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Dialogs.choose(panel) { url in
+            guard let url else { return }
+            importConfig(from: url)
+        }
+    }
+
+    private func importConfig(from url: URL) {
         do {
             try state.configManager.importConfig(from: url)
             // Deliberately not hot-reloaded into AppState — a currently-recording show's live
@@ -1261,7 +1269,7 @@ struct SettingsView: View {
             alert.informativeText = "Changes made before restarting hdhrVCRplus will not be saved. Quit now, then reopen the app to load the imported config?"
             alert.addButton(withTitle: "Quit Now")
             alert.addButton(withTitle: "Later")
-            if alert.runModal() == .alertFirstButtonReturn { NSApp.terminate(nil) }
+            Dialogs.show(alert) { response in if response == .alertFirstButtonReturn { NSApp.terminate(nil) } }
         } catch {
             configIOStatus = "Error: \(error.localizedDescription)"
         }
@@ -1273,7 +1281,7 @@ struct SettingsView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
-        if panel.runModal() == .OK, let url = panel.url { draftSaveDirectory = url.path }
+        Dialogs.choose(panel) { url in if let url { draftSaveDirectory = url.path } }
     }
 
     private func chooseScript() {
@@ -1290,7 +1298,7 @@ struct SettingsView: View {
         if FileManager.default.fileExists(atPath: examplesDir.path) {
             panel.directoryURL = examplesDir
         }
-        if panel.runModal() == .OK, let url = panel.url { draft.Post_recording_script = url.path }
+        Dialogs.choose(panel) { url in if let url { draft.Post_recording_script = url.path } }
     }
 }
 
@@ -1510,17 +1518,32 @@ struct WindowCloseInterceptor: NSViewRepresentable {
             self.onBecomeKey = onBecomeKey
         }
 
+        /// Set once the user has answered the unsaved-changes prompt, so the `close()` that follows isn't intercepted again.
+        private var allowClose = false
+        private var promptShowing = false
+
         func windowShouldClose(_ sender: NSWindow) -> Bool {
-            guard isDirty else { return true }
-            switch promptUnsavedChanges(
-                title: "Unsaved Settings", canSave: canSave,
-                savePrompt: "Save your changes before closing?",
-                blockedPrompt: "Settings can't be saved yet — fix the validation error first. Discard changes?"
-            ) {
-            case .save:    onSave(); return true
-            case .discard: return true
-            case .cancel:  return false
+            guard isDirty, !allowClose else { return true }
+            // Ask without blocking (a sheet on this window, not runModal — the web server keeps answering),
+            // refuse this close now, and close for real once the user has chosen.
+            guard !promptShowing else { return false }
+            promptShowing = true
+            Task { @MainActor [weak self, weak sender] in
+                guard let self else { return }
+                let choice = await promptUnsavedChanges(
+                    title: "Unsaved Settings", canSave: canSave,
+                    savePrompt: "Save your changes before closing?",
+                    blockedPrompt: "Settings can't be saved yet — fix the validation error first. Discard changes?",
+                    on: sender
+                )
+                promptShowing = false
+                switch choice {
+                case .save:    onSave(); allowClose = true; sender?.close(); allowClose = false
+                case .discard: allowClose = true; sender?.close(); allowClose = false
+                case .cancel:  break
+                }
             }
+            return false
         }
 
         func windowDidBecomeKey(_ notification: Notification) {

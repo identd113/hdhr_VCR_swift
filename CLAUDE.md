@@ -71,6 +71,7 @@ Views/
   FirstRunWizardView.swift  First-run setup wizard (docs/FirstRunWizardView.md); ShowFormSection.swift = shared Add/Edit form (docs/ShowFormSection.md)
   WatchNowView.swift       Watch Now window (docs/WatchNowView.md); VLCPlayerView.swift = player/PiP (docs/VLCPlayerView.md); VLCBridge.swift = libvlc wrapper (docs/VLCBridge.md)
   TunerDiscoveryCard.swift Wizard's tuner checking/found/not-found card; NetworkFlowDiagram / WebLANDiagram / TerminalTypingDiagram = wizard "how it works" maps; DiagramAnimationSupport = shared cyclic-progress math
+  Dialogs.swift            Non-blocking alerts/sheets/file pickers (`Dialogs.show`/`present`/`choose`) — the only way to show a dialog; see the "No blocking dialogs" invariant
   CaveatBanner.swift, InfoButton.swift, WindowAction.swift  Small shared pieces: muted caveat banner, (i) help popover, SwiftUI→NSWindow bridge (floating level, re-centering)
 ```
 
@@ -103,6 +104,8 @@ Each bullet is the binding rule; the **→ full text** link has the complete ori
 - **Web guide offline devices** — Devices referenced by `show.hdhr_record` but absent from `state.devices` get a dashed "not detected" button — never silently omit them; their edit modal shows amber `#em-dev-warn` and hides Pause. → [full text](docs/Invariants.md#web-guide-offline-devices)
 - **Web guide is per-tuner** — No global schedule popover: each tuner has its own box + ▾ dropdown (`buildTunerShowsHTML`); >1 tuner means no "All" view (bootstraps to `defaultDev`); inactive tuners render dimmed; an unavailable device is shown only while a show still references it. → [full text](docs/Invariants.md#web-guide-is-per-tuner)
 - **Web guide now-line origin** — `applyGuidePayload` must re-read `data-winstart`/`data-winsec` from the new `.g-hdr` and call `updateNowLine()`; every grid payload goes through the `nextEvtSeq()` ordering guard. → [full text](docs/Invariants.md#web-guide-now-line-origin)
+
+- **No blocking dialogs** — never call `NSAlert.runModal()` / `NSSavePanel.runModal()` (or `NSOpenPanel.runModal()`): the main thread sits in the modal's event loop, so the web server, SSE, FEED viewers, idle loop and recording start/stop all stop until someone answers (2026-10-14: a stray "No Tuner Available" froze `:1980`). Use `Dialogs.show(alert)` (fire-and-forget), `await Dialogs.present(alert)` (needs the answer; same `.alertFirstButtonReturn…` values) or `Dialogs.choose(panel) { url in … }`; they use a sheet on the frontmost window or a floating window when none is open. Only `AppRelocator`'s launch-time prompt is exempt (`NoBlockingDialogsTests` enforces it). A `windowShouldClose` that needs a prompt returns `false`, asks, then `close()`s (see `WindowCloseInterceptor`).
 
 - **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
