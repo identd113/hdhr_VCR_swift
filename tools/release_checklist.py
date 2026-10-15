@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""tools/release.py — the paperwork around a hdhrVCRplus release (everything except the build itself).
+"""tools/release_checklist.py — docs/Distribution.md's "Release Checklist", automated (everything except the build).
 
-The build/sign/notarize/DMG step stays in `./deploy_release.sh <version>`. This script does the
-checks and the doc edits around it, in the order of docs/Distribution.md's "Release Checklist":
+`./deploy_release.sh <version>` is the BUILD script (compile, sign, notarize, DMG) and is unchanged. This script is the
+checklist around it: the checks before the build and the notes / GitHub Release / README steps after it, in order:
 
-  release.py preflight <version> [--tests] [--ui]   read-only readiness report (exit 1 on any ✗)
-  release.py stamp     <version> [--date YYYY-MM-DD] turn CHANGELOG "## Unreleased" into "## v<version> — <date>",
-                                                      sync the bundled copy and RELEASES' date (re-running keeps the date)
-  release.py notes     <version>                     write dist/release-<version>/notes.md (the GitHub Release notes)
-  release.py publish   <version> [--yes] [--live]    create the GitHub Release from the DMG; then (with --live)
-                                                      point README's "Latest" section at it. Dry-run unless --yes.
+  release_checklist.py preflight <version> [--tests] [--ui]    read-only readiness report (exit 1 on any ✗)
+  release_checklist.py stamp     <version> [--date YYYY-MM-DD]  CHANGELOG "## Unreleased" -> "## v<version> — <date>",
+                                                               sync the bundled copy + RELEASES' date (re-run keeps it)
+  release_checklist.py notes     <version>                      write dist/release-<version>/notes.md (Release notes)
+  release_checklist.py publish   <version> [--yes] [--live]     create the GitHub Release from the DMG; with --live
+                                                               also point README's "Latest" section at it.
+                                                               Dry run unless --yes; a DRAFT unless --live.
 
 Typical day:
-  1. tools/release.py preflight 2.6.5 --tests        # fix anything marked ✗
-  2. tools/release.py stamp 2.6.5 && git commit …    # changelog now says v2.6.5
+  1. tools/release_checklist.py preflight 2.6.5 --tests        # fix anything marked ✗
+  2. tools/release_checklist.py stamp 2.6.5 && git commit …    # changelog now says v2.6.5
   3. ./deploy_release.sh 2.6.5                       # build, sign, notarize, DMG  (not run by this script)
-  4. tools/release.py notes 2.6.5
+  4. tools/release_checklist.py notes 2.6.5
   5. git push (commit Version.swift first), then
-     tools/release.py publish 2.6.5 --yes            # draft Release with the DMG; review it on GitHub
-     tools/release.py publish 2.6.5 --yes --live     # publish it and update README's Latest section
+     tools/release_checklist.py publish 2.6.5 --yes            # draft Release with the DMG; review it on GitHub
+     tools/release_checklist.py publish 2.6.5 --yes --live     # publish it and update README's Latest section
 
 It never pushes, tags by itself, builds or edits anything outside the repo. Set RELEASE_REPO_ROOT to run
 it against a copy (that is how it is tested).
@@ -149,7 +150,7 @@ def preflight(args):
     if stamped:
         say(OK, f"CHANGELOG.md already has the v{v} section (stamped)")
     elif n_entries:
-        say(OK, f"CHANGELOG.md has {n_entries} Unreleased entries — `release.py stamp {v}` will turn them into v{v}")
+        say(OK, f"CHANGELOG.md has {n_entries} Unreleased entries — `release_checklist.py stamp {v}` will turn them into v{v}")
     else:
         say(BAD, "CHANGELOG.md has no Unreleased entries and no v%s section" % v)
     say(OK if read(CHANGELOG) == read(CHANGELOG_COPY) else BAD,
@@ -301,7 +302,7 @@ def publish(args):
     if not os.path.exists(dmg):
         sys.exit(f"{dmg} not found — run ./deploy_release.sh {v} first")
     if not os.path.exists(notes_path):
-        sys.exit(f"{notes_path} not found — run `release.py notes {v}` first")
+        sys.exit(f"{notes_path} not found — run `release_checklist.py notes {v}` first")
     if sh(["git", "tag", "-l", f"v{v}"]).stdout.strip():
         sys.exit(f"tag v{v} already exists locally")
     if sh(["git", "rev-list", "--count", "origin/main..HEAD"]).stdout.strip() != "0":
