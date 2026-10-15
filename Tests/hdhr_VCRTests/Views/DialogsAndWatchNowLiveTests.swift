@@ -85,6 +85,16 @@ private func selectSettingsTab(_ name: String) {
     """)
 }
 
+/// The launch splash's full-screen window (layer 101, the pop-up-menu level). `onScreenOnly: false` also counts a window that
+/// still exists but is ordered out — which after `LaunchSplashController.release()` must not be the case at all.
+private func launchSplashWindow(pid: pid_t, onScreenOnly: Bool) -> Bool {
+    let list = (CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]]) ?? []
+    return list.contains {
+        guard ($0[kCGWindowOwnerPID as String] as? pid_t) == pid, ($0[kCGWindowLayer as String] as? Int) == 101 else { return false }
+        return !onScreenOnly || ($0[kCGWindowIsOnscreen as String] as? Bool ?? (($0[kCGWindowIsOnscreen as String] as? Int) == 1))
+    }
+}
+
 private func skip(_ why: String) { FileHandle.standardError.write("SKIP: \(why)\n".data(using: .utf8)!) }
 
 // MARK: - tests
@@ -229,4 +239,87 @@ extension WindowNavigationTests {
         #expect(failures == 0, "\(failures) of \(samples) probes got no answer")
         #expect(worst < 2.5, "worst probe took \(worst)s — the main thread was blocked")
     }
+
+    /// An idle app (nothing recording, no windows open) must be idle. The launch splash's `MosaicTiles` `TimelineView` kept
+    /// rendering an invisible poster wall after the splash was dismissed — a dismissed `Window` scene is only ordered out,
+    /// its view graph lives on — which cost ~21 % CPU at idle and a ~0.6 s main-thread stall every 10 s
+    /// (found 2026-10-15 with `sample`; fixed by tearing the wall down in `LaunchSplashView.finish()`).
+    /// Measured with `top -l 2` (the second sample is a real interval, not a lifetime average).
+    @Test func idleAppUsesAlmostNoCPU() throws {
+        guard windowNavTestsOptedIn(), appRunning() else { return }
+        if let why = MockRecording.realRecordingConflict(leadMinutes: 1) { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        Thread.sleep(forTimeInterval: 3)   // let anything the previous test did settle
+        guard let cpu = appCPUPercent() else { Issue.record("could not read the app's CPU from top"); return }
+        #expect(cpu < 5, "idle app at \(cpu)% CPU — something is rendering or polling while nothing is on screen")
+    }
+
+    /// Same promise while a recording runs with no window open: the hidden windows (Settings, Watch Now, Add Show…) must
+    /// not re-render on every state change. Measured 0.4–2 % when this was written; the budget leaves room for the
+    /// menu-bar icon's recording blink and the status polling.
+    @Test func recordingAppWithNoWindowsUsesLittleCPU() throws {
+        guard windowNavTestsOptedIn(), appRunning() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+        Thread.sleep(forTimeInterval: 8)   // recording start, Discord card, grid rebuilds all settle
+        guard let cpu = appCPUPercent() else { Issue.record("could not read the app's CPU from top"); return }
+        #expect(cpu < 10, "app at \(cpu)% CPU with a recording and no windows — hidden windows are probably re-rendering")
+    }
+}
+
+extension WindowNavigationTests {
+
+    /// The launch splash (Settings → Maintenance → Preview Launch Splash) plays, ends, and leaves nothing running — twice.
+    /// When it ends the window is destroyed (`LaunchSplashController.release()`), not merely ordered out, so the second play proves a
+    /// replay builds a fresh one. Before that (a SwiftUI `Window` scene, which is never destroyed) the dismissed window kept animating invisibly: ~21 % idle CPU and a 0.6 s main-thread
+    /// stall every 10 s. Uses the same button a user does; the splash window is found through CoreGraphics (layer 101, on screen).
+    @Test func launchSplashPlaysEndsAndLeavesNothingRunning() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict(leadMinutes: 1) { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.hdhr.vcrplus" }) else { return }
+        let pid = app.processIdentifier
+        clickAppMenuItem("Settings…")
+        guard waitFor(8, { !axWindows().isEmpty }) != nil else { Issue.record("Settings never opened"); return }
+        defer { closeStrayWindows() }
+        selectSettingsTab("Maintenance")
+        guard waitFor(5, { axFound("text=Preview Launch Splash") }) != nil else { Issue.record("no Preview Launch Splash row in Maintenance"); return }
+
+        Thread.sleep(forTimeInterval: 2)
+        if let before = appCPUPercent() { #expect(before < 5, "app already at \(before)% CPU before the splash") }
+
+        for play in 1...2 {
+            #expect(ax(["row", "", "text=Preview Launch Splash", "role=AXButton&title=Run", "--press"]).status == 0, "could not press Run (play \(play))")
+            #expect(waitFor(6) { launchSplashWindow(pid: pid, onScreenOnly: true) } != nil, "play \(play): the splash never appeared on screen")
+            #expect(waitFor(30) { !launchSplashWindow(pid: pid, onScreenOnly: false) } != nil,
+                    "play \(play): the splash window still exists after it finished — it should be destroyed, not just hidden")
+            #expect(appRunning() && app.isTerminated == false, "play \(play): the app died during the splash")
+            Thread.sleep(forTimeInterval: 2)   // let the teardown and the last frame settle
+            if let after = appCPUPercent() {
+                #expect(after < 5, "play \(play): app at \(after)% CPU after the splash ended — the poster wall is still rendering")
+            } else { Issue.record("could not read the app's CPU from top") }
+        }
+    }
+}
+
+/// The app's CPU over a real 6 s interval (`top -l 2`; the second sample is a delta, not a lifetime average).
+private func appCPUPercent() -> Double? {
+    guard let pid = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.hdhr.vcrplus" })?.processIdentifier
+    else { return nil }
+    let top = Process()
+    top.executableURL = URL(fileURLWithPath: "/usr/bin/top")
+    top.arguments = ["-l", "2", "-s", "6", "-pid", "\(pid)", "-stats", "cpu"]
+    let pipe = Pipe()
+    top.standardOutput = pipe
+    top.standardError = FileHandle.nullDevice
+    guard (try? top.run()) != nil else { return nil }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    top.waitUntilExit()
+    return (String(data: data, encoding: .utf8) ?? "").split(separator: "\n")
+        .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.last
 }

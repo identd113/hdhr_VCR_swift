@@ -4,8 +4,10 @@
 //   ax_query find   WINDOW MATCH [--last] [--press]  first (or last) element under the window titled WINDOW (substring) that matches
 //   ax_query count  WINDOW MATCH                  how many match (full walk — only for small windows)
 //   ax_query text   WINDOW STRING                 exit 0 if any element's value / title / description equals STRING (early exit)
+//   ax_query row    WINDOW ANCHOR BUTTON [--press] the BUTTON match whose vertical centre is closest to the ANCHOR element's — e.g. the "Run" button of the
+//                                                 Settings row whose ⓘ help text is ANCHOR; prints it like `find`, `--press` also presses it. Exit 1 if either is missing.
 //
-// MATCH is `id=VALUE` (AXIdentifier), `help^=PREFIX` (AXHelp starts with), `help$=SUFFIX` (AXHelp ends with), `role=AXButton`, `title=VALUE`, or several
+// MATCH is `id=VALUE` (AXIdentifier), `text=VALUE` (value, title or description equals VALUE), `help^=PREFIX` (AXHelp starts with), `help$=SUFFIX` (AXHelp ends with), `role=AXButton`, `title=VALUE`, or several
 // joined by `&`. WINDOW "" means every window.
 //
 // Why it exists: System Events reads each element with its own Apple event, so a recursive walk of a window with a few
@@ -51,6 +53,7 @@ func parse(_ spec: String) -> Pred {
         if let r = p.range(of: "help^=") { let v = String(p[r.upperBound...]); return { str($0, kAXHelpAttribute).hasPrefix(v) } }
         if let r = p.range(of: "id=")    { let v = String(p[r.upperBound...]); return { str($0, "AXIdentifier") == v } }
         if let r = p.range(of: "role=")  { let v = String(p[r.upperBound...]); return { str($0, kAXRoleAttribute) == v } }
+        if let r = p.range(of: "text=")  { let v = String(p[r.upperBound...]); return { str($0, kAXValueAttribute) == v || str($0, kAXTitleAttribute) == v || str($0, kAXDescriptionAttribute) == v } }
         if let r = p.range(of: "title=") { let v = String(p[r.upperBound...]); return { str($0, kAXTitleAttribute) == v || str($0, kAXDescriptionAttribute) == v } }
         fail("bad MATCH: \(p)")
     }
@@ -94,6 +97,26 @@ case "text":
     var hits: [(el: AXUIElement, path: [Int])] = []
     for w in targetWindows(args[1]) { if search(w, pred, all: false, hits: &hits) { break } }
     exit(hits.isEmpty ? 1 : 0)
+case "row":
+    guard args.count >= 4 else { fail("usage: row WINDOW ANCHOR BUTTON [--press]") }
+    func centreY(_ el: AXUIElement) -> Double {
+        var p = CGPoint.zero, s = CGSize.zero
+        if let pv = attr(el, kAXPositionAttribute), CFGetTypeID(pv) == AXValueGetTypeID() { AXValueGetValue(pv as! AXValue, .cgPoint, &p) }
+        if let sv = attr(el, kAXSizeAttribute), CFGetTypeID(sv) == AXValueGetTypeID() { AXValueGetValue(sv as! AXValue, .cgSize, &s) }
+        return Double(p.y) + Double(s.height) / 2
+    }
+    var anchors: [(el: AXUIElement, path: [Int])] = [], buttons: [(el: AXUIElement, path: [Int])] = []
+    let anchorPred = parse(args[2]), buttonPred = parse(args[3])
+    for w in targetWindows(args[1]) {
+        _ = search(w, anchorPred, all: false, hits: &anchors)
+        if !anchors.isEmpty { _ = search(w, buttonPred, all: true, hits: &buttons); break }
+    }
+    guard let anchor = anchors.first, !buttons.isEmpty else { exit(1) }
+    let ay = centreY(anchor.el)
+    let best = buttons.min { abs(centreY($0.el) - ay) < abs(centreY($1.el) - ay) }!
+    let b = best.el
+    print("\(str(b, kAXRoleAttribute))|\(str(b, kAXTitleAttribute))|\(str(b, kAXHelpAttribute))|\(frame(b))|\(best.path.map(String.init).joined(separator: "/"))")
+    if args.contains("--press") { AXUIElementPerformAction(b, kAXPressAction as CFString) }
 default:
-    fail("usage: windows | find WINDOW MATCH [--press] | count WINDOW MATCH | text WINDOW STRING")
+    fail("usage: windows | find WINDOW MATCH [--press] | count WINDOW MATCH | text WINDOW STRING | row WINDOW ANCHOR BUTTON [--press]")
 }

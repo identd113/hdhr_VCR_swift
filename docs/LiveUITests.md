@@ -52,7 +52,7 @@ settle time, and every per-second sample when a settle was slow).
 
 ## Dialog / main-thread / Watch Now tests (`DialogsAndWatchNowLiveTests.swift`, 2026-10-15)
 
-Five tests in an extension of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
+Eight tests in an extension of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
 
 | Test | What it proves | ~Time |
 |---|---|---|
@@ -60,6 +60,9 @@ Five tests in an extension of `WindowNavigationTests` (so they are `.serialized`
 | `unsavedSettingsPromptIsASheetAndTheWebServerKeepsAnswering` | dirty Settings can't be closed silently; the prompt is a sheet; `GET /` < 1 s while it is up; Cancel keeps the window; flipping the switch back closes cleanly | 5 s |
 | `quitPromptDoesNotBlockAndGoBackKeepsTheAppAndTheRecording` | Quit during a recording asks; web server answers meanwhile; a second Quit click doesn't stack a prompt; Go Back leaves app + recording running | 7 s |
 | `exportConfigPanelIsASheetAndTheWebServerKeepsAnswering` | the save panel is a sheet, the web server answers, Cancel dismisses it | 4 s |
+| `launchSplashPlaysEndsAndLeavesNothingRunning` | Settings → Maintenance → Preview Launch Splash twice: the full-screen splash window appears (CoreGraphics: layer 101, on screen), finishes, the splash window no longer *exists* (destroyed, not just hidden), the app is alive and CPU is back under 5 % each time — so it plays, is released, and a replay builds a fresh one | 41 s |
+| `recordingAppWithNoWindowsUsesLittleCPU` | a recording running with no window open stays under 10 % CPU — hidden windows must not re-render on every state change (measured 0.4–2 %) | 19 s |
+| `idleAppUsesAlmostNoCPU` | an idle app (nothing recording, no windows) stays under 5 % CPU (`top -l 2`) — guards the hidden-animating-splash bug (21 % → 0 %; mutation-checked) | 10 s |
 | `mainThreadStaysResponsive` | `GET /` every 100 ms for 20 s: no unanswered probe, worst < 2.5 s (baseline: the idle tick stalls ~0.6 s every 10 s) | 20 s |
 
 Mutation-checked: re-introducing `alert.runModal()` in `quit()` makes `quitPromptDoesNotBlock…` fail with "web server did not answer while the quit prompt was up". `NoBlockingDialogsTests` (unit) bans `runModal()` in the sources.

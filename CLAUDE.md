@@ -64,7 +64,7 @@ Views/
   GuideViewHelpers.swift   Shared guide-view utilities + SignalBarsView
   NativeContextMenu.swift  NSMenu-at-click-time right-click host (immune to SwiftUI re-renders)
   PiPPickerView.swift      "Add Picture-in-Picture…" picker (Recording Now / FEED / Live TV sections)
-  LaunchSplashView.swift   Launch splash: logo, version, tuner/lineup/guide checklist, flying posters; flies to the menu-bar icon — or, on a first run, glides into the setup wizard (docs/LaunchSplash.md)
+  LaunchSplashView.swift   Launch splash: logo, version, tuner/lineup/guide checklist, flying posters; flies to the menu-bar icon — or, on a first run, glides into the setup wizard (docs/LaunchSplash.md) — an AppKit window made by `LaunchSplashController`, destroyed when it ends (not a `Window` scene)
   StatusLightLegend.swift  About tab: live menu-bar light on the logo; click steps through every light/blink pattern
   KeyboardShortcutsOverlay.swift  Generic translucent "?" shortcuts card (player; docs/VLCPlayerView.md)
   RecordingDefaultsFields.swift  Shared default-recording fields (transcode, Time Machine, Bonus Time…) for Settings and the first-run wizard

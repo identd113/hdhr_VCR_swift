@@ -68,8 +68,11 @@ enum LaunchSplashPlan {
 
 struct LaunchSplashView: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
+    /// Opens one of the app's `Window` scenes by id (the first-run wizard). A closure, not `@Environment(\.openWindow)`:
+    /// this view lives in an AppKit window made by `LaunchSplashController`, outside any scene.
+    let openWindow: (String) -> Void
+    /// Called once, when the splash is over — the controller destroys the window, this view and everything it holds.
+    let onFinish: () -> Void
 
     // showing → (menu-bar finale: flying → arrived) or (first run: handoff → backdrop → arrived). `handoff`: the logo glides into the
     // wizard's header while the wall stays; `backdrop`: the wizard is open on top of the (frozen) wall.
@@ -200,7 +203,7 @@ struct LaunchSplashView: View {
 
     /// Borderless, clear, click-through, covering the menu-bar screen — a full-screen canvas the tiles and logo can fly
     /// across — and above the menu bar itself so the logo can land on the icon.
-    private static func configure(_ w: NSWindow) {
+    fileprivate static func configure(_ w: NSWindow) {
         w.styleMask = [.borderless, .fullSizeContentView]
         w.isOpaque = false
         w.backgroundColor = .clear
@@ -278,6 +281,17 @@ struct LaunchSplashView: View {
         }
     }
 
+    /// The splash is over: hand the window back to `LaunchSplashController`, which orders it out and releases it — the
+    /// window, this view, its `@State` and the poster images are all freed (nothing stays alive, hidden or animating).
+    /// Before 2026-10-15 the splash was a SwiftUI `Window` scene, which `dismiss()` only orders out: its view graph lived on
+    /// and the `TimelineView` kept rendering the invisible wall at display rate (~21 % idle CPU, a ~0.6 s main-thread stall
+    /// every 10 s). First run: this is only called after the setup wizard is dismissed, so the wall stays as its backdrop.
+    @MainActor private func finish() {
+        frozen = true
+        tilesReady = false
+        onFinish()
+    }
+
     @MainActor private func run(in size: CGSize) async {
         defer { ended = true }
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
@@ -315,7 +329,7 @@ struct LaunchSplashView: View {
         phase = .arrived
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
         try? await Task.sleep(for: .milliseconds(750))
-        dismiss()
+        finish()
     }
 }
 
@@ -333,7 +347,7 @@ extension LaunchSplashView {
         // and the wizard goes one level above it.
         window?.level = .modalPanel
         NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "first-run-wizard")
+        openWindow("first-run-wizard")
         var wizard: NSWindow?
         for _ in 0..<40 {                               // up to ~2 s for the scene to create its window
             wizard = NSApp.windows.first { $0.title == "Welcome to hdhrVCRplus" }
@@ -375,7 +389,7 @@ extension LaunchSplashView {
         withAnimation(.easeOut(duration: 0.6)) { phase = .arrived }
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
         try? await Task.sleep(for: .milliseconds(800))
-        dismiss()
+        finish()
     }
 }
 
@@ -452,5 +466,38 @@ private struct MosaicTiles: View {
         .frame(width: size.width - 3, height: size.height - 3)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+    }
+}
+
+/// Owns the launch splash's window. The splash is not a SwiftUI `Window` scene: a scene's window is only ever ordered out,
+/// never destroyed, so a finished splash would sit in memory (and keep animating) for the life of the app. Here the window
+/// is created when the splash plays and destroyed when it ends — `release()` drops the hosting view, which frees the
+/// SwiftUI graph, its `@State` and the poster images. A replay (Settings → Maintenance → Preview Launch Splash) builds a
+/// fresh one. Never stacks: playing while one is already up just brings it forward.
+@MainActor
+final class LaunchSplashController {
+    static let shared = LaunchSplashController()
+    private var window: NSWindow?
+    var isPlaying: Bool { window != nil }
+
+    func play(state: AppState, openWindow: @escaping (String) -> Void) {
+        if let window { window.orderFrontRegardless(); return }
+        let screen = NSScreen.screens.first?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let w = NSWindow(contentRect: screen, styleMask: [.borderless], backing: .buffered, defer: false)
+        w.title = "hdhrVCRplus"
+        w.isReleasedWhenClosed = false
+        LaunchSplashView.configure(w)
+        let root = LaunchSplashView(openWindow: openWindow, onFinish: { [weak self] in self?.release() })
+            .environmentObject(state)
+        w.contentView = NSHostingView(rootView: root)
+        window = w
+        w.orderFrontRegardless()
+    }
+
+    func release() {
+        guard let w = window else { return }
+        window = nil
+        w.orderOut(nil)
+        w.contentView = nil
     }
 }

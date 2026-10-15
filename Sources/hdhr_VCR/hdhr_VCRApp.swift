@@ -291,14 +291,8 @@ struct hdhr_VCRApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
-        // Launch splash for returning users — see LaunchSplashView / docs/LaunchSplash.md.
-        Window("hdhrVCRplus", id: "launch-splash") {
-            LaunchSplashView()
-                .environmentObject(appState)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 900, height: 600)
+        // The launch splash is deliberately NOT a Window scene — see LaunchSplashController (a scene's window is never
+        // destroyed, so a finished splash would stay in memory and keep animating).
     }
 
     // nil ("auto") lets each window follow the system appearance the normal SwiftUI way — only
@@ -330,7 +324,8 @@ struct hdhr_VCRApp: App {
         // Brand-new install: the splash opens the setup wizard itself when it finishes (see LaunchSplashView.handOffToWizard)
         // instead of the wizard appearing on top of it at launch — openFirstRunWizardIfNeeded() stands down while it runs.
         appState.launchSplashHandsOffToWizard = needsFirstRunWizard
-        activateAndOpen(windowId: "launch-splash")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        LaunchSplashController.shared.play(state: appState) { openWindow(id: $0) }
         // Fallback: if the splash never gets as far as opening the wizard (its task cancelled, the window closed from
         // outside), the wizard must still appear — nothing else opens it on this launch. The splash clears the flag the
         // moment it starts its own hand-off (well inside this delay: cap 7 s + posters + ~2 s of flight).
