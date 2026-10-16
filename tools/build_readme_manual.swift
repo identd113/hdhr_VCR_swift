@@ -100,44 +100,74 @@ addH1("hdhrVCRplus")
 addTagline("a free menu-bar DVR for your HDHomeRun tuner")
 addRule()
 
-addBody("Thanks for trying hdhrVCRplus. It lives quietly in your Mac's menu bar and records shows from your HDHomeRun tuner in the background — no subscription, no media server, and no account to create. This Read Me covers everything you need to get your first recording scheduled.")
+addBody("Thanks for trying hdhrVCRplus. It lives quietly in your Mac's menu bar and records shows from your HDHomeRun tuner in the background \u{2014} no subscription, no media server, and no account to create. This Read Me tours everything: the menu bar, the program guide, watching TV and your recordings, the web guide for your phone and other computers, the terminal guide, notifications, and the settings that matter.")
+
+addH2("What You Need")
+addBody("A Mac running macOS 15 (Sequoia) or later with an Apple Silicon chip, and an HDHomeRun network tuner (CONNECT, PRIME, EXTEND, FLEX and so on) on the same network. VLC (in your Applications folder) is optional and is only needed for the built-in player, Watch Now.")
 
 addH2("Getting Started")
-addBody("The first time hdhrVCRplus opens, a short setup wizard walks you through finding your tuner, picking where recordings are saved, and choosing when you'd like to be notified before a show records. You can revisit any of these choices later from Settings \u{2192} Maintenance \u{2192} Reset First-Run Setup.")
-addBody("Once set up, look for the hdhrVCRplus icon in your menu bar — that's the whole application. There is no Dock icon and no separate window to keep open.")
+addBody("Drag hdhrVCRplus to your Applications folder and open it. A short launch screen shows the app finding your tuner, loading its channel lineup and loading the guide. The first time, a setup wizard follows it in the same window: it finds your tuner, asks where recordings should be saved, and lets you choose how early you want to be told before a show records. Finish it once; you can run it again any time from Settings \u{2192} Maintenance \u{2192} Reset First-Run Setup.")
+addBody("When the launch screen ends, it glides up to the hdhrVCRplus icon in your menu bar \u{2014} that's where the app lives. macOS asks once for permission to find devices on your local network; say yes, or the app can't see your tuner. (The app may show a Dock icon until that permission is confirmed; after that it's menu bar only, and Settings \u{2192} Advanced lets you choose either way.)")
 
 addH2("The Menu Bar")
-addBody("Click the menu bar icon to see what's recording right now, what's coming up next, and everything you've scheduled — organized into Recording, Up Next, Scheduled, and Paused sections. Clicking a show reveals quick actions like Edit, Pause, or Delete.")
+addBody("Click the menu bar icon to see what's recording right now, what's coming up next, and everything you've scheduled \u{2014} Recording, Up Next, Scheduled and Paused sections, with a header showing how many tuners are in use and by what. Click a show for quick actions: Edit, Pause, Skip, Delete, Show Recording in Finder, and Watch Now! on anything that's recording. The icon's little light tells you at a glance what the app is doing; Settings \u{2192} About lets you click through every pattern.")
 addImage("menu.png", displayWidth: 320)
-addCaption("The menu bar dropdown — your control center.")
+addCaption("The menu bar dropdown \u{2014} your control center.")
 addImage("recording.png", displayWidth: 380)
 addCaption("A show currently recording, with its progress and remaining time.")
 
 addH2("The Program Guide")
-addBody("Add Show opens a full cable-style guide — channels down the side, time across the top, color-coded by genre. A search box at the top finds a show by name in a couple of keystrokes, favorited channels get their own row, and a live red line shows you exactly where \"now\" is on the grid.")
+addBody("Add Show opens a full cable-style guide \u{2014} channels down the side, time across the top, tiles color-coded by genre. A search box finds a show by name in a couple of keystrokes, favorite channels get their own row at the top, green NEW badges flag original episodes, and a live red line shows where \"now\" is. Little signal bars beside each channel come from real tuner readings, so you can see which channels are solid before you schedule one.")
 addImage("guide.png", displayWidth: 460)
 addCaption("The program guide, with the live \"now\" indicator and per-channel signal bars.")
 
 addH2("Scheduling a Recording")
-addBody("Click any program in the guide to see its details, then choose how you'd like it recorded: once, every week at that time, every new episode on that channel, or every new episode on any channel this tuner receives. Existing recordings can be revisited the same way from the Edit screen.")
+addBody("Click any program to see its details, then choose how to record it: once; every week at that time (pick the days); every new episode on that channel; or every new episode on any channel that tuner receives. Series are matched by the guide's own series ID, so reruns and retitled episodes are still caught. Useful options: New Only skips reruns, Skip Already Recorded (Settings \u{2192} Recording, with Series subfolders on) won't grab an episode it already has on disk, and Bonus Time adds extra minutes after the scheduled end (sports get this automatically, since live events run long).")
 addImage("addshow_details.png", displayWidth: 400)
 addCaption("Scheduling a new recording, with the four recurrence choices.")
 addImage("edit_show.png", displayWidth: 400)
 addCaption("Editing an existing scheduled recording.")
+addBody("The app keeps going without you: it reattaches to a recording if the app or Mac restarts, pauses a show that keeps failing, pauses a show whose tuner has gone missing and resumes it when the tuner returns, and keeps the Mac awake while a recording is running.")
+
+addH2("Watching TV and Your Recordings")
+addBody("Watch Now opens a built-in player (VLC-powered) with a channel picker, volume and audio-output controls, and full-screen with arrow-key seeking. If a show is already recording, Watch Now! plays it straight from disk instead of opening a second tuner \u{2014} and a scrub bar lets you jump anywhere already recorded. Right-click the video to add picture-in-picture windows (live channels or a recording), drag a corner to resize, and click one to swap it into the main window. The player can also cast to a Chromecast on your network (Beta).")
+addBody("Recording FEED (Beta): turn on Settings \u{2192} Sharing \u{2192} Rebroadcast In-Progress Recordings and another Mac running hdhrVCRplus on your network can watch your in-progress recording live \u{2014} even scrub back through it \u{2014} without using a second tuner.")
+
+addH2("The Web Guide \u{2014} Any Browser on Your Network")
+addBody("Turn on Settings \u{2192} Sharing \u{2192} Enable Web LAN and the same guide is available in any browser on your home network at http://<your-mac's-address>:1980 \u{2014} perfect for scheduling from a laptop, tablet or phone while the Mac sits in a closet. You see each tuner's Recording, Up Next and Scheduled lists, and you can schedule, edit, pause and delete just as in the app. On a phone, open http://<your-mac's-address>:1980/vertical for a calendar-style guide that fits a portrait screen. The web guide is for your local network only; it is not meant to be exposed to the internet.")
+
+addH2("The Terminal Guide")
+addBody("Prefer the keyboard? hdhrVCRplus includes a full-screen guide for Terminal. With Web LAN on, turn on Settings \u{2192} Sharing \u{2192} Terminal Guide and click Open in Terminal \u{2014} or run it yourself, from your Mac or over SSH from another computer, with: /Applications/hdhrVCRplus.app/Contents/Helpers/hdhr_guide")
+addImage("tui_guide_grid.png", displayWidth: 460)
+addCaption("The terminal guide: genre-tinted channel grid, selection, summary panel and signal dots.")
+addBody("Move between channels with the up and down arrows and between programs with left and right. Press / to search by show name (or jump to a channel, for example #5.1), Tab to switch tuners, f to favorite a channel, and ? for the full list of keys. Press Enter on a program to schedule it: the summary screen offers the same four choices as the app.")
+addImage("tui_guide_schedule.png", displayWidth: 460)
+addCaption("Scheduling from the terminal: once, weekly, or a series on this channel or any channel.")
+addBody("Press d on something already scheduled to remove it, and q to quit.")
+
+addH2("Notifications and Discord")
+addBody("macOS notifications tell you what's Up Next and when a Recording is Soon. If you use Discord, paste a webhook URL into Settings \u{2192} Notifications and hdhrVCRplus posts neat cards when a recording starts, finishes (with its file size), fails, pauses, or hits a conflict \u{2014} each type can be switched on or off, and a Test button checks the webhook right away.")
+addImage("settings_notifications.png", displayWidth: 460)
+addCaption("Settings \u{2192} Notifications.")
 
 addH2("Settings")
-addBody("Everything else — where recordings are saved, how much free disk space to keep in reserve, transcoding, notification timing, Discord alerts, and sharing the guide with other devices on your network — lives in one Settings window, organized by tab.")
+addBody("Where recordings are saved and how much free disk space to keep in reserve, transcoding (none, heavy, mobile, internet720), keeping recordings out of Time Machine backups, guide options, the launch screen, Launch at Login, sharing, and Export/Import Config (move your whole setup, shows included, to another Mac in one file) all live in one Settings window, organized by tab.")
 addImage("settings_general.png", displayWidth: 460)
 addCaption("Settings \u{2192} General.")
+addImage("settings_recording.png", displayWidth: 460)
+addCaption("Settings \u{2192} Recording.")
 
-addH2("Watching From Elsewhere")
-addBody("With Sharing turned on in Settings, any browser on your home network can open the same program guide and schedule recordings — handy for a phone, tablet, or another computer. A companion terminal client, hdhr_guide, offers the same guide and scheduling from a Terminal window or over SSH, for anyone who'd rather not open a browser.")
+addH2("Staying Up to Date")
+addBody("hdhrVCRplus checks GitHub once a day for a newer release and tells you in the menu when there is one. Settings \u{2192} About shows your version and links to the project.")
 
-addH2("Getting Help")
-addBody("hdhrVCRplus is free and open-source. The project's source code, documentation, and issue tracker live on GitHub — see Settings \u{2192} About for the project link and your current version number.")
+addH2("If Something Goes Wrong")
+addBody("Check that your Mac and the tuner are on the same network and that hdhrVCRplus is allowed under System Settings \u{2192} Privacy & Security \u{2192} Local Network. The app writes a log to ~/Library/Logs/hdhrVCRplus.log (secrets such as webhook tokens are masked), which is the first thing to attach to a bug report. Settings \u{2192} Advanced has verbose recording logs for chasing a stubborn recording problem.")
+
+addH2("Free, With a Tip Jar")
+addBody("hdhrVCRplus is free and open-source (GPL v3), and the program guide is free courtesy of SiliconDust. If you find it useful, an occasional card in the app invites you to leave a tip via PayPal; if you've tipped, enter your code to stop seeing it. The source code, documentation and issue tracker live on GitHub.")
 
 addRule()
-addCaption("hdhrVCRplus — free, open-source, and yours to keep.")
+addCaption("hdhrVCRplus \u{2014} free, open-source, and yours to keep.")
 
 let fullRange = NSRange(location: 0, length: doc.length)
 do {
