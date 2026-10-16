@@ -39,8 +39,10 @@ non-blocking, Watch Now rows updating, idle CPU, and a 30-step FEED soak that ch
 your tuners are counted correctly.
 
 The small new touch: a short **launch splash** when you open the app — the logo, a live checklist and show
-posters flying in, then the logo flies up to the menu-bar icon. It is off with one switch in Settings →
-General, and skipped when macOS Reduce Motion is on.
+posters flying in, then the panel glides up to the menu-bar icon to show where the app lives. On a new
+install the setup wizard slides in on the same panel, and the support card follows it when it is due: one
+window, one card at a time. It is off with one switch in Settings → General, and skipped when macOS Reduce
+Motion is on.
 
 ### Removed
 - **The setup wizard's own opening animation.** A new install now sees the launch splash and goes straight
@@ -48,8 +50,10 @@ General, and skipped when macOS Reduce Motion is on.
 
 ### Added
 - **A launch splash** — the logo, version and a live checklist (tuner, channels, guide) over show posters
-  flying in from every edge, then the logo flies to the menu-bar icon. A new install gets it too, and it
-  flows into the setup wizard. Turn it off in Settings → General → "Show launch splash".
+  flying in from every edge, then the panel glides to the menu-bar icon. A new install gets it too: the
+  setup wizard and the support card slide in as cards in the same panel, one at a time. The rest of the
+  app's launch waits for the posters to fly in, so it animates smoothly. Turn it off in Settings → General
+  → "Show launch splash".
 - **Watch from Beginning for a FEED** — right-click a FEED to scrub back to where the recording started.
 - **Settings → About explains the menu-bar light** — the logo matches the light now showing, with a
   legend of every light and blink pattern.
