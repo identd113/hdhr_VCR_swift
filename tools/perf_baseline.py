@@ -209,7 +209,7 @@ def cmd_run(a):
                "host": sh(["hostname", "-s"]).stdout.strip(), "date": time.strftime("%Y-%m-%d %H:%M"),
                "median": med, "all": runs}
         os.makedirs(a.dir, exist_ok=True)
-        path = os.path.join(a.dir, re.sub(r"[^A-Za-z0-9._-]+", "_", a.label) + ".json")
+        path = os.path.join(a.dir, re.sub(r"[^A-Za-z0-9._-]+", "_", a.label) + ("-nosplash" if a.no_splash else "") + ".json")
         with open(path, "w") as f:
             json.dump(out, f, indent=2)
         print(f"saved {path}")
