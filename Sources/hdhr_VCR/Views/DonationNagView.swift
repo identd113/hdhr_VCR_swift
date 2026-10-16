@@ -40,31 +40,15 @@ struct DonationNagView: View {
     @State private var glowOut = false   // one-shot ring pulse behind the icon on appear
 
     var body: some View {
-        Group {
-            if embeddedClose != nil {
-                // A launch-splash card: the same size and dark panel as the splash and the setup wizard.
-                VStack(spacing: 0) {
-                    header
-                    content
-                    Spacer(minLength: 0)
-                }
-                .frame(width: LaunchCard.width, height: LaunchCard.height)
-                .launchCardChrome(applied: false)    // the splash's persistent panel is the chrome
-            } else {
-                VStack(spacing: 0) {
-                    header
-                    content
-                }
-                .frame(width: 400)
-                .background(.thickMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-            }
+        VStack(spacing: 0) {
+            header
+            content
+            Spacer(minLength: 0)
         }
+        // Same panel as the splash and the setup wizard (`LaunchCard`): as a launch card the splash's own persistent panel is
+        // already behind it; in its own window (a later nag) it draws the panel itself.
+        .frame(width: LaunchCard.width, height: embeddedClose != nil ? LaunchCard.designHeight : min(LaunchCard.designHeight, 520))
+        .launchCardChrome(applied: embeddedClose == nil)
         // Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
         // same technique the old FloatingGuideView used (see git history) before its removal.
         .background(WindowAction(trigger: true) { if embeddedClose == nil { $0.level = .floating } })
@@ -82,49 +66,49 @@ struct DonationNagView: View {
     // SettingsView's dirty Save button) rather than generic system blue, so the nag reads as
     // unmistakably *this* app's own chrome rather than a bolted-on system alert.
     private var header: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.orange.opacity(0.35), Color.red.opacity(0.18), .clear],
-                startPoint: .top, endPoint: .bottom
-            )
-            VStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(RadialGradient(colors: [.orange.opacity(0.55), .clear],
-                                              center: .center, startRadius: 2, endRadius: 46))
-                        .frame(width: 92, height: 92)
-                        .scaleEffect(glowOut ? 1.25 : 0.7)
-                        .opacity(glowOut ? 0 : 0.9)
-
-                    Group {
-                        if let icon = appIconImage {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                        } else {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 30))
-                        }
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [Color(red: 0.95, green: 0.34, blue: 0.50).opacity(0.55), .clear],
+                                          center: .center, startRadius: 2, endRadius: 40))
+                    .frame(width: 80, height: 80)
+                    .scaleEffect(glowOut ? 1.3 : 0.7)
+                    .opacity(glowOut ? 0 : 0.9)
+                Group {
+                    if let icon = appIconImage {
+                        Image(nsImage: icon).resizable().aspectRatio(contentMode: .fit)
+                    } else {
+                        Image(systemName: "antenna.radiowaves.left.and.right").font(.system(size: 26))
                     }
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.25), lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
                 }
-                .frame(height: 68)
-                .accessibilityLabel("hdhrVCRplus app icon")
-
-                Text("Support hdhrVCRplus")
-                    .font(.system(.title3, design: .monospaced)).bold()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 44 * 0.2, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+                // Flair: a small heart on the icon — this card is about saying thanks.
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(Circle().fill(Color(red: 0.95, green: 0.34, blue: 0.50)))
+                    .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                    .offset(x: 18, y: 18)
+                    .scaleEffect(glowOut ? 1 : 0.4)
             }
-            .padding(.top, 30)
-            .padding(.bottom, 20)
+            .frame(width: 52, height: 52)
+            .accessibilityLabel("hdhrVCRplus app icon")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Support hdhrVCRplus").font(.system(size: 20, weight: .bold, design: .rounded))
+                Text("Free to use — tips keep it going.")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
         .onAppear {
-            withAnimation(.easeOut(duration: 1.1)) { glowOut = true }
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.55)) { glowOut = true }
         }
     }
 

@@ -41,12 +41,12 @@ extension View {
     /// The launch panel as part of the poster wall: no hard box or shadow — a nearly opaque dark pool with a warm glow and a
     /// faintly softened edge, so it sits in the posters without them showing through the controls. The cards inside are clipped to a rounded rectangle (their
     /// slide stays within it) and drawn in the dark scheme.
-    func blendedLaunchPanel() -> some View {
+    func blendedLaunchPanel(accent: Color = .orange) -> some View {
         self.clipShape(RoundedRectangle(cornerRadius: LaunchCard.corner + 8, style: .continuous))
             .background(
                 ZStack {
                     Color.black.opacity(0.92)
-                    RadialGradient(colors: [Color.orange.opacity(0.16), .clear], center: UnitPoint(x: 0.12, y: 0.0),
+                    RadialGradient(colors: [accent.opacity(0.22), .clear], center: UnitPoint(x: 0.12, y: 0.0),
                                    startRadius: 8, endRadius: 380)
                 }
                 .mask(RoundedRectangle(cornerRadius: LaunchCard.corner + 8, style: .continuous).padding(2).blur(radius: 4))

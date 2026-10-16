@@ -5,29 +5,19 @@ of the monetization plan in [`Distribution.md`](Distribution.md).
 
 ## Visual Appearance
 
-Fixed-width (400pt) window, single-instance (`Window`, not `WindowGroup` — see
-`hdhr_VCRApp.swift`), styled as a modern floating card rather than a standard document window:
-- `.windowStyle(.hiddenTitleBar)` — no title text; the traffic-light buttons remain, floating over
-  the header band (content has enough top padding to clear them)
-- The whole card is clipped to a 20pt continuous rounded rect with a subtle 1px light stroke and a
-  soft drop shadow, on a `.thickMaterial` base — reads as a floating panel, not a flat window
-- `WindowAction` (`Views/WindowAction.swift`, a shared `NSViewRepresentable` — also used by
-  `FirstRunWizardView`'s window re-centering) setting `window?.level = .floating` — the same
-  technique the old, now-removed `FloatingGuideView` used, see git history — keeps the nag above
-  other windows so it can't get lost behind the guide, Settings, etc.
-- An `.onAppear` resets `enteredCode`/`showMismatch` to a clean slate — macOS window-state
-  restoration can otherwise repopulate a closed-and-reopened single-instance `Window`'s field
-  contents from its last session, which looked like a bug in testing (a stale typed code + a
-  mismatch error already showing) before this was added.
+**Restyled 2026-10-15 to match the launch cards** (splash, setup wizard): a 520pt-wide card (`LaunchCard.width`) in the shared dark
+panel, with the wizard's header layout — the app icon (44pt, rounded, soft shadow) on the left, a bold rounded title and a one-line
+subtitle beside it, 20pt side padding. Its accent is a warm rose (the splash panel's glow turns rose while this card is up) and the
+flair is a small heart badge on the icon that springs in on appear, over the one-shot rose glow. As a launch card the splash's
+persistent panel is behind it (see "As a launch-splash card" below); in its own window (a later nag) it draws the same panel itself
+(`launchCardChrome`). Still single-instance (`Window`, not `WindowGroup` — see `hdhr_VCRApp.swift`), `.windowStyle(.hiddenTitleBar)`:
+- `WindowAction` (`Views/WindowAction.swift`) sets `window?.level = .floating` in its own window — keeps the nag above other windows
+  so it can't get lost behind the guide, Settings, etc. (skipped as a launch card)
+- An `.onAppear` resets `enteredCode`/`showMismatch` to a clean slate — macOS window-state restoration can otherwise repopulate a
+  closed-and-reopened single-instance `Window`'s field contents from its last session.
 
-Top to bottom, leaning into the app's own visual language (the recording-red/action-orange accent
-already used elsewhere — see `litColor: .red` in `hdhr_VCRApp.swift`'s status icon, `.tint(.orange)`
-on `SettingsView`'s dirty Save button — and its terminal/monospace-flavored `Advanced` tab) rather
-than generic system-blue chrome:
-- Header band: a top-down orange→red→clear `LinearGradient` behind the content, `appIconImage`
-  (the app's own icon, from `AppIcon.swift` — same asset the About tab and menu bar use) at 60×60
-  with rounded corners + a soft one-shot radial-gradient glow that eases out on appear, then
-  "Support hdhrVCRplus" in `.system(.title3, design: .monospaced)`
+Top to bottom:
+- Header: icon + heart badge, "Support hdhrVCRplus" (`.system(size: 20, weight: .bold, design: .rounded)`), "Free to use — tips keep it going."
 - Body: a short "this app is free, consider a tip" message
 - A full-width blue-gradient capsule "Tip via PayPal" button with a heart icon (custom
   `.buttonStyle(.plain)` + `.background(...).clipShape(Capsule())`, not the default

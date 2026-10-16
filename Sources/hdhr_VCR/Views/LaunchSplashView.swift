@@ -94,6 +94,14 @@ struct LaunchSplashView: View {
     private func displayScale(_ screen: CGSize) -> CGFloat {
         min(1.6, max(0.5, min(0.42 * screen.height / cardSize.height, 0.30 * screen.width / cardSize.width)))
     }
+    /// Each card has its own accent: the splash is the logo's orange, setup is a cool teal, the support card a warm rose.
+    private var accent: Color {
+        switch card {
+        case .wizard:   return Color(red: 0.20, green: 0.72, blue: 0.80)
+        case .donation: return Color(red: 0.95, green: 0.34, blue: 0.50)
+        default:        return .orange
+        }
+    }
     private let logoTop: CGFloat = 130                 // logo's top edge below the panel's top
     private let logoSize: CGFloat = 108
 
@@ -141,7 +149,8 @@ struct LaunchSplashView: View {
                     }
                 }
                 .frame(width: cardSize.width, height: cardSize.height)
-                .blendedLaunchPanel()
+                .blendedLaunchPanel(accent: accent)
+                .animation(.easeInOut(duration: 0.55), value: card)
                 // The ending: the last panel glides up to the menu-bar icon, shrinking to icon size, while the wall fades away.
                 .scaleEffect(phase == .showing ? scale : 24 / cardSize.width)
                 .opacity(assembled && phase != .arrived ? 1 : 0)
