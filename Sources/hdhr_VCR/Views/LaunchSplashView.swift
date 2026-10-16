@@ -82,7 +82,6 @@ struct LaunchSplashView: View {
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
     @State private var pulse = false
     @State private var frozen = false               // a card is up: the wall stops animating (no idle CPU/GPU)
-    @State private var logoDetached = false         // finale without cards: the logo flies from a screen overlay, not the panel
     @State private var cardsActive = false          // the window takes input; hidden whenever another app is frontmost
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
@@ -109,7 +108,6 @@ struct LaunchSplashView: View {
             let full = geo.size
             let center = CGPoint(x: full.width / 2, y: full.height / 2)
             let scale = displayScale(full)
-            let logoHome = CGPoint(x: center.x, y: center.y - scale * (cardSize.height / 2 - logoTop - logoSize / 2))
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the splash card on a dark panel that sits in it.
@@ -117,7 +115,7 @@ struct LaunchSplashView: View {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
                         .opacity(phase == .showing ? 1 : 0)
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
-                    Color.black.opacity(card == .wizard || card == .donation ? 0.4 : 0)
+                    Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0)
                         .allowsHitTesting(false)
                 }
 
@@ -144,19 +142,10 @@ struct LaunchSplashView: View {
                 }
                 .frame(width: cardSize.width, height: cardSize.height)
                 .blendedLaunchPanel()
-                .scaleEffect(scale)
-                .opacity(assembled && phase == .showing && card != .none ? 1 : 0)
-                .position(center)
-
-                // Menu-bar finale with no cards: the logo leaves the panel, so it flies from an overlay on the screen
-                // (swapped in, unanimated, for the in-panel logo exactly underneath it).
-                if logoDetached {
-                    logo
-                        .frame(width: logoSize, height: logoSize)
-                        .scaleEffect(phase == .showing ? scale : 20 / logoSize)
-                        .opacity(phase == .arrived ? 0 : 1)
-                        .position(phase == .showing ? logoHome : target)
-                }
+                // The ending: the last panel glides up to the menu-bar icon, shrinking to icon size, while the wall fades away.
+                .scaleEffect(phase == .showing ? scale : 24 / cardSize.width)
+                .opacity(assembled && phase != .arrived ? 1 : 0)
+                .position(phase == .showing ? center : target)
 
                 if phase == .arrived {
                     Circle().stroke(Color.accentColor, lineWidth: 3)
@@ -199,11 +188,9 @@ struct LaunchSplashView: View {
     private var splashCard: some View {
         ZStack(alignment: .top) {
             chrome
-            if !logoDetached {
-                logo
-                    .frame(width: logoSize, height: logoSize)
-                    .position(x: cardSize.width / 2, y: logoTop + logoSize / 2)
-            }
+            logo
+                .frame(width: logoSize, height: logoSize)
+                .position(x: cardSize.width / 2, y: logoTop + logoSize / 2)
         }
     }
 
@@ -340,7 +327,7 @@ struct LaunchSplashView: View {
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; logoDetached = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
         let loaded = await loadPosters()
         tiles = loaded.images
         wallHasPosters = loaded.real
@@ -364,19 +351,7 @@ struct LaunchSplashView: View {
             await runCards(wizardDue: wizardDue, in: size)
             return
         }
-        // Where to land, in the window's own top-left coordinates.
-        let item = LaunchSplashPlan.statusItemFrame().frame
-        let origin = window?.frame.origin ?? .zero
-        let height = window?.frame.height ?? size.height
-        target = CGPoint(x: item.midX - origin.x, y: height - (item.midY - origin.y))
-        var swap = Transaction(); swap.disablesAnimations = true
-        withTransaction(swap) { logoDetached = true }       // hand the logo to the screen overlay, unanimated
-        withAnimation(.easeInOut(duration: 0.85)) { phase = .flying }
-        try? await Task.sleep(for: .milliseconds(900))
-        phase = .arrived
-        withAnimation(.easeOut(duration: 0.7)) { pulse = true }
-        try? await Task.sleep(for: .milliseconds(750))
-        finish()
+        await flyPanelToMenuBar(in: size)
     }
 }
 
@@ -402,19 +377,27 @@ extension LaunchSplashView {
             withAnimation(.easeInOut(duration: 0.55)) { card = .donation }
             guard await waitForCardClose() else { return }
         }
-        withAnimation(.easeInOut(duration: 0.5)) { card = .none }
-        try? await Task.sleep(for: .milliseconds(550))
+        await flyPanelToMenuBar(in: size)
+    }
+
+    /// The ending, with or without cards: the last panel (whatever card is in it) glides up to the menu-bar icon, shrinking to
+    /// the icon's size, while the wall fades away behind it; then a ring pulses on the icon — "I live up here, that's next".
+    @MainActor fileprivate func flyPanelToMenuBar(in size: CGSize) async {
         cardsActive = false
-        window?.level = .popUpMenu                      // back above the menu bar for the ring
-        window?.ignoresMouseEvents = true
-        window?.alphaValue = 1
+        if let w = window {
+            w.ignoresMouseEvents = true
+            w.level = .popUpMenu                        // above the menu bar, so the panel can land on the icon
+            w.alphaValue = 1
+        }
         let item = LaunchSplashPlan.statusItemFrame().frame
-        let o = window?.frame.origin ?? .zero
-        let h = window?.frame.height ?? size.height
-        target = CGPoint(x: item.midX - o.x, y: h - (item.midY - o.y))
-        withAnimation(.easeOut(duration: 0.6)) { phase = .arrived }
+        let origin = window?.frame.origin ?? .zero
+        let height = window?.frame.height ?? size.height
+        target = CGPoint(x: item.midX - origin.x, y: height - (item.midY - origin.y))
+        withAnimation(.easeInOut(duration: 0.95)) { phase = .flying }
+        try? await Task.sleep(for: .milliseconds(1000))
+        phase = .arrived
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
-        try? await Task.sleep(for: .milliseconds(800))
+        try? await Task.sleep(for: .milliseconds(750))
         finish()
     }
 
