@@ -10,7 +10,7 @@ import AppKit
 /// The splash's pure decisions — gate, timing, and the checklist text — so they are unit-tested.
 enum LaunchSplashPlan {
     static let minimumSeconds: TimeInterval = 3.4
-    static let capSeconds: TimeInterval = 7.0
+    static let capSeconds: TimeInterval = 9.5
 
     /// Every launch, a brand-new install included (there it hands off to the setup wizard instead of flying to the
     /// menu-bar icon — the wizard and donation cards slide in instead, see `runCards`).

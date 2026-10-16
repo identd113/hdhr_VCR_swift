@@ -16,7 +16,7 @@ checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run 
 `\.embeddedCardClose` environment value (`Views/EmbeddedCard.swift`) to close themselves and skip their own window setup.
 - Which cards: `hdhr_VCRApp.openLaunchSplashIfNeeded()` sets `AppState.launchSplashHandsOffToWizard` (first run) and calls
   `LaunchSplashController.play(state:offersDonation: true)`; Settings → Maintenance → *Preview Launch Splash* passes `false` and has no
-  wizard, so it is just the splash. After the splash card (startup done, 3.4–7 s) `runCards` shows whichever of the wizard / donation
+  wizard, so it is just the splash. After the splash card (startup done, 3.4–9.5 s) `runCards` shows whichever of the wizard / donation
   are due, waiting for each to close (`closedCards`), then the panel glides to the menu-bar icon (see below). With **no** card due
   the splash card itself is the last panel and glides to the menu-bar icon. While cards are up the splash window takes input (`SplashWindow` can
   become key; level `.modalPanel`), is hidden and click-through while another app is frontmost, and the wall is frozen (≈0 % CPU).
@@ -45,11 +45,11 @@ announce listener, the notification-permission prompt, the GitHub update check, 
 JSON calls** (`/discover.json`, `/lineup.json`, `guide.php`). The splash releases it (`markFlyInDone()`) the moment the wall has
 assembled and the card fades in (≈ 1.7 s after the posters start flying); `release()` also releases it, and the 8 s timeout covers a
 splash that never opens. No splash expected (off, Reduce Motion, tests) → no wait. The checklist therefore starts ticking just after
-the fly-in; the splash's 3.4 s minimum / 7 s cap are unchanged. Separately, `performFetchAllGuides`'s web-page rebuild waits for
+the fly-in; the splash's 3.4 s minimum is unchanged and its cap is 9.5 s (was 7 s) because discovery and the guide now start ≈ 3 s in and finish ≈ 9 s after launch. Separately, `performFetchAllGuides`'s web-page rebuild waits for
 `waitUntilSettled` (a card up and the wall frozen, or the splash gone; ≤ 6 s).
 
 ## Timing
-`LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (7 s) — so a missing tuner can't hold it up.
+`LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (9.5 s) — so a missing tuner can't hold it up.
 
 ## Window
 `LaunchSplashView` turns its `NSWindow` (a `SplashWindow`, see Window lifetime) into a borderless, clear canvas (click-through except while a card is up) covering the menu-bar screen at `.popUpMenu` level (above the menu bar, so the logo can land on the icon). It never takes input.
