@@ -54,7 +54,7 @@ Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Rem
 
 ### Web guide & Discord (`WebServer`, `DiscordNotifier`)
 
-- *Updated* — **Discord notifications wait out Discord's rate limit** and retry instead of dropping the card when several shows start or stop at once. Webhook URLs must now be `https://`, and editing a card works with a thread webhook (`?thread_id=`).
+- *Updated* — **Discord notifications wait out Discord's rate limit** and retry instead of dropping the card when several shows start or stop at once. Webhook URLs must now be `https://` (one that isn't is ignored, with a warning in the log), and editing a card works with a thread webhook (`?thread_id=`).
 - *Updated* — The web guide's Record request now rejects invalid air-day names, and a stream request's `duration` is capped at 7 days.
 
 ### Menu bar & Settings (`MenuContent`, `SettingsView`, `AddShowView`)

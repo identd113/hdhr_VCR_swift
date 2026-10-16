@@ -349,10 +349,23 @@ extension LaunchSplashView {
         NSApp.activate(ignoringOtherApps: true)
         openWindow("first-run-wizard")
         var wizard: NSWindow?
-        for _ in 0..<40 {                               // up to ~2 s for the scene to create its window
-            wizard = NSApp.windows.first { $0.title == "Welcome to hdhrVCRplus" }
-            if wizard != nil { break }
-            try? await Task.sleep(for: .milliseconds(50))
+        for attempt in 0..<2 {
+            for _ in 0..<40 {                           // up to ~2 s for the scene to create its window
+                wizard = NSApp.windows.first { $0.title == "Welcome to hdhrVCRplus" }
+                if wizard != nil { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if wizard != nil || attempt == 1 { break }
+            openWindow("first-run-wizard")              // one retry before giving up
+        }
+        // No wizard window: don't leave the wall up waiting on a flag nothing will set — end like a normal launch.
+        if wizard == nil {
+            glog("[Splash] setup wizard window never opened — ending the splash", level: .warning)
+            state.firstRunWizardEntrance = false
+            inWizardMode = false
+            window?.level = .popUpMenu
+            finish()
+            return
         }
         wizard?.level = NSWindow.Level(rawValue: NSWindow.Level.modalPanel.rawValue + 1)
         try? await Task.sleep(for: .milliseconds(200)) // its WindowAction sizes and centres it just after it appears

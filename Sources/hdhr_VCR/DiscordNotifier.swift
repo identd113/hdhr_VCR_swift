@@ -57,10 +57,13 @@ private func discordJSONRequest(url: URL, method: String, embed: [String: Any], 
 /// The webhook URL as components, or nil unless it is `https` on a Discord host. Plain `http://` is refused
 /// outright — the token is part of the URL path and would cross the network in the clear.
 private func discordWebhookComponents(_ webhookURL: String) -> URLComponents? {
-    guard !webhookURL.isEmpty,
-          let c = URLComponents(string: webhookURL),
+    guard !webhookURL.isEmpty else { return nil }
+    guard let c = URLComponents(string: webhookURL),
           c.scheme?.lowercased() == "https",
-          c.host.map(isDiscordHost) == true else { return nil }
+          c.host.map(isDiscordHost) == true else {
+        glog("[Discord] webhook URL ignored — it must be an https Discord webhook URL", level: .warning)
+        return nil
+    }
     return c
 }
 

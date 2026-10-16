@@ -242,7 +242,7 @@ def stamp(args):
         m = re.search(r"^## Unreleased\n", cl, re.M)
         if not m:
             sys.exit("CHANGELOG.md has no '## Unreleased' section to stamp")
-        body = re.search(r"^## Unreleased\n(.*?)(?=^## )", cl, re.S | re.M).group(1)
+        body = re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", cl, re.S | re.M).group(1)
         if not any(l.startswith("- ") for l in body.splitlines()):
             sys.exit("'## Unreleased' has no entries")
         # Precedent (v2.5.0, v2.6.0 at their tags): no Unreleased heading is left behind — the first change after the
@@ -304,7 +304,7 @@ def publish(args):
     if not args.live:
         gh_create.append("--draft")
     gh_create.append(dmg)
-    plan.append(" ".join(gh_create))
+    plan.append(" ".join(gh_create) + ("   (or, if the draft already exists: gh release edit --draft=false)" if args.live else ""))
     if args.live:
         plan.append(f"README.md 'Latest' heading → v{v} + new download link (the bullets under it are NOT touched), then `git commit` (not pushed)")
     print("Plan:" if not args.yes else "Doing:")
@@ -313,7 +313,11 @@ def publish(args):
     if not args.yes:
         print("\nDry run. Add --yes to do it" + (" (--live publishes it; without --live it is created as a DRAFT)." if not args.live else "."))
         return
-    sh(gh_create, check=True, timeout=900)
+    draft = args.live and sh(["gh", "release", "view", f"v{v}", "--json", "isDraft", "--jq", ".isDraft"]).stdout.strip() == "true"
+    if draft:       # the draft from the first run: publish it, don't create the release (and upload the DMG) again
+        sh(["gh", "release", "edit", f"v{v}", "--draft=false"], check=True, timeout=120)
+    else:
+        sh(gh_create, check=True, timeout=900)
     print(f"GitHub Release v{v} {'published' if args.live else 'created as a draft — review it, then run again with --live'}")
     if args.live:
         text = read(README)

@@ -1239,3 +1239,10 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   `allChannels` does a per-channel `guideEntries(...).first(where:)` scan plus a sort over the
   whole lineup. Modal-scoped (not a 24/7 hot path) so kept as a lower-severity EFFICIENCY note
   rather than top-tier.
+
+## 2026-10-15 — v2.6.0..v2.6.5 pre-release review
+- hdhr_VCRApp.swift openLaunchSplashIfNeeded: 14 s `Task.sleep` is an intentional watchdog (wizard must open if splash never hands off), not race-hiding; flag is cleared by the splash itself.
+- LaunchSplashView.swift: many `Task.sleep` calls are animation choreography, not synchronization.
+- DiscordNotifier.swift discordWebhookComponents: https-only now applies to all senders (previously sendDiscordEmbedCapturing/edit accepted http) — intentional hardening.
+- AppState.watchRemoteRelay `fromBeginning`: mediaLead uses viewer's clock vs the source's epoch start (cross-Mac clock skew shifts scrub axis).
+- GuideStore.invalidateAll now does sync directory deletes on MainActor (few files; user-initiated only from SettingsView).
