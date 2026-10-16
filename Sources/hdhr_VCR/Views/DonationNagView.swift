@@ -49,7 +49,7 @@ struct DonationNagView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(width: LaunchCard.width, height: LaunchCard.height)
-                .launchCardChrome()
+                .launchCardChrome(applied: false)    // the splash's persistent panel is the chrome
             } else {
                 VStack(spacing: 0) {
                     header

@@ -201,14 +201,8 @@ struct FirstRunWizardView: View {
         })
         // The launch splash's look: always dark, a soft warm glow from the logo corner and a vignette, white type —
         // rounded 20pt panel with a faint border and the same drop shadow DonationNagView uses.
-        .background(CardBackdrop())
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-        .environment(\.colorScheme, .dark)
+        // In its own window the wizard draws the dark panel; as a launch card the splash's persistent panel is already there.
+        .launchCardChrome(applied: embeddedClose == nil)
         .onAppear {
             // This single-instance Window's @State persists across even a FULL close (Escape/red
             // button → dismiss()) — reopening later via openWindow(id:) still refires onAppear

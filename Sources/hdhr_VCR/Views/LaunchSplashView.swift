@@ -82,6 +82,7 @@ struct LaunchSplashView: View {
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
     @State private var pulse = false
     @State private var frozen = false               // a card is up: the wall stops animating (no idle CPU/GPU)
+    @State private var logoDetached = false         // finale without cards: the logo flies from a screen overlay, not the panel
     @State private var cardsActive = false          // the window takes input; hidden whenever another app is frontmost
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
@@ -90,7 +91,7 @@ struct LaunchSplashView: View {
     private let logoTop: CGFloat = 130                 // logo's top edge below the panel's top
     private let logoSize: CGFloat = 108
 
-    /// Cards enter from the right and leave to the left, a full screen width, so only one is ever on screen.
+    /// Cards enter from the right and leave to the left, one panel width, clipped by the panel — so only one is ever visible.
     private var slide: AnyTransition {
         .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .leading).combined(with: .opacity))
@@ -112,36 +113,40 @@ struct LaunchSplashView: View {
                         .allowsHitTesting(false)
                 }
 
-                if card == .splash {
-                    ZStack {
-                        // The splash card: the same dark panel, at the same size, as the wizard and donation cards.
-                        chrome.frame(width: cardSize.width, height: cardSize.height)
-                            .launchCardChrome()
-                            .opacity(phase == .showing && assembled ? 1 : 0)
-                            .position(center)
-
-                        logo
-                            .frame(width: logoSize, height: logoSize)
-                            .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
-                            .opacity(phase == .arrived ? 0 : (assembled ? 1 : 0))
-                            .position(phase == .showing ? logoHome : target)
+                // The panel stays put; the cards slide *inside* it, clipped to its edges — splash card out to the left,
+                // the next in from the right. One panel, one card at a time (docs/LaunchSplash.md).
+                ZStack {
+                    if card == .splash {
+                        splashCard
+                            .frame(width: cardSize.width, height: cardSize.height)
+                            .transition(slide)
                     }
-                    .frame(width: full.width, height: full.height)
-                    .transition(slide)
+                    if card == .wizard {
+                        FirstRunWizardView()
+                            .environment(\.embeddedCardClose, { closedCards += 1 })
+                            .frame(width: cardSize.width, height: cardSize.height)
+                            .transition(slide)
+                    }
+                    if card == .donation {
+                        DonationNagView()
+                            .environment(\.embeddedCardClose, { closedCards += 1 })
+                            .frame(width: cardSize.width, height: cardSize.height)
+                            .transition(slide)
+                    }
                 }
+                .frame(width: cardSize.width, height: cardSize.height)
+                .launchCardChrome()
+                .opacity(assembled && phase == .showing && card != .none ? 1 : 0)
+                .position(center)
 
-                if card == .wizard {
-                    FirstRunWizardView()
-                        .environment(\.embeddedCardClose, { closedCards += 1 })
-                        .frame(width: full.width, height: full.height)
-                        .transition(slide)
-                }
-
-                if card == .donation {
-                    DonationNagView()
-                        .environment(\.embeddedCardClose, { closedCards += 1 })
-                        .frame(width: full.width, height: full.height)
-                        .transition(slide)
+                // Menu-bar finale with no cards: the logo leaves the panel, so it flies from an overlay on the screen
+                // (swapped in, unanimated, for the in-panel logo exactly underneath it).
+                if logoDetached {
+                    logo
+                        .frame(width: logoSize, height: logoSize)
+                        .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
+                        .opacity(phase == .arrived ? 0 : 1)
+                        .position(phase == .showing ? logoHome : target)
                 }
 
                 if phase == .arrived {
@@ -181,7 +186,18 @@ struct LaunchSplashView: View {
         .accessibilityHidden(true)
     }
 
-    /// The text over the finished wall — no panel, just a shadow to keep it legible over the posters.
+    /// The splash card's content (logo, title, version, checklist), laid out for the panel's own coordinates.
+    private var splashCard: some View {
+        ZStack(alignment: .top) {
+            chrome
+            if !logoDetached {
+                logo
+                    .frame(width: logoSize, height: logoSize)
+                    .position(x: cardSize.width / 2, y: logoTop + logoSize / 2)
+            }
+        }
+    }
+
     private var chrome: some View {
         VStack(spacing: 6) {
             Color.clear.frame(height: logoTop + logoSize + 6)   // the logo is drawn above, flying out of this spot
@@ -315,7 +331,7 @@ struct LaunchSplashView: View {
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; logoDetached = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
         let loaded = await loadPosters()
         tiles = loaded.images
         wallHasPosters = loaded.real
@@ -344,6 +360,8 @@ struct LaunchSplashView: View {
         let origin = window?.frame.origin ?? .zero
         let height = window?.frame.height ?? size.height
         target = CGPoint(x: item.midX - origin.x, y: height - (item.midY - origin.y))
+        var swap = Transaction(); swap.disablesAnimations = true
+        withTransaction(swap) { logoDetached = true }       // hand the logo to the screen overlay, unanimated
         withAnimation(.easeInOut(duration: 0.85)) { phase = .flying }
         try? await Task.sleep(for: .milliseconds(900))
         phase = .arrived

@@ -10,8 +10,7 @@
 **On demand:** Settings → Maintenance → *Preview Launch Splash* opens the same window any time (it ignores the enable toggle).
 
 ## Cards: splash → setup wizard → donation (one window, one card at a time)
-The poster wall is the **one persistent backdrop**; on top of it exactly one card is visible at a time, each sliding in from the
-right over the previous one (which leaves to the left; `LaunchSplashView.slide`, 0.55 s). Order: the **splash card** (logo, version,
+The poster wall is the **one persistent backdrop**, and on it sits **one persistent panel** (520×600 max, `LaunchCard`, drawn once by `launchCardChrome()`); the cards slide *inside* the panel, clipped to its edges — the next card enters from the panel's right edge while the previous one leaves through its left edge (`LaunchSplashView.slide`, 0.55 s). Nothing crosses the screen. The cards draw no panel of their own while embedded. For the no-card menu-bar finale the logo is swapped, unanimated, for an identical overlay on the screen (`logoDetached`) so it can leave the panel. Order: the **splash card** (logo, version,
 checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run setup isn't done) → the **donation card**
 (`DonationNagView`, only while `Donation_unlocked` is false). Both are the existing views, run as cards: they read the
 `\.embeddedCardClose` environment value (`Views/EmbeddedCard.swift`) to close themselves and skip their own window setup.

@@ -35,13 +35,18 @@ struct CardBackdrop: View {
 }
 
 extension View {
-    /// Rounded dark panel with the faint border and drop shadow shared by every launch card (always dark).
-    func launchCardChrome() -> some View {
-        self.background(CardBackdrop())
-            .clipShape(RoundedRectangle(cornerRadius: LaunchCard.corner, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: LaunchCard.corner, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-            .environment(\.colorScheme, .dark)
+    /// Rounded dark panel with the faint border and drop shadow shared by every launch card (always dark). With
+    /// `applied: false` only the dark colour scheme is set — the card sits inside a panel that already draws the chrome.
+    @ViewBuilder func launchCardChrome(applied: Bool = true) -> some View {
+        if applied {
+            self.background(CardBackdrop())
+                .clipShape(RoundedRectangle(cornerRadius: LaunchCard.corner, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: LaunchCard.corner, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 1))
+                .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
+                .environment(\.colorScheme, .dark)
+        } else {
+            self.environment(\.colorScheme, .dark)
+        }
     }
 }
