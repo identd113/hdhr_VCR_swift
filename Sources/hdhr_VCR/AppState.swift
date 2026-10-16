@@ -134,12 +134,9 @@ final class AppState: ObservableObject {
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
     @Published var isStartingUp: Bool = true
-    // First-run hand-off between the launch splash and the setup wizard (docs/LaunchSplash.md): on a brand-new install the
-    // splash opens the wizard itself when it finishes, instead of flying to the menu-bar icon.
-    // `launchSplashHandsOffToWizard` is set once, right before the splash opens; `firstRunWizardEntrance` is true while the
-    // wizard window is open-but-invisible, so it can fade in under the gliding logo.
+    // First-run hand-off (docs/LaunchSplash.md): on a brand-new install the launch splash hosts the setup wizard as a card
+    // in its own window. Set once, right before the splash opens; cleared the moment the splash starts showing the wizard.
     var launchSplashHandsOffToWizard = false
-    @Published var firstRunWizardEntrance = false
     @Published var updateCheckResult: UpdateCheckResult?   // non-nil only when a newer GitHub release exists
     @Published var lastUpdateCheckDate: Date?               // nil = never checked this launch
     // Set to true in tests: startup() returns immediately, preventing idleLoop from running.

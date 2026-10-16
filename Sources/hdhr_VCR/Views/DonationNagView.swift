@@ -20,6 +20,10 @@ struct DonationNagView: View {
 
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
+    /// Non-nil when this is a card inside the launch splash's window: closes the card; the floating-level setup is skipped.
+    @Environment(\.embeddedCardClose) private var embeddedClose
+
+    private func closeNag() { if let embeddedClose { embeddedClose() } else { dismiss() } }
 
     private let paypalURL = "https://www.paypal.com/paypalme/MikeWoodfill/10"
 
@@ -50,7 +54,7 @@ struct DonationNagView: View {
         .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
         // Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
         // same technique the old FloatingGuideView used (see git history) before its removal.
-        .background(WindowAction(trigger: true) { $0.level = .floating })
+        .background(WindowAction(trigger: true) { if embeddedClose == nil { $0.level = .floating } })
         .onAppear {
             // macOS window-state restoration can repopulate a closed-and-reopened single-instance
             // Window scene's field contents from its last session — force a clean slate on every
@@ -173,7 +177,7 @@ struct DonationNagView: View {
 
             HStack {
                 Spacer()
-                Button("Not now") { dismiss() }
+                Button("Not now") { closeNag() }
                     .buttonStyle(.plain)
                     .font(.callout)
                     .foregroundStyle(.tertiary)
@@ -198,7 +202,7 @@ struct DonationNagView: View {
         state.config.Donation_unlocked = true
         state.config.Donation_unlock_code = normalized.uppercased()
         state.saveConfig()
-        dismiss()
+        closeNag()
     }
 
     private func sha256Hex(_ s: String) -> String {

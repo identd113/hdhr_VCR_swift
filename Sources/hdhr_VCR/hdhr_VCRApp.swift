@@ -325,7 +325,7 @@ struct hdhr_VCRApp: App {
         // instead of the wizard appearing on top of it at launch — openFirstRunWizardIfNeeded() stands down while it runs.
         appState.launchSplashHandsOffToWizard = needsFirstRunWizard
         NSApplication.shared.activate(ignoringOtherApps: true)
-        LaunchSplashController.shared.play(state: appState) { openWindow(id: $0) }
+        LaunchSplashController.shared.play(state: appState, offersDonation: true)
         // Fallback: if the splash never gets as far as opening the wizard (its task cancelled, the window closed from
         // outside), the wizard must still appear — nothing else opens it on this launch. The splash clears the flag the
         // moment it starts its own hand-off (well inside this delay: cap 7 s + posters + ~2 s of flight).
@@ -334,7 +334,6 @@ struct hdhr_VCRApp: App {
                 try? await Task.sleep(for: .seconds(14))
                 guard appState.launchSplashHandsOffToWizard else { return }
                 appState.launchSplashHandsOffToWizard = false
-                appState.firstRunWizardEntrance = false
                 glog("[Startup] launch splash never handed off — opening the setup wizard directly", level: .warning)
                 activateAndOpen(windowId: "first-run-wizard")
             }
@@ -350,6 +349,8 @@ struct hdhr_VCRApp: App {
         // property's own comment for why the live value isn't safe to read here.
         guard !needsFirstRunWizard else { return }
         guard !appState.config.Donation_unlocked else { return }
+        // The launch splash shows the donation card itself (after the wizard on a first run) — don't open a second one.
+        guard !LaunchSplashController.shared.isPlaying else { return }
         activateAndOpen(windowId: "donation-nag")
     }
 

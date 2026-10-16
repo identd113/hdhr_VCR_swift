@@ -47,14 +47,6 @@ enum LaunchSplashPlan {
         return [tuner, lineup, guide]
     }
 
-    /// Where the logo should land, in the splash window's own top-left (y-down) coordinates, to sit on a point `inset` from
-    /// the top-left of the wizard window (`wizardFrame`, screen coordinates, y up). `splashOrigin`/`splashHeight` are the
-    /// splash window's frame origin and height in the same screen coordinates.
-    static func wizardIconTarget(wizardFrame: NSRect, inset: CGPoint, splashOrigin: CGPoint, splashHeight: CGFloat) -> CGPoint {
-        CGPoint(x: wizardFrame.minX + inset.x - splashOrigin.x,
-                y: splashHeight - ((wizardFrame.maxY - inset.y) - splashOrigin.y))
-    }
-
     /// Where the menu-bar icon is, in screen coordinates (y up). Our own status item's window is found by class
     /// name (private AppKit type, so a loose match); falls back to the top-right of the menu-bar screen.
     @MainActor static func statusItemFrame() -> (frame: NSRect, found: Bool) {
@@ -68,16 +60,20 @@ enum LaunchSplashPlan {
 
 struct LaunchSplashView: View {
     @EnvironmentObject var state: AppState
-    /// Opens one of the app's `Window` scenes by id (the first-run wizard). A closure, not `@Environment(\.openWindow)`:
-    /// this view lives in an AppKit window made by `LaunchSplashController`, outside any scene.
-    let openWindow: (String) -> Void
+    /// Whether a donation card may follow the splash (the app's launch asks for it; the Settings preview doesn't). It is
+    /// shown only if the nag is due then: `Donation_unlocked` still false.
+    let offersDonation: Bool
     /// Called once, when the splash is over — the controller destroys the window, this view and everything it holds.
     let onFinish: () -> Void
 
-    // showing → (menu-bar finale: flying → arrived) or (first run: handoff → backdrop → arrived). `handoff`: the logo glides into the
-    // wizard's header while the wall stays; `backdrop`: the wizard is open on top of the (frozen) wall.
-    private enum Phase { case showing, handoff, backdrop, flying, arrived }
+    // The wall is the one persistent backdrop; on top of it exactly one card at a time slides in: the splash's own
+    // (logo, version, checklist), then — when due — the setup wizard (first run), then the donation card. Without a card
+    // after the splash, the logo flies to the menu-bar icon (`flying` → `arrived`); after cards, only the ring pulses there.
+    private enum Phase { case showing, flying, arrived }
+    private enum Card { case splash, wizard, donation, none }
     @State private var phase: Phase = .showing
+    @State private var card: Card = .splash
+    @State private var closedCards = 0              // bumped by a hosted card's close action; the flow waits on it
     @State private var assembled = false            // tiles have locked into the window: chrome, logo and text fade in
     @State private var started = Date()
     @State private var tilesReady = false   // the wall isn't drawn until posters are loaded — no placeholder flash
@@ -85,40 +81,72 @@ struct LaunchSplashView: View {
     @State private var window: NSWindow?
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
     @State private var pulse = false
-    @State private var logoFaded = false            // first-run hand-off: the logo hands over to the wizard's own header icon
-    @State private var frozen = false               // first-run backdrop: the wall stops animating (no idle CPU/GPU while the wizard is open)
-    @State private var inWizardMode = false         // first-run hand-off under way: hide the wall whenever another app is frontmost
+    @State private var frozen = false               // a card is up: the wall stops animating (no idle CPU/GPU)
+    @State private var cardsActive = false          // the window takes input; hidden whenever another app is frontmost
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
 
     private let cardSize = CGSize(width: 520, height: 340)
     private let logoSize: CGFloat = 108
 
+    /// Cards enter from the right and leave to the left, a full screen width, so only one is ever on screen.
+    private var slide: AnyTransition {
+        .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity))
+    }
+
     var body: some View {
         GeometryReader { geo in
-            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let full = geo.size
+            let center = CGPoint(x: full.width / 2, y: full.height / 2)
             let logoHome = CGPoint(x: center.x, y: center.y - cardSize.height / 2 + 40 + logoSize / 2)
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
                 if tilesReady {
-                    MosaicTiles(images: tiles, started: started, screen: geo.size, frozen: frozen)
-                        .opacity(phase == .showing || phase == .handoff || phase == .backdrop ? 1 : 0)
-                    // First run: the wizard sits on this wall, so it is dimmed a little more once the wizard is coming.
-                    Color.black.opacity(phase == .handoff || phase == .backdrop ? 0.4 : 0)
+                    MosaicTiles(images: tiles, started: started, screen: full, frozen: frozen)
+                        .opacity(phase == .showing ? 1 : 0)
+                    // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
+                    Color.black.opacity(card == .wizard || card == .donation ? 0.4 : 0)
                         .allowsHitTesting(false)
                 }
 
-                RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
-                               startRadius: 40, endRadius: 270)
-                    .frame(width: 600, height: 600)
-                    .opacity(phase == .showing && assembled ? 1 : 0)
-                    .position(center)
-                    .allowsHitTesting(false)
+                if card == .splash {
+                    ZStack {
+                        RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
+                                       startRadius: 40, endRadius: 270)
+                            .frame(width: 600, height: 600)
+                            .opacity(phase == .showing && assembled ? 1 : 0)
+                            .position(center)
+                            .allowsHitTesting(false)
 
-                chrome.frame(width: cardSize.width, height: cardSize.height)
-                    .opacity(phase == .showing && assembled ? 1 : 0)
-                    .position(center)
+                        chrome.frame(width: cardSize.width, height: cardSize.height)
+                            .opacity(phase == .showing && assembled ? 1 : 0)
+                            .position(center)
+
+                        logo
+                            .frame(width: logoSize, height: logoSize)
+                            .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
+                            .opacity(phase == .arrived ? 0 : (assembled ? 1 : 0))
+                            .position(phase == .showing ? logoHome : target)
+                    }
+                    .frame(width: full.width, height: full.height)
+                    .transition(slide)
+                }
+
+                if card == .wizard {
+                    FirstRunWizardView()
+                        .environment(\.embeddedCardClose, { closedCards += 1 })
+                        .frame(width: full.width, height: full.height)
+                        .transition(slide)
+                }
+
+                if card == .donation {
+                    DonationNagView()
+                        .environment(\.embeddedCardClose, { closedCards += 1 })
+                        .frame(width: full.width, height: full.height)
+                        .transition(slide)
+                }
 
                 if phase == .arrived {
                     Circle().stroke(Color.accentColor, lineWidth: 3)
@@ -126,27 +154,22 @@ struct LaunchSplashView: View {
                         .scaleEffect(pulse ? 3.2 : 0.8).opacity(pulse ? 0 : 0.9)
                         .position(target)
                 }
-
-                logo
-                    .frame(width: logoSize, height: logoSize)
-                    .scaleEffect(phase == .showing ? 1 : (phase == .handoff || phase == .backdrop ? FirstRunWizardView.headerIconSize / logoSize : 20 / logoSize))
-                    .opacity(phase == .arrived || logoFaded ? 0 : (assembled ? 1 : 0))
-                    .position(phase == .showing ? logoHome : target)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .task { await run(in: geo.size) }
+            .frame(width: full.width, height: full.height)
+            .task { await run(in: full) }
         }
         .background(WindowAction(trigger: true) { w in
             window = w
             Self.configure(w)
         })
         .onAppear { if let w = window { Self.configure(w) } }
-        // While the wizard sits on the wall, the wall must not cover another app you switch to.
+        // While a card is up the window takes input and must not cover another app you switch to.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            if inWizardMode { window?.alphaValue = 0 }
+            if cardsActive { window?.alphaValue = 0; window?.ignoresMouseEvents = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             window?.alphaValue = 1
+            window?.ignoresMouseEvents = !cardsActive
         }
     }
 
@@ -297,7 +320,7 @@ struct LaunchSplashView: View {
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; logoFaded = false; frozen = false; inWizardMode = false; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
         let loaded = await loadPosters()
         tiles = loaded.images
         wallHasPosters = loaded.real
@@ -314,9 +337,11 @@ struct LaunchSplashView: View {
         }
         let fresh = posterURLs()
         if !fresh.isEmpty { UserDefaults.standard.set(Array(fresh.prefix(60)), forKey: Self.savedPostersKey) }
-        // Brand-new install: no flight to the menu bar — the setup wizard is next, and the logo glides into its header.
-        if state.launchSplashHandsOffToWizard {
-            await handOffToWizard(in: size)
+        // Cards after the splash: the setup wizard on a brand-new install, then the donation card if the nag is due. One at a
+        // time, each sliding over the previous; the wall stays as the backdrop throughout.
+        let wizardDue = state.launchSplashHandsOffToWizard
+        if wizardDue || (offersDonation && !state.config.Donation_unlocked) {
+            await runCards(wizardDue: wizardDue, in: size)
             return
         }
         // Where to land, in the window's own top-left coordinates.
@@ -334,67 +359,33 @@ struct LaunchSplashView: View {
 }
 
 extension LaunchSplashView {
-    /// First run: open the setup wizard (invisible), then — wall staying put as the backdrop — the text falls away while the
-    /// logo glides to where the wizard's header icon will be; the wizard fades in on top of the wall, over the logo. The splash
-    /// window stays open behind the wizard (wall frozen, hidden whenever another app is frontmost) until the wizard is
-    /// dismissed, then the wall fades and a ring pulses at the menu-bar icon: "set up, and living up here".
-    /// The wizard and the splash share one look (dark, glow, same logo), so this reads as one continuous opening.
-    @MainActor fileprivate func handOffToWizard(in size: CGSize) async {
+    /// Shows the wizard (when due) and then the donation card (when due) as cards in this window, each sliding in over
+    /// the one before, with the wall as the backdrop. Ends like a normal launch, minus the logo (it left with the splash
+    /// card): the wall fades and a ring pulses at the menu-bar icon — "set up, and living up here".
+    @MainActor fileprivate func runCards(wizardDue: Bool, in size: CGSize) async {
         state.launchSplashHandsOffToWizard = false     // decided — the app's fallback timer (openLaunchSplashIfNeeded) stands down
-        state.firstRunWizardEntrance = true            // the wizard renders fully transparent from its first frame
-        inWizardMode = true
-        // Wizard above the wall: the splash drops below the pop-up level it needs for the menu-bar flight (not wanted here),
-        // and the wizard goes one level above it.
-        window?.level = .modalPanel
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow("first-run-wizard")
-        var wizard: NSWindow?
-        for attempt in 0..<2 {
-            for _ in 0..<40 {                           // up to ~2 s for the scene to create its window
-                wizard = NSApp.windows.first { $0.title == "Welcome to hdhrVCRplus" }
-                if wizard != nil { break }
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            if wizard != nil || attempt == 1 { break }
-            openWindow("first-run-wizard")              // one retry before giving up
+        cardsActive = true
+        frozen = true                                   // the wall stops animating while a card is open
+        if let w = window {                             // the cards take input: key window, above other apps' windows
+            w.ignoresMouseEvents = false
+            w.level = .modalPanel
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKeyAndOrderFront(nil)
         }
-        // No wizard window: don't leave the wall up waiting on a flag nothing will set — end like a normal launch.
-        if wizard == nil {
-            glog("[Splash] setup wizard window never opened — ending the splash", level: .warning)
-            state.firstRunWizardEntrance = false
-            inWizardMode = false
-            window?.level = .popUpMenu
-            finish()
-            return
+        if wizardDue {
+            withAnimation(.easeInOut(duration: 0.55)) { card = .wizard }
+            guard await waitForCardClose() else { return }
         }
-        wizard?.level = NSWindow.Level(rawValue: NSWindow.Level.modalPanel.rawValue + 1)
-        try? await Task.sleep(for: .milliseconds(200)) // its WindowAction sizes and centres it just after it appears
-        let origin = window?.frame.origin ?? .zero
-        let height = window?.frame.height ?? size.height
-        if let wizard {
-            // Screen coordinates are y-up; this view's are y-down from the splash window's top-left.
-            target = LaunchSplashPlan.wizardIconTarget(wizardFrame: wizard.frame, inset: FirstRunWizardView.headerIconCenter,
-                                                       splashOrigin: origin, splashHeight: height)
-        } else {
-            target = CGPoint(x: size.width / 2, y: size.height / 2)
+        if offersDonation, !state.config.Donation_unlocked {
+            withAnimation(.easeInOut(duration: 0.55)) { card = .donation }
+            guard await waitForCardClose() else { return }
         }
-        withAnimation(.easeInOut(duration: 0.8)) { phase = .handoff }
-        try? await Task.sleep(for: .milliseconds(800))
-        withAnimation(.easeOut(duration: 0.5)) { state.firstRunWizardEntrance = false }
-        wizard?.makeKeyAndOrderFront(nil)
-        try? await Task.sleep(for: .milliseconds(250))
-        withAnimation(.easeOut(duration: 0.3)) { logoFaded = true }
-        try? await Task.sleep(for: .milliseconds(450))
-        phase = .backdrop
-        frozen = true                                   // the wall stops animating while the wizard is open
-        // Stay as the backdrop until the wizard is dismissed (Finish, Escape or the close button all set the flag).
-        while !state.config.First_run_wizard_shown, !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-        wizard?.level = .normal                         // a reopened wizard (Settings → Reset First-Run Setup) is an ordinary window
+        withAnimation(.easeInOut(duration: 0.5)) { card = .none }
+        try? await Task.sleep(for: .milliseconds(550))
+        cardsActive = false
         window?.level = .popUpMenu                      // back above the menu bar for the ring
+        window?.ignoresMouseEvents = true
         window?.alphaValue = 1
-        inWizardMode = false
         let item = LaunchSplashPlan.statusItemFrame().frame
         let o = window?.frame.origin ?? .zero
         let h = window?.frame.height ?? size.height
@@ -403,6 +394,17 @@ extension LaunchSplashView {
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
         try? await Task.sleep(for: .milliseconds(800))
         finish()
+    }
+
+    /// Waits until the card on screen closes itself (Finish, Escape, Not now, a valid code). False if the splash was
+    /// cancelled meanwhile.
+    @MainActor private func waitForCardClose() async -> Bool {
+        let before = closedCards
+        while closedCards == before {
+            try? await Task.sleep(for: .milliseconds(100))
+            if Task.isCancelled { return false }
+        }
+        return true
     }
 }
 
@@ -482,6 +484,12 @@ private struct MosaicTiles: View {
     }
 }
 
+/// A borderless window can't become key by default; the wizard's text fields and the donation code field need it to.
+private final class SplashWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 /// Owns the launch splash's window. The splash is not a SwiftUI `Window` scene: a scene's window is only ever ordered out,
 /// never destroyed, so a finished splash would sit in memory (and keep animating) for the life of the app. Here the window
 /// is created when the splash plays and destroyed when it ends — `release()` drops the hosting view, which frees the
@@ -493,14 +501,15 @@ final class LaunchSplashController {
     private var window: NSWindow?
     var isPlaying: Bool { window != nil }
 
-    func play(state: AppState, openWindow: @escaping (String) -> Void) {
+    /// `offersDonation`: the app's launch passes true (the donation card follows if the nag is due); the preview, false.
+    func play(state: AppState, offersDonation: Bool) {
         if let window { window.orderFrontRegardless(); return }
         let screen = NSScreen.screens.first?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let w = NSWindow(contentRect: screen, styleMask: [.borderless], backing: .buffered, defer: false)
+        let w = SplashWindow(contentRect: screen, styleMask: [.borderless], backing: .buffered, defer: false)
         w.title = "hdhrVCRplus"
         w.isReleasedWhenClosed = false
         LaunchSplashView.configure(w)
-        let root = LaunchSplashView(openWindow: openWindow, onFinish: { [weak self] in self?.release() })
+        let root = LaunchSplashView(offersDonation: offersDonation, onFinish: { [weak self] in self?.release() })
             .environmentObject(state)
         w.contentView = NSHostingView(rootView: root)
         window = w

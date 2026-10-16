@@ -8,6 +8,9 @@ import AppKit
 struct FirstRunWizardView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
+    /// Non-nil when this wizard is a card inside the launch splash's window (first run): closes the card, and the window
+    /// setup below is skipped — that window belongs to the splash.
+    @Environment(\.embeddedCardClose) private var embeddedClose
     // Plain local @State, NOT @AppStorage — every other field here only commits on Finish (see
     // finish()/onDisappear below), and binding this directly to UserDefaults would silently break
     // that: Choose…/Reset would persist immediately regardless of Escape/close-without-Finish.
@@ -101,11 +104,11 @@ struct FirstRunWizardView: View {
         }
     }
 
-    /// Panel width and the header logo's size/position — shared with `LaunchSplashView`, whose logo glides to exactly this
-    /// spot (window top-left → centre of the 52pt glow ZStack: 20pt side padding + 26, 18pt top padding + 26) on a first run.
     static let panelWidth: CGFloat = 460
     static let headerIconSize: CGFloat = 44
-    static let headerIconCenter = CGPoint(x: 46, y: 44)
+
+    /// Close the wizard: the splash's card when embedded, else its own window.
+    private func closeWizard() { if let embeddedClose { embeddedClose() } else { dismiss() } }
 
     /// Fixed window height for every step: tall enough for the longest page, never taller than the screen.
     /// A fixed (bounded) height — not `nil` — is what makes the ScrollView below safe; an unbounded ideal height inside
@@ -187,6 +190,7 @@ struct FirstRunWizardView: View {
         // like the launch splash does instead of sitting on a rectangular system window background.
         // See Views/WindowAction.swift for the shared NSViewRepresentable idiom.
         .background(WindowAction(trigger: step) { w in
+            guard embeddedClose == nil else { return }
             // Pin the window to the size this step asks for. Left to `.windowResizability(.contentSize)` alone, a window
             // AppKit restored at an earlier (shorter) frame kept it — the Back/Next row sat below the bottom edge.
             w.setContentSize(NSSize(width: Self.panelWidth, height: Self.stepHeight))
@@ -205,9 +209,6 @@ struct FirstRunWizardView: View {
         )
         .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
         .environment(\.colorScheme, .dark)
-        // First run: the launch splash opens this window fully transparent and fades it in under the gliding logo
-        // (LaunchSplashView.handOffToWizard). Not set for any other way of opening the wizard.
-        .opacity(state.firstRunWizardEntrance ? 0 : 1)
         .onAppear {
             // This single-instance Window's @State persists across even a FULL close (Escape/red
             // button → dismiss()) — reopening later via openWindow(id:) still refires onAppear
@@ -231,7 +232,7 @@ struct FirstRunWizardView: View {
                 Task { await checkNetworkAccessIfNeeded() }
             }
         }
-        .onExitCommand { dismiss() }
+        .onExitCommand { closeWizard() }
         .onDisappear {
             finishTask?.cancel()
             // Closing by any means (Finish, Escape, red-close-button) counts as "dismissed" —
@@ -284,8 +285,7 @@ struct FirstRunWizardView: View {
                                     LinearKeyframe(0.0, duration: 0.3)
                                 }
                             }
-                        // Same logo treatment as the launch splash (soft shadow, rounded corners); the splash's logo
-                        // glides to exactly this spot on a first run — keep Self.headerIconSize / headerIconCenter in step.
+                        // Same logo treatment as the launch splash (soft shadow, rounded corners).
                         Image(nsImage: icon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -794,7 +794,7 @@ struct FirstRunWizardView: View {
         finishTask = Task {
             try? await Task.sleep(for: .milliseconds(380))
             guard !Task.isCancelled else { return }
-            dismiss()
+            closeWizard()
         }
     }
 

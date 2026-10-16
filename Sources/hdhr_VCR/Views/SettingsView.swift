@@ -918,7 +918,7 @@ struct SettingsView: View {
                 maintenanceRow("Preview Launch Splash",
                                "Play the launch splash now — show posters fly in, the checklist fills, and the logo flies to the menu bar icon") {
                     NSApp.activate(ignoringOtherApps: true)
-                    LaunchSplashController.shared.play(state: state) { openWindow(id: $0) }
+                    LaunchSplashController.shared.play(state: state, offersDonation: false)
                     return "Launch splash playing"
                 }
             }
