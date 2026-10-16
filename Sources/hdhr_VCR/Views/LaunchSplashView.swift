@@ -430,7 +430,7 @@ extension LaunchSplashView {
     }
 }
 
-/// Cached logos/posters flying in from random points just off the screen's edges and locking into a 12×7 grid filling most of the screen.
+/// Cached logos/posters flying in from random points just off the screen's edges and locking into a 12×7 grid (`designWall`, scaled with the launch panel).
 /// Position is a pure function of time since `started`, so it always animates (no state to fall behind),
 /// and once seated each tile keeps a faint bob so the wall stays alive. Fewer images than slots → they repeat;
 /// none cached → the app's placeholder mark fills the wall.
