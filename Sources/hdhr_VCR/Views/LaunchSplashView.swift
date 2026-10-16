@@ -121,7 +121,6 @@ struct LaunchSplashView: View {
                 // loose wall (centre posters dimmed) with the splash card on a dark panel that sits in it.
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
-                        .drawingGroup()                 // one flattened Metal layer instead of 84 separately composited tiles
                         .opacity(phase == .showing ? 1 : 0)
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
                     Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0)
