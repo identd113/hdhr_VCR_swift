@@ -18,9 +18,9 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ### 📦 Latest: [v2.6.5](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.6.5/hdhrVCRplus-2.6.5.dmg)
-- **FEED grows up:** scrub back through another Mac's recording, automatic reconnect after a network blip, and delivery at full network speed (it was ~1.6 Mbps in 2.5.0)
-- **Picture-in-picture you control:** open it where you right-click, drag its corner to resize, and swaps keep your scrub position and audio output; streams now start on their own
-- Recordings that no longer lose their first seconds, a heads-up before a recording needs your tuner, Cast to Chromecast (Beta), and exclude recordings from Time Machine
+- **One launch, one window:** a short launch splash that flows into setup and the support card as cards on a single panel, then glides up to the menu-bar icon to show where the app lives
+- **Steadier, and truly idle when idle:** dialogs no longer freeze recording, the web guide or FEED viewers; idle CPU is about 0%; Watch Now is right the moment a recording starts; FEED recovers on its own
+- **Safer installs and recordings:** "Move to Applications" waits for macOS's permission prompt, recordings stay on the right drive and under the right series, and Discord cards wait out rate limits
 - Apple Silicon only.
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
@@ -157,14 +157,19 @@ pull program data all live here.
 
 ## What's New
 
-**v2.6.0's headline: FEED and picture-in-picture grow up.** Recording FEED (Beta, introduced in 2.5.0) now lets you
-scrub back through another Mac's recording, reconnects by itself after a network blip, and delivers at full network
-speed. Picture-in-picture goes where you right-click, resizes by dragging its corner, and keeps your scrub position
-and audio output when you swap. Streams start on their own, with no Start button.
+**v2.6.5's headline: fixes and polish.** The app is steadier and costs nothing when idle: a stray dialog no longer
+freezes the web guide, FEED viewers or recording scheduling, the launch splash's window is released when it ends
+(about 0 % CPU at idle, no more periodic hitch), Watch Now updates the instant a recording starts, and FEED no longer
+freezes for tens of seconds. The one new touch is a **launch splash** — the logo, a live checklist and show posters
+flying in — that on a new install flows into the setup wizard and the support card on the same panel, then glides up to
+the menu-bar icon. Measured side by side with 2.6.0, startup, idle CPU, memory and web-guide speed are unchanged;
+with the splash on, startup finishes about 3 seconds later by design (`docs/PerformanceHistory.md`).
 
-Also new: recordings no longer lose their first seconds, a heads-up before a recording needs your tuner, Cast to
-Chromecast (Beta), exclude recordings from Time Machine, and the space bar pauses a recording or FEED. Release builds
-are Apple Silicon only.
+Also in 2.6.5: recordings stay on the right drive when an external drive is unplugged, "Organize series recordings" no
+longer files one show under another, unreachable tuners are no longer offered, the player's sound follows your Mac's
+output, and "Move to Applications" no longer starts the app underneath its own prompt. (2.6.0 was the FEED and
+picture-in-picture release — scrub a FEED, resize and place picture-in-picture, Cast to Chromecast (Beta), exclude
+recordings from Time Machine.)
 
 See **[RELEASES.md](RELEASES.md)** for the rest of what changed in the current release and every
 version before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
