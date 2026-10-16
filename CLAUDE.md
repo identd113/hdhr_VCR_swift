@@ -161,6 +161,7 @@ Each bullet is the binding rule; the **→ full text** link has the complete ori
 | `tools/generate_favicon.py` | Build `Resources/favicon.ico` from two PNGs |
 | `tools/feed_diagnostics/` | FEED stall root-cause toolkit (capture tagger, window extractor, TS PCR analyzer) |
 | `hdhrVCRplus.app/Contents/Helpers/hdhr_guide` | Bundled terminal client for the guide (`docs/TUIGuide.md`) |
+| `tools/perf_baseline.py <prime\|run\|compare>` | Release-to-release performance baseline (launch, idle CPU, memory, web timings) in an isolated temp home; results in `docs/perf/`, history in `docs/PerformanceHistory.md` |
 | `tools/release_checklist.py <preflight\|stamp\|notes\|publish> <version>` | Release paperwork around `deploy_release.sh`: readiness report, CHANGELOG stamp, GitHub Release notes + (draft) Release, README "Latest" update; dry-run by default, never pushes or builds |
 
 Full descriptions, flags and safety notes for every tool: [`docs/Tools.md`](docs/Tools.md).

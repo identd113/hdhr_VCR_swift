@@ -1,0 +1,67 @@
+{
+  "label": "v2.6.5",
+  "version": "2.6.5",
+  "splash": true,
+  "runs": 3,
+  "host": "mwmbair",
+  "date": "2026-10-16 00:52",
+  "median": {
+    "cpu_to_ready": 3.12,
+    "guide_channels": 108,
+    "guide_s": 6.28204375,
+    "idle_cpu_pct": 0.10000000000000082,
+    "ready_s": 6.282122291,
+    "rss_mb": 219.625,
+    "web_guide_json_kb": 845.16015625,
+    "web_guide_json_ms": 29.156416000006402,
+    "web_root_cold_ms": 4.331875000019636,
+    "web_root_kb": 2221.1181640625,
+    "web_root_warm_ms": 2.65012500000239,
+    "web_vertical_ms": 64.13395900000296,
+    "binary_mb": 11.355010986328125
+  },
+  "all": [
+    {
+      "ready_s": 6.340953875,
+      "cpu_to_ready": 3.09,
+      "guide_s": 6.340874208,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000082,
+      "rss_mb": 219.625,
+      "web_root_cold_ms": 19.224416999996663,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 3.0790830000029246,
+      "web_guide_json_ms": 25.714125000000365,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 60.00666699999613
+    },
+    {
+      "ready_s": 6.282122291,
+      "cpu_to_ready": 3.13,
+      "guide_s": 6.28204375,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000082,
+      "rss_mb": 219.0,
+      "web_root_cold_ms": 4.226416000008726,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 2.65012500000239,
+      "web_guide_json_ms": 29.156416000006402,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 64.13395900000296
+    },
+    {
+      "ready_s": 6.265298874999999,
+      "cpu_to_ready": 3.12,
+      "guide_s": 6.265234000000007,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.13333333333333347,
+      "rss_mb": 219.84375,
+      "web_root_cold_ms": 4.331875000019636,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 2.62924999998404,
+      "web_guide_json_ms": 32.0856660000004,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 64.3259169999908
+    }
+  ]
+}

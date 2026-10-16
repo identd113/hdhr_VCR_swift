@@ -60,6 +60,14 @@ Motion is on.
 
 ### Updated
 - **Fixed: no dialog freezes the app any more**, and **idle CPU is 0 %** (see above).
+- **Fixed: "Move to Applications?" no longer starts the app underneath its own prompt.** A copy opened from the disk image or
+  Downloads began launching (finding tuners, starting the web server, reattaching recordings) while the prompt was still up,
+  and gave up if macOS asked for permission to write to Applications. Now nothing starts until you decide; the move waits
+  for macOS's permission prompt instead of failing under it; a copy already running in Applications is asked to quit first;
+  and the new copy launches only once it is really in place.
+- **Launch timing:** with the launch splash on, the app finishes starting about 3 seconds later than 2.6.0, because tuner
+  discovery and the guide wait for the posters to fly in; with the splash off, startup, idle CPU, memory and web-guide speed
+  match 2.6.0 (measured side by side, docs/PerformanceHistory.md).
 - **Fixed: Watch Now could show a recording as "scheduled to record"** without its relay buttons, or list
   the previous airing for up to 30 seconds after a reopen.
 - **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's

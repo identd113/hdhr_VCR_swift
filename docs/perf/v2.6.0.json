@@ -1,0 +1,67 @@
+{
+  "label": "v2.6.0",
+  "version": "2.6.0",
+  "splash": true,
+  "runs": 3,
+  "host": "mwmbair",
+  "date": "2026-10-16 00:44",
+  "median": {
+    "cpu_to_ready": 1.12,
+    "guide_channels": 108,
+    "guide_s": 3.4799232920000023,
+    "idle_cpu_pct": 0.10000000000000009,
+    "ready_s": 3.4799785840000013,
+    "rss_mb": 204.796875,
+    "web_guide_json_kb": 845.826171875,
+    "web_guide_json_ms": 31.25945899999749,
+    "web_root_cold_ms": 5.367125000006467,
+    "web_root_kb": 2221.35546875,
+    "web_root_warm_ms": 2.6582079999997177,
+    "web_vertical_ms": 65.16120800000635,
+    "binary_mb": 11.066146850585938
+  },
+  "all": [
+    {
+      "ready_s": 3.5779344170000003,
+      "cpu_to_ready": 1.13,
+      "guide_s": 3.57779275,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000009,
+      "rss_mb": 199.625,
+      "web_root_cold_ms": 17.9558749999984,
+      "web_root_kb": 2222.2373046875,
+      "web_root_warm_ms": 2.595540999998036,
+      "web_guide_json_ms": 31.25945899999749,
+      "web_guide_json_kb": 846.1767578125,
+      "web_vertical_ms": 64.45479100000284
+    },
+    {
+      "ready_s": 3.4799785840000013,
+      "cpu_to_ready": 1.12,
+      "guide_s": 3.4799232920000023,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000009,
+      "rss_mb": 205.921875,
+      "web_root_cold_ms": 5.367125000006467,
+      "web_root_kb": 2221.35546875,
+      "web_root_warm_ms": 2.6582079999997177,
+      "web_guide_json_ms": 30.591583999992622,
+      "web_guide_json_kb": 845.826171875,
+      "web_vertical_ms": 65.27079100000321
+    },
+    {
+      "ready_s": 3.4362192500000077,
+      "cpu_to_ready": 1.09,
+      "guide_s": 3.436080375000003,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000009,
+      "rss_mb": 204.796875,
+      "web_root_cold_ms": 5.281625000009171,
+      "web_root_kb": 2221.35546875,
+      "web_root_warm_ms": 2.7414590000205408,
+      "web_guide_json_ms": 32.7314169999795,
+      "web_guide_json_kb": 845.826171875,
+      "web_vertical_ms": 65.16120800000635
+    }
+  ]
+}

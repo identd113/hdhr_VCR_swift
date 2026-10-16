@@ -1,0 +1,67 @@
+{
+  "label": "v2.6.5",
+  "version": "2.6.5",
+  "splash": false,
+  "runs": 3,
+  "host": "mwmbair",
+  "date": "2026-10-16 00:54",
+  "median": {
+    "cpu_to_ready": 1.12,
+    "guide_channels": 108,
+    "guide_s": 3.563416833,
+    "idle_cpu_pct": 0.10000000000000009,
+    "ready_s": 3.563561125,
+    "rss_mb": 199.84375,
+    "web_guide_json_kb": 845.16015625,
+    "web_guide_json_ms": 27.52520900000377,
+    "web_root_cold_ms": 6.3852090000011685,
+    "web_root_kb": 2221.1181640625,
+    "web_root_warm_ms": 2.884250000022348,
+    "web_vertical_ms": 64.22949999999616,
+    "binary_mb": 11.355010986328125
+  },
+  "all": [
+    {
+      "ready_s": 3.563561125,
+      "cpu_to_ready": 1.12,
+      "guide_s": 3.563416833,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.13333333333333347,
+      "rss_mb": 199.84375,
+      "web_root_cold_ms": 21.16612500000059,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 3.5940409999994927,
+      "web_guide_json_ms": 23.649583000000973,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 59.18383300000585
+    },
+    {
+      "ready_s": 3.623292667000001,
+      "cpu_to_ready": 1.2,
+      "guide_s": 3.6231395000000006,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000009,
+      "rss_mb": 202.203125,
+      "web_root_cold_ms": 4.467167000001382,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 2.539124999998421,
+      "web_guide_json_ms": 27.52520900000377,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 64.22949999999616
+    },
+    {
+      "ready_s": 3.533885500000011,
+      "cpu_to_ready": 1.08,
+      "guide_s": 3.5337490830000036,
+      "guide_channels": 108,
+      "idle_cpu_pct": 0.10000000000000009,
+      "rss_mb": 121.5625,
+      "web_root_cold_ms": 6.3852090000011685,
+      "web_root_kb": 2221.1181640625,
+      "web_root_warm_ms": 2.884250000022348,
+      "web_guide_json_ms": 32.99941599999556,
+      "web_guide_json_kb": 845.16015625,
+      "web_vertical_ms": 66.94266599998855
+    }
+  ]
+}
