@@ -31,7 +31,7 @@ Top to bottom:
   "Unlock" button (orange gradient when enabled, quaternary/disabled-looking when the field is
   empty), with an inline "That code didn't match." warning (with a triangle icon) on a failed
   attempt
-- "Not now" — bordered, large button in a footer pinned to the bottom of the card (a `Divider` then the button right-aligned, 20pt side / 14pt vertical padding — the same bar as the setup wizard's Back / Next row; changed 2026-10-15 from plain tertiary text floating under the content) — closes the window via
+- "Not yet" (was "Not now" until 2026-10-15) — bordered, large button in a footer pinned to the bottom of the card (a `Divider` then the button right-aligned, 20pt side / 14pt vertical padding — the same bar as the setup wizard's Back / Next row; changed 2026-10-15 from plain tertiary text floating under the content) — closes the window via
   `@Environment(\.dismiss)`
 
 ## Trigger points
@@ -56,7 +56,7 @@ on an already-open single-instance `Window` scene just re-focuses it rather than
 `docs/MenuContent.md`'s "No duplicate windows" note — so this is safe to call repeatedly without
 checking whether the window is already open.
 
-There is deliberately **no throttling or snooze** — "Not now" just closes the window; it reappears
+There is deliberately **no throttling or snooze** — "Not yet" just closes the window; it reappears
 at the next trigger. If this proves too aggressive in practice, the natural fix is a cooldown
 timestamp in `AppConfig`, not a design change here.
 
@@ -94,6 +94,6 @@ the target only by brute-forcing the hash.
 ## As a launch-splash card (2026-10-15)
 At launch the nag is not opened as its own window: when the launch splash plays, `runCards` shows this view as the splash's last
 card (after the first-run wizard on a new install), sliding in over the poster wall in the shared dark 520pt panel (`LaunchCard`, same as the splash and wizard), when `Donation_unlocked` is false. It reads
-`\.embeddedCardClose` (`Views/EmbeddedCard.swift`): "Not now" and a valid code call it instead of `dismiss()`, and the floating
+`\.embeddedCardClose` (`Views/EmbeddedCard.swift`): "Not yet" and a valid code call it instead of `dismiss()`, and the floating
 window-level `WindowAction` is skipped (the splash window owns the level). `openDonationNagIfNeeded` returns early while
 `LaunchSplashController.isPlaying`. Nags triggered later (after adding a show) still open the `donation-nag` window. See `docs/LaunchSplash.md`.

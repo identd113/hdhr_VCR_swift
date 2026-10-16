@@ -122,8 +122,10 @@ struct LaunchSplashView: View {
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
                         .opacity(phase == .showing ? 1 : 0)
-                    // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
-                    Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0)
+                    // Dimmed a little more while the wizard or donation card sits on the wall, so it reads — over the wall's own
+                    // area only, so the rest of the screen (the desktop and your other windows) is not darkened.
+                    Rectangle().fill(Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0))
+                        .frame(width: MosaicTiles.designWall.width * scale, height: MosaicTiles.designWall.height * scale)
                         .allowsHitTesting(false)
                 }
 
@@ -434,7 +436,7 @@ extension LaunchSplashView {
         finish()
     }
 
-    /// Waits until the card on screen closes itself (Finish, Escape, Not now, a valid code). False if the splash was
+    /// Waits until the card on screen closes itself (Finish, Escape, Not yet, a valid code). False if the splash was
     /// cancelled meanwhile.
     @MainActor private func waitForCardClose() async -> Bool {
         let before = closedCards

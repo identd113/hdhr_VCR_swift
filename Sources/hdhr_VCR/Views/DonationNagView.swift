@@ -48,7 +48,7 @@ struct DonationNagView: View {
             Divider().opacity(0.5)
             HStack {
                 Spacer()
-                Button("Not now") { closeNag() }
+                Button("Not yet") { closeNag() }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                     .accessibilityIdentifier("donation-not-now")

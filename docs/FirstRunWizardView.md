@@ -81,7 +81,7 @@ sizes and centres it, so the rounded panel floats rather than sitting on a recta
 
 **First-run hand-off** (new install only; rewritten 2026-10-15): `hdhr_VCRApp` no longer opens the wizard at launch when the
 splash is going to run. The wizard is shown as a **card inside the splash's own window** (`LaunchSplashView.runCards`): the splash's
-card (logo, version, checklist) slides out to the left, the wizard slides in from the right over the same poster wall (dimmed 40 %,
+card (logo, version, checklist) slides out to the left, the wizard slides in from the right over the same poster wall (dimmed 40 % over the wall's own area only, so the rest of the screen isn't darkened,
 frozen), and when the wizard closes the next card (the donation card, if due) slides in the same way — exactly one card visible at a
 time. The view reads `\.embeddedCardClose` (`Views/EmbeddedCard.swift`): when set it calls that instead of `dismiss()` (Finish,
 Escape) and skips its `WindowAction` block (size/centre/clear background — the splash window is not its to configure).
