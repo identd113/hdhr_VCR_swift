@@ -109,6 +109,7 @@ echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 
 echo "==> Deploying binary…"
+rm -f "$BINARY"   # new inode: copying over the signed binary in place left a stale cached signature, so lipo's exec was SIGKILLed
 cp "$BIN_PATH/hdhr_VCR" "$BINARY"
 lipo -info "$BINARY"
 
