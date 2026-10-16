@@ -41,7 +41,7 @@ than generic system-blue chrome:
   "Unlock" button (orange gradient when enabled, quaternary/disabled-looking when the field is
   empty), with an inline "That code didn't match." warning (with a triangle icon) on a failed
   attempt
-- "Not now" — plain-style, tertiary-foreground, bottom-right — closes the window via
+- "Not now" — bordered button (changed 2026-10-15 from plain tertiary text so it stays obvious on the dark launch card), bottom-right — closes the window via
   `@Environment(\.dismiss)`
 
 ## Trigger points

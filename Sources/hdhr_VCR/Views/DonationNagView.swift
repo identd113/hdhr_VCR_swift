@@ -191,9 +191,7 @@ struct DonationNagView: View {
             HStack {
                 Spacer()
                 Button("Not now") { closeNag() }
-                    .buttonStyle(.plain)
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    .buttonStyle(.bordered)
             }
         }
         .padding(20)

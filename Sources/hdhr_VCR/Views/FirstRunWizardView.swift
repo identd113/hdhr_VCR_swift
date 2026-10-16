@@ -163,8 +163,7 @@ struct FirstRunWizardView: View {
             HStack {
                 if step != .recordingDefaults {
                     Button("Back") { goBack() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.bordered)
                         .accessibilityIdentifier("wizard-back")
                 }
                 Spacer()

@@ -112,7 +112,7 @@ struct LaunchSplashView: View {
             let logoHome = CGPoint(x: center.x, y: center.y - scale * (cardSize.height / 2 - logoTop - logoSize / 2))
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
-                // loose wall (centre posters dimmed) with the splash card on a translucent panel that blends into it.
+                // loose wall (centre posters dimmed) with the splash card on a dark panel that sits in it.
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
                         .opacity(phase == .showing ? 1 : 0)

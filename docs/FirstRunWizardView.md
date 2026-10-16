@@ -25,7 +25,7 @@ instead of the Form's own opaque grouped-list card, so the two don't read as a c
 `.fixedSize(horizontal: false, vertical: true)` (List-backed Forms otherwise claim more vertical space than their rows
 need even without an outer fixed height).
 
-**Fixed step height + pinned footer (2026-10-10)**: every step is a fixed `min(600, screen − 80)` pt tall (`FirstRunWizardView.stepHeight` — a *bounded* frame), the step content sits in a `ScrollView`, and the header and Back/Next row are outside it, so Next can never be pushed off the bottom (Step 1 clipped it on a live Mac; a first attempt with only a `minHeight` made it worse). The window itself is also sized explicitly on every step change (`WindowAction` → `setContentSize` + `center`), because a window AppKit restored at an earlier, shorter frame ignored `.windowResizability(.contentSize)`. The unbounded-ideal-height `ScrollView` that crashed the Recording FEED step is a different shape from this; all seven steps were walked through after the change.
+**Fixed step height + pinned footer (2026-10-10)**: every step is a fixed `min(600, screen − 80)` pt tall (600 when shown as a launch card; the splash scales the whole card) (`FirstRunWizardView.stepHeight` — a *bounded* frame), the step content sits in a `ScrollView`, and the header and Back/Next row are outside it, so Next can never be pushed off the bottom (Step 1 clipped it on a live Mac; a first attempt with only a `minHeight` made it worse). The window itself is also sized explicitly on every step change (`WindowAction` → `setContentSize` + `center`), because a window AppKit restored at an earlier, shorter frame ignored `.windowResizability(.contentSize)`. The unbounded-ideal-height `ScrollView` that crashed the Recording FEED step is a different shape from this; all seven steps were walked through after the change.
 
 **Header band**: the app icon (`appIconImage`, `Sources/hdhr_VCR/AppIcon.swift` — the same
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
@@ -202,8 +202,8 @@ an open, unconfirmed question — see `ISSUES.md`. See "Steps" below for the con
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (steps 2–5, `.plain` style, `.secondary` foreground — a quiet
-secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
+**Nav bar** (bottom): Back (steps 2–5, `.bordered` — changed 2026-10-15 from a quiet plain-text button so it stays obvious
+on the dark launch card) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
 the last step). A `Divider` above (`opacity(0.5)`, same softened-divider treatment used below the
 header, so the dividers read as subtle separators against the material background rather than harsh
 full-contrast lines).
