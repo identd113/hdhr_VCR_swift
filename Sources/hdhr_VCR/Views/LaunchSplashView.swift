@@ -86,7 +86,8 @@ struct LaunchSplashView: View {
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
 
-    private let cardSize = CGSize(width: 520, height: 340)
+    private let cardSize = CGSize(width: LaunchCard.width, height: LaunchCard.height)
+    private let logoTop: CGFloat = 130                 // logo's top edge below the panel's top
     private let logoSize: CGFloat = 108
 
     /// Cards enter from the right and leave to the left, a full screen width, so only one is ever on screen.
@@ -99,7 +100,7 @@ struct LaunchSplashView: View {
         GeometryReader { geo in
             let full = geo.size
             let center = CGPoint(x: full.width / 2, y: full.height / 2)
-            let logoHome = CGPoint(x: center.x, y: center.y - cardSize.height / 2 + 40 + logoSize / 2)
+            let logoHome = CGPoint(x: center.x, y: center.y - cardSize.height / 2 + logoTop + logoSize / 2)
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
@@ -113,14 +114,9 @@ struct LaunchSplashView: View {
 
                 if card == .splash {
                     ZStack {
-                        RadialGradient(colors: [.black.opacity(0.62), .black.opacity(0)], center: .center,
-                                       startRadius: 40, endRadius: 270)
-                            .frame(width: 600, height: 600)
-                            .opacity(phase == .showing && assembled ? 1 : 0)
-                            .position(center)
-                            .allowsHitTesting(false)
-
+                        // The splash card: the same dark panel, at the same size, as the wizard and donation cards.
                         chrome.frame(width: cardSize.width, height: cardSize.height)
+                            .launchCardChrome()
                             .opacity(phase == .showing && assembled ? 1 : 0)
                             .position(center)
 
@@ -188,7 +184,7 @@ struct LaunchSplashView: View {
     /// The text over the finished wall — no panel, just a shadow to keep it legible over the posters.
     private var chrome: some View {
         VStack(spacing: 6) {
-            Color.clear.frame(height: 40 + logoSize + 6)   // the logo is drawn above, flying out of this spot
+            Color.clear.frame(height: logoTop + logoSize + 6)   // the logo is drawn above, flying out of this spot
             Text("hdhrVCRplus").font(.system(size: 30, weight: .bold, design: .rounded))
             Text("Version \(versionText)").font(.callout).foregroundStyle(.white.opacity(0.8))
             Spacer(minLength: 8)
@@ -201,10 +197,9 @@ struct LaunchSplashView: View {
                     }
                 }
             }
-            .padding(.bottom, 26)
+            .padding(.bottom, 70)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.9), radius: 6, y: 1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("hdhrVCRplus \(versionText) is starting")
     }

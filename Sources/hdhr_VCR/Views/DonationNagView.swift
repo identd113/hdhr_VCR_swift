@@ -40,18 +40,31 @@ struct DonationNagView: View {
     @State private var glowOut = false   // one-shot ring pulse behind the icon on appear
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            content
+        Group {
+            if embeddedClose != nil {
+                // A launch-splash card: the same size and dark panel as the splash and the setup wizard.
+                VStack(spacing: 0) {
+                    header
+                    content
+                    Spacer(minLength: 0)
+                }
+                .frame(width: LaunchCard.width, height: LaunchCard.height)
+                .launchCardChrome()
+            } else {
+                VStack(spacing: 0) {
+                    header
+                    content
+                }
+                .frame(width: 400)
+                .background(.thickMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
+            }
         }
-        .frame(width: 400)
-        .background(.thickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
         // Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
         // same technique the old FloatingGuideView used (see git history) before its removal.
         .background(WindowAction(trigger: true) { if embeddedClose == nil { $0.level = .floating } })

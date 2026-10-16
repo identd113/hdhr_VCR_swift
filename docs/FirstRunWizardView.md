@@ -19,7 +19,7 @@ one-time animated `.intro` step; **removed 2026-10-14** — see "Look and first-
 "Look and first-run hand-off". Everything else about the chrome (20pt rounded corners, faint white border, the drop
 shadow, hidden title bar) is unchanged.
 
-**Fixed size**: a 460pt-wide panel at `FirstRunWizardView.stepHeight` (see below) for every step. `.windowResizability(.contentSize)`
+**Fixed size**: a 520pt-wide panel (`LaunchCard.width`, shared with the splash and donation cards; was 460 until 2026-10-15) at `FirstRunWizardView.stepHeight` (see below) for every step. `.windowResizability(.contentSize)`
 tracks it. Each `Form` also gets `.scrollContentBackground(.hidden)` (lets the panel's own dark backdrop show through
 instead of the Form's own opaque grouped-list card, so the two don't read as a card nested inside a panel) and
 `.fixedSize(horizontal: false, vertical: true)` (List-backed Forms otherwise claim more vertical space than their rows
@@ -73,7 +73,7 @@ Step 1 and shares the splash's look instead.
 
 **Look** (same family as `LaunchSplashView`; see `docs/LaunchSplash.md`): always dark (`.preferredColorScheme(.dark)` on the
 scene plus `.environment(\.colorScheme, .dark)` on the panel, whatever the Appearance setting says), a near-black
-`WizardBackdrop` (`Color(white: 0.075)`, a soft orange `RadialGradient` from the top-left logo corner, a foot vignette)
+`CardBackdrop` in `Views/EmbeddedCard.swift` (formerly the wizard's private `WizardBackdrop`; `Color(white: 0.075)`, a soft orange `RadialGradient` from the top-left logo corner, a foot vignette)
 instead of `.thickMaterial`, the app logo at `headerIconSize` (44pt) with the splash's soft shadow and rounded corners,
 the title in the splash's `.rounded` bold face ("Welcome to hdhrVCRplus", 20pt) with the subtitle at white 0.8. The window
 itself is made clear (`isOpaque = false`, `backgroundColor = .clear`, system shadow) in the same `WindowAction` that

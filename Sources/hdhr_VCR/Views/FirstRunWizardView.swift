@@ -104,7 +104,7 @@ struct FirstRunWizardView: View {
         }
     }
 
-    static let panelWidth: CGFloat = 460
+    static let panelWidth: CGFloat = LaunchCard.width
     static let headerIconSize: CGFloat = 44
 
     /// Close the wizard: the splash's card when embedded, else its own window.
@@ -115,7 +115,7 @@ struct FirstRunWizardView: View {
     /// `.windowResizability(.contentSize)` is what crashed the Recording FEED step before. Header and Back/Next sit
     /// outside the scroll view, so the Next button can never be pushed off the bottom.
     private static var stepHeight: CGFloat {
-        min(600, (NSScreen.main?.visibleFrame.height ?? 800) - 80)
+        LaunchCard.height
     }
 
     @ViewBuilder private func stepScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
@@ -179,7 +179,7 @@ struct FirstRunWizardView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        // Fixed step height (a bounded frame — see stepHeight) and a fixed 460pt width.
+        // Fixed step height (a bounded frame — see stepHeight) and a fixed width (`LaunchCard`, shared by every launch card).
         .frame(width: Self.panelWidth, height: Self.stepHeight)
         // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
         // varies per step by design, but `.windowResizability(.contentSize)` only resizes the
@@ -201,7 +201,7 @@ struct FirstRunWizardView: View {
         })
         // The launch splash's look: always dark, a soft warm glow from the logo corner and a vignette, white type —
         // rounded 20pt panel with a faint border and the same drop shadow DonationNagView uses.
-        .background(WizardBackdrop())
+        .background(CardBackdrop())
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -822,18 +822,5 @@ private struct FinishGlowValues: Animatable {
     var animatableData: AnimatablePair<CGFloat, Double> {
         get { AnimatablePair(scale, opacity) }
         set { scale = newValue.first; opacity = newValue.second }
-    }
-}
-
-/// The wizard panel's background — the launch splash's look: near-black, a soft warm glow from the logo corner (the
-/// logo is orange) and a vignette at the foot, no material. Drawn inside the rounded clip in `FirstRunWizardView.body`.
-private struct WizardBackdrop: View {
-    var body: some View {
-        ZStack {
-            Color(white: 0.075)
-            RadialGradient(colors: [Color.orange.opacity(0.20), .clear], center: UnitPoint(x: 0.10, y: 0.0),
-                           startRadius: 8, endRadius: 360)
-            LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
-        }
     }
 }
