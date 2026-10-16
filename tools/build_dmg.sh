@@ -76,11 +76,11 @@ python3 - "$GEN/dmg_background.svg.png" "$GEN/dmg_background.png" <<'PYEOF'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1])
-# dmg_background.svg is 660x500 — qlmanage renders any non-square SVG into a square canvas at the
-# requested size, content top/left-aligned at its real aspect ratio, so crop back to 660:500
+# dmg_background.svg is 660x560 — qlmanage renders any non-square SVG into a square canvas at the
+# requested size, content top/left-aligned at its real aspect ratio, so crop back to 660:560
 # before use (verified empirically against this exact file, not assumed from qlmanage's docs).
-crop = im.crop((0, 0, 1320, 1000))
-crop.resize((660, 500), Image.LANCZOS).save(sys.argv[2])
+crop = im.crop((0, 0, 1320, 1120))
+crop.resize((660, 560), Image.LANCZOS).save(sys.argv[2])
 PYEOF
 rm -f "$GEN/dmg_background.svg.png"
 
@@ -104,8 +104,9 @@ rm -f "$DMG_PATH"
 
 echo "==> Building DMG…"
 # Icon positions are chosen to match tools/dmg_assets/dmg_background.svg's own arrow/text
-# layout — edit them together if either one's coordinates change. Window is 660x500 to match the
-# background exactly; icon-size 96 leaves a clean gap on both sides of the arrow at these positions.
+# layout — edit them together if either one's coordinates change. The window is 660x600: Finder's own chrome (title
+# bar, and for users who show the tab bar / status bar, another ~70 px) eats part of it, and at 660x500 the Read Me icon
+# was cut off at the bottom; the background is 660x560, with everything that matters above y=500 (the icon row, the install line at y=304, the Read Me row at y=412); icon-size 96 leaves a clean gap on both sides of the arrow at these positions.
 #
 # SKIP_FINDER_STYLING=1 passes create-dmg's own --skip-jenkins through — it skips the window-
 # layout/background AppleScript step entirely (per create-dmg's own help text: "useful in Sandbox
@@ -121,13 +122,13 @@ create-dmg \
     --volname "hdhrVCRplus ${VERSION}" \
     --volicon "$APP_PATH/Contents/Resources/AppIcon.icns" \
     --background "$GEN/dmg_background.png" \
-    --window-size 660 500 \
+    --window-size 660 600 \
     --window-pos 200 120 \
     --icon-size 96 \
     --text-size 12 \
     --icon "$APP_NAME" 170 170 \
     --app-drop-link 490 170 \
-    --icon "Read Me.rtfd" 330 370 \
+    --icon "Read Me.rtfd" 330 412 \
     --hide-extension "$APP_NAME" \
     "${CREATE_DMG_EXTRA_ARGS[@]}" \
     "$DMG_PATH" \
