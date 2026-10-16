@@ -31,7 +31,7 @@ Top to bottom:
   "Unlock" button (orange gradient when enabled, quaternary/disabled-looking when the field is
   empty), with an inline "That code didn't match." warning (with a triangle icon) on a failed
   attempt
-- "Not now" — bordered button (changed 2026-10-15 from plain tertiary text so it stays obvious on the dark launch card), bottom-right — closes the window via
+- "Not now" — bordered, large button in a footer pinned to the bottom of the card (a `Divider` then the button right-aligned, 20pt side / 14pt vertical padding — the same bar as the setup wizard's Back / Next row; changed 2026-10-15 from plain tertiary text floating under the content) — closes the window via
   `@Environment(\.dismiss)`
 
 ## Trigger points

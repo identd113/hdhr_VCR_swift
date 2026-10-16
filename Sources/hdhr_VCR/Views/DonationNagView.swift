@@ -44,6 +44,17 @@ struct DonationNagView: View {
             header
             content
             Spacer(minLength: 0)
+            // Pinned footer, the same bar as the setup wizard's Back / Next row: a divider, then the action at the right.
+            Divider().opacity(0.5)
+            HStack {
+                Spacer()
+                Button("Not now") { closeNag() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("donation-not-now")
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
         // Same panel as the splash and the setup wizard (`LaunchCard`): as a launch card the splash's own persistent panel is
         // already behind it; in its own window (a later nag) it draws the panel itself.
@@ -172,11 +183,6 @@ struct DonationNagView: View {
                 }
             }
 
-            HStack {
-                Spacer()
-                Button("Not now") { closeNag() }
-                    .buttonStyle(.bordered)
-            }
         }
         .padding(20)
     }
