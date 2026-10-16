@@ -1071,20 +1071,6 @@ final class AppState: ObservableObject {
         await reattachRecordings()
         glog("[Startup] recordings reattached")
 
-        // 2b. FEED local disk cache (docs/VirtualTunerService.md's "FEED scrub via local disk
-        //     cache" section) orphan sweep — a crash between startFeedCachePull and a normal
-        //     player-window close would otherwise leak that session's puller process and cache
-        //     file forever. See sweepOrphanedFeedCachePullers' own doc comment for why no
-        //     liveness check is needed here.
-        await sweepOrphanedFeedCachePullers()
-
-        // 2c. Age-based sweeps of regenerable app files (CachePruner): stale guide-cache files and
-        //     orphaned `--dump-header` temp files. Never under test (the temp folder is shared).
-        if !runningUnderTests {
-            guideStore.pruneDiskCache()
-            recordingManager.pruneOrphanedHeaderFiles()
-        }
-
         // 3. Start the web server now — port binding doesn't need devices or guide data.
         //    Starting here means the server is up within ~1s of launch instead of waiting
         //    for the full discovery + guide fetch sequence to complete.
@@ -1101,6 +1087,26 @@ final class AppState: ObservableObject {
         //     previously reachable by anything hitting GET / before the first real guide load
         //     finished, most commonly Add Show's own embedded WKWebView opened right after launch.
         webServer.prebuildPageHTML(state: self)
+
+        // Hold the rest of launch until the launch splash's fly-in is over (it is the most demanding moment for the main thread,
+        // and a dropped frame there is very visible): disk sweeps, the FEED listener, the notification prompt, the update check
+        // and — above all — tuner discovery and the guide's JSON calls. Reattach (recordings), the web server bind and its first
+        // (empty) page above stay ahead of it. No splash expected → returns at once; otherwise at most 8 s.
+        await LaunchSplashController.shared.waitForFlyIn(timeout: 8)
+
+        // 2b. FEED local disk cache (docs/VirtualTunerService.md's "FEED scrub via local disk
+        //     cache" section) orphan sweep — a crash between startFeedCachePull and a normal
+        //     player-window close would otherwise leak that session's puller process and cache
+        //     file forever. See sweepOrphanedFeedCachePullers' own doc comment for why no
+        //     liveness check is needed here.
+        await sweepOrphanedFeedCachePullers()
+
+        // 2c. Age-based sweeps of regenerable app files (CachePruner): stale guide-cache files and
+        //     orphaned `--dump-header` temp files. Never under test (the temp folder is shared).
+        if !runningUnderTests {
+            guideStore.pruneDiskCache()
+            recordingManager.pruneOrphanedHeaderFiles()
+        }
 
         // 3b. Start listening for other instances' unsolicited FEED announces (see
         //     VirtualTunerService.beginPassiveListening's own doc comment) — independent of whether

@@ -369,6 +369,7 @@ struct LaunchSplashView: View {
         tilesReady = true
         try? await Task.sleep(for: .milliseconds(Int((MosaicTiles.assembleSeconds + 0.1) * 1000)))
         withAnimation(.easeOut(duration: 0.6)) { assembled = true }
+        LaunchSplashController.shared.markFlyInDone()                          // the rest of the app's launch may proceed
         while !LaunchSplashPlan.shouldFinish(elapsed: Date().timeIntervalSince(started), startupDone: !state.isStartingUp) {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return }
@@ -542,6 +543,15 @@ final class LaunchSplashController {
     /// True once the splash's busy animation is over (a card is up and the wall is frozen) or the splash is gone — the point
     /// after which heavy MainActor work (the web guide's page rebuild) no longer costs visible frames.
     var settled = true
+    /// Launch work that can wait (disk sweeps, update check, tuner discovery, the guide's JSON calls) holds until the splash has
+    /// finished assembling. False only between `expectSplash()` (the app's init, when a splash is going to play) and then.
+    private(set) var flyInDone = true
+    func expectSplash() { flyInDone = false }
+    func markFlyInDone() { flyInDone = true }
+    func waitForFlyIn(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !flyInDone, Date() < deadline { try? await Task.sleep(for: .milliseconds(100)) }
+    }
 
     /// Heavy launch work calls this first so it doesn't land in the middle of the poster fly-in. Returns at once when no splash
     /// is playing; never waits longer than `timeout`.
@@ -570,6 +580,7 @@ final class LaunchSplashController {
         guard let w = window else { return }
         window = nil
         settled = true
+        flyInDone = true
         w.orderOut(nil)
         w.contentView = nil
     }

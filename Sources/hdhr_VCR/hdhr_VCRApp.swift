@@ -124,6 +124,7 @@ struct hdhr_VCRApp: App {
             enabled: demoFirstRunRequested || (cfg?.Show_launch_splash ?? true),
             underTests: runningUnderTests,
             reduceMotion: !demoFirstRunRequested && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        if launchSplashWanted { LaunchSplashController.shared.expectSplash() }   // AppState.startup() holds its heavy work for the fly-in
         let showDock: Bool
         switch dockMode {
         case "always": showDock = true

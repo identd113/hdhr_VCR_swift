@@ -36,6 +36,18 @@ config (first-run flag, splash toggle, Reduce Motion, `Donation_unlocked`), and 
 (`AppState.saveConfig` returns early; `demoFirstRunRequested` in `Models.swift`). Use it to look at or test the flow on a configured
 Mac without moving `hdhrVCRplus/` aside.
 
+## Launch work held for the fly-in (2026-10-15)
+The poster fly-in is the most demanding moment for the main thread, so the rest of the app's launch waits for it. When a splash is
+going to play, `hdhr_VCRApp.init()` calls `LaunchSplashController.expectSplash()`; `AppState.startup()` then runs config load,
+recording reattach, the web-server bind and its first (empty) page build as before, and **holds** at
+`LaunchSplashController.waitForFlyIn(timeout: 8)` before everything that can wait: the FEED-cache and cache-file sweeps, the FEED
+announce listener, the notification-permission prompt, the GitHub update check, signal-history load, **tuner discovery and the guide's
+JSON calls** (`/discover.json`, `/lineup.json`, `guide.php`). The splash releases it (`markFlyInDone()`) the moment the wall has
+assembled and the card fades in (≈ 1.7 s after the posters start flying); `release()` also releases it, and the 8 s timeout covers a
+splash that never opens. No splash expected (off, Reduce Motion, tests) → no wait. The checklist therefore starts ticking just after
+the fly-in; the splash's 3.4 s minimum / 7 s cap are unchanged. Separately, `performFetchAllGuides`'s web-page rebuild waits for
+`waitUntilSettled` (a card up and the wall frozen, or the splash gone; ≤ 6 s).
+
 ## Timing
 `LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (7 s) — so a missing tuner can't hold it up.
 
