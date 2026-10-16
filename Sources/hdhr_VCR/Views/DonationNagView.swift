@@ -123,57 +123,55 @@ struct DonationNagView: View {
         }
     }
 
+    private var rose: Color { Color(red: 0.95, green: 0.34, blue: 0.50) }
+
+    // Light on purpose: no filled blocks or glows — a quiet rose-outlined tip button, then an unobtrusive code row. The card's
+    // accent (the heart, the panel's glow) is the only strong colour.
     private var content: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("This app is free to use. If it's useful to you, consider leaving a tip — it helps support ongoing development.")
+        VStack(alignment: .leading, spacing: 22) {
+            Text("If hdhrVCRplus is useful to you, a tip helps pay for the next round of fixes and features.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
 
             Link(destination: URL(string: paypalURL)!) {
                 Label("Tip via PayPal", systemImage: "heart.fill")
                     .font(.headline)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
+                    .background(Capsule().fill(rose.opacity(0.16)))
+                    .overlay(Capsule().strokeBorder(rose.opacity(0.65), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(LinearGradient(colors: [Color.blue, Color.blue.opacity(0.85)],
-                                        startPoint: .top, endPoint: .bottom))
-            .clipShape(Capsule())
-            .shadow(color: .blue.opacity(0.35), radius: 10, y: 4)
-
-            Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Already tipped?")
-                    .font(.subheadline).bold()
-                Text("Enter the code you were sent to stop seeing this.")
+                Text("Already tipped? Enter your code to stop seeing this.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.6))
 
                 HStack(spacing: 8) {
                     TextField("6-digit hex code", text: $enteredCode)
                         .font(.system(.body, design: .monospaced))
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.quaternary.opacity(0.5))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(.vertical, 7)
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(.white.opacity(0.16), lineWidth: 1))
                         .onSubmit(attemptUnlock)
 
+                    let ready = !enteredCode.trimmingCharacters(in: .whitespaces).isEmpty
                     Button(action: attemptUnlock) {
                         Text("Unlock")
                             .font(.subheadline).bold()
+                            .foregroundStyle(ready ? .white : .white.opacity(0.35))
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(ready ? AnyShapeStyle(Color.orange.opacity(0.85)) : AnyShapeStyle(Color.clear)))
+                            .overlay(Capsule().strokeBorder(.white.opacity(ready ? 0 : 0.16), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.white)
-                    .background(enteredCode.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.orange.gradient))
-                    .clipShape(Capsule())
-                    .disabled(enteredCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(!ready)
                 }
 
                 if showMismatch {
@@ -182,9 +180,10 @@ struct DonationNagView: View {
                         .foregroundStyle(.red)
                 }
             }
-
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 20)
     }
 
     private func attemptUnlock() {

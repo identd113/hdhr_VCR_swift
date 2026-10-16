@@ -19,7 +19,7 @@ persistent panel is behind it (see "As a launch-splash card" below); in its own 
 Top to bottom:
 - Header: icon + heart badge, "Support hdhrVCRplus" (`.system(size: 20, weight: .bold, design: .rounded)`), "Free to use — tips keep it going."
 - Body: a short "this app is free, consider a tip" message
-- A full-width blue-gradient capsule "Tip via PayPal" button with a heart icon (custom
+- (*Superseded 2026-10-15 — see "Lighter styling" below.*) A full-width blue-gradient capsule "Tip via PayPal" button with a heart icon (custom
   `.buttonStyle(.plain)` + `.background(...).clipShape(Capsule())`, not the default
   `.borderedProminent` — kept PayPal's recognizable blue rather than the app's own orange/red, so
   the button still reads as trustworthy/branded against the app-colored chrome around it). `paypalURL`
@@ -97,3 +97,10 @@ card (after the first-run wizard on a new install), sliding in over the poster w
 `\.embeddedCardClose` (`Views/EmbeddedCard.swift`): "Not yet" and a valid code call it instead of `dismiss()`, and the floating
 window-level `WindowAction` is skipped (the splash window owns the level). `openDonationNagIfNeeded` returns early while
 `LaunchSplashController.isPlaying`. Nags triggered later (after adding a show) still open the `donation-nag` window. See `docs/LaunchSplash.md`.
+
+## Lighter styling (2026-10-15)
+The card was heavier than the splash and the wizard (a filled blue PayPal pill with a blue glow, a filled orange Unlock pill, a filled
+code field, a divider, plus the rose accents). It is now: one short line of text; the "Tip via PayPal" button as a rose-**outlined**
+capsule (16 % rose fill, 65 % rose border, no shadow or glow — the PayPal-blue branding on this button was dropped); and a quiet code
+row (a one-line caption, an outlined code field, and an Unlock capsule that is outlined and dim until text is entered, then orange).
+The heart badge and the panel's rose glow are the card's only strong colour. The "Already tipped?" divider is gone.
