@@ -2,6 +2,7 @@
 """Release-to-release performance baseline for hdhrVCRplus.
 
   tools/perf_baseline.py run  <app | hdhr_VCR binary | .dmg> --label v2.6.5 [--runs 3] [--no-splash] [--port 1985]
+  tools/perf_baseline.py prime <app | binary | .dmg> --label v2.6.5     # once per build: lets macOS ask for Local Network access
   tools/perf_baseline.py compare [--dir docs/perf]            # table of every saved run, change vs the previous row
 
 `run` launches the build in the user's GUI session (`open -n`, so the real launch splash plays) with a throw-away home
@@ -89,17 +90,24 @@ def log_has(path, needle):
         return False
 
 
-def stage_app(app):
-    """Copies the app into a throw-away folder that looks like a git checkout (a `.git` directory), the app's own documented
-    exemption from the "Move to Applications?" prompt — a build run from a mounted DMG would otherwise hold its whole launch
-    under that prompt (AppRelocator.swift). -> (staged_app_path, cleanup)"""
-    root = tempfile.mkdtemp(prefix="perfapp-")
-    os.makedirs(os.path.join(root, ".git"))
+def stage_app(app, label):
+    """Copies the app to a STABLE path (~/Library/Caches/hdhrVCRplus-perf/<label>/) that looks like a git checkout (a `.git`
+    directory) — the app's own exemption from the "Move to Applications?" prompt, which would otherwise hold a DMG copy's whole
+    launch. The path is stable on purpose: macOS asks for Local Network permission per app copy, so a new temp copy for every
+    run would ask every run. Reused while the binary is unchanged. -> staged app path"""
+    root = os.path.expanduser(f"~/Library/Caches/hdhrVCRplus-perf/{re.sub(r'[^A-Za-z0-9._-]+', '_', label)}")
     dest = os.path.join(root, os.path.basename(app))
-    r = sh(["ditto", app, dest])
-    if r.returncode:
-        sys.exit(f"could not copy the app: {r.stderr.strip()}")
-    return dest, lambda: shutil.rmtree(root, ignore_errors=True)
+    src_bin = os.path.join(app, "Contents", "MacOS", "hdhr_VCR")
+    dst_bin = os.path.join(dest, "Contents", "MacOS", "hdhr_VCR")
+    same = os.path.exists(dst_bin) and os.path.getsize(dst_bin) == os.path.getsize(src_bin) \
+        and sh(["cmp", "-s", src_bin, dst_bin]).returncode == 0
+    if not same:
+        shutil.rmtree(root, ignore_errors=True)
+        os.makedirs(os.path.join(root, ".git"))
+        r = sh(["ditto", app, dest])
+        if r.returncode:
+            sys.exit(f"could not copy the app: {r.stderr.strip()}")
+    return dest
 
 
 def one_run(app, port, splash):
@@ -142,6 +150,15 @@ def one_run(app, port, splash):
         if "ready_s" not in res:
             return None
         res["guide_s"] = guide_at if guide_at is not None else res["ready_s"]
+        try:
+            text = open(logfile, "r", errors="replace").read()
+        except OSError:
+            text = ""
+        m = re.search(r"\[Startup\] guide: (\d+) channels", text)
+        res["guide_channels"] = int(m.group(1)) if m else 0
+        if res["guide_channels"] == 0:       # keep the evidence: what the app logged around startup
+            res["_log"] = "\n".join(l for l in text.splitlines()
+                                   if any(k in l for k in ("[Startup]", "Guide", "guide", "[Discovery]", "[Splash]", "ERROR", "WARN")))[-4000:]
         time.sleep(10)
         c1 = cputime(pid)
         time.sleep(30)
@@ -171,19 +188,20 @@ def cmd_run(a):
         ver = sh(["defaults", "read", info, "CFBundleShortVersionString"]).stdout.strip()
         binary = os.path.join(app, "Contents", "MacOS", "hdhr_VCR")
         runs = []
-        staged, unstage = stage_app(app)
+        staged = stage_app(app, a.label)
         for i in range(a.runs):
             print(f"run {i + 1}/{a.runs} …", flush=True)
             r = one_run(staged, a.port, not a.no_splash)
             if r is None:
                 print("  (no result — the app did not reach startup-complete)")
                 continue
-            print("  " + "  ".join(f"{k}={v:.2f}" for k, v in r.items() if v is not None), flush=True)
+            print("  " + "  ".join(f"{k}={v:.2f}" for k, v in r.items() if v is not None and not k.startswith("_")), flush=True)
+            if r.get("guide_channels") == 0:
+                print("  !! the guide did not load in this run (0 channels) — log excerpt saved in the JSON", flush=True)
             runs.append(r)
-        unstage()
         if not runs:
             sys.exit("no successful runs")
-        keys = sorted({k for r in runs for k in r})
+        keys = sorted({k for r in runs for k in r if not k.startswith("_")})
         med = {k: statistics.median([r[k] for r in runs if r.get(k) is not None]) for k in keys
                if any(r.get(k) is not None for r in runs)}
         med["binary_mb"] = os.path.getsize(binary) / 1048576
@@ -195,6 +213,49 @@ def cmd_run(a):
         with open(path, "w") as f:
             json.dump(out, f, indent=2)
         print(f"saved {path}")
+    finally:
+        cleanup()
+
+
+def cmd_prime(a):
+    """Launch a build once so macOS can ask for Local Network permission, wait for the click, then quit it."""
+    app, cleanup = resolve_app(a.target)
+    try:
+        staged = stage_app(app, a.label)
+        home = tempfile.mkdtemp(prefix="perfprime-")
+        support = os.path.join(home, "Library", "Application Support", "hdhrVCRplus")
+        os.makedirs(support)
+        os.makedirs(os.path.join(home, "Library", "Logs"))
+        with open(os.path.join(support, "hdhr_VCR-perf.json"), "w") as f:
+            json.dump({"config": {"First_run_wizard_shown": True, "Donation_unlocked": True, "Check_for_updates": False,
+                                  "Web_server_enabled": True, "Web_server_port": a.port, "Show_launch_splash": False},
+                       "shows": []}, f)
+        before = set(sh(["pgrep", "-x", "hdhr_VCR"]).stdout.split())
+        sh(["open", "-n", "--env", f"CFFIXED_USER_HOME={home}", staged])
+        pid = None
+        for _ in range(100):
+            now = set(sh(["pgrep", "-x", "hdhr_VCR"]).stdout.split()) - before
+            if now:
+                pid = int(sorted(now, key=int)[-1])
+                break
+            time.sleep(0.1)
+        if pid is None:
+            sys.exit("the app did not start")
+        print(f"{a.label}: started — if macOS asks to allow Local Network access, click Allow (waiting up to {a.wait}s) …", flush=True)
+        ok = False
+        deadline = time.monotonic() + a.wait
+        while time.monotonic() < deadline:
+            time.sleep(3)
+            _, kb = fetch(f"http://127.0.0.1:{a.port}/api/guide.json", timeout=5)
+            if kb and kb > 10:
+                ok = True
+                break
+        sh(["kill", str(pid)])
+        time.sleep(1.5)
+        sh(["kill", "-9", str(pid)])
+        shutil.rmtree(home, ignore_errors=True)
+        print(f"{a.label}: " + ("local network access works — ready for unattended runs" if ok else "NOT confirmed (no click, or the tuner is unreachable)"))
+        sys.exit(0 if ok else 2)
     finally:
         cleanup()
 
@@ -243,7 +304,12 @@ if __name__ == "__main__":
     r.add_argument("--no-splash", action="store_true")
     r.add_argument("--port", type=int, default=1985)
     r.add_argument("--dir", default=DEFAULT_DIR)
+    pr = sub.add_parser("prime")
+    pr.add_argument("target")
+    pr.add_argument("--label", required=True)
+    pr.add_argument("--port", type=int, default=1985)
+    pr.add_argument("--wait", type=int, default=120)
     c = sub.add_parser("compare")
     c.add_argument("--dir", default=DEFAULT_DIR)
     args = ap.parse_args()
-    cmd_run(args) if args.cmd == "run" else cmd_compare(args)
+    {"run": cmd_run, "prime": cmd_prime, "compare": cmd_compare}[args.cmd](args)
