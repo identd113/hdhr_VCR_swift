@@ -1012,6 +1012,9 @@ final class AppState: ObservableObject {
             return
         }
         startupCalled = true
+        // A copy launched from a DMG / Downloads may be about to offer to move itself to Applications and relaunch: don't start
+        // anything (config, recordings, discovery, the web server) underneath that prompt (AppRelocator.swift).
+        await AppRelocator.waitForDecision(timeout: 120)
         installMenuTrackingObservers()
         glog("[Startup] instance \(launchInstanceID) starting, pid=\(ProcessInfo.processInfo.processIdentifier)")
         // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
@@ -2025,8 +2028,16 @@ final class AppState: ObservableObject {
         if loadedCount > 0 {
             // The page rebuild + gzip is a long MainActor block; during the launch splash's fly-in it shows as dropped frames.
             // The web server already has a (guide-less) page from startup()'s early prebuild, so wait for the animation to settle.
-            await LaunchSplashController.shared.waitUntilSettled(timeout: 6)
-            webServer.prebuildPageHTML(state: self)
+            // Not awaited here: startup()'s completion (and the splash waiting on it, and the idle loop starting) must not wait.
+            if LaunchSplashController.shared.isPlaying {
+                Task { @MainActor [weak self] in
+                    await LaunchSplashController.shared.waitUntilSettled(timeout: 6)
+                    guard let self else { return }
+                    self.webServer.prebuildPageHTML(state: self)
+                }
+            } else {
+                webServer.prebuildPageHTML(state: self)
+            }
         }
     }
 

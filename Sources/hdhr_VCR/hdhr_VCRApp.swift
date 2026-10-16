@@ -314,6 +314,14 @@ struct hdhr_VCRApp: App {
     // (Window scenes can't duplicate — see docs/MenuContent.md's "No duplicate windows" note), so
     // this is safe to call repeatedly without checking first.
     private func activateAndOpen(windowId: String) {
+        // Not underneath the "Move to Applications?" prompt a DMG / Downloads copy may be showing (AppRelocator.swift).
+        guard AppRelocator.isDecided else {
+            Task { @MainActor in
+                await AppRelocator.waitForDecision(timeout: 120)
+                activateAndOpen(windowId: windowId)
+            }
+            return
+        }
         NSApplication.shared.activate(ignoringOtherApps: true)
         openWindow(id: windowId)
     }
@@ -333,6 +341,7 @@ struct hdhr_VCRApp: App {
         if needsFirstRunWizard {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(20))
+                await AppRelocator.waitForDecision(timeout: 120)
                 guard appState.launchSplashHandsOffToWizard else { return }
                 appState.launchSplashHandsOffToWizard = false
                 glog("[Startup] launch splash never handed off — opening the setup wizard directly", level: .warning)

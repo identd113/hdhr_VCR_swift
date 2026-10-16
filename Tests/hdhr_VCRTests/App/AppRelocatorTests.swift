@@ -66,3 +66,66 @@ struct AppRelocatorTests {
         #expect(!AppRelocator.isInsideGitCheckout(plain))
     }
 }
+
+
+@Suite("AppRelocator permission retry")
+struct AppRelocatorPermissionTests {
+    private let noPermission = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError)
+
+    @Test func permissionErrorsAreRecognisedIncludingUnderlyingOnes() {
+        #expect(AppRelocator.isPermissionError(noPermission))
+        #expect(AppRelocator.isPermissionError(NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM))))
+        #expect(AppRelocator.isPermissionError(NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError,
+                                                       userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))])))
+        #expect(!AppRelocator.isPermissionError(NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)))
+    }
+
+    @Test func retriesUntilThePermissionIsGrantedThenSucceeds() throws {
+        var attempts = 0, sleeps = 0, announced = 0
+        var clock = Date(timeIntervalSince1970: 0)
+        try AppRelocator.retryWhileAwaitingPermission(timeout: 60, interval: 1.5,
+            sleep: { clock = clock.addingTimeInterval($0); sleeps += 1 }, now: { clock },
+            onWaiting: { announced += 1 }) {
+            attempts += 1
+            if attempts < 4 { throw noPermission }
+        }
+        #expect(attempts == 4)
+        #expect(sleeps == 3)
+        #expect(announced == 1)      // told once, not on every retry
+    }
+
+    @Test func givesUpWithThePermissionErrorOnceTheTimeoutPasses() {
+        var attempts = 0
+        var clock = Date(timeIntervalSince1970: 0)
+        #expect(throws: NSError.self) {
+            try AppRelocator.retryWhileAwaitingPermission(timeout: 10, interval: 2,
+                sleep: { clock = clock.addingTimeInterval($0) }, now: { clock }) {
+                attempts += 1
+                throw noPermission
+            }
+        }
+        #expect(attempts >= 5 && attempts <= 7)
+    }
+
+    @Test func otherErrorsAreNotRetried() {
+        var attempts = 0
+        #expect(throws: NSError.self) {
+            try AppRelocator.retryWhileAwaitingPermission(timeout: 60, interval: 1, sleep: { _ in }, now: Date.init) {
+                attempts += 1
+                throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)
+            }
+        }
+        #expect(attempts == 1)
+    }
+}
+
+@Suite("AppRelocator launch gate")
+struct AppRelocatorGateTests {
+    @Test func waitForDecisionReturnsOnceTheDecisionIsMade() async {
+        AppRelocator.markDecided()
+        #expect(AppRelocator.isDecided)
+        let t = Date()
+        await AppRelocator.waitForDecision(timeout: 30)
+        #expect(Date().timeIntervalSince(t) < 1)        // returned at once, not after the timeout
+    }
+}

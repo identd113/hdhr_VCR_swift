@@ -558,6 +558,7 @@ final class LaunchSplashController {
     static let shared = LaunchSplashController()
     private var window: NSWindow?
     var isPlaying: Bool { window != nil }
+    private var awaitingRelocationDecision = false
     /// True once the splash's busy animation is over (a card is up and the wall is frozen) or the splash is gone — the point
     /// after which heavy MainActor work (the web guide's page rebuild) no longer costs visible frames.
     var settled = true
@@ -583,6 +584,18 @@ final class LaunchSplashController {
     /// `offersDonation`: the app's launch passes true (the donation card follows if the nag is due); the preview, false.
     func play(state: AppState, offersDonation: Bool) {
         if let window { window.orderFrontRegardless(); return }
+        // A copy that may be about to offer to move itself to Applications: the splash (a screen-sized window above the menu
+        // bar) must not cover that prompt. Waits for the decision, then plays.
+        guard AppRelocator.isDecided else {
+            guard !awaitingRelocationDecision else { return }
+            awaitingRelocationDecision = true
+            Task { @MainActor in
+                await AppRelocator.waitForDecision(timeout: 120)
+                awaitingRelocationDecision = false
+                play(state: state, offersDonation: offersDonation)
+            }
+            return
+        }
         settled = false
         let screen = NSScreen.screens.first?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let w = SplashWindow(contentRect: screen, styleMask: [.borderless], backing: .buffered, defer: false)

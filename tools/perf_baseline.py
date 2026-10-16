@@ -89,6 +89,19 @@ def log_has(path, needle):
         return False
 
 
+def stage_app(app):
+    """Copies the app into a throw-away folder that looks like a git checkout (a `.git` directory), the app's own documented
+    exemption from the "Move to Applications?" prompt — a build run from a mounted DMG would otherwise hold its whole launch
+    under that prompt (AppRelocator.swift). -> (staged_app_path, cleanup)"""
+    root = tempfile.mkdtemp(prefix="perfapp-")
+    os.makedirs(os.path.join(root, ".git"))
+    dest = os.path.join(root, os.path.basename(app))
+    r = sh(["ditto", app, dest])
+    if r.returncode:
+        sys.exit(f"could not copy the app: {r.stderr.strip()}")
+    return dest, lambda: shutil.rmtree(root, ignore_errors=True)
+
+
 def one_run(app, port, splash):
     home = tempfile.mkdtemp(prefix="perfhome-")
     support = os.path.join(home, "Library", "Application Support", "hdhrVCRplus")
@@ -103,7 +116,7 @@ def one_run(app, port, splash):
     logfile = os.path.join(logs, "hdhrVCRplus.log")
     before = set(sh(["pgrep", "-x", "hdhr_VCR"]).stdout.split())
     t0 = time.monotonic()
-    sh(["open", "-n", "--env", f"CFFIXED_USER_HOME={home}", app])
+    sh(["open", "-n", "--env", f"CFFIXED_USER_HOME={home}", app])      # `app` is the staged copy (see stage_app)
     pid = None
     for _ in range(100):
         now = set(sh(["pgrep", "-x", "hdhr_VCR"]).stdout.split()) - before
@@ -158,14 +171,16 @@ def cmd_run(a):
         ver = sh(["defaults", "read", info, "CFBundleShortVersionString"]).stdout.strip()
         binary = os.path.join(app, "Contents", "MacOS", "hdhr_VCR")
         runs = []
+        staged, unstage = stage_app(app)
         for i in range(a.runs):
             print(f"run {i + 1}/{a.runs} …", flush=True)
-            r = one_run(app, a.port, not a.no_splash)
+            r = one_run(staged, a.port, not a.no_splash)
             if r is None:
                 print("  (no result — the app did not reach startup-complete)")
                 continue
             print("  " + "  ".join(f"{k}={v:.2f}" for k, v in r.items() if v is not None), flush=True)
             runs.append(r)
+        unstage()
         if not runs:
             sys.exit("no successful runs")
         keys = sorted({k for r in runs for k in r})
