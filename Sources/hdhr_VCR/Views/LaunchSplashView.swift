@@ -356,7 +356,8 @@ struct LaunchSplashView: View {
     }
 
     @MainActor private func run(in size: CGSize) async {
-        defer { ended = true }
+        // A cancelled splash must not leave its screen-sized window (which takes input while a card is up) behind.
+        defer { ended = true; if Task.isCancelled { onFinish() } }
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
@@ -405,12 +406,17 @@ extension LaunchSplashView {
             w.makeKeyAndOrderFront(nil)
         }
         if wizardDue {
+            let before = closedCards                    // taken before the slide, so a close during it still counts
             await slide(to: .wizard)
-            guard await waitForCardClose() else { return }
+            guard await waitForCardClose(after: before) else { return }
+            // Finish, Escape and the close button all count as "dismissed". The wizard marks that itself as it leaves the
+            // screen, but with no card sliding in after it nothing removes it before the panel glides away — so make sure here.
+            if !state.config.First_run_wizard_shown { state.config.First_run_wizard_shown = true; state.saveConfig() }
         }
         if offersDonation, demoFirstRunRequested || !state.config.Donation_unlocked {
+            let before = closedCards
             await slide(to: .donation)
-            guard await waitForCardClose() else { return }
+            guard await waitForCardClose(after: before) else { return }
         }
         await flyPanelToMenuBar(in: size)
     }
@@ -449,8 +455,7 @@ extension LaunchSplashView {
 
     /// Waits until the card on screen closes itself (Finish, Escape, Not yet, a valid code). False if the splash was
     /// cancelled meanwhile.
-    @MainActor private func waitForCardClose() async -> Bool {
-        let before = closedCards
+    @MainActor private func waitForCardClose(after before: Int) async -> Bool {
         while closedCards == before {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return false }

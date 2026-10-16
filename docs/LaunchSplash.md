@@ -26,7 +26,7 @@ checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run 
 - **Posters on a brand-new install:** there is no saved poster list and usually no guide yet when the wall is built, so it starts as
   placeholder tiles (or cached station logos). `upgradeToRealPosters()` polls the guide (≤ 60 s) and, once it supplies on-air art, swaps
   the real posters in (0.9 s animation, logged `[Splash] wall upgraded …`) and saves the list for the next launch.
-- Safety net: `openLaunchSplashIfNeeded` starts a 14 s fallback; if the splash hasn't cleared `launchSplashHandsOffToWizard` by then it
+- Safety net: `openLaunchSplashIfNeeded` starts a 20 s fallback (14 s until 2026-10-15; the splash's worst case to reach the wizard is ≈ 13 s); if the splash hasn't cleared `launchSplashHandsOffToWizard` by then it
   opens the wizard in its own window.
 
 ### `--demo-first-run` (launch argument)
@@ -34,7 +34,7 @@ checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run 
 running instance) plays the whole flow — splash, first-run wizard, donation card — as a brand-new install would, ignoring the saved
 config (first-run flag, splash toggle, Reduce Motion, `Donation_unlocked`), and **writes nothing to the config file**
 (`AppState.saveConfig` returns early; `demoFirstRunRequested` in `Models.swift`). Use it to look at or test the flow on a configured
-Mac without moving `hdhrVCRplus/` aside.
+Mac without moving `hdhrVCRplus/` aside. **Refused while a recording is running** (a `curl` with a `-H show_id:` header is found in `ps`; logged as `[Startup] --demo-first-run ignored …`): the demo drops every save, including the schedule and recording-state writes a live recording needs.
 
 ## Launch work held for the fly-in (2026-10-15)
 The poster fly-in is the most demanding moment for the main thread, so the rest of the app's launch waits for it. When a splash is

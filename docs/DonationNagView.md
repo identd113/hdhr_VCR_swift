@@ -106,3 +106,5 @@ row (a one-line caption, an outlined code field, and an Unlock capsule that is o
 The heart badge and the panel's rose glow are the card's only strong colour. The "Already tipped?" divider is gone.
 
 **Entrance (2026-10-15):** calmed to match the other cards — the heart badge fades in and the one-shot glow eases out (no spring), and as a launch card the code field is not allowed to take focus on appear (a focus ring popping in mid-slide). The splash also holds deferred launch work off during the slide (`LaunchSplashController.motionActive`, docs/LaunchSplash.md).
+
+Escape closes the card, like "Not yet" (`.onExitCommand`, added 2026-10-15; before that only the button did).

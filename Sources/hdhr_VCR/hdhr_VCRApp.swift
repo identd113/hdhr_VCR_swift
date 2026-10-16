@@ -332,7 +332,7 @@ struct hdhr_VCRApp: App {
         // moment it starts its own hand-off (well inside this delay: cap 7 s + posters + ~2 s of flight).
         if needsFirstRunWizard {
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(14))
+                try? await Task.sleep(for: .seconds(20))
                 guard appState.launchSplashHandsOffToWizard else { return }
                 appState.launchSplashHandsOffToWizard = false
                 glog("[Startup] launch splash never handed off — opening the setup wizard directly", level: .warning)

@@ -85,7 +85,27 @@ let runningUnderTests: Bool = {
 /// `--demo-first-run` on the command line: play the launch splash, the first-run wizard and the donation card exactly as a
 /// brand-new install would — whatever the saved config says — and write nothing back to the config file, so it can be
 /// repeated on a configured Mac without changing it (docs/LaunchSplash.md). Quit the running app first (single instance).
-let demoFirstRunRequested: Bool = CommandLine.arguments.contains("--demo-first-run")
+///
+/// Refused (with a log line) while a recording is running: the demo drops every `saveConfig()`, including the schedule and
+/// recording-state writes a live recording needs, so a quit or crash during the demo would leave the config stale.
+let demoFirstRunRequested: Bool = {
+    guard CommandLine.arguments.contains("--demo-first-run") else { return false }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/ps")
+    p.arguments = ["-axo", "command"]
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = FileHandle.nullDevice
+    if (try? p.run()) != nil {
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        if let out = String(data: data, encoding: .utf8), out.contains("-H show_id:") {
+            glog("[Startup] --demo-first-run ignored: a recording is in progress (the demo never saves the config)", level: .warning)
+            return false
+        }
+    }
+    return true
+}()
 
 /// Folder the app's log files are written to: ~/Library/Logs normally, a temp folder under test.
 let appLogsDirectory: String = {

@@ -63,6 +63,7 @@ struct DonationNagView: View {
         // Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
         // same technique the old FloatingGuideView used (see git history) before its removal.
         .background(WindowAction(trigger: true) { if embeddedClose == nil { $0.level = .floating } })
+        .onExitCommand { closeNag() }
         .onAppear {
             // macOS window-state restoration can repopulate a closed-and-reopened single-instance
             // Window scene's field contents from its last session — force a clean slate on every
