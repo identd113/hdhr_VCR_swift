@@ -264,6 +264,39 @@ def stamp(args):
 
 # ── notes ────────────────────────────────────────────────────────────────────
 
+def unwrap_markdown(text):
+    """RELEASES.md is hard-wrapped at ~105 columns for reading in an editor. GitHub's Release page renders every single
+    newline as a <br> (comment-style), so a wrapped paragraph shows ragged mid-sentence breaks — join each paragraph and each
+    list item onto one line. Headings, rules and blank lines are left alone; a list gets a blank line before it."""
+    out = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            if out and out[-1] != "":
+                out.append("")
+            continue
+        is_item = re.match(r"^\s*([-*]|\d+\.)\s+", line) is not None
+        is_block = re.match(r"^#{1,6}\s", stripped) is not None or re.match(r"^-{3,}$", stripped) is not None
+        prev = out[-1] if out else ""
+        if is_block:
+            if prev != "":
+                out.append("")
+            out.append(stripped)
+        elif is_item:
+            prev_is_item = re.match(r"^\s*([-*]|\d+\.)\s+", prev) is not None
+            if prev != "" and not prev_is_item:
+                out.append("")
+            out.append(line)
+        else:
+            continues = prev != "" and not re.match(r"^#{1,6}\s", prev) and not re.match(r"^-{3,}$", prev)
+            if continues:
+                out[-1] = prev + " " + stripped
+            else:
+                out.append(stripped)
+    return "\n".join(out).strip() + "\n"
+
+
 def notes(args):
     v = args.version
     check_version(v)
@@ -273,6 +306,7 @@ def notes(args):
     body = sec
     body = re.sub(r"^## v.*\n+", "", body, count=1)            # GitHub shows the title itself
     body = re.sub(r"\n---\s*$", "", body.rstrip()).rstrip()
+    body = unwrap_markdown(body).rstrip()
     body += (f"\n\n---\n**Download** `hdhrVCRplus-{v}.dmg` below — Apple Silicon, macOS 15 or later, notarized. "
              f"Full change list: [CHANGELOG](https://github.com/{REPO_SLUG}/blob/v{v}/CHANGELOG.md).\n")
     out_dir = os.path.join(DIST, f"release-{v}")

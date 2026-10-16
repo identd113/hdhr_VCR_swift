@@ -83,11 +83,14 @@ Motion is on.
   moves with it; pin a device in More options → Audio Output.
 - **Discord cards wait out Discord's rate limit** instead of being dropped when several shows start at
   once; webhook URLs must be `https://`.
-- **Smaller fixes:** the player window no longer grows under the Dock or sits on "Connecting…" forever; the
-  "All Tuners Busy" notice appears when switching from a recording to a live channel; Clear Guide Cache also
-  clears the saved copies on disk; Add Show recovers if a tuner comes back after the window opened; Signal
-  Strength Scan has a tuner pulldown; the first-run window is tall enough for the Next button; the
-  picture-in-picture close button works with VoiceOver.
+- **Smaller fixes:**
+  - The player window no longer grows under the Dock or sits on "Connecting…" forever.
+  - The "All Tuners Busy" notice appears when switching from a recording to a live channel.
+  - Clear Guide Cache also clears the saved copies on disk.
+  - Add Show recovers if a tuner comes back after the window opened.
+  - Signal Strength Scan has a tuner pulldown.
+  - The first-run window is tall enough for the Next button.
+  - The picture-in-picture close button works with VoiceOver.
 
 ---
 
