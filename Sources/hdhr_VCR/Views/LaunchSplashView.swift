@@ -114,7 +114,7 @@ struct LaunchSplashView: View {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the splash card on a translucent panel that blends into it.
                 if tilesReady {
-                    MosaicTiles(images: tiles, started: started, screen: full, frozen: frozen)
+                    MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
                         .opacity(phase == .showing ? 1 : 0)
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
                     Color.black.opacity(card == .wizard || card == .donation ? 0.4 : 0)
@@ -436,10 +436,9 @@ extension LaunchSplashView {
 /// none cached → the app's placeholder mark fills the wall.
 private struct MosaicTiles: View {
     static let cols = 12, rows = 7
-    /// The wall fills 90 % × 92 % of the screen, so it always contains the launch panel (`LaunchCard`).
-    static func wall(in screen: CGSize) -> CGSize {
-        CGSize(width: screen.width * 0.9, height: screen.height * 0.92)
-    }
+    /// The wall is designed at 1100×760 around the 520×600 launch panel (`LaunchCard`) and scaled by the same factor as the
+    /// panel, so the two always keep their proportions to each other and to the display.
+    static let designWall = CGSize(width: 1100, height: 760)
     static var slotCount: Int { cols * rows }
     static let assembleSeconds: Double = 1.6
     private static let flightSeconds: Double = 0.9
@@ -447,6 +446,7 @@ private struct MosaicTiles: View {
     let images: [NSImage]
     let started: Date
     let screen: CGSize
+    let scale: CGFloat                               // the display scale shared with the launch panel
     /// True once the wall is seated and only serving as a backdrop: the timeline stops, so it costs nothing while idle.
     var frozen: Bool = false
 
@@ -464,7 +464,7 @@ private struct MosaicTiles: View {
     }
 
     var body: some View {
-        let wall = Self.wall(in: screen)
+        let wall = CGSize(width: Self.designWall.width * scale, height: Self.designWall.height * scale)
         let slotW = wall.width / CGFloat(Self.cols), slotH = wall.height / CGFloat(Self.rows)
         let origin = CGPoint(x: (screen.width - wall.width) / 2, y: (screen.height - wall.height) / 2)
         TimelineView(.animation(paused: frozen)) { ctx in
