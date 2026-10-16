@@ -114,8 +114,8 @@ struct FirstRunWizardView: View {
     /// A fixed (bounded) height — not `nil` — is what makes the ScrollView below safe; an unbounded ideal height inside
     /// `.windowResizability(.contentSize)` is what crashed the Recording FEED step before. Header and Back/Next sit
     /// outside the scroll view, so the Next button can never be pushed off the bottom.
-    private static var stepHeight: CGFloat {
-        LaunchCard.height
+    private var stepHeight: CGFloat {
+        embeddedClose != nil ? LaunchCard.designHeight : LaunchCard.height
     }
 
     @ViewBuilder private func stepScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
@@ -180,7 +180,7 @@ struct FirstRunWizardView: View {
             .padding(.vertical, 14)
         }
         // Fixed step height (a bounded frame — see stepHeight) and a fixed width (`LaunchCard`, shared by every launch card).
-        .frame(width: Self.panelWidth, height: Self.stepHeight)
+        .frame(width: Self.panelWidth, height: stepHeight)
         // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
         // varies per step by design, but `.windowResizability(.contentSize)` only resizes the
         // window -- it doesn't reposition it, and AppKit's default resize keeps the window's top edge
@@ -193,7 +193,7 @@ struct FirstRunWizardView: View {
             guard embeddedClose == nil else { return }
             // Pin the window to the size this step asks for. Left to `.windowResizability(.contentSize)` alone, a window
             // AppKit restored at an earlier (shorter) frame kept it — the Back/Next row sat below the bottom edge.
-            w.setContentSize(NSSize(width: Self.panelWidth, height: Self.stepHeight))
+            w.setContentSize(NSSize(width: Self.panelWidth, height: stepHeight))
             w.isOpaque = false
             w.backgroundColor = .clear
             w.hasShadow = true

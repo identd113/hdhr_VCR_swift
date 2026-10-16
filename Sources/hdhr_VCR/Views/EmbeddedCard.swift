@@ -17,7 +17,10 @@ extension EnvironmentValues {
 /// (docs/LaunchSplash.md): a 520pt-wide dark panel, as tall as the wizard needs but never taller than the screen.
 enum LaunchCard {
     static let width: CGFloat = 520
-    static var height: CGFloat { min(600, (NSScreen.main?.visibleFrame.height ?? 800) - 80) }
+    /// Height of a card in its own window: as tall as the wizard needs, never taller than the screen.
+    static var height: CGFloat { min(designHeight, (NSScreen.main?.visibleFrame.height ?? 800) - 80) }
+    /// Height in the launch flow, where the whole composition is scaled to the display instead (`LaunchSplashView.displayScale`).
+    static let designHeight: CGFloat = 600
     static let corner: CGFloat = 20
 }
 

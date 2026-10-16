@@ -87,7 +87,13 @@ struct LaunchSplashView: View {
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
 
-    private let cardSize = CGSize(width: LaunchCard.width, height: LaunchCard.height)
+    private let cardSize = CGSize(width: LaunchCard.width, height: LaunchCard.designHeight)
+
+    /// The panel and everything in it is designed at 520×600 for a 1440×900 screen and scaled by the display's size, so the
+    /// launch looks the same on any screen. The wall fills the screen instead (its tiles scale with it).
+    private func displayScale(_ screen: CGSize) -> CGFloat {
+        min(2.4, max(0.55, min(screen.width / 1440, screen.height / 900)))
+    }
     private let logoTop: CGFloat = 130                 // logo's top edge below the panel's top
     private let logoSize: CGFloat = 108
 
@@ -101,7 +107,8 @@ struct LaunchSplashView: View {
         GeometryReader { geo in
             let full = geo.size
             let center = CGPoint(x: full.width / 2, y: full.height / 2)
-            let logoHome = CGPoint(x: center.x, y: center.y - cardSize.height / 2 + logoTop + logoSize / 2)
+            let scale = displayScale(full)
+            let logoHome = CGPoint(x: center.x, y: center.y - scale * (cardSize.height / 2 - logoTop - logoSize / 2))
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
                 // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
@@ -136,6 +143,7 @@ struct LaunchSplashView: View {
                 }
                 .frame(width: cardSize.width, height: cardSize.height)
                 .blendedLaunchPanel()
+                .scaleEffect(scale)
                 .opacity(assembled && phase == .showing && card != .none ? 1 : 0)
                 .position(center)
 
@@ -144,7 +152,7 @@ struct LaunchSplashView: View {
                 if logoDetached {
                     logo
                         .frame(width: logoSize, height: logoSize)
-                        .scaleEffect(phase == .showing ? 1 : 20 / logoSize)
+                        .scaleEffect(phase == .showing ? scale : 20 / logoSize)
                         .opacity(phase == .arrived ? 0 : 1)
                         .position(phase == .showing ? logoHome : target)
                 }
@@ -429,7 +437,7 @@ private struct MosaicTiles: View {
     static let cols = 12, rows = 7
     /// The wall is larger than the launch panel (`LaunchCard`), which sits inside it; it shrinks to fit a small screen.
     static func wall(in screen: CGSize) -> CGSize {
-        CGSize(width: min(1200, screen.width * 0.9), height: min(820, screen.height * 0.92))
+        CGSize(width: screen.width * 0.9, height: screen.height * 0.92)
     }
     static var slotCount: Int { cols * rows }
     static let assembleSeconds: Double = 1.6
