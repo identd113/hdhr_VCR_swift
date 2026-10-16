@@ -69,6 +69,8 @@ struct DonationNagView: View {
             // appearance rather than showing a stale typed code + mismatch error from last time.
             enteredCode = ""
             showMismatch = false
+            // As a launch card, don't let the code field grab focus on appear (a focus ring popping in mid-slide).
+            if embeddedClose != nil { DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) } }
         }
     }
 
@@ -103,7 +105,7 @@ struct DonationNagView: View {
                     .background(Circle().fill(Color(red: 0.95, green: 0.34, blue: 0.50)))
                     .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
                     .offset(x: 18, y: 18)
-                    .scaleEffect(glowOut ? 1 : 0.4)
+                    .opacity(glowOut ? 1 : 0)
             }
             .frame(width: 52, height: 52)
             .accessibilityLabel("hdhrVCRplus app icon")
@@ -119,7 +121,7 @@ struct DonationNagView: View {
         .padding(.top, 18)
         .padding(.bottom, 14)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.55)) { glowOut = true }
+            withAnimation(.easeOut(duration: 0.7)) { glowOut = true }
         }
     }
 

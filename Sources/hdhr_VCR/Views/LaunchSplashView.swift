@@ -405,11 +405,11 @@ extension LaunchSplashView {
             w.makeKeyAndOrderFront(nil)
         }
         if wizardDue {
-            withAnimation(.easeInOut(duration: 0.55)) { card = .wizard }
+            await slide(to: .wizard)
             guard await waitForCardClose() else { return }
         }
         if offersDonation, demoFirstRunRequested || !state.config.Donation_unlocked {
-            withAnimation(.easeInOut(duration: 0.55)) { card = .donation }
+            await slide(to: .donation)
             guard await waitForCardClose() else { return }
         }
         await flyPanelToMenuBar(in: size)
@@ -428,12 +428,23 @@ extension LaunchSplashView {
         let origin = window?.frame.origin ?? .zero
         let height = window?.frame.height ?? size.height
         target = CGPoint(x: item.midX - origin.x, y: height - (item.midY - origin.y))
+        LaunchSplashController.shared.motionActive = true
         withAnimation(.easeInOut(duration: 0.95)) { phase = .flying }
         try? await Task.sleep(for: .milliseconds(1000))
+        LaunchSplashController.shared.motionActive = false
         phase = .arrived
         withAnimation(.easeOut(duration: 0.7)) { pulse = true }
         try? await Task.sleep(for: .milliseconds(750))
         finish()
+    }
+
+    /// Slides the next card in over the current one. The slide is the most visible motion in the flow, so deferred launch work
+    /// (`LaunchSplashController.waitUntilSettled`) is held off for its duration plus a short margin.
+    @MainActor private func slide(to next: Card) async {
+        LaunchSplashController.shared.motionActive = true
+        withAnimation(.easeInOut(duration: 0.55)) { card = next }
+        try? await Task.sleep(for: .milliseconds(750))
+        LaunchSplashController.shared.motionActive = false
     }
 
     /// Waits until the card on screen closes itself (Finish, Escape, Not yet, a valid code). False if the splash was
@@ -545,6 +556,8 @@ final class LaunchSplashController {
     /// True once the splash's busy animation is over (a card is up and the wall is frozen) or the splash is gone — the point
     /// after which heavy MainActor work (the web guide's page rebuild) no longer costs visible frames.
     var settled = true
+    /// True while a card is sliding or the panel is gliding to the menu bar: heavy MainActor work waits for it to end.
+    var motionActive = false
     /// Launch work that can wait (disk sweeps, update check, tuner discovery, the guide's JSON calls) holds until the splash has
     /// finished assembling. False only between `expectSplash()` (the app's init, when a splash is going to play) and then.
     private(set) var flyInDone = true
@@ -559,7 +572,7 @@ final class LaunchSplashController {
     /// is playing; never waits longer than `timeout`.
     func waitUntilSettled(timeout: TimeInterval) async {
         let deadline = Date().addingTimeInterval(timeout)
-        while isPlaying, !settled, Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
+        while isPlaying, !settled || motionActive, Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
     }
 
     /// `offersDonation`: the app's launch passes true (the donation card follows if the nag is due); the preview, false.
@@ -582,6 +595,7 @@ final class LaunchSplashController {
         guard let w = window else { return }
         window = nil
         settled = true
+        motionActive = false
         flyInDone = true
         w.orderOut(nil)
         w.contentView = nil

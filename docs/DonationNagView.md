@@ -104,3 +104,5 @@ code field, a divider, plus the rose accents). It is now: one short line of text
 capsule (16 % rose fill, 65 % rose border, no shadow or glow — the PayPal-blue branding on this button was dropped); and a quiet code
 row (a one-line caption, an outlined code field, and an Unlock capsule that is outlined and dim until text is entered, then orange).
 The heart badge and the panel's rose glow are the card's only strong colour. The "Already tipped?" divider is gone.
+
+**Entrance (2026-10-15):** calmed to match the other cards — the heart badge fades in and the one-shot glow eases out (no spring), and as a launch card the code field is not allowed to take focus on appear (a focus ring popping in mid-slide). The splash also holds deferred launch work off during the slide (`LaunchSplashController.motionActive`, docs/LaunchSplash.md).

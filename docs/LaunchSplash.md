@@ -46,7 +46,7 @@ JSON calls** (`/discover.json`, `/lineup.json`, `guide.php`). The splash release
 assembled and the card fades in (≈ 1.7 s after the posters start flying); `release()` also releases it, and the 8 s timeout covers a
 splash that never opens. No splash expected (off, Reduce Motion, tests) → no wait. The checklist therefore starts ticking just after
 the fly-in; the splash's 3.4 s minimum is unchanged and its cap is 9.5 s (was 7 s) because discovery and the guide now start ≈ 3 s in and finish ≈ 9 s after launch. Separately, `performFetchAllGuides`'s web-page rebuild waits for
-`waitUntilSettled` (a card up and the wall frozen, or the splash gone; ≤ 6 s).
+`waitUntilSettled` (a card up and the wall frozen, or the splash gone, and no card slide or menu-bar glide in progress — `motionActive`, set for each slide plus a short margin; ≤ 6 s), so no heavy MainActor work lands in the middle of a visible animation.
 
 ## Timing
 `LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (9.5 s) — so a missing tuner can't hold it up.
