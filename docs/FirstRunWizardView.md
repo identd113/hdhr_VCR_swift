@@ -79,18 +79,16 @@ the title in the splash's `.rounded` bold face ("Welcome to hdhrVCRplus", 20pt) 
 itself is made clear (`isOpaque = false`, `backgroundColor = .clear`, system shadow) in the same `WindowAction` that
 sizes and centres it, so the rounded panel floats like the splash's edgeless canvas rather than sitting on a rectangle.
 
-**First-run hand-off** (new install only): `hdhr_VCRApp` no longer opens the wizard at launch when the splash is going to
-run; `LaunchSplashView.handOffToWizard` opens it when the splash finishes — **on top of the splash's poster wall**, which
-stays as the backdrop (frozen, hidden while another app is frontmost) until the wizard is dismissed. The wizard window is
-raised to `NSWindow.Level.modalPanel + 1` for this (the splash canvas sits at `.modalPanel`) and put back to `.normal` when the
-wizard closes. `AppState.launchSplashHandsOffToWizard` (set just before the splash opens) tells the splash to do this instead of
-its fly-to-the-menu-bar finale, and `AppState.firstRunWizardEntrance` keeps the wizard fully transparent (`.opacity(0)`) from
-its first frame. The splash's logo glides to where the wizard's header icon sits (`FirstRunWizardView.headerIconCenter`,
-window top-left + (46, 44) — keep it in step with the header's layout), the wizard fades in over it (0.5 s) and the splash's
-logo fades out, leaving the header icon where the logo was. Full sequence, the poster upgrade for a brand-new install and the
-end-of-wizard menu-bar pulse: `docs/LaunchSplash.md`. If the splash never runs (Reduce Motion, "Show launch splash" off,
-tests) the wizard opens directly at launch as before. Settings → Maintenance → "Reset First-Run Setup" opens the wizard
-directly (no splash, no fade, normal window level).
+**First-run hand-off** (new install only; rewritten 2026-10-15): `hdhr_VCRApp` no longer opens the wizard at launch when the
+splash is going to run. The wizard is shown as a **card inside the splash's own window** (`LaunchSplashView.runCards`): the splash's
+card (logo, version, checklist) slides out to the left, the wizard slides in from the right over the same poster wall (dimmed 40 %,
+frozen), and when the wizard closes the next card (the donation card, if due) slides in the same way — exactly one card visible at a
+time. The view reads `\.embeddedCardClose` (`Views/EmbeddedCard.swift`): when set it calls that instead of `dismiss()` (Finish,
+Escape) and skips its `WindowAction` block (size/centre/clear background — the splash window is not its to configure).
+`AppState.launchSplashHandsOffToWizard` (set just before the splash opens) tells the splash to host it. The logo-glide into the
+header icon and `firstRunWizardEntrance` were removed with this change. Full sequence: `docs/LaunchSplash.md`. If the splash never
+runs (Reduce Motion, "Show launch splash" off, tests) the wizard opens directly at launch in its own window as before; so does
+Settings → Maintenance → "Reset First-Run Setup" (no splash, normal window level).
 
 ### Step 1 — Recording Defaults
 **Tuner discovery card** (`Views/TunerDiscoveryCard.swift`, top of Step 1, own `Section`) —

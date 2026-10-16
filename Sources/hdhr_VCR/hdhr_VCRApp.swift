@@ -119,11 +119,11 @@ struct hdhr_VCRApp: App {
         let cfg = ConfigManager().load()?.config
         let dockMode = cfg?.Dock_icon_mode ?? "auto"
         let localNetworkConfirmed = cfg?.Local_network_confirmed ?? false
-        _needsFirstRunWizard = State(initialValue: !(cfg?.First_run_wizard_shown ?? false))
+        _needsFirstRunWizard = State(initialValue: demoFirstRunRequested || !(cfg?.First_run_wizard_shown ?? false))
         launchSplashWanted = LaunchSplashPlan.shouldShow(
-            enabled: cfg?.Show_launch_splash ?? true,
+            enabled: demoFirstRunRequested || (cfg?.Show_launch_splash ?? true),
             underTests: runningUnderTests,
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            reduceMotion: !demoFirstRunRequested && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         let showDock: Bool
         switch dockMode {
         case "always": showDock = true

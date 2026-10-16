@@ -82,6 +82,11 @@ let runningUnderTests: Bool = {
         || CommandLine.arguments.contains { $0 == "--test-bundle-path" || $0.hasSuffix("swiftpm-testing-helper") }
 }()
 
+/// `--demo-first-run` on the command line: play the launch splash, the first-run wizard and the donation card exactly as a
+/// brand-new install would — whatever the saved config says — and write nothing back to the config file, so it can be
+/// repeated on a configured Mac without changing it (docs/LaunchSplash.md). Quit the running app first (single instance).
+let demoFirstRunRequested: Bool = CommandLine.arguments.contains("--demo-first-run")
+
 /// Folder the app's log files are written to: ~/Library/Logs normally, a temp folder under test.
 let appLogsDirectory: String = {
     guard runningUnderTests else { return NSHomeDirectory() + "/Library/Logs" }

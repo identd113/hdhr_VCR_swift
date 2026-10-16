@@ -1,6 +1,6 @@
 # LaunchSplash — launch screen (and the first-run opening)
 
-`Views/LaunchSplashView.swift`. Shown at every launch when `AppConfig.Show_launch_splash` is on (Settings → General, default on), the app isn't under tests, and macOS "Reduce motion" is off (`LaunchSplashPlan.shouldShow`). **A brand-new install gets it too** (changed 2026-10-14; it used to get only the wizard): the splash then flows into the setup wizard, which opens on top of the poster wall, instead of ending with the fly-to-the-menu-bar finale — see "First run" below.
+`Views/LaunchSplashView.swift`. Shown at every launch when `AppConfig.Show_launch_splash` is on (Settings → General, default on), the app isn't under tests, and macOS "Reduce motion" is off (`LaunchSplashPlan.shouldShow`). **A brand-new install gets it too**: the splash then flows into the setup wizard (and the donation card) as cards in the same window, instead of ending with the fly-to-the-menu-bar finale — see "Cards" below.
 
 ## What it shows
 - **No window or panel.** On-air show posters (from the guide) fly in from every direction — random points on a ring outside the screen, spinning as they land — and settle into a loose 10×5 wall (slightly jittered and tilted, centre posters dimmed). The logo, "hdhrVCRplus", the release version (`CFBundleShortVersionString`, build stamp as fallback) and a three-line checklist float over it on a soft edgeless dark glow. The checklist flips to check marks as `AppState` publishes them — tuner found (name · tuner count), channel lineup (N channels), guide ready; no tuner after startup → "No tuner found".
@@ -9,24 +9,41 @@
 
 **On demand:** Settings → Maintenance → *Preview Launch Splash* opens the same window any time (it ignores the enable toggle).
 
-## First run (the wall stays as the setup wizard's backdrop)
-When first-run setup isn't done, `hdhr_VCRApp.openLaunchSplashIfNeeded()` sets `AppState.launchSplashHandsOffToWizard` before opening the splash and `openFirstRunWizardIfNeeded()` stands down (the splash opens the wizard itself). The splash plays exactly as above until startup finishes; then `LaunchSplashView.handOffToWizard`:
-1. sets `AppState.firstRunWizardEntrance` (the wizard renders fully transparent from its first frame), drops the splash window from `.popUpMenu` to `.modalPanel`, opens the `first-run-wizard` window and puts it one level higher — so the wizard sits **on top of the poster wall**;
-2. finds that window, waits ~0.2 s for its `WindowAction` to size/centre it, and works out where the wizard's header icon will be (`FirstRunWizardView.headerIconCenter`, `LaunchSplashPlan.wizardIconTarget`);
-3. the title/checklist fall away, the wall stays (a 40 % black scrim is added so the wizard reads) and the logo glides to that spot, shrinking to the header icon's size (0.8 s);
-4. the wizard fades in over it (0.5 s) and the logo fades out (the wizard's own header icon is where it was);
-5. phase `.backdrop`: the wall is **frozen** (`MosaicTiles(frozen:)` pauses its `TimelineView` — ~0 % CPU while the wizard is open) and the splash window stays up, click-through, until `First_run_wizard_shown` flips (Finish, Escape and the close button all set it). While another app is frontmost (`NSApplication.didResignActiveNotification`) the splash window is set to alpha 0 so the wall never covers it, and restored on `didBecomeActiveNotification`;
-6. when the wizard is dismissed the wall fades, the splash climbs back to `.popUpMenu`, a ring pulses at the menu-bar icon, and the window closes (~0.8 s).
-**Posters on a brand-new install:** there is no saved poster list and usually no guide yet when the wall is built, so it starts as placeholder tiles (or cached station logos). `upgradeToRealPosters()` polls the guide (≤ 60 s) and, once it supplies on-air art, swaps the real posters in with a 0.9 s animation (logged `[Splash] wall upgraded …`) and saves the list so the next launch has it instantly. (Not exercised in testing: the dev Mac already has a saved list.)
-The wizard and the splash share one look (always dark, glow, same logo, rounded title) — see `docs/FirstRunWizardView.md`'s "Look and first-run hand-off". Safety net: `hdhr_VCRApp.openLaunchSplashIfNeeded` starts a 14 s fallback timer; if the splash hasn't cleared `launchSplashHandsOffToWizard` by then (it clears it the moment it starts its own hand-off), the wizard is opened directly. (An `.onDisappear` safety net was tried first and removed: the splash window reconfigures itself at launch, which fires a spurious disappear and opened the wizard on top of the splash at ~2 s.) If the splash is off / skipped (Reduce Motion, tests), the wizard opens at launch as it always did.
+## Cards: splash → setup wizard → donation (one window, one card at a time)
+The poster wall is the **one persistent backdrop**; on top of it exactly one card is visible at a time, each sliding in from the
+right over the previous one (which leaves to the left; `LaunchSplashView.slide`, 0.55 s). Order: the **splash card** (logo, version,
+checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run setup isn't done) → the **donation card**
+(`DonationNagView`, only while `Donation_unlocked` is false). Both are the existing views, run as cards: they read the
+`\.embeddedCardClose` environment value (`Views/EmbeddedCard.swift`) to close themselves and skip their own window setup.
+- Which cards: `hdhr_VCRApp.openLaunchSplashIfNeeded()` sets `AppState.launchSplashHandsOffToWizard` (first run) and calls
+  `LaunchSplashController.play(state:offersDonation: true)`; Settings → Maintenance → *Preview Launch Splash* passes `false` and has no
+  wizard, so it is just the splash. After the splash card (startup done, 3.4–7 s) `runCards` shows whichever of the wizard / donation
+  are due, waiting for each to close (`closedCards`), then the wall fades and a ring pulses at the menu-bar icon. With **no** card due
+  the splash ends as before: the logo flies to the menu-bar icon. While cards are up the splash window takes input (`SplashWindow` can
+  become key; level `.modalPanel`), is hidden and click-through while another app is frontmost, and the wall is frozen (≈0 % CPU).
+- The launch-time donation nag no longer opens its own window while the splash is playing (`openDonationNagIfNeeded` checks
+  `LaunchSplashController.isPlaying`); later nags (after adding a show) and the Settings → Reset First-Run Setup wizard still open as
+  their own windows.
+- **Posters on a brand-new install:** there is no saved poster list and usually no guide yet when the wall is built, so it starts as
+  placeholder tiles (or cached station logos). `upgradeToRealPosters()` polls the guide (≤ 60 s) and, once it supplies on-air art, swaps
+  the real posters in (0.9 s animation, logged `[Splash] wall upgraded …`) and saves the list for the next launch.
+- Safety net: `openLaunchSplashIfNeeded` starts a 14 s fallback; if the splash hasn't cleared `launchSplashHandsOffToWizard` by then it
+  opens the wizard in its own window.
+
+### `--demo-first-run` (launch argument)
+`hdhrVCRplus.app/Contents/MacOS/hdhr_VCR --demo-first-run` (or `open -a hdhrVCRplus --args --demo-first-run` after quitting the
+running instance) plays the whole flow — splash, first-run wizard, donation card — as a brand-new install would, ignoring the saved
+config (first-run flag, splash toggle, Reduce Motion, `Donation_unlocked`), and **writes nothing to the config file**
+(`AppState.saveConfig` returns early; `demoFirstRunRequested` in `Models.swift`). Use it to look at or test the flow on a configured
+Mac without moving `hdhrVCRplus/` aside.
 
 ## Timing
 `LaunchSplashPlan` (pure, unit-tested): never shorter than `minimumSeconds` (3.4 s), ends once startup finishes (`!isStartingUp`), never longer than `capSeconds` (7 s) — so a missing tuner can't hold it up.
 
 ## Window
-A `Window(id: "launch-splash")` scene; `LaunchSplashView` turns its `NSWindow` into a borderless, clear, click-through canvas covering the menu-bar screen at `.popUpMenu` level (above the menu bar, so the logo can land on the icon). It never takes input.
+`LaunchSplashView` turns its `NSWindow` (a `SplashWindow`, see Window lifetime) into a borderless, clear canvas (click-through except while a card is up) covering the menu-bar screen at `.popUpMenu` level (above the menu bar, so the logo can land on the icon). It never takes input.
 
 ## Not load-bearing
-Startup (`AppState.startup()` — discovery, lineups, guide, icon prefetch) is unchanged and runs whether or not the splash appears; the splash only reflects it. It is opened once per run by `openLaunchSplashIfNeeded()` from the status-item label's `onAppear` (the first hook to fire), with the menu's `onAppear` as a backup. The donation nag is not held back by it.
+Startup (`AppState.startup()` — discovery, lineups, guide, icon prefetch) is unchanged and runs whether or not the splash appears; the splash only reflects it. It is opened once per run by `openLaunchSplashIfNeeded()` from the status-item label's `onAppear` (the first hook to fire), with the menu's `onAppear` as a backup. The launch-time donation nag is shown as the splash's last card (see Cards).
 
-**Window lifetime (2026-10-15):** the splash is **not** a SwiftUI `Window` scene. A scene's window is only ever ordered out, never destroyed — so a finished splash stayed in memory and its endless `TimelineView` animation kept rendering the invisible wall (~21 % idle CPU, a ~0.6 s main-thread stall every 10 s). `LaunchSplashController` (bottom of `LaunchSplashView.swift`) now creates a borderless full-screen `NSWindow` with an `NSHostingView` when the splash plays and **destroys it when it ends**: `release()` orders the window out and drops the hosting view, freeing the SwiftUI graph, its `@State` and the poster images (a fresh-process footprint went 123–129 MB → 109 MB). Callers: the app's launch (`openLaunchSplashIfNeeded`) and Settings → Maintenance → Preview Launch Splash both call `LaunchSplashController.shared.play(state:openWindow:)`; playing while one is up just brings it forward (never stacks). The view takes `openWindow: (String) -> Void` (the first-run wizard hand-off) and `onFinish` instead of scene environment values. **First run:** `finish()` is only reached after the wizard is dismissed, so the wall stays as its backdrop and is released only then (verified 2026-10-15: splash window present from +1 s through the whole wizard, gone 0.5 s after the wizard closed). Guards: live `launchSplashPlaysEndsAndLeavesNothingRunning` (window must not exist after the finale, CPU < 5 %) and `idleAppUsesAlmostNoCPU`.
+**Window lifetime (2026-10-15):** the splash is **not** a SwiftUI `Window` scene. A scene's window is only ever ordered out, never destroyed — so a finished splash stayed in memory and its endless `TimelineView` animation kept rendering the invisible wall (~21 % idle CPU, a ~0.6 s main-thread stall every 10 s). `LaunchSplashController` (bottom of `LaunchSplashView.swift`) now creates a borderless full-screen `NSWindow` with an `NSHostingView` when the splash plays and **destroys it when it ends**: `release()` orders the window out and drops the hosting view, freeing the SwiftUI graph, its `@State` and the poster images (a fresh-process footprint went 123–129 MB → 109 MB). Callers: the app's launch (`openLaunchSplashIfNeeded`) and Settings → Maintenance → Preview Launch Splash both call `LaunchSplashController.shared.play(state:openWindow:)`; playing while one is up just brings it forward (never stacks). The view takes `offersDonation` and `onFinish`. **With cards:** `finish()` is only reached after the last card closes, so the wall stays as the backdrop and is released only then. Guards: live `launchSplashPlaysEndsAndLeavesNothingRunning` (window must not exist after the finale, CPU < 5 %) and `idleAppUsesAlmostNoCPU`.

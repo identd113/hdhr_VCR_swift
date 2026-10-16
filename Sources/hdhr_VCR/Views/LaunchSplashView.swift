@@ -340,7 +340,7 @@ struct LaunchSplashView: View {
         // Cards after the splash: the setup wizard on a brand-new install, then the donation card if the nag is due. One at a
         // time, each sliding over the previous; the wall stays as the backdrop throughout.
         let wizardDue = state.launchSplashHandsOffToWizard
-        if wizardDue || (offersDonation && !state.config.Donation_unlocked) {
+        if wizardDue || (offersDonation && (demoFirstRunRequested || !state.config.Donation_unlocked)) {
             await runCards(wizardDue: wizardDue, in: size)
             return
         }
@@ -376,7 +376,7 @@ extension LaunchSplashView {
             withAnimation(.easeInOut(duration: 0.55)) { card = .wizard }
             guard await waitForCardClose() else { return }
         }
-        if offersDonation, !state.config.Donation_unlocked {
+        if offersDonation, demoFirstRunRequested || !state.config.Donation_unlocked {
             withAnimation(.easeInOut(duration: 0.55)) { card = .donation }
             guard await waitForCardClose() else { return }
         }

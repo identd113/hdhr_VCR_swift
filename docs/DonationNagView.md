@@ -100,3 +100,10 @@ mechanism's known weakness (quantified — how small the search space actually i
 this public doc on purpose; see the developer's own private, untracked notes for all three. Back
 those up somewhere private along with `tools/donation_target.txt` — losing both means recovering
 the target only by brute-forcing the hash.
+
+## As a launch-splash card (2026-10-15)
+At launch the nag is not opened as its own window: when the launch splash plays, `runCards` shows this view as the splash's last
+card (after the first-run wizard on a new install), sliding in over the poster wall, when `Donation_unlocked` is false. It reads
+`\.embeddedCardClose` (`Views/EmbeddedCard.swift`): "Not now" and a valid code call it instead of `dismiss()`, and the floating
+window-level `WindowAction` is skipped (the splash window owns the level). `openDonationNagIfNeeded` returns early while
+`LaunchSplashController.isPlaying`. Nags triggered later (after adding a show) still open the `donation-nag` window. See `docs/LaunchSplash.md`.

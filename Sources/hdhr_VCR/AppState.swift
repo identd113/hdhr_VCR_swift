@@ -1528,6 +1528,7 @@ final class AppState: ObservableObject {
     // configManager.flushPendingSaves() themselves afterward; every other one of this function's 26
     // call sites is fire-and-forget by design, same as before this change from their point of view.
     func saveConfig() {
+        guard !demoFirstRunRequested else { return }   // `--demo-first-run` never writes the config file
         let file = ConfigFile(config: config, shows: shows)
         configManager.saveAsync(file) { [weak self] _ in
             Task { @MainActor in
