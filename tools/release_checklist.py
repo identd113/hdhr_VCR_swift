@@ -113,6 +113,21 @@ def live_config_shows():
 
 # ── preflight ────────────────────────────────────────────────────────────────
 
+def readme_check(v, strict):
+    """README must name v in the Latest heading and the What's New headline, and origin/main must carry
+    the same README (the repo front page is what people see). strict=False (preflight) only warns."""
+    bad = BAD if strict else WARN
+    readme = read(README)
+    m = re.search(r"### 📦 Latest: \[v([0-9.]+)\]", readme)
+    say(OK if m and m.group(1) == v else bad, f"README 'Latest' heading is v{m.group(1) if m else '?'} (want v{v})")
+    m = re.search(r"\*\*v([0-9.]+)'s headline", readme)
+    say(OK if m and m.group(1) == v else bad, f"README What's New headline is v{m.group(1) if m else '?'} (want v{v})")
+    shown = sh(["git", "show", "origin/main:README.md"]).stdout
+    say(OK if shown == readme else bad,
+        "README on origin/main matches the working copy" if shown == readme
+        else "README on origin/main differs from the working copy — GitHub's front page is stale until it is pushed")
+
+
 def preflight(args):
     v = args.version
     check_version(v)
@@ -162,6 +177,7 @@ def preflight(args):
         say(OK, f"README 'Latest' currently points at v{m.group(1)}")
     else:
         say(BAD, "README has no '### 📦 Latest' section")
+    readme_check(v, strict=False)
 
     print("\nBuild tooling")
     ident_file = os.path.join(ROOT, "tools/signing_identity.txt")
@@ -364,6 +380,8 @@ def publish(args):
         sh(["git", "commit", "-q", "-m", f"docs: README latest release is v{v}"], check=True)
         print("README.md heading + download link updated and committed (push it when you are ready).")
         print(f"! The 3-4 bullets under README's 'Latest' heading still describe the previous release — rewrite them for v{v}.")
+        print("README check (the front page must name this release; push the README to fix a stale one):")
+        readme_check(v, strict=True)
 
 
 def main():
