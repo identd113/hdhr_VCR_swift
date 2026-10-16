@@ -106,7 +106,7 @@ echo "==> Building DMG…"
 # Icon positions are chosen to match tools/dmg_assets/dmg_background.svg's own arrow/text
 # layout — edit them together if either one's coordinates change. The window is 660x600: Finder's own chrome (title
 # bar, and for users who show the tab bar / status bar, another ~70 px) eats part of it, and at 660x500 the Read Me icon
-# was cut off at the bottom; the background is 660x560, with everything that matters above y=500 (the icon row, the install line at y=304, the Read Me row at y=412); icon-size 96 leaves a clean gap on both sides of the arrow at these positions.
+# was cut off at the bottom; the background is 660x560, with everything that matters above y=500 (the icon row, the install line at y=288, the Read Me row at y=388, its caption at y=500); icon-size 96 leaves a clean gap on both sides of the arrow at these positions.
 #
 # SKIP_FINDER_STYLING=1 passes create-dmg's own --skip-jenkins through — it skips the window-
 # layout/background AppleScript step entirely (per create-dmg's own help text: "useful in Sandbox
@@ -128,7 +128,7 @@ create-dmg \
     --text-size 12 \
     --icon "$APP_NAME" 170 170 \
     --app-drop-link 490 170 \
-    --icon "Read Me.rtfd" 330 412 \
+    --icon "Read Me.rtfd" 330 388 \
     --hide-extension "$APP_NAME" \
     "${CREATE_DMG_EXTRA_ARGS[@]}" \
     "$DMG_PATH" \
