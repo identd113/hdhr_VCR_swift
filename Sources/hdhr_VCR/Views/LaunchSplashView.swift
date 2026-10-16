@@ -135,7 +135,7 @@ struct LaunchSplashView: View {
                     }
                 }
                 .frame(width: cardSize.width, height: cardSize.height)
-                .launchCardChrome()
+                .blendedLaunchPanel()
                 .opacity(assembled && phase == .showing && card != .none ? 1 : 0)
                 .position(center)
 
@@ -426,8 +426,11 @@ extension LaunchSplashView {
 /// and once seated each tile keeps a faint bob so the wall stays alive. Fewer images than slots → they repeat;
 /// none cached → the app's placeholder mark fills the wall.
 private struct MosaicTiles: View {
-    static let cols = 10, rows = 5
-    static let wall = CGSize(width: 860, height: 520)
+    static let cols = 12, rows = 7
+    /// The wall is larger than the launch panel (`LaunchCard`), which sits inside it; it shrinks to fit a small screen.
+    static func wall(in screen: CGSize) -> CGSize {
+        CGSize(width: min(1200, screen.width * 0.9), height: min(820, screen.height * 0.92))
+    }
     static var slotCount: Int { cols * rows }
     static let assembleSeconds: Double = 1.6
     private static let flightSeconds: Double = 0.9
@@ -452,7 +455,7 @@ private struct MosaicTiles: View {
     }
 
     var body: some View {
-        let wall = Self.wall
+        let wall = Self.wall(in: screen)
         let slotW = wall.width / CGFloat(Self.cols), slotH = wall.height / CGFloat(Self.rows)
         let origin = CGPoint(x: (screen.width - wall.width) / 2, y: (screen.height - wall.height) / 2)
         TimelineView(.animation(paused: frozen)) { ctx in

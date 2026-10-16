@@ -35,6 +35,22 @@ struct CardBackdrop: View {
 }
 
 extension View {
+    /// The launch panel as part of the poster wall: no hard box, border or shadow — a translucent dark pool with a warm glow
+    /// whose edges are feathered into the posters around it. The cards inside are clipped to a rounded rectangle (their
+    /// slide stays within it) and drawn in the dark scheme.
+    func blendedLaunchPanel() -> some View {
+        self.clipShape(RoundedRectangle(cornerRadius: LaunchCard.corner + 8, style: .continuous))
+            .background(
+                ZStack {
+                    Color.black.opacity(0.68)
+                    RadialGradient(colors: [Color.orange.opacity(0.16), .clear], center: UnitPoint(x: 0.12, y: 0.0),
+                                   startRadius: 8, endRadius: 380)
+                }
+                .mask(RoundedRectangle(cornerRadius: LaunchCard.corner + 12, style: .continuous).padding(10).blur(radius: 18))
+            )
+            .environment(\.colorScheme, .dark)
+    }
+
     /// Rounded dark panel with the faint border and drop shadow shared by every launch card (always dark). With
     /// `applied: false` only the dark colour scheme is set — the card sits inside a panel that already draws the chrome.
     @ViewBuilder func launchCardChrome(applied: Bool = true) -> some View {
