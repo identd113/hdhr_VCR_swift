@@ -13,7 +13,7 @@ enum LaunchSplashPlan {
     static let capSeconds: TimeInterval = 7.0
 
     /// Every launch, a brand-new install included (there it hands off to the setup wizard instead of flying to the
-    /// menu-bar icon — see `LaunchSplashView.handOffToWizard`).
+    /// menu-bar icon — the wizard and donation cards slide in instead, see `runCards`).
     static func shouldShow(enabled: Bool, underTests: Bool, reduceMotion: Bool) -> Bool {
         enabled && !underTests && !reduceMotion
     }
@@ -89,10 +89,11 @@ struct LaunchSplashView: View {
 
     private let cardSize = CGSize(width: LaunchCard.width, height: LaunchCard.designHeight)
 
-    /// The panel and everything in it is designed at 520×600 for a 1440×900 screen and scaled by the display's size, so the
-    /// launch looks the same on any screen. The wall fills the screen instead (its tiles scale with it).
+    /// The panel and everything in it is designed at 520×600 and scaled with the display so it takes about 42 % of the screen's
+    /// height (and at most 30 % of its width) — a modest card on the wall, the same proportion on any screen. The wall fills
+    /// the screen (its tiles scale with it).
     private func displayScale(_ screen: CGSize) -> CGFloat {
-        min(2.4, max(0.55, min(screen.width / 1440, screen.height / 900)))
+        min(1.6, max(0.5, min(0.42 * screen.height / cardSize.height, 0.30 * screen.width / cardSize.width)))
     }
     private let logoTop: CGFloat = 130                 // logo's top edge below the panel's top
     private let logoSize: CGFloat = 108
@@ -111,7 +112,7 @@ struct LaunchSplashView: View {
             let logoHome = CGPoint(x: center.x, y: center.y - scale * (cardSize.height / 2 - logoTop - logoSize / 2))
             ZStack {
                 // No window: the posters themselves are the backdrop. They fly in from every direction and settle into a
-                // loose wall (centre posters dimmed) with the text floating over a soft, edgeless glow.
+                // loose wall (centre posters dimmed) with the splash card on a translucent panel that blends into it.
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, frozen: frozen)
                         .opacity(phase == .showing ? 1 : 0)
@@ -243,8 +244,8 @@ struct LaunchSplashView: View {
             startupDone: !state.isStartingUp)
     }
 
-    /// Borderless, clear, click-through, covering the menu-bar screen — a full-screen canvas the tiles and logo can fly
-    /// across — and above the menu bar itself so the logo can land on the icon.
+    /// Borderless, clear, click-through (until a card needs input — see `runCards`), covering the menu-bar screen — a
+    /// full-screen canvas the tiles and logo can fly across — and above the menu bar itself so the logo can land on the icon.
     fileprivate static func configure(_ w: NSWindow) {
         w.styleMask = [.borderless, .fullSizeContentView]
         w.isOpaque = false
@@ -429,13 +430,13 @@ extension LaunchSplashView {
     }
 }
 
-/// Cached logos/posters flying in from random points just off the screen's edges and locking into a 7×4 grid the size
-/// of the card. Position is a pure function of time since `started`, so it always animates (no state to fall behind),
+/// Cached logos/posters flying in from random points just off the screen's edges and locking into a 12×7 grid filling most of the screen.
+/// Position is a pure function of time since `started`, so it always animates (no state to fall behind),
 /// and once seated each tile keeps a faint bob so the wall stays alive. Fewer images than slots → they repeat;
 /// none cached → the app's placeholder mark fills the wall.
 private struct MosaicTiles: View {
     static let cols = 12, rows = 7
-    /// The wall is larger than the launch panel (`LaunchCard`), which sits inside it; it shrinks to fit a small screen.
+    /// The wall fills 90 % × 92 % of the screen, so it always contains the launch panel (`LaunchCard`).
     static func wall(in screen: CGSize) -> CGSize {
         CGSize(width: screen.width * 0.9, height: screen.height * 0.92)
     }

@@ -77,7 +77,7 @@ scene plus `.environment(\.colorScheme, .dark)` on the panel, whatever the Appea
 instead of `.thickMaterial`, the app logo at `headerIconSize` (44pt) with the splash's soft shadow and rounded corners,
 the title in the splash's `.rounded` bold face ("Welcome to hdhrVCRplus", 20pt) with the subtitle at white 0.8. The window
 itself is made clear (`isOpaque = false`, `backgroundColor = .clear`, system shadow) in the same `WindowAction` that
-sizes and centres it, so the rounded panel floats like the splash's edgeless canvas rather than sitting on a rectangle.
+sizes and centres it, so the rounded panel floats rather than sitting on a rectangle. (As a launch card inside the splash it draws no panel of its own — the splash's persistent, blended panel is behind it.)
 
 **First-run hand-off** (new install only; rewritten 2026-10-15): `hdhr_VCRApp` no longer opens the wizard at launch when the
 splash is going to run. The wizard is shown as a **card inside the splash's own window** (`LaunchSplashView.runCards`): the splash's
