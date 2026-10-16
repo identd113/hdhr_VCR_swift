@@ -118,7 +118,7 @@ echo "==> Building DMG…"
 CREATE_DMG_EXTRA_ARGS=()
 [ "$SKIP_FINDER_STYLING" = "1" ] && CREATE_DMG_EXTRA_ARGS+=(--skip-jenkins)
 create-dmg \
-    --volname "hdhrVCRplus" \
+    --volname "hdhrVCRplus ${VERSION}" \
     --volicon "$APP_PATH/Contents/Resources/AppIcon.icns" \
     --background "$GEN/dmg_background.png" \
     --window-size 660 500 \

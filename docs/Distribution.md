@@ -170,6 +170,7 @@ requiring a manual force-quit) that a well-tested existing tool sidesteps entire
   desktop's own dithered checkerboard texture) with a drag arrow between the app and Applications
   icons — window size and all three icon positions are hardcoded in `build_dmg.sh` to match this
   file's own layout exactly; **edit them together** if either one's coordinates change.
+- The mounted volume is named `hdhrVCRplus <version>` (e.g. `/Volumes/hdhrVCRplus 2.6.5`, `--volname` in `tools/build_dmg.sh`, from 2026-10-15; it was plain `hdhrVCRplus`), and the file is `hdhrVCRplus-<version>.dmg`.
 - The volume icon (`--volicon`) is the app's own `AppIcon.icns`, already baked into the signed
   `.app` — no separate asset needed for that piece.
 
