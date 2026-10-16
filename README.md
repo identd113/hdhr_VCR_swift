@@ -110,7 +110,7 @@ pull program data all live here.
 
 ### It's a DVR that stays out of your way
 
-- **Menu bar only** — no Dock icon, no full-screen window. One click to see everything; it disappears when you click away.
+- **Menu bar first** — no full-screen window, and no Dock icon once macOS has confirmed local-network access (it may show one until then; Settings → Advanced lets you choose). One click to see everything; it disappears when you click away.
 - **Fully automated** — scheduling, recording, tuner management, and failure recovery all happen silently in the background.
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch. Shows that fail too often are automatically paused.
 - **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
