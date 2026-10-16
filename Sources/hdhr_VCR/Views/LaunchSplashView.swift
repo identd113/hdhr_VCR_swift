@@ -121,6 +121,7 @@ struct LaunchSplashView: View {
                 // loose wall (centre posters dimmed) with the splash card on a dark panel that sits in it.
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
+                        .drawingGroup()                 // one flattened Metal layer instead of 84 separately composited tiles
                         .opacity(phase == .showing ? 1 : 0)
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads.
                     Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0)
@@ -285,6 +286,28 @@ struct LaunchSplashView: View {
         return (await ChannelIconCache.shared.sampleCachedImages(limit: want), false)
     }
 
+    /// A poster scaled once, off the main thread, to about twice the size a tile is drawn at — the cache holds full-size art,
+    /// and rescaling that every frame for 84 tiles is what made the fly-in drop frames.
+    nonisolated private static func shrunk(_ image: NSImage) async -> NSImage {
+        final class Box: @unchecked Sendable { let image: NSImage; init(_ i: NSImage) { image = i } }
+        let box = Box(image)
+        return await Task.detached(priority: .userInitiated) { () -> Box in
+            let src = box.image
+            let target = CGSize(width: 200, height: 240)                        // ≈ 2× a tile on a 1440×900 screen
+            guard src.size.width > target.width * 1.5, src.size.height > target.height * 1.5,
+                  let cg = src.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return box }
+            let k = max(target.width / CGFloat(cg.width), target.height / CGFloat(cg.height))
+            let w = max(1, Int(CGFloat(cg.width) * k)), h = max(1, Int(CGFloat(cg.height) * k))
+            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return box }
+            ctx.interpolationQuality = .high
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            guard let out = ctx.makeImage() else { return box }
+            return Box(NSImage(cgImage: out, size: NSSize(width: w, height: h)))
+        }.value.image
+    }
+
     /// Downloads/loads the given poster URLs through the shared icon cache, capped at ~1.5 s overall — whatever has arrived
     /// by then is returned.
     @MainActor private func fetchImages(_ urls: [String]) async -> [NSImage] {
@@ -292,7 +315,7 @@ struct LaunchSplashView: View {
         let box = Box()
         for (i, u) in urls.enumerated() {
             Task { @MainActor in
-                if let img = await ChannelIconCache.shared.image(for: u) { box.images[i] = img }
+                if let img = await ChannelIconCache.shared.image(for: u) { box.images[i] = await Self.shrunk(img) }
                 box.done += 1
             }
         }
@@ -372,6 +395,7 @@ extension LaunchSplashView {
         state.launchSplashHandsOffToWizard = false     // decided — the app's fallback timer (openLaunchSplashIfNeeded) stands down
         cardsActive = true
         frozen = true                                   // the wall stops animating while a card is open
+        LaunchSplashController.shared.settled = true
         if let w = window {                             // the cards take input: key window, above other apps' windows
             w.ignoresMouseEvents = false
             w.level = .modalPanel
@@ -497,7 +521,6 @@ private struct MosaicTiles: View {
         }
         .frame(width: size.width - 3, height: size.height - 3)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
     }
 }
 
@@ -517,10 +540,21 @@ final class LaunchSplashController {
     static let shared = LaunchSplashController()
     private var window: NSWindow?
     var isPlaying: Bool { window != nil }
+    /// True once the splash's busy animation is over (a card is up and the wall is frozen) or the splash is gone — the point
+    /// after which heavy MainActor work (the web guide's page rebuild) no longer costs visible frames.
+    var settled = true
+
+    /// Heavy launch work calls this first so it doesn't land in the middle of the poster fly-in. Returns at once when no splash
+    /// is playing; never waits longer than `timeout`.
+    func waitUntilSettled(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while isPlaying, !settled, Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
+    }
 
     /// `offersDonation`: the app's launch passes true (the donation card follows if the nag is due); the preview, false.
     func play(state: AppState, offersDonation: Bool) {
         if let window { window.orderFrontRegardless(); return }
+        settled = false
         let screen = NSScreen.screens.first?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let w = SplashWindow(contentRect: screen, styleMask: [.borderless], backing: .buffered, defer: false)
         w.title = "hdhrVCRplus"
@@ -536,6 +570,7 @@ final class LaunchSplashController {
     func release() {
         guard let w = window else { return }
         window = nil
+        settled = true
         w.orderOut(nil)
         w.contentView = nil
     }

@@ -2016,7 +2016,12 @@ final class AppState: ObservableObject {
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
-        if loadedCount > 0 { webServer.prebuildPageHTML(state: self) }
+        if loadedCount > 0 {
+            // The page rebuild + gzip is a long MainActor block; during the launch splash's fly-in it shows as dropped frames.
+            // The web server already has a (guide-less) page from startup()'s early prebuild, so wait for the animation to settle.
+            await LaunchSplashController.shared.waitUntilSettled(timeout: 6)
+            webServer.prebuildPageHTML(state: self)
+        }
     }
 
     private func refreshGuides() async {
