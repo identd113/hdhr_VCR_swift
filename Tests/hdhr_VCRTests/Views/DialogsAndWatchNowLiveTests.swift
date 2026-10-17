@@ -37,6 +37,17 @@ private func axFound(_ match: String, window: String = "") -> Bool { ax(["find",
     ax(["find", window, match, "--press"] + (last ? ["--last"] : [])).status == 0
 }
 
+/// Human pace: a real person leaves a second or two between actions, and the app (recording teardown, Watch Now rows,
+/// menu rebuilds) needs about that long to settle. Rushing straight from one step to the next races it.
+private func humanPause(_ seconds: TimeInterval = 1.5) { Thread.sleep(forTimeInterval: seconds) }
+
+/// After `MockRecording.clean()` / closing windows: wait (up to 15 s) until the app reports nothing recording, then pause
+/// like a person would before the next action.
+private func settleBeforeNextAction() {
+    _ = waitFor(15) { !MockRecording.isRecording }
+    humanPause(2)
+}
+
 /// Polls `condition` every 0.1 s; returns the seconds it took, or nil if it never became true within `timeout`.
 private func waitFor(_ timeout: TimeInterval, _ condition: () -> Bool) -> TimeInterval? {
     let start = Date()
@@ -109,12 +120,15 @@ extension WindowNavigationTests {
         if let why = MockRecording.realRecordingConflict() { skip(why); return }
         MockRecording.clean()
         closeStrayWindows()
+        settleBeforeNextAction()
         defer { MockRecording.clean(); closeStrayWindows() }
 
         clickAppMenuItem("Watch Now…")
         #expect(waitFor(8) { axWindows().contains("Watch Now") } != nil, "Watch Now never opened")
-        #expect(!axFound("role=AXButton&help^=Play the in-progress recording", window: "Watch Now"),
-                "relay buttons present before anything is recording")
+        humanPause()   // let the window finish its first render before looking for buttons
+        let preFound = ax(["find", "Watch Now", "role=AXButton&help^=Play the in-progress recording"])
+        #expect(preFound.status != 0,
+                "relay buttons present before anything is recording — windows: \(axWindows()); found: \(preFound.out); mock recording: \(MockRecording.isRecording)")
 
         guard let started = MockRecording.ensure() else { skip("nothing airing / no free tuner"); return }
         let title = started.range(of: #"\[MOCK\] (.+?)_[0-9.]+_\d{8}_\d{4}\.ts"#, options: .regularExpression)
@@ -264,10 +278,18 @@ extension WindowNavigationTests {
         MockRecording.clean()
         closeStrayWindows()
         defer { MockRecording.clean() }
+        settleBeforeNextAction()
         guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
-        Thread.sleep(forTimeInterval: 8)   // recording start, Discord card, grid rebuilds all settle
-        guard let cpu = appCPUPercent() else { Issue.record("could not read the app's CPU from top"); return }
-        #expect(cpu < 10, "app at \(cpu)% CPU with a recording and no windows — hidden windows are probably re-rendering")
+        // Recording start, Discord card and grid rebuilds spike the CPU for several seconds (50–80 % seen) and then it falls
+        // to ~0. Give it up to ~30 s (each reading itself averages 6 s) and require the steady state to be low.
+        Thread.sleep(forTimeInterval: 8)
+        var readings: [Double] = []
+        for _ in 0..<4 {
+            guard let cpu = appCPUPercent() else { Issue.record("could not read the app's CPU from top"); return }
+            readings.append(cpu)
+            if cpu < 10 { break }
+        }
+        #expect(readings.last! < 10, "app still at \(readings.last!)% CPU with a recording and no windows after settling (readings \(readings)) — hidden windows are probably re-rendering")
     }
 }
 

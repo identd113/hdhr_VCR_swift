@@ -12,7 +12,7 @@ macOS menu bar app (`LSUIElement`, no Dock icon) recording TV from HDHomeRun tun
 ./deploy.sh          # stop → swift build → copy binary → ad-hoc sign → launch → WebServerPerfTests (live-app tests are opt-in: RUN_LIVE_PERF_TESTS=1, which deploy.sh sets)
 swift build          # build only
 swift test           # Tests/hdhr_VCRTests/ — full Xcode required (xctest); snapshot refs: RECORD_SNAPSHOTS=1 swift test
-RUN_WINDOW_NAV_TESTS=1 swift test --filter WindowNavigationTests   # opt-in: drives real app windows via Accessibility API (osascript); needs the app running + Accessibility permission granted to whatever runs swift test
+RUN_WINDOW_NAV_TESTS=1 swift test --filter WindowNavigationTests   # (one live suite per invocation, or add --no-parallel when combining filters: Swift Testing runs different suites at the same time and they all drive the one running app) opt-in: drives real app windows via Accessibility API (osascript); needs the app running + Accessibility permission granted to whatever runs swift test
 RUN_WINDOW_NAV_TESTS=1 swift test --filter PiPTunerChurnTests      # opt-in soak: PiP/FEED/window churn, checks hardware + app tuner counts after every step; needs both tuners idle (FEED test also needs `ssh laptop`) — see docs/LiveUITests.md
 swift test --enable-code-coverage && xcrun llvm-cov report .build/*/debug/hdhr_VCRPackageTests.xctest/Contents/MacOS/hdhr_VCRPackageTests -instr-profile .build/*/debug/codecov/default.profdata -ignore-filename-regex='\.build|Tests/'
 ```
