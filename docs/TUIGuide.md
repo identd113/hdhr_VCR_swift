@@ -611,6 +611,7 @@ builds the binary; a missing binary is a **failure**, not a silent skip.
 | `terminalGuideSwitchedOff_exitsAndSaysSo` | exit 1 and "disabled … Terminal Guide" when `terminalGuideEnabled` is false |
 | `noTunerYet_exitsAndTellsTheUserToWait` | exit 1 and "no HDHomeRun tuner detected" for an empty payload |
 | `rendersTheGuide_andQuitsCleanlyOnQ_restoringTheTerminal` | channel + show names render; enters the alternate screen; `q` exits 0; leaves the alternate screen and shows the cursor again |
+| `terminalHangUp_exitsInsteadOfSpinning` | closing the pty without a SIGHUP (dropped connection) makes the process exit; before the fix its input loop spun at 100% CPU forever |
 | `fKeyTogglesTheSelectedChannelsFavorite_overHTTP` | `f` POSTs `/api/toggle-favorite` with the selected channel's number and device, and the status line confirms (✓) |
 | `downArrowMovesTheSelection_soFTogglesTheOtherChannel` | an arrow-key escape sequence moves the selection; the next `f` targets the second channel |
 | `downThenUpArrow_walkEveryChannel_andClampAtBothEnds` | 25-channel guide: ↓ moves exactly one row per press through the first dozen, a 60-key burst stops at the last channel (clamp, no wrap), an 80-key ↑ burst stops at the first |

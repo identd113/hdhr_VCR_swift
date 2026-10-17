@@ -16,6 +16,10 @@ enum Terminal {
     // single-threaded, these are only ever touched from the main loop.
     private nonisolated(unsafe) static var saved = termios()
     private nonisolated(unsafe) static var rawModeActive = false
+    // Set once stdin reaches end-of-file or hangs up (the terminal/pty went away without a SIGHUP —
+    // a dropped connection, a test harness closing its pty). main.swift's loop exits on it; without
+    // this readKey() just returned nil forever and the loop spun at 100% CPU, orphaned.
+    nonisolated(unsafe) static var stdinClosed = false
 
     static func enterRawScreen() {
         tcgetattr(STDIN_FILENO, &saved)
@@ -81,7 +85,9 @@ enum Terminal {
     static func pollStdin(timeoutMs: Int32) -> Bool {
         var pfd = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
         let ready = poll(&pfd, 1, timeoutMs)
-        return ready > 0 && (pfd.revents & Int16(POLLIN)) != 0
+        // POLLHUP/POLLERR count as ready so the caller's read() runs and sees the EOF; POLLIN alone
+        // never fires once the other end of the terminal is gone.
+        return ready > 0 && (pfd.revents & Int16(POLLIN | POLLHUP | POLLERR | POLLNVAL)) != 0
     }
 
     // Reads one logical key. Disambiguates a bare Escape from an arrow-key escape sequence by
@@ -98,7 +104,9 @@ enum Terminal {
     // own, much longer window below, for a different reason — see the comment at that guard.
     static func readKey() -> Key? {
         var byte: UInt8 = 0
-        guard read(STDIN_FILENO, &byte, 1) == 1 else { return nil }
+        let n = read(STDIN_FILENO, &byte, 1)
+        if n == 0 || (n < 0 && errno != EINTR && errno != EAGAIN) { stdinClosed = true }
+        guard n == 1 else { return nil }
         DebugLog.log("read byte 0x\(String(byte, radix: 16))")
 
         if byte == 0x1B {

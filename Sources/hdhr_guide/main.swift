@@ -1136,7 +1136,7 @@ func render() {
 Terminal.enterRawScreen()
 render()
 
-while !interrupted {
+while !interrupted && !Terminal.stdinClosed {
     if resized {
         resized = false
         render()
