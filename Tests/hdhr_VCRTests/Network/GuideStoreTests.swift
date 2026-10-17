@@ -505,6 +505,78 @@ struct GuideStoreMockNetworkTests {
         }
     }
 
+    // MARK: - Series index per-device pruning
+
+    @Suite("GuideStore series index per-device reload")
+    struct GuideStoreSeriesReloadTests {
+
+        private let noSeriesJSON = """
+        [{"GuideNumber": "5.1", "GuideName": "KVUE", "Guide": [
+            {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Local News"}]}]
+        """
+
+        // Reloading device A without a series it used to carry must drop only A's matches for that
+        // series; device B's matches for the same series stay.
+        @Test @MainActor func reload_dropsOnlyThatDevicesSeriesMatches() async {
+            let store = GuideStore(session: makeSession())
+            let a = makeLocalDevice(ip: "192.168.1.100", id: "AAAAAAAA")
+            let b = makeLocalDevice(ip: "192.168.1.101", id: "BBBBBBBB")
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            await store.load(for: b)
+            #expect(store.nextEpisodes(seriesID: "ds456", deviceId: "AAAAAAAA", after: before, limit: 10).count == 2)
+            #expect(store.nextEpisodes(seriesID: "ds456", deviceId: "BBBBBBBB", after: before, limit: 10).count == 2)
+
+            MockURLProtocol.requestHandler = { [noSeriesJSON] req in
+                (okResponse(for: req.url!), noSeriesJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            #expect(store.nextEpisode(seriesID: "ds456", deviceId: "AAAAAAAA", after: before) == nil)
+            #expect(store.nextEpisodes(seriesID: "ds456", deviceId: "BBBBBBBB", after: before, limit: 10).count == 2)
+        }
+
+        // A series only the reloaded device carried disappears entirely; reloading again with it
+        // restored brings it back (the per-device bookkeeping must not go stale).
+        @Test @MainActor func reload_seriesDroppedThenRestored() async {
+            let store = GuideStore(session: makeSession())
+            let a = makeLocalDevice(ip: "192.168.1.100", id: "AAAAAAAA")
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            #expect(store.nextEpisode(seriesID: "ds456", after: before) != nil)
+
+            MockURLProtocol.requestHandler = { [noSeriesJSON] req in
+                (okResponse(for: req.url!), noSeriesJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            #expect(store.nextEpisode(seriesID: "ds456", after: before) == nil)
+
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            #expect(store.nextEpisodes(seriesID: "ds456", after: before, limit: 10).count == 2)
+        }
+
+        // Reloading the same device with the same data must not duplicate matches.
+        @Test @MainActor func reload_sameData_doesNotDuplicate() async {
+            let store = GuideStore(session: makeSession())
+            let a = makeLocalDevice()
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: a)
+            await store.load(for: a)
+            #expect(store.nextEpisodes(seriesID: "ds456", after: before, limit: 10).count == 2)
+        }
+    }
+
     // MARK: - Series index
 
     @Suite("GuideStore series lookup")
