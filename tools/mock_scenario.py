@@ -323,6 +323,10 @@ def do_start(port, shows, series):
     if not airing:
         print("No currently-airing guide entry found to start.")
         sys.exit(2)
+    # Longest-remaining first: the mock recording ends with its airing slot, and the live soaks
+    # (PiPTunerChurnTests, ~3–4 min) fail with a "leaked tuner" if the recording ends under them —
+    # a slot with 6 minutes left was picked first before this ordering.
+    airing.sort(key=lambda b: -(b["end"] - time.time()))
     # Try each airing entry in turn — a full tuner (or a channel the device refuses) on one
     # entry shouldn't rule out the rest.
     for blk in airing:

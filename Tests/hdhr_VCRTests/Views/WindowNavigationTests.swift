@@ -1378,7 +1378,7 @@ struct WindowNavigationTests {
         // comment and VLCPlayerView.swift's own CC-picker condition).
         let expected: Set<String> = [
             "vlc-channel-picker", "vlc-catch-up-button", "vlc-native-resolution",
-            "vlc-volume-slider", "vlc-info-button",
+            "vlc-volume-slider", "vlc-info-button", "vlc-status-bar-toggle",
         ]
         let missing = expected.subtracting(foundIds)
         #expect(missing.isEmpty, "VLC player window is missing expected accessibility identifiers: \(missing.sorted())")

@@ -190,9 +190,17 @@ private let audioDeviceChangeProc: AudioObjectPropertyListenerProc = { _, _, _, 
 struct VLCBufferInfo {
     var lagSec:       Double = 0     // estimated buffer lag behind live edge (0..8s target)
     var rate:         Float  = 1.0   // current playback rate (minRate..1.0 while filling, 1.0 when full)
-    var demuxBitrate: Float  = 0     // f_demux_bitrate from libvlc stats (kB/s)
+    var demuxBitrate: Float  = 0     // raw f_demux_bitrate from libvlc stats — bytes/µs, so × 8 = Mbps (NOT kB/s; see ThroughputTracker)
     var corrupted:    Int32  = 0     // cumulative i_demux_corrupted count
     var enabled:      Bool   = false // false when minRate == 1.0 (buffering disabled)
+}
+
+/// What the player's throughput readout shows, published once per stats tick.
+struct VLCThroughput {
+    var currentMbps: Double? = nil
+    var averageMbps: Double? = nil
+    var state: ThroughputTracker.State = .measuring
+    var history: [Double] = []      // the window's readings, oldest first, for the popover's graph
 }
 
 // No compile-time dependency — the app builds without VLC installed.
@@ -281,6 +289,8 @@ final class VLCBridge: ObservableObject {
     /// behind `minRate < 1.0`. (The old `AppConfig.Player_buffer_min_rate` setting was removed 2026-10-14.)
     private var minRate: Float = 1.0
     @Published var bufferInfo = VLCBufferInfo()
+    @Published private(set) var throughput = VLCThroughput()
+    private var throughputTracker = ThroughputTracker()
     @Published var hasError:   Bool = false
     @Published var hasEnded:   Bool = false   // true after libvlc_Ended (state 6) — stream reached EOF
     @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
@@ -974,6 +984,8 @@ final class VLCBridge: ObservableObject {
                     self.estimatedLagSec = 0.0
                     self.currentRate     = targetMinRate
                     self.lastCorrupted   = 0
+                    self.throughputTracker.reset()
+                    self.throughput = VLCThroughput()
                     self.lastTickTimeMs  = nil
                     self.lastTickReadBytes = nil
                     self.lastDisplayedPictures = nil
@@ -1628,6 +1640,7 @@ final class VLCBridge: ObservableObject {
         var newCorrupted = bufferInfo.corrupted
         var corruptDelta: Int32 = 0
         var readBytes: Int32? = nil
+        var freshBitrate: Float? = nil
         var displayedPictures: Int32? = nil
         var lostPictures: Int32? = nil
         if let getStats = _mpGetStats, let media = primaryState.currentMedia {
@@ -1637,6 +1650,7 @@ final class VLCBridge: ObservableObject {
                 corruptDelta      = s.i_demux_corrupted &- lastCorrupted
                 lastCorrupted     = s.i_demux_corrupted
                 newBitrate        = s.f_demux_bitrate
+                freshBitrate      = s.f_demux_bitrate
                 newCorrupted      = lastCorrupted
                 readBytes         = s.i_demux_read_bytes
                 displayedPictures = s.i_displayed_pictures
@@ -1722,6 +1736,13 @@ final class VLCBridge: ObservableObject {
                 glog("[VLC] received \(Int(bytes) / 1_048_576) MB so far")
             }
             lastTickReadBytes = bytes
+        }
+        // Throughput readout: only a fresh stats read counts (a carried-forward value would flatten the average).
+        // A paused stream (disk-backed streams can pause) or one that is not playing yet reads ~0; that is not a stall.
+        if let raw = freshBitrate, ThroughputTracker.shouldRecord(isPlaying: isPlaying, isPaused: isPaused) {
+            throughputTracker.add(mbps: ThroughputTracker.mbps(fromVLCRaw: raw), at: Date().timeIntervalSinceReferenceDate)
+            throughput = VLCThroughput(currentMbps: throughputTracker.current, averageMbps: throughputTracker.average,
+                                       state: throughputTracker.state, history: throughputTracker.samples.map(\.mbps))
         }
         // Single publish per tick — bar is always updated, bitrate/corrupted carry forward when stats fail.
         bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,

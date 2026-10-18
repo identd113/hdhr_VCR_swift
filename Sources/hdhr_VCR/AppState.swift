@@ -2259,7 +2259,10 @@ final class AppState: ObservableObject {
         // One pass over the lineups instead of a linear isFavoriteChannel(_:) scan per comparison.
         var favoriteChannelKeys = Set<String>()
         for (deviceId, lineup) in lineups {
-            for ch in lineup where ch.isFavorite { favoriteChannelKeys.insert("\(deviceId):\(ch.GuideNumber)") }
+            var seen = Set<String>()
+            for ch in lineup where seen.insert(ch.GuideNumber).inserted {        // first entry per number wins, like first(where:)
+                if ch.isFavorite { favoriteChannelKeys.insert("\(deviceId):\(ch.GuideNumber)") }
+            }
         }
         func isFavorite(_ show: Show) -> Bool { favoriteChannelKeys.contains("\(show.hdhr_record):\(show.show_channel)") }
         var newConflicts = Set<String>()
@@ -2435,6 +2438,14 @@ final class AppState: ObservableObject {
         let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
         addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
         return true
+    }
+
+    /// Schedules a recording of a show that has NOT started yet — the player status bar's "next on this channel" card.
+    /// Unlike `quickRecord`, no "are the tuners full right now" gate: that test is about starting immediately, and a
+    /// future airing needs no tuner until it begins (the scheduler's own conflict handling covers that moment).
+    func recordUpcoming(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) {
+        let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
+        addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
     }
 
     // Whether a device's tuners are full for a reason this instance can fix on the user's own
