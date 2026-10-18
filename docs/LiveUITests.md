@@ -52,7 +52,7 @@ settle time, and every per-second sample when a settle was slow).
 
 ## Dialog / main-thread / Watch Now tests (`DialogsAndWatchNowLiveTests.swift`, 2026-10-15)
 
-Eight tests in an extension of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
+Ten tests in extensions of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
 
 | Test | What it proves | ~Time |
 |---|---|---|
@@ -64,6 +64,8 @@ Eight tests in an extension of `WindowNavigationTests` (so they are `.serialized
 | `recordingAppWithNoWindowsUsesLittleCPU` | a recording running with no window open stays under 10 % CPU — hidden windows must not re-render on every state change (measured 0.4–2 %) | 19 s |
 | `idleAppUsesAlmostNoCPU` | an idle app (nothing recording, no windows) stays under 5 % CPU (`top -l 2`) — guards the hidden-animating-splash bug (21 % → 0 %; mutation-checked) | 10 s |
 | `mainThreadStaysResponsive` | `GET /` every 100 ms for 20 s: no unanswered probe, worst < 2.5 s (baseline: the idle tick stalls ~0.6 s every 10 s) | 20 s |
+| `statusBarToggleShowsTheBarAndResizesTheWindow` | in a real player (a recording-relay session), the status bar toggle draws the bar (`vlc-status-bar`, with its health line `vlc-status-health`) and grows the window by exactly 52 pt; pressing again removes it and the window shrinks back | 13 s |
+| `statusBarStaysSizedAfterClosingAndReopeningThePlayer` | with the bar on, closing the player and opening a fresh one gives a window that is the default height plus 52 pt (the window manager is a singleton but the window is recreated at its default size) | 14 s |
 
 Mutation-checked: re-introducing `alert.runModal()` in `quit()` makes `quitPromptDoesNotBlock…` fail with "web server did not answer while the quit prompt was up". `NoBlockingDialogsTests` (unit) bans `runModal()` in the sources.
 
