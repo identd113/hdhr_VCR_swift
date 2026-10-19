@@ -27,6 +27,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ### Web guide (`WebServer`)
 
+- *Updated* — **Add Show: the step change is a light slide.** Going to Details slides in from the right; Back (or Escape) slides the guide back in from the left.
+- *Removed* — **The two progress dots at the top of the Add Show window.** They only marked the guide and details steps and added empty space above the guide; the guide now starts right under the title bar.
 - *Updated* — **The guide shows more clearly when a show may run into the next one.** The Bonus Time preview over the following block is now amber diagonal stripes with a dashed edge and a "+15m" tag (it was a faint wash), and the block underneath stays clickable. The summary card for a recording with Bonus Time now says so ("Recording now · in Bonus Time until 7:30 AM") and shows the +30m badge. Selecting the show that may run over lights its stripes up (brighter, solid edge, glow) so it is clearly the same object. Hovering the next show explains it: "Bonus Time: <show> may run up to 15 min into this show, so its start could be recorded as part of that one".
 - *Updated* — **Fixed: during Bonus Time the guide marked the wrong show as recording.** Once a recording ran past its slot, the next show's block (which covers "now") got the recording marker and the show actually being recorded showed as merely scheduled. The marker now goes to the airing the recording is capturing.
 

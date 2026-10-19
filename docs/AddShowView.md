@@ -5,7 +5,7 @@
 ### Overall window
 Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step. The guide-step size is **remembered across reopens and app restarts** — persisted in `UserDefaults` via `@AppStorage("addShowGuideWidth"/"addShowGuideHeight")` (defaults 1450×820), fed as the guide-step ideal width/height on open. A background `GeometryReader` (pure SwiftUI, no AppKit) reads the window-content size and writes it back on resize via `onChange`; sizes narrower than 1000 (the details step) are ignored so they never overwrite the saved guide size. The window animates between sizes with a 0.2s ease-in-out. Escape backs out one step at a time (Details → Guide, same transition `goBack()`/the Back button use) and only closes the window once already on the Guide step (step 1) — see "Navigation" below.
 
-**Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
+**Top of window (all steps)**: nothing — the step content starts directly under the title bar. The 2-dot progress indicator and the `Divider` below it were removed 2026-10-19 (explicit request: they only added dead space above the guide).
 
 > The native device-selection step was removed (the tuner is chosen inside the web guide). `Step` is now `{ case guide, details }`; there is no `deviceStep` view any more.
 
@@ -39,7 +39,7 @@ Window size: **560×540** for the details step; **resizable** (min 1100×720) fo
 enum Step { case guide, details }
 ```
 
-A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** backs out one step at a time, matching the Back button rather than always closing the window: from `.details` it calls the same `goBack()` that button uses (→ `.guide`); only from `.guide` (step 1, nothing left to back out of) does it call `dismiss()`. `WatchNowView`, by contrast, is a single standard window with no step model and no `onExitCommand` of its own — this back-out-one-step behavior is specific to this multi-step wizard.
+The `guide` and `details` steps have no progress indicator (removed 2026-10-19). The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** backs out one step at a time, matching the Back button rather than always closing the window: from `.details` it calls the same `goBack()` that button uses (→ `.guide`); only from `.guide` (step 1, nothing left to back out of) does it call `dismiss()`. `WatchNowView`, by contrast, is a single standard window with no step model and no `onExitCommand` of its own — this back-out-one-step behavior is specific to this multi-step wizard.
 
 ### Step 1 — Guide
 
@@ -166,3 +166,5 @@ For SeriesID shows (`show_use_seriesid == true`), channel is looked up from the 
 - **No edit integration** — there's no way to change a show's scheduled episode by browsing the guide in the Edit view.
 
 **Other-airings channel icon (2026-10-04):** the 18×18 icon beside each row now shows `stationLogoPlaceholder` (the app icon) instead of the `tv` SF Symbol whenever the station's real logo isn't cached (no `ImageURL`, still downloading, or failed); the real logo replaces it once `ChannelIconCache` has it.
+
+**Step slide (2026-10-19):** moving between the guide and details steps is a light horizontal slide with a fade (`go(_:)`, `stepSlide`, 48 pt over the existing 0.2 s ease): Details slides in from the right, Back (button or Escape) slides the guide in from the left.

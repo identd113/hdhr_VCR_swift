@@ -17,6 +17,7 @@ struct AddShowView: View {
     @AppStorage("addShowGuideHeight") private var savedGuideHeight: Double = 820
 
     @State private var step: Step = .guide
+    @State private var slidingForward = true   // direction of the light slide between the two steps
     @State private var show = Show.blank()   // transcode overridden in onAppear
 
     // Step 1
@@ -33,31 +34,14 @@ struct AddShowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Progress dots — device step intentionally omitted (device is chosen inside web guide)
-            HStack(spacing: 4) {
-                ForEach([Step.guide, .details], id: \.self) { s in
-                    Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel({
-                switch step {
-                case .guide:   return "Step 1 of 2: Guide"
-                case .details: return "Step 2 of 2: Details"
-                }
-            }())
-            .padding(.horizontal).padding(.top, 12)
-
-            Divider().padding(.top, 8)
-
             Group {
                 switch step {
-                case .guide:   guideStep
-                case .details: detailsStep
+                case .guide:   guideStep.transition(stepSlide)
+                case .details: detailsStep.transition(stepSlide)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
             .overlay(alignment: .bottomTrailing) {
                 if step == .details && show.show_bonus_time && state.config.Sports_padding_enabled {
                     StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 65)
@@ -118,7 +102,7 @@ struct AddShowView: View {
                 applyPendingChannel(pending)
             } else {
                 if selectedDevice == nil { selectedDevice = state.availableDevices.first }
-                step = .guide
+                go(.guide)
             }
         }
         .onDisappear { state.releaseInternalWebServer() }
@@ -174,7 +158,7 @@ struct AddShowView: View {
                                        startTime: startTime, endTime: endTime,
                                        title: title, seriesId: seriesId,
                                        genre: genre, imageURL: imageURL)
-                    step = .details
+                    go(.details)
                 }
             } else {
                 ProgressView("Starting guide…")
@@ -372,9 +356,22 @@ struct AddShowView: View {
         }
     }
 
+    /// Moves to a step with a light slide: forward to Details slides in from the right, Back slides in from the left.
+    private func go(_ next: Step) {
+        slidingForward = next == .details
+        step = next
+    }
+
+    private var stepSlide: AnyTransition {
+        let d: CGFloat = slidingForward ? 1 : -1
+        return .asymmetric(
+            insertion: .modifier(active: SlideFade(dx: 48 * d, opacity: 0), identity: SlideFade(dx: 0, opacity: 1)),
+            removal: .modifier(active: SlideFade(dx: -48 * d, opacity: 0), identity: SlideFade(dx: 0, opacity: 1)))
+    }
+
     private func goBack() {
         switch step {
-        case .details: step = .guide
+        case .details: go(.guide)
         default: break
         }
     }
@@ -397,7 +394,7 @@ struct AddShowView: View {
 
     private func applyPendingChannel(_ pending: (device: HDHRDevice, channel: LineupEntry)) {
         selectedDevice = pending.device
-        step = .guide
+        go(.guide)
         state.pendingAddChannel = nil
     }
 
@@ -428,7 +425,7 @@ struct AddShowView: View {
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
         airDays    = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
         seriesType = .single
-        step = .details
+        go(.details)
         state.pendingAddEntry = nil
     }
 
@@ -735,4 +732,11 @@ extension LineupEntry: Hashable, Equatable {
 }
 extension HDHRDevice: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(DeviceID) }
+}
+
+/// A short horizontal nudge plus fade — the "light slide" between the Add Show steps.
+private struct SlideFade: ViewModifier {
+    let dx: CGFloat
+    let opacity: Double
+    func body(content: Content) -> some View { content.offset(x: dx).opacity(opacity) }
 }
