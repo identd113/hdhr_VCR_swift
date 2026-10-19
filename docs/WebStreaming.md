@@ -27,6 +27,17 @@ Source: a real OTA recording (`FOX 9 … .ts`): MPEG-2 720p60 progressive, AC-3 
 | Cost | ~0.8 s CPU for 10 s of video (0.5 s on the M4), ~4 s wall including startup. Software x264 used ~14 CPU-s for the same 10 s. |
 | Not yet known | macOS 15 (the app's minimum) may not read MPEG-2 TS; a still-growing file (AVAsset reads a snapshot); live tuner streams (AVFoundation does not read raw TS over HTTP); 1080i deinterlacing; the preset's bitrate (≈10 Mb/s, not tuned). |
 
+Wider check on more recordings (10 s each, `avconvert --start 120 --duration 10`):
+
+| Source | Output | CPU for 10 s |
+|---|---|---|
+| WCCO News, 1080i MPEG-2 (`field_order=tt`) → 1080p preset | H.264 1920×1080 **progressive**, 29.97 fps, AAC 5.1 + stereo; `idet` finds 201/201 frames progressive | 0.6 s user |
+| same → 720p preset | H.264 1280×720 progressive, 29.97 fps | 0.4 s |
+| MTV Awards, 1080i → 720p preset | H.264 1280×720 progressive | 0.8 s |
+| Svengoolie, 720×480 interlaced → 640×480 preset | H.264 640×352 (16:9 kept) progressive, AAC stereo | 0.2 s |
+
+So AVFoundation **deinterlaces 1080i/480i automatically** (the earlier "deinterlacing needed" gap is covered on this path) and handled every MPEG-2 file tried.
+
 Implication: a native AVAssetReader → AVAssetWriter (H.264 hardware + AAC, HLS segment output) pipeline needs no VLC.app and is ~15× cheaper than x264, but it is file-based and must be proven for growing recordings and on older macOS. VLC remains the fallback for sources AVFoundation cannot read.
 
 ## Decision
