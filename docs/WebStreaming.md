@@ -52,6 +52,16 @@ So the AVFoundation pipeline must read from a **local growing file**, not a URL.
 
 Implication: a native AVAssetReader → AVAssetWriter (H.264 hardware + AAC, HLS segment output) pipeline needs no VLC.app and is ~15× cheaper than x264, but it is file-based and must be proven for growing recordings and on older macOS. VLC remains the fallback for sources AVFoundation cannot read.
 
+### Seamless joins between passes (2026-10-19)
+
+A 1080i recording was written to disk at ~16 Mb/s while a follower re-opened it every 6 s and read only from just after the last frame it had (`AVAssetReader.timeRange`, stopping 1.5 s short of the snapshot end). Over 7 passes (97 s of video):
+
+- 2817 video frames, **max timestamp gap 0.033 s (one frame at 29.97 fps), 0 duplicates**: no frame lost or repeated at any join.
+- A single read of the finished file over the same span gave 2811 frames (the follower is not missing any).
+- Audio blocks arrive in fixed ~0.17 s buffers (8192 samples at 48 kHz), so the 0.17 s "max gap" is one block, not a hole.
+
+So following a growing recording in passes is sound. Keeping the last 1.5 s unread per pass avoids a half-written tail at the cost of ~1.5 s added delay.
+
 ## Decision
 
-Phase 1 ships on **software x264 + AAC → HLS** (works today, shared per show). The VideoToolbox/AVAssetWriter encoder stays a later optimization, built only if measured CPU on the Mini justifies it. Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) is the live-TV fast path in Phase 2.
+Build the web stream on **AVFoundation (AVAssetReader → hardware H.264 + AAC → HLS segments)**, reading from a local growing file (a recording, or a rolling temp spool of a live tuner stream). VLC x264 stays as the fallback for sources AVFoundation cannot read, and for macOS versions where it cannot (macOS 15 unverified). Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) remains a possible live-TV shortcut, but the spool-and-convert path works for every tuner, so it is not required.
