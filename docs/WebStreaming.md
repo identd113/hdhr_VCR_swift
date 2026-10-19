@@ -15,7 +15,7 @@ Source: a real OTA recording (`FOX 9 … .ts`): MPEG-2 720p60 progressive, AC-3 
 | VideoToolbox H.264 encoder in VLC | **Not available.** `Encoder 'h264_videotoolbox' not found` (`cannot create video chain`). A bare `venc=` without `vcodec=` silently passes the original MPEG-2 video through — a false positive to avoid. So a hardware encode needs our own AVAssetWriter route, not VLC's sout. |
 | Software x264 cost | About 62 CPU-seconds for 45 s of 720p60 video at 2.5 Mb/s (≈1.4 cores per stream; it ran ~4× faster than real time using ~5 cores). |
 | Segments left after exit | VLC deletes old segments by default (`delsegs`); the running session must own the folder and its cleanup. |
-| Playback in Chrome via hls.js | **Not verified from the automation tab** (a hidden tab never starts playback). Open the test page in a visible browser. |
+| Playback in browsers | See "Browser playback" below (the first attempt used a hidden automation tab, which never starts playback). |
 
 ## Spike 2: VideoToolbox outside VLC (AVFoundation), 2026-10-19
 
@@ -61,6 +61,17 @@ A 1080i recording was written to disk at ~16 Mb/s while a follower re-opened it 
 - Audio blocks arrive in fixed ~0.17 s buffers (8192 samples at 48 kHz), so the 0.17 s "max gap" is one block, not a hole.
 
 So following a growing recording in passes is sound. Keeping the last 1.5 s unread per pass avoids a half-written tail at the cost of ~1.5 s added delay.
+
+## Browser playback (2026-10-19)
+
+The converter's own output (1080i source → 1080p H.264 High 4 Mb/s + AAC, 40 s, fMP4 HLS) was served over plain HTTP and opened in a visible window of each browser. The page reported its state back to the server:
+
+| Browser | Path | Result |
+|---|---|---|
+| Chrome (macOS 27) | hls.js 1.5.17 | Plays 1920×1080, `readyState` 4, **0 dropped frames**, 40 s buffered; no hls.js errors. |
+| Safari (macOS 27) | native HLS (`video.src = index.m3u8`) | Plays 1920×1080, `readyState` 4, **0 dropped frames**. |
+
+Audio was started muted (autoplay rules), so sound itself is unconfirmed by ear. Firefox, Edge and phones are untested (they use the same hls.js path as Chrome).
 
 ## Built so far (branch `feature/web-streaming-hls`)
 
