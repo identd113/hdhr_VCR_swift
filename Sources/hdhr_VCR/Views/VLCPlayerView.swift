@@ -189,8 +189,7 @@ struct VLCPlayerView: View {
     @State private var posterHidden: Bool = false
     @State private var posterNSImage: NSImage? = nil
     @ObservedObject private var bridge = VLCBridge.shared
-    // Optional status bar under the video (docs/VLCPlayerView.md, "Status bar"); remembered across windows and launches.
-    @AppStorage("playerStatusBarVisible") private var statusBarEnabled = false
+    @State private var bufferInfoHovered  = false
     @State private var nativeResHovered   = false
     // Captured once when nativeResHovered flips true (see the .onHover below) rather than read
     // live from recordingSizeText inside nativeResPopover — that computed property's own doc
@@ -866,19 +865,10 @@ struct VLCPlayerView: View {
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
-                // The bar may have been toggled while fullscreen (no resize then); catch the window up on the way out.
-                if !isFullScreen { VLCPlayerWindowManager.shared.syncWindowToStatusBar() }
             }
             .task(id: effectivePosterImageURL) {
                 guard let url = effectivePosterImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
-            }
-            // Optional status bar: a fixed row under the video, part of the window (never over the picture). Not drawn
-            // in fullscreen, where there is no room below the video.
-            if statusBarEnabled && !isFullScreen {
-                PlayerStatusBar(state: state, device: device, channel: selectedChannel, info: statusBarInfo,
-                                poster: posterNSImage, channelLogoURL: statusBarChannelLogoURL,
-                                upcoming: statusBarUpcoming, canRecordUpcoming: statusBarCanRecordUpcoming)
             }
         }
 
@@ -915,7 +905,6 @@ struct VLCPlayerView: View {
         }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
-            VLCPlayerWindowManager.shared.setStatusBarVisible(statusBarEnabled)
             refreshCachedLocalRelayCodecs(showId: bridge.recordingShowId)
             availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
@@ -1137,7 +1126,14 @@ struct VLCPlayerView: View {
         let entry = currentGuideEntry
         let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
 
-        let (title, episodeInfo) = titleAndEpisode(entry: entry, feedEntry: feedEntry)
+        let title = entry?.Title ?? feedEntry?.virtualRelayShowTitle ?? selectedChannel?.GuideName ?? "Unknown"
+        let episodeInfo: String? = entry?.episodeInfoLabel ?? feedEntry.flatMap { fe in
+            let parts = [fe.virtualRelayEpisodeNumber, fe.virtualRelayEpisodeTitle].compactMap { s -> String? in
+                guard let s, !s.isEmpty else { return nil }
+                return s
+            }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
         let sourceLine = infoBannerSourceLine(feedEntry: feedEntry)
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -1243,74 +1239,6 @@ struct VLCPlayerView: View {
             return "Live OTA · \(otherDeviceId) · Ch \(ch.GuideNumber)  \(ch.GuideName)"
         }
         return "Live OTA · Ch \(ch.GuideNumber)  \(ch.GuideName)"
-    }
-
-    // MARK: - Status bar data
-
-    /// Title and episode line, shared by the info banner and the status bar so the two always agree.
-    private func titleAndEpisode(entry: GuideEntry?, feedEntry: LineupEntry?) -> (title: String, episode: String?) {
-        let title = entry?.Title ?? feedEntry?.virtualRelayShowTitle ?? selectedChannel?.GuideName ?? "Unknown"
-        let episode: String? = entry?.episodeInfoLabel ?? feedEntry.flatMap { fe in
-            let parts = [fe.virtualRelayEpisodeNumber, fe.virtualRelayEpisodeTitle].compactMap { s -> String? in
-                guard let s, !s.isEmpty else { return nil }
-                return s
-            }
-            return parts.isEmpty ? nil : parts.joined(separator: " · ")
-        }
-        return (title, episode)
-    }
-
-    private var statusBarSource: PlayerStatusInfo.Source {
-        if bridge.recordingShowId != nil { return .recording }
-        let isFeed = device.isVirtualRelay || (selectedChannel?.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) ?? false)
-        if isFeed {
-            var host = currentFeedEntry?.virtualRelaySourceHostname
-            if host == nil, let ch = selectedChannel, ch.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) {
-                let remoteURL = String(ch.GuideNumber.dropFirst(Self.liveFeedGuideNumberPrefix.count))
-                host = state.remoteRelayEntries.first { $0.entry.URL == remoteURL }?.entry.virtualRelaySourceHostname
-            }
-            return .feed(host: host)
-        }
-        let deviceID = VLCPlayerWindowManager.shared.currentDeviceID ?? device.DeviceID
-        let quality = state.deviceTunerOccupancy[deviceID]?
-            .first { $0.VctNumber == selectedChannel?.GuideNumber }?.SignalQualityPercent
-        return .liveTuner(deviceID: deviceID, signalQuality: quality)
-    }
-
-    private var statusBarInfo: PlayerStatusInfo {
-        let entry = currentGuideEntry
-        let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
-        let (title, episode) = titleAndEpisode(entry: entry, feedEntry: feedEntry)
-        return PlayerStatusInfo(
-            title: title, episodeLine: episode,
-            timeRange: entry.map { PlayerStatusFormat.timeRange(start: $0.startDate, end: $0.endDate) },
-            genres: entry.map { PlayerStatusFormat.genreTags($0) } ?? [],
-            isNew: entry.map(isNewEpisode) ?? false,
-            source: statusBarSource)
-    }
-
-    /// The network logo the bar falls back to when the show has no image (or it failed to load).
-    private var statusBarChannelLogoURL: String? {
-        if let entry = currentGuideEntry, !entry.channelNum.isEmpty {
-            return state.channelImageURLs["\(entry.deviceId):\(entry.channelNum)"]
-        }
-        guard let ch = selectedChannel else { return nil }
-        return state.channelImageURLs["\(VLCPlayerWindowManager.shared.currentDeviceID ?? device.DeviceID):\(ch.GuideNumber)"]
-    }
-
-    /// The channel's next shows after the current one, from the guide the app already holds.
-    private var statusBarUpcoming: [GuideEntry] {
-        guard let entry = currentGuideEntry, !entry.channelNum.isEmpty else { return [] }
-        return PlayerStatusFormat.upcoming(
-            after: entry,
-            in: state.guideStore.entries(deviceId: entry.deviceId, channelNum: entry.channelNum, after: entry.endDate))
-    }
-
-    /// Same conditions as the toolbar's Record button, minus the "on now" requirement: a live tuner session, a real
-    /// channel, and no active managed show already covering this channel.
-    private var statusBarCanRecordUpcoming: Bool {
-        guard bridge.recordingShowId == nil, !device.isVirtualRelay, let ch = selectedChannel else { return false }
-        return !state.shows.contains { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
     }
 
     // MARK: - Poster overlay
@@ -2112,18 +2040,6 @@ struct VLCPlayerView: View {
             .accessibilityLabel("Show info")
             .accessibilityIdentifier("vlc-info-button")
 
-            // Status bar toggle: the optional row under the video (show, tags, source health, next show).
-            Button {
-                statusBarEnabled.toggle()
-            } label: {
-                Image(systemName: "rectangle.bottomthird.inset.filled")
-                    .foregroundStyle(statusBarEnabled ? Color.accentColor : Color.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(statusBarEnabled ? "Hide status bar" : "Show status bar")
-            .accessibilityLabel(statusBarEnabled ? "Hide status bar" : "Show status bar")
-            .accessibilityIdentifier("vlc-status-bar-toggle")
-
             // Group dividers, added 2026-09-19 (reported "crowded") — purely visual breathing room
             // between logical clusters (stream state: buffer/catch-up/H.264/native — clock — volume
             // — the existing pre-overflow divider below), no functional change to any control.
@@ -2313,7 +2229,9 @@ struct VLCPlayerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: statusBarEnabled) { _, on in VLCPlayerWindowManager.shared.setStatusBarVisible(on) }
+        .onChange(of: bridge.bufferInfo.enabled) { _, enabled in
+            if !enabled { bufferInfoHovered = false }
+        }
         .onChange(of: bridge.isPlaying) { _, playing in
             if !playing { nativeResHovered = false }
         }
@@ -2416,11 +2334,31 @@ struct VLCPlayerView: View {
         .accessibilityLabel("Live buffer")
         .accessibilityValue("\(min(8, Int(info.lagSec.rounded()))) of 8 seconds")
         .accessibilityIdentifier("vlc-buffer-monitor")
+        .onHover { if $0 { bufferInfoHovered = true } }
+        .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
+    }
+
+    private var bufferPopover: some View {
+        let info = bridge.bufferInfo
+        let pct  = Int((min(info.lagSec, 8.0) / 8.0 * 100).rounded())
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("Live Buffer").font(.subheadline.bold())
+            Divider()
+            row("Lag",       String(format: "%.1fs / 8s  (%d%%)", info.lagSec, pct))
+            row("Rate",      String(format: "%.3f×", info.rate))
+            if info.demuxBitrate > 0 {
+                row("Bitrate", String(format: "%.0f kB/s", info.demuxBitrate))
+            }
+            row("Corrupted", "\(info.corrupted)")
+        }
+        .padding(12)
+        .frame(minWidth: 210)
+        .font(.caption)
     }
 
     private var nativeResPopover: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Stream").font(.subheadline.bold())
+            Text("Native Resolution").font(.subheadline.bold())
             Divider()
             // Shown regardless of whether a frame has decoded yet — recordingShowId is known
             // (or not) independent of video-pixel-size, and this is the more fundamental fact.
@@ -2467,38 +2405,10 @@ struct VLCPlayerView: View {
                 Text("No video decoded yet")
                     .foregroundStyle(.secondary)
             }
-            throughputSection
         }
         .padding(12)
-        .frame(minWidth: 240)
+        .frame(minWidth: 200)
         .font(.caption)
-    }
-
-    /// Live bitrate in Mbps (VLC's raw × 8, see ThroughputTracker), colored by state, with the 2-minute average and a graph
-    /// of the window. Replaces the old Live Buffer popover's bitrate row; shown for every session type VLC reports stats for.
-    @ViewBuilder
-    private var throughputSection: some View {
-        let tp = bridge.throughput
-        if let now = tp.currentMbps {
-            Divider()
-            Text("Throughput").foregroundStyle(.secondary)
-            HStack {
-                Text("Bitrate").foregroundStyle(.secondary)
-                Spacer()
-                Text(String(format: "%.1f Mbps", now)).monospacedDigit().foregroundStyle(tp.state.color)
-            }
-            if let avg = tp.averageMbps { row("2-min avg", String(format: "%.1f Mbps", avg)) }
-            HStack {
-                Text("State").foregroundStyle(.secondary)
-                Spacer()
-                Text(tp.state.label).foregroundStyle(tp.state.color)
-            }
-            if tp.history.count > 2 {
-                ThroughputGraph(samples: tp.history, average: tp.averageMbps)
-                    .frame(height: 44)
-                    .accessibilityHidden(true)
-            }
-        }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -3247,7 +3157,6 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
-        frameStatusBarHeight = 0   // a new window is the default 1080×600, without the bar's row
         installKeyMonitor(for: win)
     }
 
@@ -3289,7 +3198,6 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
-        frameStatusBarHeight = 0   // a new window is the default 1080×600, without the bar's row
         installKeyMonitor(for: win)
     }
 
@@ -3558,7 +3466,7 @@ final class VLCPlayerWindowManager {
               let content = win.contentView?.frame.size else { return false }
         let scale = win.screen?.backingScaleFactor ?? currentScreenScale
         return abs(content.width  - px.width  / scale)      < 1 &&
-               abs(content.height - px.height / scale - chromeHeight) < 1
+               abs(content.height - px.height / scale - 44) < 1
     }
 
     /// True when the stream's native resolution fits within the current display's visible frame
@@ -3568,7 +3476,7 @@ final class VLCPlayerWindowManager {
               let screen = window?.screen ?? NSScreen.main else { return true }
         let scale = screen.backingScaleFactor
         return px.width  / scale <= screen.visibleFrame.width &&
-               px.height / scale + chromeHeight <= screen.visibleFrame.height
+               px.height / scale + 44 <= screen.visibleFrame.height
     }
 
     /// Resize the window so the video surface is displayed at 1:1 physical pixels.
@@ -3578,7 +3486,8 @@ final class VLCPlayerWindowManager {
         let scale   = win.screen?.backingScaleFactor ?? 2.0
         let videoW  = pixels.width  / scale
         let videoH  = pixels.height / scale
-        win.setContentSize(CGSize(width: videoW, height: videoH + chromeHeight))   // toolbar (44) + status bar (52 when shown)
+        let toolbar = CGFloat(44)   // fixed: toolbar padding 8+8 + row ~26pt
+        win.setContentSize(CGSize(width: videoW, height: videoH + toolbar))
         win.center()
     }
 
@@ -3587,36 +3496,6 @@ final class VLCPlayerWindowManager {
     /// Height of the toolbar strip above the video — the same fixed 44pt sizeToNativeVideo and
     /// isAtNativeResolution already assume.
     nonisolated static let playerToolbarHeight: CGFloat = 44
-    /// Height of the optional status bar under the video (docs/VLCPlayerView.md, "Status bar").
-    nonisolated static let playerStatusBarHeight: CGFloat = 52
-    /// 52 while the status bar is shown, else 0. Part of the chrome the aspect-lock math subtracts, like the toolbar.
-    private(set) var statusBarHeight: CGFloat = 0
-    /// Everything in the content area that is not the video: the toolbar plus the status bar when it is shown.
-    var chromeHeight: CGFloat { Self.playerToolbarHeight + statusBarHeight }
-
-    /// The status bar height the window's *current frame* was sized for. 0 whenever a fresh window is created at the default
-    /// size, and unchanged while the window is fullscreen (the bar is not drawn and nothing resizes), so the difference
-    /// between `statusBarHeight` and this is exactly the resize still owed.
-    private(set) var frameStatusBarHeight: CGFloat = 0
-
-    /// Records whether the status bar is wanted, then brings the window in line (`syncWindowToStatusBar`).
-    func setStatusBarVisible(_ visible: Bool) {
-        statusBarHeight = visible ? Self.playerStatusBarHeight : 0
-        syncWindowToStatusBar()
-    }
-
-    /// Grows or shrinks the window by whatever the bar's height differs from what the frame was sized for, top edge fixed,
-    /// so the video area keeps its size and shape. A no-op in fullscreen (called again when fullscreen ends) and when
-    /// there is no window yet (called again when the view appears in a new one).
-    func syncWindowToStatusBar() {
-        guard let win = window, !win.styleMask.contains(.fullScreen),
-              let current = win.contentView?.frame.size else { return }
-        let delta = statusBarHeight - frameStatusBarHeight
-        guard delta != 0 else { return }
-        frameStatusBarHeight = statusBarHeight
-        applyContentSize(CGSize(width: current.width, height: current.height + delta), to: win, animate: true)
-    }
-
     nonisolated static let playerMinContentWidth: CGFloat = 640
 
     /// Pure: content size whose video area (content minus the toolbar strip) has the stream's native
@@ -3686,7 +3565,7 @@ final class VLCPlayerWindowManager {
               let end = win.contentView?.frame.size else { return }
         let start = liveResizeStartContent ?? end
         let target = Self.aspectLockedContentSize(proposed: end, current: start, nativePixelSize: native,
-                                                  toolbarHeight: chromeHeight, maxContent: screenMaxContent(for: win))
+                                                  maxContent: screenMaxContent(for: win))
         applyContentSize(target, to: win, animate: true)
     }
 
@@ -3723,10 +3602,9 @@ final class VLCPlayerWindowManager {
         lastConformedNative = native
         glog("[VLC] conformWindowToVideoAspect: native \(Int(native.width))×\(Int(native.height)), content \(Int(current.width))×\(Int(current.height))")
         let aspect = native.width / native.height
-        let videoH = current.height - chromeHeight
+        let videoH = current.height - Self.playerToolbarHeight
         guard videoH > 0, abs(current.width / videoH - aspect) / aspect > 0.005 else { return }
-        let content = Self.contentSize(width: current.width, nativePixelSize: native, toolbarHeight: chromeHeight,
-                                       maxContent: screenMaxContent(for: win))
+        let content = Self.contentSize(width: current.width, nativePixelSize: native, maxContent: screenMaxContent(for: win))
         applyContentSize(content, to: win, animate: false)
     }
 
@@ -3779,7 +3657,6 @@ final class VLCPlayerWindowManager {
         secondaryTitle = nil
         window = nil
         hostingView = nil
-        frameStatusBarHeight = 0
         // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()
         // inside refreshTunerOccupancy — that path is blocked when a recording is simultaneously active.
         appState?.recordingManager.releaseAssertion(id: "vlc")

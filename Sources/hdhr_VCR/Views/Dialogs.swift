@@ -78,10 +78,6 @@ private final class StandaloneAlert: NSObject {
 
     func present() {
         NSApp.activate(ignoringOtherApps: true)
-        // NSAlert only lays out (hides its unused template buttons and the suppression checkbox) when
-        // it is run or begun as a sheet; showing alert.window directly without this leaves two blank
-        // buttons and a "<Do not show this message again>" checkbox on screen.
-        alert.layout()
         let window = alert.window
         window.level = .floating
         window.center()

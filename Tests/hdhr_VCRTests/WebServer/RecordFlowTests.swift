@@ -19,9 +19,7 @@ private final class RecordFlowMockURLProtocol: MockURLProtocolBase {
     }
 }
 
-// .serialized: the four argument cases share RecordFlowMockURLProtocol's one static handler, so in parallel one case
-// could swap in another's guide (different start time) before its own load ran — a rare full-suite flake.
-@Suite("handleRecord — hdhr_guide's exact POST /api/record shape", .serialized)
+@Suite("handleRecord — hdhr_guide's exact POST /api/record shape")
 struct RecordFlowTests {
 
     @MainActor

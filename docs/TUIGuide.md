@@ -493,8 +493,6 @@ since it's cheap and generically useful for the next thing that doesn't behave a
 
 ## Robustness fixes (code review follow-up)
 
-**Exit when stdin closes (2026-10-17).** `Terminal.readKey()` set `Terminal.stdinClosed` on end-of-file (a 0-byte read) or a hard read error, `pollStdin` treats hang-up/error as ready so the read happens, and `main.swift`'s loop is `while !interrupted && !Terminal.stdinClosed`. Before this, a terminal that vanished without a SIGHUP (a dropped connection, a test harness closing its pty) left the process looping on `nil` keys at 100% CPU forever — found as an orphaned process 38 hours old. Raw mode only clears `ICANON|ECHO`, so a 0-byte read after the poll reports ready really is end-of-input. Regression test: `terminalHangUp_exitsInsteadOfSpinning`.
-
 A full review of this file found several real issues beyond the wrapping/redraw bugs already
 covered above. Fixed, low-code (no architecture change):
 
@@ -613,7 +611,6 @@ builds the binary; a missing binary is a **failure**, not a silent skip.
 | `terminalGuideSwitchedOff_exitsAndSaysSo` | exit 1 and "disabled … Terminal Guide" when `terminalGuideEnabled` is false |
 | `noTunerYet_exitsAndTellsTheUserToWait` | exit 1 and "no HDHomeRun tuner detected" for an empty payload |
 | `rendersTheGuide_andQuitsCleanlyOnQ_restoringTheTerminal` | channel + show names render; enters the alternate screen; `q` exits 0; leaves the alternate screen and shows the cursor again |
-| `terminalHangUp_exitsInsteadOfSpinning` | closing the pty without a SIGHUP (dropped connection) makes the process exit; before the fix its input loop spun at 100% CPU forever |
 | `fKeyTogglesTheSelectedChannelsFavorite_overHTTP` | `f` POSTs `/api/toggle-favorite` with the selected channel's number and device, and the status line confirms (✓) |
 | `downArrowMovesTheSelection_soFTogglesTheOtherChannel` | an arrow-key escape sequence moves the selection; the next `f` targets the second channel |
 | `downThenUpArrow_walkEveryChannel_andClampAtBothEnds` | 25-channel guide: ↓ moves exactly one row per press through the first dozen, a 60-key burst stops at the last channel (clamp, no wrap), an 80-key ↑ burst stops at the first |

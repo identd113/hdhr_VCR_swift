@@ -24,4 +24,5 @@ Full, verbatim descriptions for every script in `tools/` (and the bundled termin
 Release-to-release performance baseline: `prime` (once per build, lets macOS ask for Local Network access), `run` (launches the build 3×
 in the GUI session with a temp home and a staged copy at `~/Library/Caches/hdhrVCRplus-perf/<label>/`, measures launch time, launch
 CPU, idle CPU, memory and web timings, saves `docs/perf/<label>.json`) and `compare` (table with change vs the previous row). Uses the
-real tuner read-only — run it when nothing is recording or due. Each result also records the connection (Ethernet link speed, or Wi-Fi band/signal/noise/link rate) and ping round trips to the tuner and gateway (`--tuner-ip`, else read from the real app's `[Discovery]` log line), shown in `compare`'s `network` column — compare builds on the same connection, since Wi-Fi adds a few ms and jitter. Results and how to read them: `docs/PerformanceHistory.md`.
+real tuner read-only — run it when nothing is recording or due. Results and how to read them: `docs/PerformanceHistory.md`.
+

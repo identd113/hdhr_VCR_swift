@@ -27,7 +27,6 @@ final class GuideStore {
     private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
-    private var seriesIDsByDevice: [String: Set<String>] = [:]     // deviceId → seriesIDs it contributed to seriesIndex (so a reload prunes only those)
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
     /// Bumped by invalidateAll() — lets fetchAndIndex detect that an in-flight fetch it started
@@ -467,11 +466,10 @@ final class GuideStore {
         let deviceId = prepared.deviceId
 
         // Drop stale entries for this device from series index
-        for sid in seriesIDsByDevice[deviceId] ?? [] {
-            seriesIndex[sid]?.removeAll { $0.deviceId == deviceId }
-            if seriesIndex[sid]?.isEmpty == true { seriesIndex.removeValue(forKey: sid) }
+        for key in seriesIndex.keys {
+            seriesIndex[key]?.removeAll { $0.deviceId == deviceId }
         }
-        seriesIDsByDevice[deviceId] = Set(prepared.seriesEntries.keys)
+        seriesIndex = seriesIndex.filter { !$1.isEmpty }
 
         // Drop this device's channelEntryIndex keys for channels no longer in the fresh fetch —
         // same idea as the seriesIndex prune above. Without this, a channel dropped from a
@@ -800,7 +798,6 @@ final class GuideStore {
         channelEntryIndex = [:]
         seriesIndex = [:]
         unsortedSeries = []
-        seriesIDsByDevice = [:]
         loadTimestamps = [:]
         // The saved copies too — otherwise the next load() quietly restores the very data this was
         // asked to throw away. Synchronous (a handful of files) so it can't race a load started right after.

@@ -52,7 +52,7 @@ settle time, and every per-second sample when a settle was slow).
 
 ## Dialog / main-thread / Watch Now tests (`DialogsAndWatchNowLiveTests.swift`, 2026-10-15)
 
-Ten tests in extensions of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
+Eight tests in an extension of `WindowNavigationTests` (so they are `.serialized` with it), all through the native `ax_query` walker — never `entire contents`:
 
 | Test | What it proves | ~Time |
 |---|---|---|
@@ -64,8 +64,6 @@ Ten tests in extensions of `WindowNavigationTests` (so they are `.serialized` wi
 | `recordingAppWithNoWindowsUsesLittleCPU` | a recording running with no window open stays under 10 % CPU — hidden windows must not re-render on every state change (measured 0.4–2 %) | 19 s |
 | `idleAppUsesAlmostNoCPU` | an idle app (nothing recording, no windows) stays under 5 % CPU (`top -l 2`) — guards the hidden-animating-splash bug (21 % → 0 %; mutation-checked) | 10 s |
 | `mainThreadStaysResponsive` | `GET /` every 100 ms for 20 s: no unanswered probe, worst < 2.5 s (baseline: the idle tick stalls ~0.6 s every 10 s) | 20 s |
-| `statusBarToggleShowsTheBarAndResizesTheWindow` | in a real player (a recording-relay session), the status bar toggle draws the bar (`vlc-status-bar`, with its health line `vlc-status-health`) and grows the window by exactly 52 pt; pressing again removes it and the window shrinks back | 13 s |
-| `statusBarStaysSizedAfterClosingAndReopeningThePlayer` | with the bar on, closing the player and opening a fresh one gives a window that is the default height plus 52 pt (the window manager is a singleton but the window is recreated at its default size) | 14 s |
 
 Mutation-checked: re-introducing `alert.runModal()` in `quit()` makes `quitPromptDoesNotBlock…` fail with "web server did not answer while the quit prompt was up". `NoBlockingDialogsTests` (unit) bans `runModal()` in the sources.
 
@@ -125,10 +123,6 @@ from `pipAXHandlers` + `churnHandlers` are prepended by `wrap`). Keep every op e
 with the op named in the failure.
 
 ## Environment pitfalls (found 2026-10-11)
-
-- **Run one live suite at a time, or pass `--no-parallel` (2026-10-17).** Swift Testing runs *different* suites concurrently, and `.serialized` only orders tests *inside* one suite. A combined filter such as `--filter "WindowNavigationTests|PiPTunerChurnTests"` therefore ran the churn soak (which starts a mock recording and opens relay/PiP windows) at the same time as the window-navigation tests, which assert the opposite state: "no relay buttons before a recording", "tuner baseline matches", "idle CPU". Symptoms looked like load or timing flakes (`relay buttons present before anything is recording`, `baseline tuner state disagrees`, `cpu < 10`) but every one passed when the suites ran separately or with `--no-parallel`.
-- **The mock recording ends with its airing slot (2026-10-17).** `mock_scenario.py start` used to take the first airing entry; if that slot had ~6 minutes left, the recording ended mid-soak and `feedFromTheMiniShowsOnTheLaptop` reported "a tuner was leaked or a count is stale" at its closing steps (app=0 hw=0, expected 1). `start` now tries the entry with the most time remaining first; if nothing airing has ≥5 minutes left, expect that failure and rerun later.
-- **Hardware tuner status trails the app.** After a recording starts, the tuner's `/status.json` can still show 0 for several seconds while the app already counts 1; the churn baseline now waits up to 20 s for the two to agree. `recordingAppWithNoWindowsUsesLittleCPU` likewise waits for the post-start CPU spike (50–80 %) to settle instead of sampling once at 8 s.
 
 - **A locked laptop screen** (`CGSSessionScreenIsLocked`) makes Accessibility see zero windows, so `feedFromTheMiniShowsOnTheLaptop` fails `NO_PLAYER_WINDOW` even though playback runs. Unlock it and keep it awake (`caffeinate -d` stops display sleep, not an idle lock — lengthen the lock delay for a test session).
 - **A fast pass is a skip.** The churn tests print "skipped: nothing airing / no free tuner" on stderr and report *passed* when another client or a real recording holds a tuner. Read stderr, or check the duration.

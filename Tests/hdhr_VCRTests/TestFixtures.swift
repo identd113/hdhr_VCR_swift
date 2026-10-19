@@ -237,11 +237,7 @@ extension Show {
         var s = Show.blank(channel: channel, device: "FFFFFFFF")
         s.show_title = title
         s.show_active = true
-        // One hour out, but never past today: MenuContent prefixes the weekday when the time is not today, so "now + 1 h"
-        // after 23:00 changed the rendered text and failed the MenuContent snapshots (found 2026-10-17 at 23:49).
-        let now = Date()
-        let endOfToday = Calendar.current.startOfDay(for: now).addingTimeInterval(24 * 3600 - 60)
-        s.show_next = min(now.addingTimeInterval(3600), max(endOfToday, now.addingTimeInterval(30)))
+        s.show_next = Date().addingTimeInterval(3600)
         return s
     }
 

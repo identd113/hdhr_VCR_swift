@@ -871,14 +871,8 @@ struct PiPTunerChurnTests {
 
         let mini = localTarget(uiEvents: bin)
         guard let dev = discoverDeviceID() else { Issue.record("could not find a tuner device in the web guide"); return }
-        // The hardware's /status.json can trail the app by several seconds after a recording starts (observed: app=1 hw=0
-        // at 4 s), so wait up to 20 s for the two counts to agree instead of judging a single early snapshot.
         Thread.sleep(forTimeInterval: 4)
-        var base = tunerSnapshot(deviceID: dev, page: mini.fetchPage())
-        for _ in 0..<16 where base.hw == nil || base.app == nil || base.hw != base.app {
-            Thread.sleep(forTimeInterval: 1)
-            base = tunerSnapshot(deviceID: dev, page: mini.fetchPage())
-        }
+        let base = tunerSnapshot(deviceID: dev, page: mini.fetchPage())
         guard let hw = base.hw, let app = base.app, hw == app else {
             Issue.record("baseline tuner state disagrees before any UI action: \(base)"); return
         }

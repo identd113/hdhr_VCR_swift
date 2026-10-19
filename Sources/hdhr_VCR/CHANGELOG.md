@@ -2,25 +2,6 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
-
-### Player (`VLCPlayerView`, `PlayerStatusBar`)
-
-- *Added* — **An optional status bar under the player's video.** A button in the toolbar (after Info) shows or hides a slim strip: the show's image, its title with genre tags and a highlighted NEW tag, the episode and time, how healthy the stream is with the live Mbps, and a small card for the next show on the channel. The card lists the two shows after it, has arrows to step through the next six hours, and a red ● that records the next show with the same four choices as the toolbar's Record. If a show has no image, the channel's logo is shown instead. Switching it on makes the window taller by exactly the strip's height, so the picture keeps its size and shape. It is off until you turn it on, and it is not drawn in fullscreen.
-- *Updated* — **The picture-quality hover is now a "Stream" popover.** Hovering the 1:1 button still shows the source, resolution, display size and codecs, and now also the live bitrate in Mbps (green when steady, yellow when it is trending down, red when it stalls), its two-minute average, and a small graph of the last two minutes.
-- *Updated* — **Fixed: the bitrate in the player was shown in the wrong unit** (it printed a number labelled kB/s that was really about an eighth of the true Mbps). It is now measured against a recording's real file size and shown in Mbps.
-- *Removed* — **The Live Buffer hover.** The pill next to the toolbar's clock still shows how full the buffer is, but hovering it no longer opens lag, rate, bitrate and corruption details; the bitrate moved into the Stream popover.
-- *Updated* — **Fixed: a paused recording no longer shows as "Stalled".**
-
-### Alerts and the terminal guide (`Dialogs`, `hdhr_guide`)
-
-- *Updated* — **Fixed: an alert shown without a window to attach to (for example "Couldn't Start FEED Relay") no longer shows two blank buttons and a "Do not show this message again" box.**
-- *Updated* — **Fixed: the terminal guide no longer keeps running at full speed after its terminal goes away** (a dropped connection, a closed pane); it now exits.
-
-### Responsiveness & performance (`AppState`, `GuideStore`)
-
-- *Updated* — **Recording-conflict checks and guide reloads do less work as the lineup and show list grow:** the favorite-channel lookup is built once per check instead of scanned for every comparison, and reloading one tuner's guide now only touches the series that tuner carried.
-
 ## v2.6.5 — 2026-10-15
 
 Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.

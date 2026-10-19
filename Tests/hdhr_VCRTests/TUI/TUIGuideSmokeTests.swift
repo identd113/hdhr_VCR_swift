@@ -203,7 +203,7 @@ private func runWithoutTTY(port: Int, timeout: TimeInterval = 15) -> (status: In
 /// frame while nobody reads blocks — and then never sees the next key.
 private final class PTYSession: @unchecked Sendable {
     let process = Process()
-    private var master: Int32
+    private let master: Int32
     private let lock = NSLock()
     private var _output = ""
 
@@ -236,10 +236,7 @@ private final class PTYSession: @unchecked Sendable {
         }
     }
 
-    deinit { if process.isRunning { process.terminate() }; if master >= 0 { close(master) } }
-
-    /// Closes our end of the pty without signalling the child — what a dropped connection looks like to it.
-    func hangUp() { if master >= 0 { close(master); master = -1 } }
+    deinit { if process.isRunning { process.terminate() }; close(master) }
 
     func send(_ s: String) {
         let bytes = Array(s.utf8)
@@ -418,18 +415,6 @@ struct TUIGuideSmokeTests {
         #expect(tty.waitForExit() != nil, "should exit on SIGTERM")
         #expect(tty.output.contains("\u{1B}[?1049l"), "SIGTERM must still leave the alternate screen")
         #expect(tty.output.contains("\u{1B}[?25h"), "SIGTERM must still show the cursor")
-    }
-
-    // Regression: with its terminal gone and no SIGHUP, the input loop used to spin at 100% CPU forever.
-    @Test func terminalHangUp_exitsInsteadOfSpinning() throws {
-        let stub = StubGuideServer(guideJSON: guideJSON())
-        try stub.start(); defer { stub.stop() }
-        guard let tty = PTYSession(port: stub.port) else { return }
-        #expect(tty.waitFor("KFOO"))
-
-        tty.hangUp()
-        #expect(tty.waitForExit(timeout: 6) != nil, "should exit when stdin closes")
-        if tty.process.isRunning { tty.process.terminate() }
     }
 
     @Test func requestsGoToTheConfiguredPort_notAHardcodedOne() throws {
