@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 // The last `holdBack` seconds of each snapshot are left for the next pass so a half-written tail is never read.
 // Verified in docs/WebStreaming.md: no frame lost or repeated across passes.
 
-final class HLSFollower {
+final class HLSFollower: @unchecked Sendable {
     struct Options {
         var convert = HLSConversionOptions()
         /// How often to look for new data.
