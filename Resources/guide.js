@@ -5,7 +5,8 @@ var _delConfirmAction=null;   // pending action for #del-confirm-modal, set by s
 // Escapes '"' too (not just &<>) — needed by any call site that interpolates the result into an
 // HTML attribute (e.g. the search dropdown's <img src="...">), not just text content. Safe for
 // existing text-content call sites too: &quot; decodes back to a literal '"' there as well.
-function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// One escaper for text and for single- or double-quoted attribute values.
+function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 // Shared POST helper — every mutating action (record/edit/delete/toggle-favorite) posts
 // JSON and gets JSON back; callers still handle their own response/error logic (which
 // differs enough per action — e.g. confirmRecord's r.text() fallback on a non-JSON error
@@ -71,14 +72,15 @@ function gc(g){var lo=(g||'').toLowerCase();lo=_ggAlias[lo]||lo;var m=isLM()?_gc
 var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children'};
 var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith'];
 function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
-function heJs(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+var heJs=hej;
 var _bonusMins={{SPORTS_PADDING_MINUTES}};
 var _bonusEnabled={{SPORTS_PADDING_ENABLED}};
 var _sigEnabled={{SIGNAL_QUALITY_ENABLED}};
 var _dupEnabled={{SKIP_DUP_ENABLED}};
 var _defaultTranscode='{{DEFAULT_TRANSCODE}}';
 function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
-function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
+function syncBonusStar(chkId,starId){var chk=document.getElementById(chkId);var star=document.getElementById(starId);if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb(starId);}else{star.style.display='none';star.classList.remove('sb-anim');}}
+function toggleBonusStar(){syncBonusStar('em-bonus','em-bonus-star');}
 function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
 function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
 function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
@@ -481,7 +483,7 @@ function renderAirings(list){
   panel.style.display='flex';
 }
 function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
-function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
+function toggleRmBonusStar(){syncBonusStar('rm-bonus','rm-bonus-star');}
 function confirmRecord(){
   var type=_rmType||'single';
   var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});

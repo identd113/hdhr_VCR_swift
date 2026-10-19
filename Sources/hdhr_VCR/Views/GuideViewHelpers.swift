@@ -3,7 +3,6 @@ import AppKit
 
 // Shared brand colors used by MenuContent, WatchNowView, and VLCPlayerView.
 let watchNowBlue   = Color(red: 0.2, green: 0.6, blue: 1.0)
-let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
 // Matches the web guide's Record button (WebServer.swift, `#c0392b`) — same "record" red everywhere.
 let recordRed      = Color(red: 0.753, green: 0.224, blue: 0.169)
 // Matches the web guide's --fav CSS custom property (WebServer.swift: #e8a000 dark / #a05800

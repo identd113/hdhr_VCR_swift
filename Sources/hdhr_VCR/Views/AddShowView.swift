@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-// Multi-step wizard: (optional Device) → Web Guide → Details → Save
+// Add Show: the web guide, with the recording details as a sheet over it (Record in the guide → sheet → Save).
 struct AddShowView: View {
 
     @EnvironmentObject var state: AppState
@@ -19,10 +19,10 @@ struct AddShowView: View {
     @State private var step: Step = .guide
     @State private var show = Show.blank()   // transcode overridden in onAppear
 
-    // Step 1
+    // Tuner chosen in the guide
     @State private var selectedDevice: HDHRDevice? = nil
 
-    // Step 3
+    // Details sheet
     @State private var seriesType: ShowState = .single
     @State private var airDays: Set<String> = []
     @State private var recordFolder: URL? = {
@@ -400,14 +400,8 @@ struct AddShowView: View {
                                      genre: String, imageURL: String) {
         let startDate = Date(timeIntervalSince1970: TimeInterval(startTime))
         let endDate   = Date(timeIntervalSince1970: TimeInterval(endTime))
-        // Confirmed live 2026-09-13 as the actual root cause of a "clicked Record, wizard closed,
-        // show never appeared" report: this Window("Add Show", id: "add-show") is single-instance,
-        // and @State show isn't otherwise reset between wizard sessions — a second guide pick
-        // after an earlier successful save in the same window instance was reusing that prior
-        // show's show_id, which AppState.addShow's duplicate guard then silently dropped. This is
-        // the one place every guide pick funnels through (the "record" WKScriptMessage handler's
-        // only call site), so regenerating the ID here guarantees a fresh identity regardless of
-        // whatever kept the surrounding View state alive.
+        // This Window is single-instance and @State show survives between sessions, so every guide pick starts from a fresh
+        // Show (new show_id) — a reused id was silently dropped by addShow's duplicate guard.
         resetShowForNewEntry()   // fresh Show (new id AND every flag back to its default) — see its doc comment
         show.show_title      = title
         show.show_channel    = guideNumber

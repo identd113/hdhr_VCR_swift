@@ -44,6 +44,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ### Responsiveness & performance (`AppState`, `GuideStore`)
 
+- *Updated* — **Security and robustness fixes.** The terminal guide no longer writes every keystroke (including typed search text) to a log file unless you set `HDHR_GUIDE_DEBUG=1`; a "tuner gone" announcement from another Mac is now ignored unless its checksum matches, so a stray or spoofed packet on the network can't make this app drop another Mac's FEED source; and the Settings window can no longer crash on an unusual LAN address.
+- *Updated* — **Less idle work.** The menu's scheduled-show and upcoming-slot data is only republished when it actually changes (it was rewritten every idle tick), and the checksum on the web guide's gzip responses is computed over the buffer directly instead of byte by byte.
 - *Updated* — **Recording-conflict checks and guide reloads do less work as the lineup and show list grow:** the favorite-channel lookup is built once per check instead of scanned for every comparison, and reloading one tuner's guide now only touches the series that tuner carried.
 
 ## v2.6.5 — 2026-10-15

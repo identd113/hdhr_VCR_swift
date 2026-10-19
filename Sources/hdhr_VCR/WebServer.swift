@@ -950,37 +950,11 @@ final class WebServer: @unchecked Sendable {
         beginFeedRelayProxy(remoteURL: remoteURL, sessionId: "transcode-source-\(showId)", conn: conn)
     }
 
-    // Shared base for the two delegate-based (not completion-handler-based) URLSessionDataTask
-    // consumers below (transcode relay + FEED local relay) — both forward an open-ended remote
-    // stream with no natural end to `conn` as chunks arrive, paced, and share the exact same
-    // finish-once/liveness-probe/failed-before-any-data plumbing. Runs on URLSession's own delegate
-    // queue; `targetQueue` is what every `conn`-touching call hops onto first, matching this file's
-    // own threading discipline (see accumulate()/handleConnection's doc comments on why every
-    // NWConnection touch funnels through one queue). Only `finished`/`receivedAnyData` need the
-    // lock — they're the only state touched from both URLSession's private delegate queue (this
-    // class's own methods) and `targetQueue` (external callers like the liveness probe); every
-    // other field below (including all the pacing state) stays `targetQueue`-only, never locked.
-    //
-    // **Correction, 2026-10-01 (review #18): the "pacing" described next never actually held
-    // anything back.** Its rate was the cumulative average of bytes *received*, so its target was
-    // always ≥ what had arrived — the whole buffer went out every time. It's been removed; what's
-    // left (and what the live tests credited below actually exercised) is a coalescing,
-    // one-send-in-flight drain. Real delivery smoothing exists only in FeedRelayPacer (FEED disk
-    // cache path), and the 2026-10-01 "FEED starvation" root cause was the dual-stack listener,
-    // not missing pacing here. History kept for context:
-    //
-    // Delivery pacing (buffer/draining/bytesReceived/bytesSent below), added 2026-09-13: originally
-    // lived only on the FEED-local-relay subclass, on the theory that libvlc's own sout httpd
-    // output (the transcode relay's source) is already correctly real-time-paced and a real
-    // network hop's delivery (the FEED relay's source) isn't. True for one viewer with no
-    // contention — but once a shared transcode session (VLCBridge.startTranscodeSession joins
-    // multiple viewers onto one encode, see that function's own doc comment) is also competing for
-    // CPU with everything else this Mac is doing, the encoder's own output can arrive in slightly
-    // uneven bursts too, and a viewer with no buffer of its own (a bare third-party VLC.app hitting
-    // `/auto/v<channel>?transcode=` directly, unlike this app's own FEED viewers, which always add
-    // their own client-side pacer regardless — see FeedRelayProxyDelegate below) gets that
-    // burstiness completely unsmoothed. Promoted here so every relay proxy in this file protects
-    // every viewer identically, instead of only the one path that happened to need it first.
+    // Shared base for the two delegate-based URLSessionDataTask relays below (transcode relay + FEED local relay): each forwards an
+    // open-ended remote stream to `conn` as chunks arrive, and they share the finish-once / liveness-probe / failed-before-any-data
+    // plumbing. It is a coalescing, one-send-in-flight drain with no rate pacing (real smoothing is FeedRelayPacer, on the FEED
+    // disk-cache path). Runs on URLSession's delegate queue; `targetQueue` is where every `conn` call hops first. Only
+    // `finished`/`receivedAnyData` are lock-guarded (touched from both queues); every other field is `targetQueue`-only.
     private class RelayProxyDelegateBase: NSObject, URLSessionDataDelegate {
         let conn: NWConnection
         let targetQueue: DispatchQueue
@@ -3447,11 +3421,6 @@ final class WebServer: @unchecked Sendable {
     // scratch on every single call, which NSRegularExpression's own init doesn't need to pay again.
     private static let episodeTagRegex = try! NSRegularExpression(pattern: #"^S\d+E\d+$"#, options: [.caseInsensitive])
 
-    // Shared by buildGuideGridHTML's willSkip and buildGuideJSON's willSkip — a managed airing is
-    // skipped when skip-already-recorded is on, this isn't the entry currently recording (which
-    // would otherwise flag its own in-progress file as a duplicate), the owning show doesn't have
-    // "ignore duplicate once" armed, and the episode's SxxExx tag is already on disk for that show.
-    // One function so a future tweak to the skip rule can't apply to one builder and not the other.
     /// Which guide blocks are *the recording one* on a recording channel: the airing each active recording started on
     /// (`anchors`, its `show_next`), so Bonus Time — when the next show's block covers "now" — keeps the marker on the
     /// show being recorded. `coversNowToo` adds the block covering now for a recording with no known airing (a manual
@@ -3475,6 +3444,8 @@ final class WebServer: @unchecked Sendable {
         return (shows.compactMap { $0.show_next.map { Int($0.timeIntervalSince1970) } }, shows.contains { $0.show_next == nil })
     }
 
+    /// Shared skip rule for the grid and the JSON: a managed airing is skipped when skip-already-recorded is on, it isn't the
+    /// block currently recording, "ignore duplicate once" isn't armed, and its SxxExx tag is already on disk for that show.
     private func isSkippedAiring(skipEnabled: Bool, isRecordingNow: Bool, owner: Show?,
                                   episodeNumber: String?, recordedTagsByShow: [String: Set<String>]) -> Bool {
         guard skipEnabled, !isRecordingNow, let owner, !owner.show_ignore_duplicate_once,
@@ -3729,21 +3700,8 @@ final class WebServer: @unchecked Sendable {
                     // building a second description that could drift from the tooltip's wording.
                     blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" role=\"button\" tabindex=\"0\" aria-label=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\" ondblclick=\"recordFromDblClick(this)\" onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showInfo(this);}\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
 
-                    // Bonus Time preview overlay — a faint sports-colored wash extending past this
-                    // entry's own listed end, over however much of the next slot's time this show
-                    // would actually eat into if it ran long (Sports_padding_minutes). Gated on the
-                    // owning show's actual `show_bonus_time` flag (same gate the recording engine
-                    // itself uses — AppState.skipRecording's `config.Sports_padding_enabled &&
-                    // show.show_bonus_time`), not a genre guess — as of 2026-09-14, narrowed from an
-                    // earlier version keyed off Show.genreImpliesBonusTime(e.firstGenre) alone, which
-                    // showed spillover for any sports-genre entry even when it wasn't scheduled at
-                    // all, or was scheduled with Bonus Time explicitly turned off for that show.
-                    // Appended right after the entry's own block (not merged into it) since it needs
-                    // to render past that block's own edge, into the next one's territory —
-                    // .g-bonus-overlay's own z-index (guide.css) keeps it visually on top of
-                    // whatever's underneath while staying non-interactive (pointer-events: none,
-                    // aria-hidden) so click/keyboard behavior on the real blocks underneath is
-                    // completely unaffected.
+                    // Bonus Time overlay: the stretch of following time this show may consume. Gated on the owning show's
+                    // show_bonus_time (as skipRecording is), appended after its block, non-interactive.
                     if state.config.Sports_padding_enabled, owner?.show_bonus_time == true, !willSkip {   // a skipped airing records nothing
                         let bonusEndTs = e.EndTime + state.config.Sports_padding_minutes * 60
                         let bce = min(bonusEndTs, winEnd) - winStart

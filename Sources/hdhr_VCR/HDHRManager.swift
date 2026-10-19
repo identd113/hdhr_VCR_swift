@@ -275,7 +275,7 @@ final class HDHRManager {
     // MARK: - UDP Local Discovery
 
     /// Broadcast SiliconDust discovery packet on the local network and collect replies.
-    /// Blocks for up to 2 seconds waiting for device responses.
+    /// Waits for replies up to a 10 s overall deadline (2 s is only the gap allowed between packets).
     private func udpDiscover(interface: String = "") async -> [HDHRDevice] {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {

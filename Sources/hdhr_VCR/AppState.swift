@@ -406,36 +406,10 @@ final class AppState: ObservableObject {
     func activeRecordingChannels(for deviceId: String) -> Set<String> {
         Set(recordingShows.filter { $0.hdhr_record == deviceId }.map { $0.show_channel })
     }
-    // Channels whose managed show's recording window has opened (show_next has passed) but
-    // show_recording hasn't flipped true yet — the brief, normal startup lag between a show's
-    // scheduled time and RecordingManager actually flipping the flag. Treated the same as
-    // activeRecordingChannels for ring/badge purposes.
-    //
-    // Bounded to pendingRecordingGraceSeconds past show_next, not the whole show_next...show_end
-    // window — found live 2026-09-19: if startRecording never gets a clean run at all for that
-    // window (confirmed live: show_recording false, show_fail_count 0, show_fail_reason empty, zero
-    // curl processes — idle loop apparently never got a chance, e.g. repeated deploy.sh restarts
-    // landing mid-window during development), this read as "recording" for the show's *entire*
-    // scheduled window with no way to tell "about to start" from "never actually started and never
-    // will." Past the grace period, falls through to whatever it actually resolves to instead
-    // (scheduled/conflict) exactly like the retry-backoff/duplicate-skip exclusions below already
-    // do — no new "missed" UI state invented, just stops lying indefinitely. See ISSUES.md's
-    // "channel-level recording indicator" entry.
-    //
-    // Excludes a show currently sitting out a missed-start retry backoff (showRuntime[id]?.retryAfter
-    // set to a future date — only happens after a real recordShowFailure, never during ordinary
-    // startup lag): that show isn't capturing anything to disk, so it must NOT read as "recording" here.
-    // Until 2026-08-15 this function (then WebServer.swift's pendingRecChannelsByDevice) treated
-    // the two cases identically, which meant a stuck-in-backoff show sorted into the prominent
-    // Recording section on Watch Now/the web guide and suppressed its own tuner-conflict badge
-    // (buildGuideGridHTML's isConflict / WatchNowView's guideRingState both gate on !isRecording).
-    // Falling through here lets it resolve to whatever's actually true — scheduled or conflict —
-    // instead of a false "recording". See issues_resolved.md for the original find.
-    //
-    // Also excludes a show whose currently-airing episode will be skipped as an already-recorded
-    // duplicate (willSkipCurrentAiring below, added 2026-08-21) — same reasoning as the retry-
-    // backoff exclusion above: show_recording never flips true there either, deliberately, so it
-    // must resolve to the skip badge instead of a false "recording".
+    // Channels whose managed show's window has opened (show_next passed) but show_recording hasn't flipped true yet — the
+    // brief startup lag, treated like activeRecordingChannels for ring/badge purposes. Bounded to pendingRecordingGraceSeconds
+    // past show_next, so a recording that never started stops reading as "recording"; also excludes a show in missed-start
+    // retry backoff and one whose airing will be skipped as an already-recorded duplicate (both resolve to their own badge).
     private static let pendingRecordingGraceSeconds: TimeInterval = 120
     func pendingRecordingChannels(for deviceId: String) -> Set<String> {
         let now = Date()
@@ -1289,40 +1263,12 @@ final class AppState: ObservableObject {
         reconcileWebServerState()
     }
 
-    // The one function that ever calls webServer.start()/stop(). Computes "should the server be
-    // running" from every independent trigger — the Sharing toggle (config.Web_server_enabled) and
-    // internalWebServerUseCount's ref-counted internal claims (WKWebView guide windows, the Watch-
-    // Now-from-disk relay, the virtual-tuner relay) — and reconciles in one place instead of letting
-    // each trigger call webServer.start() directly.
-    //
-    // That direct-call design used to let two independent triggers race: setupWebServer() (Web LAN)
-    // and ensureWebServerRunning() (an internal claim) each guarded only on `!webServerRunning`, but
-    // that flag doesn't flip true until NWListener's *async* .ready callback actually lands — so two
-    // calls firing back-to-back (e.g. at launch: reattachRecordings()'s virtual-tuner claim calls
-    // ensureWebServerRunning(), then setupWebServer() runs immediately after in the same launch
-    // sequence when Web LAN is on and a show was already recording) both saw `webServerRunning ==
-    // false` and both called webServer.start(), racing two real NWListener binds on the same port.
-    // Reproduced live 2026-09-03 while verifying the virtual-tuner relay's UDP discovery fix — every
-    // launch with an in-progress recording hit "Address already in use" and left the *entire* web
-    // server down (not just the virtual-tuner routes — /lineup.json and everything else on :1980).
-    //
-    // webServerStarting closes that window: set the instant a start is kicked off, cleared only once
-    // the bind's async outcome (ready/failed/cancelled) lands in applyWebServerState. That completion
-    // deliberately does NOT unconditionally re-call this function on every outcome — every trigger
-    // that can change `wantRunning` (setupWebServer, ensureWebServerRunning, releaseInternalWebServer)
-    // already calls reconcile itself at the moment it fires, including mid-bind (stop() is safe to
-    // call on a still-binding listener, and WebServer.stop() nils its callback first so a resulting
-    // .cancelled doesn't surface as a spurious error) — so nothing is missed by not also reconciling
-    // reactively on every completion. Doing so unconditionally was tried and reverted: on a
-    // *persistent* failure (e.g. a genuinely unavailable port) it re-entered this function with
-    // `wantRunning` still true and `webServerRunning`/`webServerStarting` both already reset to
-    // false, which re-passed the start guard and called webServer.start() again — an unbounded,
-    // synchronous-feeling retry loop that pinned a CPU core and hung `swift test` outright the first
-    // time this was tried, 2026-09-03. `applyWebServerState` *does* now reconcile again, but only
-    // on its success path and only when the just-bound port has already diverged from
-    // `config.Web_server_port` — the narrow fix for a Settings port change arriving while this exact
-    // bind was still in flight (see that function's own comment) — never on failure, so it can't
-    // reintroduce the same unbounded loop.
+    // The one function that calls webServer.start()/stop(): reconciles "should the server run" from the Sharing toggle and
+    // the ref-counted internal claims (guide windows, the Watch-Now relay, the virtual-tuner relay).
+    // `webServerStarting` is set when a start is kicked off and cleared when the bind's async outcome lands, so two
+    // triggers can't race two binds on one port. The bind's completion deliberately does not re-reconcile on every
+    // outcome — on a persistent failure that retried without bound — only on success when the bound port has since diverged
+    // from `config.Web_server_port`.
     private func reconcileWebServerState() {
         let wantRunning = config.Web_server_enabled || internalWebServerUseCount > 0
         if wantRunning {
@@ -2242,8 +2188,20 @@ final class AppState: ObservableObject {
                 ).map { ($0.channelNum, $0.entry.startDate) }
             }
         }
-        menuScheduledEntry  = scheduledResult
-        menuUpcomingSlots   = upcomingResult
+        // Assign only on a real change: both are @Published, and this runs every idle tick — an unconditional write fired
+        // objectWillChange (and a menu/view re-evaluation) every tick even when nothing differed. (GuideEntry's own ==
+        // compares StartTime only, so compare the fields the menu shows.)
+        let sameScheduled = scheduledResult.count == menuScheduledEntry.count && scheduledResult.allSatisfy { id, e in
+            guard let old = menuScheduledEntry[id] else { return false }
+            return old.StartTime == e.StartTime && old.EndTime == e.EndTime && old.Title == e.Title
+                && old.EpisodeNumber == e.EpisodeNumber && old.EpisodeTitle == e.EpisodeTitle && old.channelNum == e.channelNum
+        }
+        if !sameScheduled { menuScheduledEntry = scheduledResult }
+        let sameUpcoming = upcomingResult.count == menuUpcomingSlots.count && upcomingResult.allSatisfy { id, slots in
+            guard let old = menuUpcomingSlots[id], old.count == slots.count else { return false }
+            return zip(old, slots).allSatisfy { $0.channel == $1.channel && $0.date == $1.date }
+        }
+        if !sameUpcoming { menuUpcomingSlots = upcomingResult }
 
         // ── Conflict detection: per-device greedy tuner-slot simulation, one pass instead of
         // one per menu open. Flags only the show(s) that would actually lose a tuner — not
@@ -2633,17 +2591,8 @@ final class AppState: ObservableObject {
         } else {
             glog("[Watch] yield: show \(showId) no longer in shows[] — cannot call startRecording", level: .warning)
         }
-        // One unified, generously-budgeted loop from here — startRecording retries until
-        // show_recording flips true, *then* keeps polling for the file to actually appear on disk,
-        // all in the same loop with one combined timeout. Deliberately NOT two separate bounded
-        // loops (a "retry starting" one followed by a "wait for the file" one) — that shape shipped
-        // 2026-09-11 and had a real bug: found live twice, `show_recording` flipped true only partway
-        // through the first loop's own budget, leaving too little of the second loop's separate,
-        // short budget (5s) for the file to actually appear — both times the debug log at the very
-        // end showed `fileExists=true`, meaning the file genuinely did land, just a beat after this
-        // function had already given up and gone silent, so watchRecordingInApp was simply never
-        // called and the player sat on a dead "Connecting…" forever. One shared ~45s budget for
-        // "keep trying until it's actually watchable" removes that boundary entirely.
+        // One loop with one ~45 s budget: keep retrying until the recording file is actually watchable (two separate bounded
+        // loops left too little time for the file to appear after show_recording flipped).
         for attempt in 1...90 {
             if Task.isCancelled {
                 glog("[Watch] yield: cancelled while waiting for the recording file — recording (if scheduled) continues, not reopening playback")
@@ -3339,21 +3288,8 @@ final class AppState: ObservableObject {
     func startRecording(index: Int) async {
         var show = shows[index]
         guard !show.show_recording else { return }
-        // Found live 2026-09-09: two independent triggers (the idle loop's regular per-tick pass
-        // and a separate "start immediately if airing now" shortcut) can each observe
-        // show_recording == false and both reach this far before either one's write is visible —
-        // recordingManager's own `pids[showId] == nil` guard silently no-ops the second real
-        // process launch (so there's never an actual duplicate curl), but AppState had no
-        // matching guard, so the second call fell through, re-logged a fake "START", and — worse
-        // — if something afterward ever reset show_recording back to false without also clearing
-        // recordingManager's tracked pid, every later idle-loop tick would repeat this same
-        // dance forever: re-enter here, see show_recording == false, and (since a real process is
-        // still tracked) get correctly blocked by the tuner-full check below, filing a fresh
-        // "Tuner Conflict" notification on every single retry. Checking recordingManager directly
-        // — the actual source of truth for "is a process already running for this show," not the
-        // `shows` array's own copy of that fact — closes both: resync rather than silently
-        // no-op'ing, so a desynced flag doesn't loop this check forever, and never re-attempt
-        // recordingManager.start() when it already has this show_id tracked.
+        // Resync from RecordingManager (the source of truth for "a process is running"): the idle loop and the start-now
+        // shortcut can both reach here before either write to show_recording is visible.
         if recordingManager.isRunning(showId: show.show_id) {
             shows[index].show_recording = true
             shows[index].show_tuner_resource = ""   // re-captured by refreshTunerOccupancy below
@@ -4014,18 +3950,8 @@ final class AppState: ObservableObject {
 
     // MARK: - Next-air scheduling
 
-    // skipCurrentlyAiring: true from the New-Only and already-recorded skip branches in
-    // startRecording() — after either determines the airing that just matched is unwanted, the
-    // default "check for a currently-airing episode first" behavior below would just re-match that
-    // exact same still-airing entry, set show_next right back to itself, and get immediately
-    // re-picked up by the idle loop on the next tick — an infinite skip/reschedule loop for the
-    // entire remaining runtime of that airing (live-caught 2026-09-25: "The Tonight Show Starring
-    // Jimmy Fallon" spammed a Discord edit and a config save every ~10s idle-loop tick for the rest
-    // of its hour, and the web guide showed it as recording the whole time since the recording
-    // window — show_next past, show_end future — was, by definition, genuinely still open). Every
-    // other caller (a natural completed recording, a failed reconfirmation, etc.) wants the default
-    // false — checking what's on air right now is exactly the point there, e.g. a marathon's very
-    // next episode starting back-to-back.
+    // skipCurrentlyAiring: true after a New-Only/already-recorded skip, so the still-airing entry that was just rejected isn't
+    // re-matched (which would loop skip/reschedule every idle tick for the rest of that airing). Other callers want false.
     func scheduleNextAir(index: Int, skipCurrentlyAiring: Bool = false) async {
         guard index < shows.count else { return }
         // var, not let — the .seriesChannel/.seriesAll branch's guide-reload await re-reads this
@@ -4051,17 +3977,9 @@ final class AppState: ObservableObject {
                 shows[idx].show_end  = next.addingTimeInterval(Double(show.show_length) * 60)
                 glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
             } else {
-                // No matching air day found (show_air_date is empty or invalid) — deactivate rather
-                // than pause. Pausing here (the original behavior) looped forever: idleLoop's Pass 2
-                // auto-resume-on-expired-window path un-pauses any paused show whose show_end is
-                // stale, calls scheduleNextAir right back into this same branch, which re-pauses it
-                // — and since nothing here ever advances show_end away from the past, that resume
-                // check stayed true on every subsequent tick, posting a brand-new "Show Paused"
-                // Discord message (not an edit) every ~10s indefinitely (found live 2026-09-26).
-                // Deactivating sidesteps this structurally: idleLoop's Pass 2 loop starts with
-                // `guard show.show_active else { continue }`, so an inactive show is never
-                // re-evaluated at all until something explicitly reactivates it — see updateShow's
-                // own reactivate-on-airDays-edit check, keyed on Self.noAirDaysReason below.
+                // No matching air day (show_air_date empty/invalid): deactivate rather than pause — Pass 2's auto-resume
+                // would un-pause a stale-window show and re-enter this branch forever. updateShow reactivates it when
+                // air days are edited (noAirDaysReason).
                 glog("[\(show.show_title)] DEACTIVATED — no air days configured", level: .warning)
                 shows[idx].show_active = false
                 shows[idx].show_paused = false
@@ -4474,32 +4392,20 @@ final class AppState: ObservableObject {
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
-        // Route through the full teardown (tuner-occupancy clear, recording_stopped broadcast,
-        // tunerStatus/showRuntime signal-dropout cleanup) when deleting a show that's actively recording —
-        // a bare recordingManager.stop() skipped all of that, leaving the web UI showing a
-        // recording tuner for up to one idle-tick until the next hardware poll self-corrected.
+        // A show that is recording goes through the full teardown (tuner clear, recording_stopped broadcast, signal cleanup); a bare
+        // recordingManager.stop() left the web UI showing a recording tuner until the next hardware poll.
         if let i = showIndex(show.show_id), shows[i].show_recording {
-            // alsoRebuildGrid: false — the pushShowUpdate below rebuilds the grid again anyway
-            // once the show is actually removed, so teardown's own intermediate rebuild (still
-            // showing the about-to-be-deleted show, just no longer recording) would be pure waste.
+            // alsoRebuildGrid: false — the pushShowUpdate below rebuilds the grid once the show is removed.
             teardownRecordingState(index: i, reason: .explicit, alsoRebuildGrid: false)
         } else {
             recordingManager.stop(showId: show.show_id)
         }
         VLCPlayerWindowManager.shared.closeIfPlaying(showId: show.show_id, url: show.show_url)
         shows.removeAll { $0.show_id == show.show_id }
-        // Re-evaluated now that the show is actually gone, whichever path preceded this: deleting the
-        // last recording show used to leave the FEED relay advertised (TunerCount 0, empty lineup) until
-        // some unrelated recording start/stop re-ran this — found by PiPTunerChurnTests' FEED run, where
-        // the stale relay also stopped the *other* Mac from relaying (first recorder keeps it).
+        // Re-evaluated now the show is gone: deleting the last recording show must stop advertising the FEED relay.
         updateVirtualTunerPresence()
-        // Purge every show_id-keyed side table — show_id is never reused, so leaving entries
-        // behind here would grow these dictionaries/sets without bound over a long-running
-        // session as shows are added and deleted over time. One removal now instead of a
-        // dictionary-by-dictionary checklist (see ShowRuntimeState's own doc comment).
-        // Safe to drop unconditionally even if a discordCardTask send for this show is still
-        // running — removing the dict entry doesn't affect an already-started Task, it only stops
-        // a future call from chaining behind it (and there won't be one for a deleted show).
+        // Purge show_id-keyed state (ids are never reused). Dropping the entry is safe even while a discordCardTask for this show
+        // is still running; it only stops a later send chaining behind it.
         showRuntime.removeValue(forKey: show.show_id)
         // Cleared unconditionally (not just via teardownRecordingState) rather than trusting that
         // whichever path preceded this delete (teardown, skipRecording, or neither) already
@@ -4600,7 +4506,7 @@ final class AppState: ObservableObject {
     func reactivatePausedShows() {
         for i in shows.indices {
             // Skip a show auto-paused for a still-missing tuner entirely — same exclusion the
-            // window-expiry auto-resume pass in idleLoop already applies (line ~2488). Without
+            // window-expiry auto-resume pass in idleLoop already applies. Without
             // this, un-pausing here (and clearFailures() below wiping the exact marker string that
             // pass checks for) reproduces the auto-pause/auto-resume flip-flop CLAUDE.md documents
             // as already solved for every other code path: idleLoop's tuner-missing pass re-pauses
@@ -5260,6 +5166,7 @@ final class AppState: ObservableObject {
             ?? DiscordEpisodeSnapshot(epNum: "", epTitle: "", synopsis: "", tags: [], isNew: false)
         let previous = showRuntime[showId]?.discordCardTask
         showRuntime[showId, default: ShowRuntimeState()].discordCardTask = Task { @MainActor in
+            let idBefore = self.showIndex(showId).map { self.shows[$0].discord_start_msg_id }
             _ = await previous?.value
             await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra, snapshot: snapshot)
             if clearIdAfter {
@@ -5270,7 +5177,8 @@ final class AppState: ObservableObject {
                 // captures a fresh snapshot when its own "Recording Started" card fires.
                 self.showRuntime[showId]?.discordEpisodeSnapshot = nil
             }
-            self.saveConfig()
+            // Only the stored message id is persisted here; skip the disk write when a send (or a disabled Discord) left it unchanged.
+            if self.showIndex(showId).map({ self.shows[$0].discord_start_msg_id }) != idBefore { self.saveConfig() }
         }
     }
 
@@ -6512,7 +6420,6 @@ final class AppState: ObservableObject {
         await task.value
     }
 
-    // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
     /// Pushes a hardware-only occupancy change to the web guide. Two parts with different costs:
     ///  • the tuner-count badge (`pushFreshTunerCounts`) is a few bytes built from `activeTunerCount` —
     ///    pushed immediately, every time, so a tuner opening/closing shows up in ~2s instead of waiting
@@ -6546,40 +6453,16 @@ final class AppState: ObservableObject {
                                             extra: ["device": deviceId], state: self)
     }
 
+    // Fetches status.json and, via each recording's tuner index, /tunerN/vstatus — O(1) vstatus calls per show.
     private func fetchDeviceStatusUncached(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
               let data = await LANFetch.data(from: url, label: "status.json"),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
 
-        // Write only when the active-tuner *count* actually changed — regardless of menuIsOpen.
-        // Deliberately compares just the count, not the full tuners array/struct: per-tuner fields
-        // like SignalQualityPercent fluctuate on essentially every poll even when nothing about
-        // occupancy changed, so a full-struct comparison would defeat the point (every tick would
-        // look "changed"). Tradeoff: per-tuner identity (Resource/VctNumber/TargetIP) in the
-        // stored value can now go stale whenever the count doesn't move, even with the menu
-        // closed — a real widening vs. the old behavior, where staleness was bounded to "while
-        // the menu happens to be open." Two known readers of that per-tuner detail (not just the
-        // count): stopRecording's optimistic tuner-clear (AppState.swift), and the web UI's
-        // per-tuner dev-bar dropdown (WebServer.swift's recsByDevJS, docs/WebServer.md) — both
-        // just display/copy through whatever's stored, so a stale entry there self-heals on the
-        // next count-changing poll rather than needing anything more. A stale "X/Y" menu-header
-        // count for as long as the menu happens to be open (this app's own tuner usage never
-        // changes that fast, but an external consumer — another machine running this app, a TV,
-        // any other client hitting the same physical tuner — can, and the whole point of this
-        // count is to reflect that) is worse than the occasional submenu dismiss a genuine count
-        // change could cause (see CLAUDE.md's "Menu rebuild churn" invariant). Signal alerting
-        // always runs regardless, further down — not
-        // display-only.
-        //
-        // While the menu is open specifically, that "worth the rare dismiss" reasoning only holds
-        // if the dismiss really is rare — the count-changed check alone doesn't bound how *often*
-        // it can fire. An external consumer channel-surfing can legitimately flip the locked/
-        // unlocked count on consecutive ~10s idle-loop ticks, which would otherwise re-glitch the
-        // open menu every tick for as long as the surfing continues — exactly the scenario a user
-        // opening the menu to check "who's using my tuner" would hit. The cooldown below caps
-        // real-change disruption to once per menuOpenTunerWriteCooldown regardless; closed-menu
-        // writes are never throttled (no glitch risk there).
+        // Write only when the active-tuner *count* changed (per-tuner fields like SNQ change every poll, so a full comparison
+        // would always differ). While the menu is open, at most once per menuOpenTunerWriteCooldown, so an external client
+        // channel-surfing can't keep re-glitching the open menu (CLAUDE.md "Menu rebuild churn"). Signal alerting below always runs.
         let newActiveCount = tuners.filter { $0.VctNumber != nil }.count
         let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.VctNumber != nil }.count
         let countChanged = newActiveCount != oldActiveCount
@@ -6696,8 +6579,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Signal quality helpers
 
-    /// True when an active, unpaused, not-currently-recording show on `deviceId` is scheduled to start
-    /// within `seconds` — used to keep the background signal scan off a tuner a recording is about to take.
     /// `path` if nothing non-empty is there; otherwise the first free "<name>_part2.<ext>",
     /// "_part3", … so a retried recording never overwrites the partial file an earlier attempt left.
     nonisolated static func uniqueRecordingPath(_ path: String, fileManager fm: FileManager = .default) -> String {
@@ -6714,6 +6595,8 @@ final class AppState: ObservableObject {
         return path   // 98 prior attempts on one airing: give up and overwrite the last
     }
 
+    /// True when an active, unpaused, not-currently-recording show on `deviceId` is scheduled to start within `seconds` —
+    /// keeps the background signal scan off a tuner a recording is about to take.
     func deviceHasImminentRecording(_ deviceId: String, within seconds: TimeInterval) -> Bool {
         let horizon = Date().addingTimeInterval(seconds)
         return shows.contains { $0.hdhr_record == deviceId && $0.show_active && !$0.show_paused

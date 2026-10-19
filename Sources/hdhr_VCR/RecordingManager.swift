@@ -272,14 +272,11 @@ final class RecordingManager {
         return true
     }
 
-    /// Confirms the process at `pid` is the curl binary this manager launches recordings from
-    /// (by executable path basename, so the injectable test double still matches) — see
-    /// isRunning's own doc comment for why kill(pid,0) alone can't be trusted after a pid recycle.
     /// SIGKILLs `pid` only if it is still the curl binary we spawned. A stored pid can outlive its
     /// process: curl exits, the pid is recycled to an unrelated process, and the next poll that would
     /// notice (isRunning, every idle tick) hasn't run yet — a bare kill() in that window would kill
     /// someone else's process. (If it is gone, or already a zombie of ours, there is nothing to kill; the
-    /// callers' detached waitpid still reaps it.) 2026-10-05 triage T35.
+    /// callers' detached waitpid still reaps it.)
     private func killIfStillCurl(_ pid: Int32) {
         guard isCurlProcess(pid: pid) || isOurChild(pid: pid) else {
             // Say so only when a process still holds this pid but it is NOT ours — the recycled-pid case this guard
@@ -302,6 +299,8 @@ final class RecordingManager {
         return n == Int32(MemoryLayout<proc_bsdinfo>.size) && info.pbi_ppid == UInt32(getpid())
     }
 
+    /// Confirms the process at `pid` is the curl binary this manager launches (by executable basename, so the injectable test
+    /// double still matches) — see isRunning's doc for why kill(pid,0) alone can't be trusted after a pid recycle.
     private func isCurlProcess(pid: Int32) -> Bool {
         var buffer = [Int8](repeating: 0, count: Int(4 * MAXPATHLEN))  // PROC_PIDPATHINFO_MAXSIZE's value — the macro itself is marked unavailable to Swift
         let len = proc_pidpath(pid, &buffer, UInt32(buffer.count))

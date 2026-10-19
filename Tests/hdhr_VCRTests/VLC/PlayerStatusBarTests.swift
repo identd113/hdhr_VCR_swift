@@ -246,11 +246,9 @@ struct PlayerStatusBarShortTimeTests {
         }
     }
 
-    @Test func anotherDay_getsAWeekdayPrefix_unlessDropped() {
+    @Test func anotherDay_getsAWeekdayPrefix() {
         let later = now.addingTimeInterval(3 * 24 * 3600)
-        let withDay = PlayerStatusBar.shortTime(later, now: now)
-        let compact = PlayerStatusBar.shortTime(later, now: now, dropWeekday: true)
-        #expect(withDay.count > compact.count)
-        #expect(withDay.hasSuffix(compact) || withDay.contains(compact))
+        let weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        #expect(weekdays.contains { PlayerStatusBar.shortTime(later, now: now).hasPrefix($0) })
     }
 }

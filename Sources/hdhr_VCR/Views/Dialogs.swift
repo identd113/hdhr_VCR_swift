@@ -4,8 +4,7 @@ import AppKit
 ///
 /// `runModal()` parks the main thread in its own event loop until the user answers. Everything that
 /// runs on the main actor stops with it: the web server's request handlers (the guide, SSE, other
-/// Macs' FEED viewers), the idle loop, recording start/stop. Found 2026-10-14 when a stray
-/// "No Tuner Available" froze `:1980` until someone clicked OK. These helpers keep the main thread
+/// Macs' FEED viewers), the idle loop, recording start/stop. These helpers keep the main thread
 /// free: an alert is a sheet on the frontmost app window, or — with no window open (a menu-bar app
 /// often has none) — a small floating alert window; a file picker is a sheet or a non-modal panel.
 ///

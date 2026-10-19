@@ -19,11 +19,8 @@ final class ClosureMenuItem: NSMenuItem {
 
 /// A transparent overlay that shows a native NSMenu on right-click, built fresh at click time.
 ///
-/// Why not SwiftUI's `.contextMenu`: a SwiftUI context menu is rebuilt whenever the view it belongs
-/// to re-evaluates, and the player window observes `VLCBridge` (publishes every stats tick, ~3s)
-/// and the whole `AppState` — so an open menu visibly reloaded every few seconds (found live
-/// 2026-10-03, the PiP "Channel" submenu). An `NSMenu` handed to `popUpContextMenu` is a snapshot
-/// that SwiftUI never touches.
+/// Why not SwiftUI's `.contextMenu`: it is rebuilt whenever the observing view re-evaluates (the player redraws every stats
+/// tick), so an open menu visibly reloaded. An `NSMenu` handed to `popUpContextMenu` is a snapshot SwiftUI never touches.
 ///
 /// Only right-clicks (and ctrl-clicks) are claimed in `hitTest`, so every other click, drag and
 /// hover reaches the SwiftUI views underneath.

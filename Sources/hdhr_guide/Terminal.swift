@@ -90,18 +90,9 @@ enum Terminal {
         return ready > 0 && (pfd.revents & Int16(POLLIN | POLLHUP | POLLERR | POLLNVAL)) != 0
     }
 
-    // Reads one logical key. Disambiguates a bare Escape from an arrow-key escape sequence by
-    // giving the 2nd byte a window (this is the standard technique — a real arrow sequence's
-    // bytes arrive effectively instantly after the ESC, a human pressing Escape alone does not
-    // send anything more) — 80ms, not the original 10ms (bumped from an earlier 40ms): any
-    // transmission jitter (SSH latency, a loaded system, some terminal multiplexers — or,
-    // confirmed on a real report, a multi-hop chain like browser → Raspberry Pi → SSH → this Mac,
-    // which stacks jitter from every hop) delaying that byte past the window makes a real
-    // arrow-key press silently register as a bare Escape, which does nothing in the normal-mode
-    // key handler — a plausible match for "the arrow key does nothing." A bare Escape press
-    // itself is only ever used to cancel out of the record-summary screen, so the extra 40ms of
-    // worst-case latency there is not something a human would ever notice. The 3rd byte gets its
-    // own, much longer window below, for a different reason — see the comment at that guard.
+    // Reads one logical key. A bare Escape is told apart from an arrow-key escape sequence by waiting up to 80 ms for the next
+    // byte: a real sequence follows at once, but SSH or a multi-hop link can delay it, and a late byte would turn an arrow key
+    // into a no-op Escape. (Escape alone only cancels the record-summary screen, so the extra wait is unnoticeable.)
     static func readKey() -> Key? {
         var byte: UInt8 = 0
         let n = read(STDIN_FILENO, &byte, 1)
@@ -115,13 +106,8 @@ enum Terminal {
                 return .escape
             }
             var b2: UInt8 = 0
-            // "[" (CSI) is the normal-mode arrow sequence, but "O" (SS3) is what a terminal sends
-            // for the exact same physical arrow key while in "application cursor key" mode
-            // (DECCKM) — a state this app never requests, but one a previous full-screen program
-            // in the same terminal session (vim, less, an earlier crashed curses app) can leave
-            // set, since it's a terminal-wide mode, not scoped to whichever program asked for it.
-            // Accepting both means arrow keys work regardless of whatever mode the terminal
-            // happened to be left in before this app started.
+            // "[" (CSI) is the normal arrow sequence; "O" (SS3) is what a terminal sends in application-cursor-key mode, which a
+            // previous full-screen program can leave set. Accept both.
             guard read(STDIN_FILENO, &b2, 1) == 1 else {
                 DebugLog.log("  ESC: follow-up byte announced ready but read() failed -> .escape")
                 return .escape

@@ -2,13 +2,12 @@ import Foundation
 
 /// Rolling two-minute view of a stream's bitrate, and a plain-language verdict on it.
 ///
-/// Source: VLC's `f_demux_bitrate` read as bytes/µs, so raw × 8 = Mbps (verified 2026-10-17 against the recording file's
-/// growth: 9.41 vs 9.77 Mbps over three minutes, correlation +0.81). The tuner's own `/status.json` `NetworkRate`
-/// was erratic (2.2 vs 6.7 Mbps on the same channel, uncorrelated with VLC) and is not used.
+/// Source: VLC's `f_demux_bitrate` read as bytes/µs, so raw × 8 = Mbps. The tuner's own `/status.json` `NetworkRate`
+/// is erratic and not used.
 ///
-/// Pure value type (no clock, no VLC) so the rules are unit-testable. Thresholds were chosen from real 2-second data:
-/// on healthy streams a flat 85 % cutoff flipped to "trending" 9–27 % of the time; 75 % against the last three readings
-/// smoothed did so 0–7 % of the time and still catches real dips.
+/// Pure value type (no clock, no VLC) so the rules are unit-testable. Thresholds were tuned on real streams sampled every
+/// 3 s: a flat 85 % cutoff flipped to "trending" 9–27 % of the time on healthy streams; 75 % against the smoothed last
+/// three readings did so 0–7 % of the time and still catches real dips.
 struct ThroughputTracker {
     enum State: Equatable {
         case measuring      // not enough history yet

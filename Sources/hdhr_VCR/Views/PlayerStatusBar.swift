@@ -115,7 +115,7 @@ enum PlayerStatusFormat {
         return min(1, max(0, now.timeIntervalSince(start) / total))
     }
 
-    /// "22 min left", "1 h 05 min left", "Ending", or nil before the show has started.
+    /// "22 min left", "1 h 05 min left", or "Ending" once past the end.
     static func remainingText(end: Date, now: Date = Date()) -> String {
         let minutes = Int((end.timeIntervalSince(now) / 60).rounded(.up))
         guard minutes > 0 else { return "Ending" }
@@ -165,8 +165,7 @@ enum PlayerStatusFormat {
 }
 
 struct PlayerStatusBar: View {
-    @ObservedObject var state: AppState
-    @ObservedObject private var bridge = VLCBridge.shared
+    let state: AppState   // only for recordUpcoming — not observed, so the bar doesn't redraw on every AppState change
     let device: HDHRDevice
     let channel: LineupEntry?
     let info: PlayerStatusInfo
@@ -175,7 +174,6 @@ struct PlayerStatusBar: View {
     let upcoming: [GuideEntry]           // the channel's next shows, soonest first
     let canRecordUpcoming: Bool
     var shimmerToken = 0                     // bumped each time the bar opens; runs one shimmer wave across the current show's block
-    var accessibilityID = "vlc-status-bar"   // the brief slide-up copy uses its own, so tests can tell the two apart
 
     @State private var logo: NSImage?
     @State private var shine: CGFloat = -1   // -1...1.6, the wave's position, animated here so nothing else interferes
@@ -207,7 +205,7 @@ struct PlayerStatusBar: View {
         }
         .focusEffectDisabled()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(accessibilityID)
+        .accessibilityIdentifier("vlc-status-bar")
         .task(id: channelLogoURL) {
             guard let url = channelLogoURL else { logo = nil; return }
             logo = await ChannelIconCache.shared.image(for: url)
@@ -404,22 +402,19 @@ struct PlayerStatusBar: View {
         .help("Record \(entry.Title)")
     }
 
-    /// "8:00 PM" today, "Sat 9:00 AM" on another day (`dropWeekday` keeps the compact "Then …" line short).
-    static func shortTime(_ date: Date, now: Date, dropWeekday: Bool = false) -> String {
-        let f = DateFormatter()
-        if Calendar.current.isDate(date, inSameDayAs: now) || dropWeekday {
-            f.setLocalizedDateFormatFromTemplate("jmm")
-        } else {
-            f.setLocalizedDateFormatFromTemplate("Ejmm")
-        }
-        return f.string(from: date)
+    /// "8:00 PM" today, "Sat 9:00 AM" on another day.
+    private static let timeOnly: DateFormatter = { let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("jmm"); return f }()
+    private static let weekdayAndTime: DateFormatter = { let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("Ejmm"); return f }()
+
+    static func shortTime(_ date: Date, now: Date) -> String {
+        (Calendar.current.isDate(date, inSameDayAs: now) ? timeOnly : weekdayAndTime).string(from: date)
     }
 }
 
 /// One upcoming show: its image, when it starts, its title, tinted with its genre color like the current show's bar.
 struct UpcomingShowCard<Trailing: View>: View {
     let entry: GuideEntry
-    let label: String          // "NEXT" or "LATER"
+    let label: String          // "NEXT", "LATER", or "STARTED" (already begun)
     let logo: NSImage?
     @ViewBuilder var trailing: () -> Trailing
     @State private var poster: NSImage?

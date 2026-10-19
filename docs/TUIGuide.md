@@ -473,7 +473,7 @@ result at the wrong channel by the time `Enter` picks it.
 
 ## Debug log
 
-`DebugLog.swift` writes to `~/Library/Logs/hdhrVCRplus-guide-debug.log` — separate from
+**Off by default** (2026-10-19): it records every raw input byte, including typed search text, so it only runs with `HDHR_GUIDE_DEBUG=1` in the environment. `DebugLog.swift` then writes to `~/Library/Logs/hdhrVCRplus-guide-debug.log` — separate from
 `hdhr_VCR`'s own `glog()`/`RotatingLogFile` (a different module; not worth importing `hdhr_VCR`,
 an executable not a library, just for this) and truncated at launch past 2MB rather than using
 `RotatingLogFile`'s full generation-rotation scheme, since this is meant for a short debugging

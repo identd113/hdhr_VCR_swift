@@ -2,10 +2,8 @@ import Foundation
 
 /// The one place the app's own loopback relay endpoints (`WebServer`'s `/api/watch-recording` and
 /// `/api/feed-local-relay`) are spelled — as URLs the in-app player is handed, and as the path
-/// checks that classify a playing URL as "a relay, not a real tuner stream". Building these by
-/// hand in several files is how a port inconsistency crept in (2026-10-04); the classification
-/// checks drifting apart is the same risk for the tuner-occupancy invariant ("a relay session
-/// consumes no tuner — see `AppState.vlcOccupiesTuner`").
+/// checks that classify a playing URL as "a relay, not a real tuner stream". One source keeps the URL shapes and the
+/// tuner-occupancy classification (`AppState.vlcOccupiesTuner`) from drifting apart.
 enum LocalRelay {
     static let watchRecordingPath = "/api/watch-recording"
     static let feedLocalRelayPath = "/api/feed-local-relay"

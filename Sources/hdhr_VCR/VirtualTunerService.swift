@@ -363,6 +363,10 @@ final class VirtualTunerService {
         }
 
         if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes) {
+            guard Self.hasValidCRC(bytes) else {
+                glog("[VirtualTuner] ignoring a discovery reply from \(fromIP) with a bad checksum", level: .warning)
+                return
+            }
             // Falls back to 1 (never 0) when the TunerCount TLV itself fails to parse (a
             // malformed/truncated packet) — deviceID alone is still a genuine presence signal and
             // shouldn't be dropped just because the count is unreadable, but a fabricated 0 here
@@ -395,6 +399,16 @@ final class VirtualTunerService {
     /// end. Same looseness as isDiscoverRequest(_:) above (length + type only, no CRC check).
     static func isDiscoverReply(_ bytes: [UInt8]) -> Bool {
         bytes.count >= 4 && bytes[0] == 0x00 && bytes[1] == 0x03
+    }
+
+    /// True when a DISCOVER_REPLY's trailing CRC-32 (little-endian, after the payload) matches its bytes — so an announce
+    /// from a stray or spoofed packet on the LAN can't mark another Mac's FEED source as gone.
+    static func hasValidCRC(_ bytes: [UInt8]) -> Bool {
+        guard bytes.count >= 8 else { return false }
+        let bodyLen = 4 + (Int(bytes[2]) << 8 | Int(bytes[3]))
+        guard bytes.count >= bodyLen + 4 else { return false }
+        let expected = withUnsafeBytes(of: crc32(bytes[0..<bodyLen]).littleEndian) { Array($0) }
+        return Array(bytes[bodyLen..<(bodyLen + 4)]) == expected
     }
 
     /// Extracts the DeviceID TLV (tag 0x02, 4 bytes, big-endian) from a DISCOVER_REPLY packet's

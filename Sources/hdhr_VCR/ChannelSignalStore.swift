@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 // ── Channel signal quality history ───────────────────────────────────────────
-// Keyed by guideName.lowercased() — available at both write time (from LineupEntry
+// Keyed by ChannelSignalStore.key(for:) (trimmed, lowercased guideName) — available at both write time (from LineupEntry
 // during recording) and read time (views). GuideName is device-agnostic: the same
 // call sign appears on every device tuned to that multiplex.
 // Persists up to 50 samples per channel in ~/Library/Application Support/hdhrVCRplus/channel_signal_history.json.

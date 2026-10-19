@@ -5,7 +5,8 @@ import AppKit
 // loading the lineup / loading the guide" checklist over slowly drifting cached station logos and posters.
 // When startup has finished (never sooner than `minimumSeconds`, never later than `capSeconds`) the card
 // fades and the logo flies up to the menu-bar icon and pulses there — "I'm loaded, I live up here".
-// Not load-bearing: startup runs exactly as before whether or not this window ever appears. See docs/LaunchSplash.md.
+// Startup does the same work with or without this window, but while a splash plays its heavy parts wait for the fly-in (≤ 8 s;
+// see `LaunchSplashController.waitForFlyIn`). See docs/LaunchSplash.md.
 
 /// The splash's pure decisions — gate, timing, and the checklist text — so they are unit-tested.
 enum LaunchSplashPlan {
@@ -276,7 +277,7 @@ struct LaunchSplashView: View {
         let saved = UserDefaults.standard.stringArray(forKey: Self.savedPostersKey) ?? []
         var fresh = posterURLs()
         var waited = 0
-        while fresh.count < want, saved.count < want, waited < 10, state.isStartingUp {   // brand-new install of this feature
+        while fresh.count < want, saved.count < want, waited < 10, state.isStartingUp {   // no saved list yet: give the guide ~1 s
             try? await Task.sleep(for: .milliseconds(100)); waited += 1
             fresh = posterURLs()
         }
@@ -314,14 +315,16 @@ struct LaunchSplashView: View {
     @MainActor private func fetchImages(_ urls: [String]) async -> [NSImage] {
         final class Box: @unchecked Sendable { var images: [Int: NSImage] = [:]; var done = 0 }
         let box = Box()
+        var fetches: [Task<Void, Never>] = []
         for (i, u) in urls.enumerated() {
-            Task { @MainActor in
-                if let img = await ChannelIconCache.shared.image(for: u) { box.images[i] = await Self.shrunk(img) }
+            fetches.append(Task { @MainActor in
+                if let img = await ChannelIconCache.shared.image(for: u), !Task.isCancelled { box.images[i] = await Self.shrunk(img) }
                 box.done += 1
-            }
+            })
         }
         var ticks = 0
         while box.done < urls.count, ticks < 15 { try? await Task.sleep(for: .milliseconds(100)); ticks += 1 }
+        fetches.forEach { $0.cancel() }   // the tiles are assigned from what has arrived; don't keep pulling the rest
         return box.images.sorted { $0.key < $1.key }.map(\.value)
     }
 
@@ -330,8 +333,8 @@ struct LaunchSplashView: View {
     /// backdrop for the setup wizard, so it should end up as show images. Gives up after ~60 s.
     @MainActor private func upgradeToRealPosters() async {
         let want = MosaicTiles.slotCount
-        for _ in 0..<120 {
-            try? await Task.sleep(for: .milliseconds(500))
+        for _ in 0..<30 {
+            try? await Task.sleep(for: .seconds(2))
             if ended || Task.isCancelled { return }
             let urls = posterURLs()
             guard urls.count >= 8 else { continue }
@@ -344,11 +347,9 @@ struct LaunchSplashView: View {
         }
     }
 
-    /// The splash is over: hand the window back to `LaunchSplashController`, which orders it out and releases it — the
-    /// window, this view, its `@State` and the poster images are all freed (nothing stays alive, hidden or animating).
-    /// Before 2026-10-15 the splash was a SwiftUI `Window` scene, which `dismiss()` only orders out: its view graph lived on
-    /// and the `TimelineView` kept rendering the invisible wall at display rate (~21 % idle CPU, a ~0.6 s main-thread stall
-    /// every 10 s). First run: this is only called after the setup wizard is dismissed, so the wall stays as its backdrop.
+    /// The splash is over: hand the window back to `LaunchSplashController`, which orders it out and frees the window, this
+    /// view, its `@State` and the poster images. First run: only called after the setup wizard is dismissed, so the wall stays
+    /// as its backdrop until then.
     @MainActor private func finish() {
         frozen = true
         tilesReady = false

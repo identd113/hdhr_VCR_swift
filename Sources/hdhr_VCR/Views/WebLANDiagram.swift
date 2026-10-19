@@ -11,10 +11,10 @@ struct WebLANDiagram: View {
     private static let receiverSize: CGFloat = 22
     private static let packetSize: CGFloat = 6
     // Three receivers, staggered left-to-right — reads as a fan-out shape even without motion.
-    private static let receivers: [(systemImage: String, phaseOffset: Double, yOffset: CGFloat)] = [
-        ("desktopcomputer", 0.0,  -24),
-        ("ipad",            0.33,  0),
-        ("iphone",          0.66,  24),
+    private static let receivers: [(systemImage: String, yOffset: CGFloat)] = [
+        ("desktopcomputer", -24),
+        ("ipad",             0),
+        ("iphone",           24),
     ]
 
     var body: some View {

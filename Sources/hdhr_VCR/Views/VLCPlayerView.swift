@@ -205,6 +205,7 @@ struct VLCPlayerView: View {
     @State private var barRowHeight: CGFloat = 0   // animated 0...52 in step with the window's own resize
     @State private var barCloseTask: Task<Void, Never>?
     @State private var tempBarToken = 0
+    @State private var feedMatchSnapshot: GuideStore.SeriesMatch?   // a FEED show's airing found in the guide, once per show
     @State private var upcomingSnapshot: [GuideEntry] = []   // next-show strip, rebuilt only when the current show changes
     @State private var infoFlashCount = 0     // bumped to pulse the ⓘ icon
     @State private var infoGlow = false
@@ -216,13 +217,8 @@ struct VLCPlayerView: View {
     @State private var popoverAnchorHovered = false   // pointer on ⓘ
     @State private var popoverBodyHovered = false     // pointer inside the popover itself
     @State private var linkInfo: NetworkLinkInfo?   // measured when the Stream popover opens (see connectionSection)
-    // Captured once when streamInfoHovered flips true (see the .onHover below) rather than read
-    // live from recordingSizeText inside streamPopover — that computed property's own doc
-    // comment always claimed "recomputed only when the popover reopens," but `body` actually
-    // re-evaluates on every bridge.bufferInfo publish (every ~3s while playing, VLCBridge.swift),
-    // which re-derives streamPopover (and therefore recordingSizeText's blocking disk stat)
-    // that often for as long as the popover stays open — not just once per open. This @State
-    // snapshot is what actually delivers the "recompute only on open" behavior the comment describes.
+    // The recording's file size, read once when the Stream popover opens (ⓘ onHover). Reading it inside the popover body
+    // would repeat the blocking disk stat on every stats tick while the popover is open.
     @State private var recordingSizeSnapshot: String?
     // Cache for inferredCodecs' local Watch-Now (recording-relay) branch — that branch does three
     // linear scans (state.shows.first, a device lookup, a channel-lineup scan) to derive the
@@ -527,10 +523,7 @@ struct VLCPlayerView: View {
         return (displayCodecName(codec), "AC-3")
     }
 
-    // A plain stat of the recording file's current size. Only ever called from the "Native" button's
-    // .onHover (captured into recordingSizeSnapshot) — never read directly from streamPopover's
-    // body, which would re-run this blocking disk stat on every bridge.bufferInfo publish (~3s while
-    // playing) for as long as the popover stayed open, not just once per open as originally intended.
+    // A plain stat of the recording file's size; read only on the ⓘ onHover (into recordingSizeSnapshot), never from the popover body.
     private var recordingSizeText: String? {
         guard let showId = bridge.recordingShowId,
               let show = state.shows.first(where: { $0.show_id == showId }),
@@ -697,14 +690,8 @@ struct VLCPlayerView: View {
         state.refreshTunerOccupancy()
     }
 
-    // The Native-resolution icon's color now also encodes whether the current stream is being
-    // read from the network (a live tuner stream) or from disk (the recording relay) — requested
-    // 2026-09-11, see TODO.md's "Watch Now should show whether the video is currently reading
-    // from the network or from disk". `bridge.recordingShowId` is the same signal AppState's
-    // `vlcOccupiesTuner`/`vlcLiveChannel` already key off for this exact distinction elsewhere.
-    // Blue = network, purple = disk — replaces the plain `.accentColor` this icon used to glow
-    // (see the toolbar's own comment on how "achievable but not yet native" is still conveyed:
-    // full-saturation + shadow vs. a dimmed version of the same hue, not a color swap).
+    // Source color for the ⓘ icon and the Stream popover: blue = network (live tuner), purple = disk (recording relay).
+    // `bridge.recordingShowId` is the same signal `AppState.vlcOccupiesTuner` keys off.
     //
     // A third case, added 2026-09-13: a remote FEED session (`device.isVirtualRelay`) is neither
     // of the above — it arrives over the network like a live tuner stream, but what's actually on
@@ -1295,10 +1282,10 @@ struct VLCPlayerView: View {
 
     // MARK: - Status bar data
 
-    private func statusBarView(id: String = "vlc-status-bar") -> some View {
+    private func statusBarView() -> some View {
         PlayerStatusBar(state: state, device: device, channel: selectedChannel, info: statusBarInfo,
                         poster: posterNSImage, channelLogoURL: statusBarChannelLogoURL,
-                        upcoming: statusBarUpcoming, canRecordUpcoming: statusBarCanRecordUpcoming, shimmerToken: barShimmerToken, accessibilityID: id)
+                        upcoming: statusBarUpcoming, canRecordUpcoming: statusBarCanRecordUpcoming, shimmerToken: barShimmerToken)
     }
 
     /// Switches the persistent status bar on or off. The window is resized in the same step as the state change (and
@@ -1413,8 +1400,10 @@ struct VLCPlayerView: View {
     private var statusBarInfo: PlayerStatusInfo {
         // A FEED session has no guide entry of its own; borrow the matching airing from a guide this Mac holds so the
         // bar shows the same time, genre and synopsis a local show does.
-        let entry = currentGuideEntry ?? feedGuideMatch?.entry
-        let feedEntry = (currentGuideEntry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
+        let guide = currentGuideEntry
+        let entry = guide ?? feedMatchSnapshot?.entry   // the FEED match is looked up once per show (see computeUpcoming)
+        let feedEntry = (guide == nil && device.isVirtualRelay) ? currentFeedEntry : nil
+        let source = statusBarSource
         let (title, episode) = titleAndEpisode(entry: entry, feedEntry: feedEntry)
         return PlayerStatusInfo(
             title: title, episodeLine: episode,
@@ -1424,8 +1413,8 @@ struct VLCPlayerView: View {
                                                       originalAirdate: entry?.OriginalAirdate,
                                                       isNew: entry.map(isNewEpisode) ?? false),
             isNew: entry.map(isNewEpisode) ?? false,
-            source: statusBarSource,
-            airing: statusBarAiring(entry),
+            source: source,
+            airing: statusBarAiring(entry, source: source),
             slotEnd: entry?.endDate,
             accent: entry.flatMap { $0.firstGenre == nil ? nil : guideEntryColor(for: $0, onAir: true) })
     }
@@ -1440,15 +1429,15 @@ struct VLCPlayerView: View {
     }
 
     /// Progress only makes sense for a live tuner: a recording plays from disk, so wall-clock time says nothing about it.
-    private func statusBarAiring(_ entry: GuideEntry?) -> DateInterval? {
-        guard let entry, case .liveTuner = statusBarSource, entry.endDate > entry.startDate else { return nil }
+    private func statusBarAiring(_ entry: GuideEntry?, source: PlayerStatusInfo.Source) -> DateInterval? {
+        guard let entry, case .liveTuner = source, entry.endDate > entry.startDate else { return nil }
         return DateInterval(start: entry.startDate, end: entry.endDate)
     }
 
     /// The airing a FEED session's show came from, found by title in the guides we hold (the relay's lineup carries
     /// no channel number). Anchored to when its recording file began so a later airing of the same series isn't picked.
-    private var feedGuideMatch: GuideStore.SeriesMatch? {
-        guard currentGuideEntry == nil, device.isVirtualRelay, let feed = currentFeedEntry,
+    private func feedGuideMatch(guide: GuideEntry?) -> GuideStore.SeriesMatch? {
+        guard guide == nil, device.isVirtualRelay, let feed = currentFeedEntry,
               let title = feed.virtualRelayShowTitle, !title.isEmpty else { return nil }
         let at = feed.virtualRelayFileStartedAt.map { Date(timeIntervalSince1970: $0 + 60) } ?? Date()
         return state.guideStore.currentEntryByTitle(title, at: at)
@@ -1464,13 +1453,15 @@ struct VLCPlayerView: View {
     }
 
     private func computeUpcoming() -> [GuideEntry] {
-        if let m = feedGuideMatch {
+        let guide = currentGuideEntry
+        feedMatchSnapshot = feedGuideMatch(guide: guide)
+        if let m = feedMatchSnapshot {
             return PlayerStatusFormat.upcoming(
                 after: m.entry,
                 in: state.guideStore.entries(deviceId: m.deviceId, channelNum: m.channelNum, after: m.entry.endDate),
                 horizon: .infinity, limit: .max)
         }
-        guard let entry = currentGuideEntry, !entry.channelNum.isEmpty else { return [] }
+        guard let entry = guide, !entry.channelNum.isEmpty else { return [] }
         return PlayerStatusFormat.upcoming(
             after: entry,
             in: state.guideStore.entries(deviceId: entry.deviceId, channelNum: entry.channelNum, after: entry.endDate),
@@ -2680,7 +2671,7 @@ struct VLCPlayerView: View {
                 Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
             }
         }
-        // A one-shot snapshot taken when the popover opens (the Native button's .onHover), not a ticking value.
+        // A one-shot snapshot taken when the popover opens (the ⓘ button's .onHover), not a ticking value.
         if bridge.recordingShowId != nil, let recordingSizeSnapshot { row("On disk", recordingSizeSnapshot) }
         if bridge.recordingShowId != nil {
             TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
@@ -3858,7 +3849,7 @@ final class VLCPlayerWindowManager {
                px.height / scale + chromeHeight <= screen.visibleFrame.height
     }
 
-    /// The content size the Native button aims for: 1:1 physical pixels when that fits `visible`, else the largest clean
+    /// The content size Zoom (Window ▸ Zoom) aims for: 1:1 physical pixels when that fits `visible`, else the largest clean
     /// 1/2, 1/4, … of it that does. Pure.
     nonisolated static func nativeTarget(pixels: CGSize, scale: CGFloat, chrome: CGFloat,
                                          visible: CGSize) -> (content: CGSize, divisor: Int) {
@@ -3908,9 +3899,9 @@ final class VLCPlayerWindowManager {
     private(set) var frameStatusBarHeight: CGFloat = 0
 
     /// Records whether the status bar is wanted, then brings the window in line (`syncWindowToStatusBar`).
-    func setStatusBarVisible(_ visible: Bool, slideSeconds: Double? = nil) {
+    func setStatusBarVisible(_ visible: Bool) {
         statusBarHeight = visible ? Self.playerStatusBarHeight : 0
-        syncWindowToStatusBar(slideSeconds: slideSeconds)
+        syncWindowToStatusBar()
     }
 
     /// The window's current content height, for a per-frame slide (`setContentHeightDuringSlide`); nil in fullscreen or
@@ -3935,13 +3926,13 @@ final class VLCPlayerWindowManager {
     /// Grows or shrinks the window by whatever the bar's height differs from what the frame was sized for, top edge fixed,
     /// so the video area keeps its size and shape. A no-op in fullscreen (called again when fullscreen ends) and when
     /// there is no window yet (called again when the view appears in a new one).
-    func syncWindowToStatusBar(slideSeconds: Double? = nil) {
+    func syncWindowToStatusBar() {
         guard let win = window, !win.styleMask.contains(.fullScreen),
               let current = win.contentView?.frame.size else { return }
         let delta = statusBarHeight - frameStatusBarHeight
         guard delta != 0 else { return }
         frameStatusBarHeight = statusBarHeight
-        applyContentSize(CGSize(width: current.width, height: current.height + delta), to: win, animate: false, slideSeconds: slideSeconds)
+        applyContentSize(CGSize(width: current.width, height: current.height + delta), to: win, animate: false)
     }
 
     nonisolated static let playerMinContentWidth: CGFloat = 640
@@ -4017,22 +4008,14 @@ final class VLCPlayerWindowManager {
         applyContentSize(target, to: win, animate: true)
     }
 
-    private func applyContentSize(_ content: CGSize, to win: NSWindow, animate: Bool, slideSeconds: Double? = nil) {
+    private func applyContentSize(_ content: CGSize, to win: NSWindow, animate: Bool) {
         guard let current = win.contentView?.frame.size,
               abs(current.width - content.width) > 0.5 || abs(current.height - content.height) > 0.5 else { return }
         var frame = win.frameRect(forContentRect: NSRect(origin: .zero, size: content))
         frame.origin = NSPoint(x: win.frame.minX, y: win.frame.maxY - frame.height)   // keep the top edge fixed
         // Growing downward/rightward must not push the picture under the Dock or off the screen.
         if let visible = (win.screen ?? NSScreen.main)?.visibleFrame { frame = Self.frame(frame, keptWithin: visible) }
-        if let slideSeconds {   // timed to match the status bar row's own animation
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = slideSeconds
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                win.animator().setFrame(frame, display: true)
-            }
-        } else {
-            win.setFrame(frame, display: true, animate: animate)
-        }
+        win.setFrame(frame, display: true, animate: animate)
     }
 
     /// Pure: `frame` slid (never resized) to lie inside `visible`. A frame larger than `visible` is pinned to its

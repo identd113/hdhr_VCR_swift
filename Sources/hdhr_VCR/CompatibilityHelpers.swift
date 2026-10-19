@@ -3,14 +3,21 @@ import Darwin
 
 // MARK: - CRC-32
 
-// IEEE 802.3 / ISO 3309 (polynomial 0xEDB88320) — shared by HDHRManager's UDP discovery packet
-// trailer and WebServer's gzip response trailer. Both are cold paths (once per discovery packet,
-// once per gzip response), so a table-driven scalar loop is plenty; no need for Data's
-// withUnsafeBytes fast path here.
+// IEEE 802.3 / ISO 3309 (polynomial 0xEDB88320) — shared by the UDP discovery packet trailer and WebServer's gzip response
+// trailer. The generic version suits small arrays; the `Data` overload walks the buffer directly (the gzip trailer runs
+// over a whole guide page).
 private let crc32Table: [UInt32] = (0..<256).map { i in
     var c = UInt32(i)
     for _ in 0..<8 { c = (c & 1) == 1 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
     return c
+}
+
+func crc32(_ data: Data) -> UInt32 {
+    data.withUnsafeBytes { raw in
+        var c: UInt32 = 0xFFFF_FFFF
+        for b in raw.bindMemory(to: UInt8.self) { c = crc32Table[Int((c ^ UInt32(b)) & 0xFF)] ^ (c >> 8) }
+        return c ^ 0xFFFF_FFFF
+    }
 }
 
 func crc32<S: Sequence>(_ bytes: S) -> UInt32 where S.Element == UInt8 {

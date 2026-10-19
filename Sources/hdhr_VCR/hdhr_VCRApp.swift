@@ -153,16 +153,9 @@ struct hdhr_VCRApp: App {
                 // the user is navigating — prevents @Published changes from glitching the menu.
                 .onAppear  {
                     appState.menuIsOpen = true
-                    // This onAppear also fires on the app's forced silent open+close at launch
-                    // (see statusLabel's comment below), which is what makes it a reliable,
-                    // race-free launch hook — but it also fires on every real user menu-open, so
-                    // the local flags confine the wizard/nag to firing once per run each.
-                    // (2026-09-11: this was briefly also used to trigger AppState.startup() —
-                    // reverted the same day when a real deploy showed the MenuBarExtra status
-                    // item, and therefore this onAppear, sometimes never renders/fires at all on
-                    // this machine/OS — the app sat fully idle, web server never bound, nothing
-                    // scheduled. Not reliable enough for something this load-bearing; startup()
-                    // is triggered from AppState.init() again, see that comment for the real fix.)
+                    // Also fires on the forced silent open+close at launch (a reliable launch hook) and on every real menu open,
+                    // so the flags limit the wizard/nag to once per run. Not used for startup(): the status item sometimes never
+                    // renders, so startup() runs from AppState.init().
                     // The wizard check runs first so a genuinely first launch shows it before the
                     // donation nag (which stays suppressed until the wizard is dismissed — see
                     // openDonationNagIfNeeded()'s own guard).

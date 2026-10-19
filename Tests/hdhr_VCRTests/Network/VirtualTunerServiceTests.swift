@@ -269,4 +269,21 @@ struct VirtualTunerServiceTests {
         #expect(VirtualTunerService.conflictShouldYield(
             ourStart: nil, theirStart: nil, ourHostname: "aaa", theirHostname: "zzz") == false)
     }
+
+    // MARK: - hasValidCRC — a stray or spoofed packet must not count as an announce
+
+    @Test func hasValidCRC_acceptsARealReplyAndRejectsTamperedOrTruncatedOnes() {
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xABCD1234, baseURL: "http://10.0.0.5:1980", tunerCount: 0)
+        #expect(VirtualTunerService.hasValidCRC(pkt))
+        var changed = pkt; changed[8] ^= 0xFF                          // a payload byte
+        #expect(!VirtualTunerService.hasValidCRC(changed))
+        #expect(!VirtualTunerService.hasValidCRC(Array(pkt.dropLast())))   // truncated trailer
+        #expect(!VirtualTunerService.hasValidCRC([0x00, 0x03, 0x00, 0x00]))   // no checksum at all
+    }
+
+    @Test func crc32_dataOverloadMatchesTheGenericOne() {
+        let bytes = (0..<1000).map { UInt8($0 & 0xFF) }
+        #expect(crc32(Data(bytes)) == crc32(bytes))
+        #expect(crc32(Data("123456789".utf8)) == 0xCBF4_3926)   // the standard CRC-32 check value
+    }
 }

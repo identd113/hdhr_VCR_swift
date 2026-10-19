@@ -9,14 +9,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
-    // The TAB stays "Sharing" — an umbrella covering three independent LAN-facing methods (the
-    // web server itself, Terminal Guide, Recording FEED). Briefly renamed to "Web LAN" 2026-09-04,
-    // then reverted the same day per explicit user correction: "Web LAN" is the *first* method's
-    // own name (its own Section within this tab, see sharingView below — matches how "Terminal
-    // Guide"/"Recording FEED" each already have their own section name distinct from the tab), not
-    // a name for the whole tab. Underlying Web_server_enabled/webServerRunning/setupWebServer()
-    // Swift symbols and config keys are, either way, unchanged — same "only the user-facing label
-    // moves" precedent as the section's earlier "Web Server" → "Sharing" rename.
+    // The tab is "Sharing": an umbrella over the web server ("Web LAN" section), Terminal Guide and Recording FEED.
     case sharing       = "Sharing"
     case maintenance   = "Maintenance"
     case about         = "About"
@@ -728,7 +721,7 @@ struct SettingsView: View {
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                         Spacer()
-                        Link("Open", destination: URL(string: urlStr)!)
+                        if let url = URL(string: urlStr) { Link("Open", destination: url) }
                     }
                 }
             }
@@ -824,7 +817,7 @@ struct SettingsView: View {
                                 .font(.system(.body, design: .monospaced))
                                 .textSelection(.enabled)
                             Spacer()
-                            Link("Open", destination: URL(string: urlStr)!)
+                            if let url = URL(string: urlStr) { Link("Open", destination: url) }
                         }
                     } else {
                         Text("Save to activate — the endpoint responds once Web LAN is running.")
