@@ -17,6 +17,8 @@ final class WebServer: @unchecked Sendable {
         // refreshed only when the guide reloads) — avoids paying the DEFLATE cost on every request
         // for a body that rarely changes.
         case okPrecompressed(contentType: String, raw: Data, gzip: Data)
+        // Never cached by the browser or a proxy (a live HLS playlist changes every few seconds).
+        case okNoStore(contentType: String, body: Data)
         case notFound(String)
         case badRequest(String)
         case payloadTooLarge(String)
@@ -53,6 +55,8 @@ final class WebServer: @unchecked Sendable {
     // narrower fix for who has to wait behind those bytes.
     private let acceptQueue = DispatchQueue(label: "hdhrVCRplus.webserver.accept", qos: .userInitiated)
     private weak var appState: AppState?
+    // Web streaming (docs/WebStreaming.md). Its own actor: nothing it does runs on the main thread.
+    private var streams: StreamSessions?
 
     private var sseConns: [NWConnection] = []
     private let sseLock  = NSLock()
@@ -386,6 +390,20 @@ final class WebServer: @unchecked Sendable {
         stop()
         self.appState     = appState
         self.stateCallback = onState
+        let streams = StreamSessions(snapshot: { [weak appState] ids in
+            await MainActor.run {
+                guard let appState else { return StreamSnapshot(enabled: false, sources: [:]) }
+                var sources: [String: StreamSource] = [:]
+                for id in ids {
+                    guard let show = appState.shows.first(where: { $0.show_id == id }), show.show_recording,
+                          !show.show_recording_path.isEmpty else { continue }
+                    sources[id] = StreamSource(path: show.show_recording_path, isRecording: appState.recordingManager.isRunning(showId: id))
+                }
+                return StreamSnapshot(enabled: appState.config.Web_streaming_enabled, sources: sources)
+            }
+        })
+        self.streams = streams
+        Task { await streams.sweepLeftovers() }
 
         let clamped = max(1025, min(65534, port))
         activePort = clamped
@@ -476,6 +494,7 @@ final class WebServer: @unchecked Sendable {
     // actually run concurrently. Every other call site omits `completion` and is unaffected — same
     // synchronous, fire-and-forget behavior as before.
     func stop(completion: (() -> Void)? = nil) {
+        if let streams { Task { await streams.stopAll(reason: "web server stopped") } }
         guard let l = listener else {
             completion?()
             return
@@ -815,6 +834,34 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func feedCacheStillActive(sessionId: String) -> Bool {
         appState?.isFeedCacheSessionStillActive(id: sessionId) ?? false
+    }
+
+    // GET /api/hls/<show>/<file> — web streaming (docs/WebStreaming.md). Runs entirely off the main thread: the session
+    // manager is its own actor and the file read happens on fileIOQueue. A playlist request for a stream that is just
+    // starting waits (asynchronously) for the first segments instead of failing.
+    private func handleHLS(showId: String, name: String, conn: NWConnection) {
+        guard let streams else { send(.notFound("streaming unavailable"), on: conn); return }
+        Task { [weak self] in
+            let deadline = Date().addingTimeInterval(name == "index.m3u8" ? 15 : 0)
+            var url = await streams.file(showId: showId, name: name)
+            while url == nil, Date() < deadline, HLSPlaylist.isServableName(name), await streams.isActive(showId) {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                url = await streams.file(showId: showId, name: name)
+            }
+            guard let self else { return }
+            guard let url else { self.queue.async { self.send(.notFound("not available"), on: conn) }; return }
+            self.fileIOQueue.async {
+                let data = try? Data(contentsOf: url)
+                self.queue.async {
+                    guard let data else { self.send(.notFound("not available"), on: conn); return }
+                    if name.hasSuffix(".m3u8") {
+                        self.send(.okNoStore(contentType: "application/vnd.apple.mpegurl", body: data), on: conn)
+                    } else {
+                        self.send(.ok(contentType: "video/mp4", body: data), on: conn)
+                    }
+                }
+            }
+        }
     }
 
     private func handleWatchRecording(showId: String, startOffset: Int, conn: NWConnection) {
@@ -2300,6 +2347,11 @@ final class WebServer: @unchecked Sendable {
 
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
+            }
+            if cleanPath.hasPrefix("/api/hls/") && method == "GET" {
+                let parts = cleanPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)   // api, hls, <show>, <file>
+                guard parts.count == 4 else { self.send(.notFound("not found"), on: conn); return }
+                self.handleHLS(showId: parts[2], name: parts[3], conn: conn); return
             }
             if cleanPath == "/api/watch-recording" && method == "GET" {
                 let query = URLComponents(string: path)?.queryItems ?? []
@@ -4418,6 +4470,8 @@ final class WebServer: @unchecked Sendable {
             var terminalGuideEnabled: Bool
             // Settings → Default transcode (validated), the profile the Record modal starts on.
             var defaultTranscode: String
+            // Web_streaming_enabled — lets the web guide show or hide its Watch button without a restart.
+            var streamingEnabled: Bool
         }
 
         let defaultTranscode = Show.validTranscodeProfiles.contains(state.config.Default_transcode)
@@ -4451,7 +4505,7 @@ final class WebServer: @unchecked Sendable {
         if let deviceId, offlineIDs.contains(deviceId) {
             let payload = GuidePayload(deviceId: deviceId, winStart: 0, winSec: 0, devices: devices, channels: [],
                 sportsPaddingEnabled: state.config.Sports_padding_enabled,
-                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
+                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode, streamingEnabled: state.config.Web_streaming_enabled)
             return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
         }
 
@@ -4460,7 +4514,7 @@ final class WebServer: @unchecked Sendable {
             ?? state.recordableDevices.first else {
             let empty = GuidePayload(deviceId: "", winStart: 0, winSec: 0, devices: devices, channels: [],
                 sportsPaddingEnabled: state.config.Sports_padding_enabled,
-                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
+                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode, streamingEnabled: state.config.Web_streaming_enabled)
             return (try? JSONEncoder().encode(empty)) ?? Data("{}".utf8)
         }
 
@@ -4535,7 +4589,7 @@ final class WebServer: @unchecked Sendable {
 
         let payload = GuidePayload(deviceId: device.DeviceID, winStart: winStart, winSec: winSec,
             devices: devices, channels: channels, sportsPaddingEnabled: state.config.Sports_padding_enabled,
-            terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
+            terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode, streamingEnabled: state.config.Web_streaming_enabled)
         return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
     }
 
@@ -4614,6 +4668,10 @@ final class WebServer: @unchecked Sendable {
                 headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
                 body    = b
             }
+        case .okNoStore(let ct, let b):
+            status = "200 OK"
+            headers = [("Content-Type", ct), ("Content-Length", "\(b.count)"), ("Cache-Control", "no-store")]
+            body    = b
         case .okPrecompressed(let ct, let raw, let gz):
             status = "200 OK"
             if acceptsGzip {
