@@ -38,6 +38,18 @@ Wider check on more recordings (10 s each, `avconvert --start 120 --duration 10`
 
 So AVFoundation **deinterlaces 1080i/480i automatically** (the earlier "deinterlacing needed" gap is covered on this path) and handled every MPEG-2 file tried.
 
+### Scenario tests (2026-10-19)
+
+| Scenario | Result |
+|---|---|
+| Local `.ts` file, `AVAssetReader` | Works: opens in 0.1 s, decodes 300 frames of 720p60 in 0.2 s. |
+| **Growing file** (a writer appends ~16 Mb/s while we convert) | Works as a **snapshot**: each pass converts whatever is on disk at open (24 s at 29 MB, then 68 s at 80 MB), no errors. A growing recording can be followed in repeated passes (re-open, read from the last timestamp). Seamless joins between passes not yet verified. |
+| Plain `.ts` over HTTP (static server) | **Fails** (`byte range length mismatch`): AVFoundation needs a server that honors `Range` requests. |
+| **Live tuner stream** (`http://<EXTEND>:5004/auto/v9.1`) | **Fails** (`byte range and no content length`): AVFoundation cannot read an unbounded stream. Tuner was released immediately (0/2). |
+| macOS 15 | **Untestable here** (both Macs run 27.0.1). Needs a macOS 15 machine/VM before the app's minimum can be claimed. |
+
+So the AVFoundation pipeline must read from a **local growing file**, not a URL. Live TV works the same way: spool the tuner stream into a rolling temp `.ts` (a recording that is never saved) and treat it like a growing recording. (Alternative: an `AVAssetResourceLoader` delegate that answers `Range` requests from a buffer.)
+
 Implication: a native AVAssetReader → AVAssetWriter (H.264 hardware + AAC, HLS segment output) pipeline needs no VLC.app and is ~15× cheaper than x264, but it is file-based and must be proven for growing recordings and on older macOS. VLC remains the fallback for sources AVFoundation cannot read.
 
 ## Decision
