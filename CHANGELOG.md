@@ -4,6 +4,10 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+### Terminal guide (`hdhr_guide`)
+
+- *Added* — **Transcode choice, a Bonus Time overlap marker and fuller summary text.** On the schedule screen `c` cycles the transcode profile (it starts on your Default transcode, and warns when the tuner can't transcode). A show that starts while the one before it is still in Bonus Time gets an amber `~`, with the same "may run up to N min into this show" note the web guide shows in the info panel and the Enter screen, and a recording's status says "in Bonus Time until 7:30 AM". The `?` card now lists the search keys, `Ctrl-C`, `c` and the `~` marker.
+
 ### Player (`VLCPlayerView`, `PlayerStatusBar`)
 
 - *Updated* — **The status bar says when a show is running over, and the left side shows as much as the next-show cards.** The left block now opens with "NOW · 6:00 – 7:00 AM · 22 min left" like the cards' "NEXT · 7:00 AM"; once the guide slot has ended while you are still watching it, that line turns orange ("OVER TIME · SCHEDULED …") with "Running over — <next show> started at 7:00 AM", and the next-show card reads "STARTED" instead of "NEXT". FEED sessions now borrow the matching show's time, genre, episode and synopsis from this Mac's guide, so they are no longer just a title.

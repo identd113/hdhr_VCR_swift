@@ -164,6 +164,12 @@ let pollInterval: TimeInterval = 20
 // every time Enter opens this screen fresh for an unmanaged entry (handle(_:)'s .enter case).
 nonisolated(unsafe) var pendingNewOnly = false
 nonisolated(unsafe) var pendingDays: Set<Int> = []
+// `c` cycles this through transcodeProfiles (the web Record modal's Transcode picker); starts on the
+// server's Default transcode each time the screen opens.
+nonisolated(unsafe) var pendingTranscode = "none"
+let transcodeProfiles: [(key: String, label: String)] = [
+    ("none", "None (copy stream)"), ("heavy", "Heavy (H.264 CRF 18)"),
+    ("mobile", "Mobile (480p H.264)"), ("internet720", "Internet 720 (720p H.264)")]
 // (name, key) pairs, index-aligned with Show.weekdayNames — single letters chosen to avoid any
 // collision with this screen's other live keys (1-4, d/D, Esc); u/m/t/w/h/f/s is otherwise
 // unused in Mode.recordSummary.
@@ -454,7 +460,7 @@ func confirmRecord(_ typeKey: Character) {
         : nil
     let resp = API.postRecord(deviceId: payload.deviceId, guideNumber: ch.guideNumber,
                                startTime: entry.startTime, showType: showType, bonusTime: bonusTime,
-                               airDays: airDays, newOnly: pendingNewOnly)
+                               airDays: airDays, newOnly: pendingNewOnly, transcode: pendingTranscode)
     if resp.ok {
         let recNote = resp.recStarted == true ? " (recording now)" : ""
         let queueNote = resp.tunerFull == true ? " - tuner full, queued" : ""
@@ -503,6 +509,9 @@ func handle(_ key: Key) {
         case .char(let c) where isScheduled && (c == "d" || c == "D"): confirmDelete()
         case .char(let c) where !isScheduled && "1234".contains(c): confirmRecord(c)
         case .char(let c) where !isScheduled && (c == "n" || c == "N"): pendingNewOnly.toggle()
+        case .char(let c) where !isScheduled && (c == "c" || c == "C"):
+            let i = transcodeProfiles.firstIndex { $0.key == pendingTranscode } ?? 0
+            pendingTranscode = transcodeProfiles[(i + 1) % transcodeProfiles.count].key
         case .char(let c) where !isScheduled && dayIndex(for: c) != nil:
             let idx = dayIndex(for: c)!
             if pendingDays.contains(idx) { pendingDays.remove(idx) } else { pendingDays.insert(idx) }
@@ -600,6 +609,7 @@ func handle(_ key: Key) {
             // Fresh per screen-open, not carried over from whatever the last program scheduled
             // here left them at — matches the web Record modal opening fresh every time too.
             pendingNewOnly = false
+            pendingTranscode = transcodeProfiles.contains { $0.key == payload.defaultTranscode } ? payload.defaultTranscode : "none"
             pendingDays = [Calendar.current.component(.weekday, from: e.startDate) - 1]
         }
     case .char("?"): mode = .help
@@ -619,6 +629,16 @@ func bonusNote(_ e: GuideEntryDTO) -> String? {
     if e.isRecording && Date() > e.endDate { return "In Bonus Time now, until \(until)" }
     let mins = max(1, ((e.bonusEndTime ?? e.endTime) - e.endTime) / 60)
     return "Runs up to \(mins) min past \(timeFormatter.string(from: e.endDate)) (until \(until))"
+}
+
+// Same amber as the web guide's Bonus Time stripes and the favorites star.
+let bonusAmber = "\u{1B}[38;2;232;160;0m"
+
+/// "Bonus Time: Title may run up to 12 min into this show, so its start could be recorded as part of that one"
+/// for the selected program when the show before it on this channel has Bonus Time reaching into it.
+func spillNote() -> String? {
+    guard let ch = currentChannel(), let sp = bonusSpill(into: selEntry, in: visibleEntries(ch)) else { return nil }
+    return "Bonus Time: \(sp.title) may run up to \(sp.minutes) min into this show, so its start could be recorded as part of that one"
 }
 
 func renderSummaryScreen() {
@@ -663,6 +683,7 @@ func renderSummaryScreen() {
         out += field("Bonus Time", "On - sports padding applied automatically")
     }
     if let bonus = bonusNote(e) { out += field("Bonus Time", bonus) }
+    if let note = spillNote() { out += fieldColored("Overlap", note, bonusAmber) }
     out += fieldColored("Status", statusText, statusColor)
     out += "\n"
 
@@ -699,6 +720,10 @@ func renderSummaryScreen() {
         let daysValue = daysList.isEmpty ? "none - falls back to this entry's own day" : daysList.joined(separator: ", ")
         out += field("Days [2]", daysValue + "  (u/m/t/w/h/f/s toggles)")
         out += field("New Only [3/4]", (pendingNewOnly ? "On" : "Off") + "  (n toggles)")
+        out += field("Transcode", (transcodeProfiles.first { $0.key == pendingTranscode }?.label ?? pendingTranscode) + "  (c cycles)")
+        if pendingTranscode != "none", payload.devices.first(where: { $0.deviceId == payload.deviceId })?.supportsTranscode == false {
+            out += fieldColored("", "This tuner can't transcode - it will be recorded as None", "\u{1B}[38;2;255;204;102m")
+        }
         out += "\n"
     }
     out += dim + "[Esc] Cancel" + reset
@@ -816,7 +841,7 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         }
         var statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Will skip (dup)" : (e.isScheduled ? "Scheduled" : nil))
         if let bonus = e.bonusEndDate, statusText != nil {
-            statusText! += (e.isRecording && Date() > e.endDate ? " - in Bonus Time to " : " +Bonus to ") + timeFormatter.string(from: bonus)
+            statusText! += (e.isRecording ? (Date() > e.endDate ? " - in Bonus Time until " : " - Bonus Time continues to ") : " +Bonus to ") + timeFormatter.string(from: bonus)
         }
         if let statusText, used + statusText.count <= budget {
             // fallbackColor is unreachable here — statusText is nil unless one of the three
@@ -826,6 +851,7 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         }
         lines.append(metaLine)
     }
+    if let note = spillNote() { lines.append("  " + bonusAmber + truncate(note, budget) + reset) }
 
     var out = Array(lines.prefix(maxLines))
     let remaining = maxLines - out.count
@@ -1087,16 +1113,20 @@ func render() {
                     let (statusColor, badge) = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m")
                     // Same green as guide.css's .g-new-tag (#27ae60) — the web guide's "NEW" title pill.
                     let newBadge = e.isNew ? "\u{1B}[38;2;39;174;96mNEW \u{1B}[0m" : ""
+                    // Amber "~" when the show before this one on the channel has Bonus Time running into it.
+                    let spill = bonusSpill(into: offset, in: rowEntries) != nil
+                    let spillBadge = spill ? bonusAmber + "~ " + reset + bg : ""
                     var used = badge.isEmpty ? 0 : 2
                     if e.isNew { used += 4 }
+                    if spill { used += 2 }
                     if isSel { used += 2 }   // the embedded "||" below
 
                     let titleWidth = max(0, labelWidth - used)
                     let title = pad(truncate(e.title, titleWidth), titleWidth)
                     if isSel {
-                        line += bg + badge + newBadge + outline + "|" + statusColor + title + outline + "|" + reset
+                        line += bg + badge + newBadge + spillBadge + outline + "|" + statusColor + title + outline + "|" + reset
                     } else {
-                        line += bg + badge + newBadge + statusColor + title + reset
+                        line += bg + badge + newBadge + spillBadge + statusColor + title + reset
                     }
                 }
             } else {

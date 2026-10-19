@@ -16,15 +16,19 @@ import Foundation
 public struct DeviceSummary: Decodable {
     public let deviceId: String
     public let active, total: Int
+    /// False for a tuner without hardware transcode — the server records it as None whatever was asked for.
+    /// Decoded with a `true` fallback for an old server that predates this field.
+    public let supportsTranscode: Bool
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         deviceId = try c.decode(String.self, forKey: .deviceId)
         active = try c.decode(Int.self, forKey: .active)
         total = try c.decode(Int.self, forKey: .total)
+        supportsTranscode = (try? c.decode(Bool.self, forKey: .supportsTranscode)) ?? true
     }
 
-    enum CodingKeys: String, CodingKey { case deviceId, active, total }
+    enum CodingKeys: String, CodingKey { case deviceId, active, total, supportsTranscode }
 }
 
 public struct GuideEntryDTO: Decodable {
@@ -152,9 +156,11 @@ public struct GuidePayload: Decodable {
     // as a decode fallback for an old server that predates this field, matching
     // Terminal_guide_enabled's own default (Models.swift).
     public let terminalGuideEnabled: Bool
+    /// Settings → Default transcode: the profile a new recording starts on ("none" from an old server).
+    public let defaultTranscode: String
 
     enum CodingKeys: String, CodingKey {
-        case deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled
+        case deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled, defaultTranscode
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,10 +172,12 @@ public struct GuidePayload: Decodable {
         channels = try c.decode([GuideChannelDTO].self, forKey: .channels)
         sportsPaddingEnabled = (try? c.decode(Bool.self, forKey: .sportsPaddingEnabled)) ?? true
         terminalGuideEnabled = (try? c.decode(Bool.self, forKey: .terminalGuideEnabled)) ?? true
+        defaultTranscode = (try? c.decode(String.self, forKey: .defaultTranscode)) ?? "none"
     }
 
     public init(deviceId: String, winStart: Int, winSec: Int, devices: [DeviceSummary],
-                channels: [GuideChannelDTO], sportsPaddingEnabled: Bool = true, terminalGuideEnabled: Bool = true) {
+                channels: [GuideChannelDTO], sportsPaddingEnabled: Bool = true, terminalGuideEnabled: Bool = true,
+                defaultTranscode: String = "none") {
         self.deviceId = deviceId
         self.winStart = winStart
         self.winSec = winSec
@@ -177,6 +185,7 @@ public struct GuidePayload: Decodable {
         self.channels = channels
         self.sportsPaddingEnabled = sportsPaddingEnabled
         self.terminalGuideEnabled = terminalGuideEnabled
+        self.defaultTranscode = defaultTranscode
     }
 }
 

@@ -84,6 +84,20 @@ public func layoutRowBlocks(entries: [GuideEntryDTO], winStart: Int, colStart: I
     return blocks
 }
 
+/// The previous show's Bonus Time reaching into `entries[index]` — same rule as the web guide's hover note:
+/// its recording may run past its guide end, so this show's start could be recorded as part of that one.
+public struct BonusSpill: Equatable {
+    public let title: String
+    public let minutes: Int
+}
+
+public func bonusSpill(into index: Int, in entries: [GuideEntryDTO]) -> BonusSpill? {
+    guard index > 0, index < entries.count else { return nil }
+    let prev = entries[index - 1], e = entries[index]
+    guard let end = prev.bonusEndTime, e.startTime < end else { return nil }
+    return BonusSpill(title: prev.title, minutes: max(1, (min(end, e.endTime) - e.startTime + 59) / 60))
+}
+
 // ── Search / channel-jump (a limited, offline counterpart to the web guide's own type-ahead show
 // search — see docs/TUIGuide.md's "Deferred ideas" entry this fulfills, and its "Search / channel
 // jump" section for the full design rationale) ──

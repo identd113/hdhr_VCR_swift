@@ -18,12 +18,18 @@ public let tuiShortcuts: [TUIShortcut] = [
     TUIShortcut(keys: "f",           description: "Toggle favorite channel"),
     TUIShortcut(keys: "/",           description: "Search shows, or #5.1 to jump to a channel"),
     TUIShortcut(keys: "Enter",       description: "Schedule / manage the selected program"),
-    TUIShortcut(keys: "1 - 4",       description: "Recording scope (schedule screen)"),
-    TUIShortcut(keys: "n  u m t w h f s", description: "New Only / pick days (schedule screen)"),
-    TUIShortcut(keys: "d",           description: "Remove a scheduled recording (schedule screen)"),
+    TUIShortcut(keys: "1 2 3 4",     description: "Once / Weekly / Series (channel) / Series (tuner)"),
+    TUIShortcut(keys: "u m t w h f s", description: "Weekly days: Sun..Sat (schedule screen; f = Fri)"),
+    TUIShortcut(keys: "n",           description: "New Only, skip reruns (schedule screen)"),
+    TUIShortcut(keys: "c",           description: "Cycle transcode profile (schedule screen)"),
+    TUIShortcut(keys: "d",           description: "Remove / Stop & Delete a scheduled recording"),
+    TUIShortcut(keys: "~",           description: "Marker: the show before runs into Bonus Time here"),
+    TUIShortcut(keys: "Search: Up Down", description: "Pick a show (after / and 3+ letters)"),
+    TUIShortcut(keys: "Search: Left Right", description: "Cycle that show's airings; Enter opens it"),
+    TUIShortcut(keys: "Backspace",   description: "Edit the search; empty cancels"),
     TUIShortcut(keys: "Esc",         description: "Back / cancel"),
     TUIShortcut(keys: "?",           description: "Show this card"),
-    TUIShortcut(keys: "q",           description: "Quit"),
+    TUIShortcut(keys: "q  Ctrl-C",   description: "Quit"),
 ]
 
 /// Plain-text bordered box (no ANSI), at most `maxWidth` columns wide.

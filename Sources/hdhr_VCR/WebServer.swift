@@ -4369,7 +4369,7 @@ final class WebServer: @unchecked Sendable {
     // Internal, not private, so WebServerTests can call it directly with synthetic AppState —
     // same testability pattern as tdropDeviceIDs(state:).
     func buildGuideJSON(state: AppState, deviceId: String?) -> Data {
-        struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int }
+        struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int; var supportsTranscode = true }
         struct GuideChannel: Encodable {
             var guideNumber, guideName: String
             var hd, favorite: Bool
@@ -4416,8 +4416,12 @@ final class WebServer: @unchecked Sendable {
             // see it regardless, exactly like curling any other web guide endpoint directly
             // already can (CLAUDE.md's "No auth beyond LAN-subnet matching" invariant).
             var terminalGuideEnabled: Bool
+            // Settings → Default transcode (validated), the profile the Record modal starts on.
+            var defaultTranscode: String
         }
 
+        let defaultTranscode = Show.validTranscodeProfiles.contains(state.config.Default_transcode)
+            ? state.config.Default_transcode : "none"
         let devTuners = Self.computeDevTuners(state: state)
         // Unioned with any device referenced by a show's hdhr_record but not currently discovered
         // at all — mirrors buildDevBarHTML's own offlineIDs (CLAUDE.md's "Web guide offline
@@ -4433,7 +4437,8 @@ final class WebServer: @unchecked Sendable {
         // lineup/guide data and can't be recorded from, so hdhr_guide's Tab/switchDevice() (which
         // only ever iterates this list) shouldn't be able to switch to it in the first place.
         let devices = state.recordableDevices.map { DeviceSummary(deviceId: $0.DeviceID,
-            active: devTuners[$0.DeviceID]?.active ?? 0, total: devTuners[$0.DeviceID]?.total ?? 0) }
+            active: devTuners[$0.DeviceID]?.active ?? 0, total: devTuners[$0.DeviceID]?.total ?? 0,
+            supportsTranscode: $0.supportsTranscode) }
             + offlineIDs.sorted().map { DeviceSummary(deviceId: $0, active: 0, total: 0) }
 
         // An explicitly-requested offline device (present in `offlineIDs`, above) is handled here
@@ -4446,7 +4451,7 @@ final class WebServer: @unchecked Sendable {
         if let deviceId, offlineIDs.contains(deviceId) {
             let payload = GuidePayload(deviceId: deviceId, winStart: 0, winSec: 0, devices: devices, channels: [],
                 sportsPaddingEnabled: state.config.Sports_padding_enabled,
-                terminalGuideEnabled: state.config.Terminal_guide_enabled)
+                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
             return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
         }
 
@@ -4455,7 +4460,7 @@ final class WebServer: @unchecked Sendable {
             ?? state.recordableDevices.first else {
             let empty = GuidePayload(deviceId: "", winStart: 0, winSec: 0, devices: devices, channels: [],
                 sportsPaddingEnabled: state.config.Sports_padding_enabled,
-                terminalGuideEnabled: state.config.Terminal_guide_enabled)
+                terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
             return (try? JSONEncoder().encode(empty)) ?? Data("{}".utf8)
         }
 
@@ -4530,7 +4535,7 @@ final class WebServer: @unchecked Sendable {
 
         let payload = GuidePayload(deviceId: device.DeviceID, winStart: winStart, winSec: winSec,
             devices: devices, channels: channels, sportsPaddingEnabled: state.config.Sports_padding_enabled,
-            terminalGuideEnabled: state.config.Terminal_guide_enabled)
+            terminalGuideEnabled: state.config.Terminal_guide_enabled, defaultTranscode: defaultTranscode)
         return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
     }
 

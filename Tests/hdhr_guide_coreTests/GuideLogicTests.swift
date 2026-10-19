@@ -333,4 +333,15 @@ struct NearestAiringIndexTests {
     @Test func emptyAiringsReturnsZero() {
         #expect(nearestAiringIndex(to: 100, in: []) == 0)
     }
+
+    @Test func bonusSpill_reportsTheMinutesTheNextShowLosesAndNothingOtherwise() {
+        let a = GuideEntryDTO(title: "Game", startTime: 0, endTime: 3600, isScheduled: true, bonusEndTime: 5400)
+        let b = GuideEntryDTO(title: "News", startTime: 3600, endTime: 7200)
+        let c = GuideEntryDTO(title: "Late", startTime: 5400, endTime: 9000)
+        let spill = bonusSpill(into: 1, in: [a, b, c])
+        #expect(spill == BonusSpill(title: "Game", minutes: 30))
+        #expect(bonusSpill(into: 2, in: [a, b, c]) == nil)   // starts exactly when Bonus Time ends
+        #expect(bonusSpill(into: 0, in: [a, b, c]) == nil)
+        #expect(bonusSpill(into: 1, in: [GuideEntryDTO(title: "Game", startTime: 0, endTime: 3600), b]) == nil)
+    }
 }

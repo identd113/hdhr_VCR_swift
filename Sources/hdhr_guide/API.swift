@@ -27,7 +27,7 @@ enum API {
     }
 
     static func postRecord(deviceId: String, guideNumber: String, startTime: Int, showType: String, bonusTime: Bool = false,
-                            airDays: [String]? = nil, newOnly: Bool = false) -> RecordResponse {
+                            airDays: [String]? = nil, newOnly: Bool = false, transcode: String? = nil) -> RecordResponse {
         let failure = RecordResponse(ok: false, error: "no response from web server", title: nil, tunerFull: nil, recStarted: nil)
         guard let url = URL(string: baseURL + "/api/record") else { return failure }
         var req = URLRequest(url: url)
@@ -39,6 +39,7 @@ enum API {
             "startTime": startTime, "showType": showType, "bonusTime": bonusTime, "newOnly": newOnly
         ]
         if let airDays { body["airDays"] = airDays }
+        if let transcode { body["transcode"] = transcode }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let data = syncData(req), let resp = try? JSONDecoder().decode(RecordResponse.self, from: data) else {
             return failure

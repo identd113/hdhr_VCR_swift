@@ -167,4 +167,15 @@ struct OtherDTOsTests {
         let resp = try JSONDecoder().decode(ToggleFavoriteResponse.self, from: Data(#"{"ok":true,"isFavorite":true}"#.utf8))
         #expect(resp.isFavorite == true)
     }
+
+    @Test func transcodeFields_decodeWithFallbacksForAnOldServer() throws {
+        let new = try JSONDecoder().decode(GuidePayload.self, from: Data(
+            #"{"deviceId":"A","winStart":0,"winSec":1,"devices":[{"deviceId":"A","active":0,"total":2,"supportsTranscode":false}],"channels":[],"defaultTranscode":"mobile"}"#.utf8))
+        #expect(new.defaultTranscode == "mobile")
+        #expect(new.devices.first?.supportsTranscode == false)
+        let old = try JSONDecoder().decode(GuidePayload.self, from: Data(
+            #"{"deviceId":"A","winStart":0,"winSec":1,"devices":[{"deviceId":"A","active":0,"total":2}],"channels":[]}"#.utf8))
+        #expect(old.defaultTranscode == "none")
+        #expect(old.devices.first?.supportsTranscode == true)
+    }
 }
