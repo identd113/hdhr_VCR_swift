@@ -107,6 +107,22 @@ struct GuideDTOsTests {
     // Added after the field was first shipped, same reasoning as isSkipped's own default above —
     // an old server simply never reports an entry as new, so this must default to `false`, not
     // fail the whole entry's decode.
+    @Test func decodesBonusEndTimeAndDefaultsToNil() throws {
+        let with = try decode("""
+        {"deviceId":"A","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"K","hd":true,"favorite":false,
+          "entries":[{"title":"Game","startTime":2000,"endTime":3000,
+                      "isRecording":true,"isScheduled":true,"bonusEndTime":4800}]}]}
+        """)
+        #expect(try #require(with.channels.first?.entries.first).bonusEndTime == 4800)
+        let without = try decode("""
+        {"deviceId":"A","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"K","hd":true,"favorite":false,
+          "entries":[{"title":"Game","startTime":2000,"endTime":3000,"isRecording":false,"isScheduled":false}]}]}
+        """)
+        #expect(try #require(without.channels.first?.entries.first).bonusEndTime == nil)
+    }
+
     @Test func missingIsNewDefaultsFalse() throws {
         let payload = try decode("""
         {"deviceId":"AABBCCDD","winStart":1000,"winSec":86400,"devices":[],"channels":[

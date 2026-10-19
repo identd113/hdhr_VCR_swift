@@ -598,6 +598,16 @@ the summary panel/search results/full-screen record view) — a green `NEW ` pre
 title, budgeted into the title-truncation width the same way the status badge already is, colored to
 match `guide.css`'s `.g-new-tag` background (`#27ae60`).
 
+**Bonus Time — DONE (2026-10-19).** `/api/guide.json` entries carry `bonusEndTime` for a managed show with Bonus Time on. The summary screen shows a `Bonus Time` field ("Runs up to 30 min past 7:00 AM (until 7:30 AM)", or "In Bonus Time now, until 7:30 AM" while recording past the slot) and the info panel's status reads e.g. "Recording now - in Bonus Time to 7:30 AM". The "recording" marker itself follows the airing a recording started on (not whatever covers "now"), same as the web guide.
+
+**Gaps against the web guide, logged 2026-10-19 (not started).** Found by comparing this client with the web guide's features since the TUI's last substantial work (2026-09-13). Suggested order: 1, 2, then the rest.
+
+1. **No conflict marker.** The web guide rings a managed airing that cannot get a tuner (`g-st-conflict`, with a hover note saying whether a favorite has priority). `/api/guide.json` has no conflict field; add `isConflict` (plus the favorite-priority reason) to `GuideEntryJSON`/`GuideEntryDTO` and a fourth tier in `statusColorAndBadge`, above scheduled. Small.
+2. **No overlap marker for Bonus Time.** The web guide stripes the part of the next block a Bonus Time show may take and explains it on hover. `bonusEndTime` is now in the data, so a block that starts before the previous block's `bonusEndTime` can get a `+` marker and an info-panel line ("may start recorded as part of <show>"). Pure logic belongs in `hdhr_guide_core`.
+3. **Cannot edit a scheduled show**, only delete and re-record; the web guide has an Edit modal (scope, days, New Only, Bonus Time, transcode). Would need an edit screen and the existing edit endpoint.
+4. **No tuner occupancy.** The web guide shows tuner counts and a FULL state per device; the TUI's device line shows only the id. `devices[].active/total` is already in the payload, so this is display only.
+5. **No "behind live" for a recording being watched**, and no signal history beyond the gutter dot. Low value for a terminal client; listed only for completeness.
+
 ## Smoke tests of the real binary (`Tests/hdhr_VCRTests/TUI/TUIGuideSmokeTests.swift`)
 
 Added 2026-10-06. `hdhr_guide_coreTests` covers the pure logic above; these cover the **executable itself** — startup checks, raw-mode

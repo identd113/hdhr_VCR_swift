@@ -612,6 +612,15 @@ func handle(_ key: Key) {
 // options into the footer, since a one-line "[1] Once [2] Weekly..." prompt gave no context on
 // what was actually about to be scheduled. selRow/selEntry don't change while this mode is
 // active (only 1–4/Esc are handled), so it's safe to re-resolve the same entry here.
+/// "Runs up to 30 min past 7:00 AM (until 7:30 AM)" / "In Bonus Time now, until 7:30 AM" for a managed show with Bonus Time.
+func bonusNote(_ e: GuideEntryDTO) -> String? {
+    guard let end = e.bonusEndDate else { return nil }
+    let until = timeFormatter.string(from: end)
+    if e.isRecording && Date() > e.endDate { return "In Bonus Time now, until \(until)" }
+    let mins = max(1, (e.bonusEndTime ?? e.endTime) - e.endTime) / 60
+    return "Runs up to \(mins) min past \(timeFormatter.string(from: e.endDate)) (until \(until))"
+}
+
 func renderSummaryScreen() {
     let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
     let (cols, _) = Terminal.size()
@@ -653,6 +662,7 @@ func renderSummaryScreen() {
     if !e.isScheduled && payload.sportsPaddingEnabled && genreImpliesBonusTime(e.genre) {
         out += field("Bonus Time", "On - sports padding applied automatically")
     }
+    if let bonus = bonusNote(e) { out += field("Bonus Time", bonus) }
     out += fieldColored("Status", statusText, statusColor)
     out += "\n"
 
@@ -804,7 +814,10 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
             metaLine += (bg.isEmpty ? dim + chipText + reset : bg + "\u{1B}[97m" + chipText + reset) + " "
             used += chipText.count + 1
         }
-        let statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Will skip (dup)" : (e.isScheduled ? "Scheduled" : nil))
+        var statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Will skip (dup)" : (e.isScheduled ? "Scheduled" : nil))
+        if let bonus = e.bonusEndDate, statusText != nil {
+            statusText! += (e.isRecording && Date() > e.endDate ? " - in Bonus Time to " : " +Bonus to ") + timeFormatter.string(from: bonus)
+        }
         if let statusText, used + statusText.count <= budget {
             // fallbackColor is unreachable here — statusText is nil unless one of the three
             // tiers is true, so this always resolves to recordingColor/skipColor/scheduledColor.

@@ -266,6 +266,8 @@ Raised 2026-09-12, deliberately **not scoped or started** — an explicit "not n
 
 See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and known limitations.
 
+Logged 2026-10-19 (web-guide features the TUI lacks, in suggested order): conflict marker (needs `isConflict` in `/api/guide.json`), Bonus Time overlap marker on the next block (`bonusEndTime` is already sent), edit a scheduled show, tuner occupancy/FULL on the device line, and a "behind live" readout. Details in `docs/TUIGuide.md`.
+
 ---
 
 ## Distribution

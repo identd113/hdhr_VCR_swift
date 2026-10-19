@@ -956,6 +956,7 @@ struct GuideEntryJSON: Encodable {
                                         // .g-new-tag title pill — OriginalAirdate falls on local
                                         // "today" (or the early-morning "tomorrow" slot for a
                                         // late-night show). See docs/TUIGuide.md.
+    var bonusEndTime: Int?             // endTime + Sports_padding_minutes*60 for a managed show with Bonus Time on (nil otherwise); hdhr_guide shows it on the summary screen
 }
 ```
 

@@ -47,6 +47,10 @@ public struct GuideEntryDTO: Decodable {
     // Mirrors buildGuideGridHTML's isNew / the web guide's green .g-new-tag title pill. Decoded
     // with a `false` fallback, same idiom as isSkipped above, for an old server predating this field.
     public let isNew: Bool
+    // Epoch when this airing's Bonus Time ends (endTime + the Sports padding minutes) — only sent for a managed show
+    // that has Bonus Time on. nil from an old server or when there is none.
+    public let bonusEndTime: Int?
+    public var bonusEndDate: Date? { bonusEndTime.map { Date(timeIntervalSince1970: TimeInterval($0)) } }
 
     public var startDate: Date { Date(timeIntervalSince1970: TimeInterval(startTime)) }
     public var endDate: Date { Date(timeIntervalSince1970: TimeInterval(endTime)) }
@@ -67,6 +71,7 @@ public struct GuideEntryDTO: Decodable {
         scheduledShowId = try c.decodeIfPresent(String.self, forKey: .scheduledShowId)
         isSkipped = isScheduled && ((try? c.decode(Bool.self, forKey: .isSkipped)) ?? false)
         isNew = (try? c.decode(Bool.self, forKey: .isNew)) ?? false
+        bonusEndTime = try? c.decodeIfPresent(Int.self, forKey: .bonusEndTime)
     }
 
     // `internal`, not `public`, and deliberately so: this exists only for hdhr_guide_coreTests
@@ -80,7 +85,7 @@ public struct GuideEntryDTO: Decodable {
                 synopsis: String? = nil, seriesId: String? = nil, genre: String? = nil,
                 tags: [String]? = nil, startTime: Int, endTime: Int,
                 isRecording: Bool = false, isScheduled: Bool = false, scheduledShowId: String? = nil,
-                isSkipped: Bool = false, isNew: Bool = false) {
+                isSkipped: Bool = false, isNew: Bool = false, bonusEndTime: Int? = nil) {
         self.title = title
         self.episodeTitle = episodeTitle
         self.episodeNumber = episodeNumber
@@ -95,11 +100,12 @@ public struct GuideEntryDTO: Decodable {
         self.scheduledShowId = scheduledShowId
         self.isSkipped = isScheduled && isSkipped
         self.isNew = isNew
+        self.bonusEndTime = bonusEndTime
     }
 
     enum CodingKeys: String, CodingKey {
         case title, episodeTitle, episodeNumber, synopsis, seriesId, genre, tags
-        case startTime, endTime, isRecording, isScheduled, scheduledShowId, isSkipped, isNew
+        case startTime, endTime, isRecording, isScheduled, scheduledShowId, isSkipped, isNew, bonusEndTime
     }
 }
 

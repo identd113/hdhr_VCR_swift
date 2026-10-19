@@ -4427,6 +4427,9 @@ final class WebServer: @unchecked Sendable {
             // Mirrors buildGuideGridHTML's isNew / the web guide's .g-new-tag title pill — see
             // newEpisodeTest's own comment.
             var isNew: Bool
+            // Epoch when this managed airing's Bonus Time ends (endTime + Sports_padding_minutes) — set only when
+            // the owning show has Bonus Time on and the setting is enabled; mirrors the web guide's amber stripes.
+            var bonusEndTime: Int?
         }
         struct GuidePayload: Encodable {
             var deviceId: String
@@ -4556,7 +4559,9 @@ final class WebServer: @unchecked Sendable {
                     isScheduled: owner != nil,
                     scheduledShowId: owner?.show_id,
                     isSkipped: willSkip,
-                    isNew: isNewTest(entry)
+                    isNew: isNewTest(entry),
+                    bonusEndTime: (state.config.Sports_padding_enabled && owner?.show_bonus_time == true)
+                        ? entry.EndTime + state.config.Sports_padding_minutes * 60 : nil
                 )
             }
             return GuideChannel(guideNumber: ch.GuideNumber, guideName: ch.GuideName,
