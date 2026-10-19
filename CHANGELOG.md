@@ -25,6 +25,11 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - *Removed* — **The Live Buffer hover.** The pill next to the toolbar's clock still shows how full the buffer is, but hovering it no longer opens lag, rate, bitrate and corruption details; the bitrate moved into the Stream popover.
 - *Updated* — **Fixed: a paused recording no longer shows as "Stalled".**
 
+### Web guide (`WebServer`)
+
+- *Updated* — **The guide shows more clearly when a show may run into the next one.** The Bonus Time preview over the following block is now amber diagonal stripes with a dashed edge and a "+15m" tag (it was a faint wash), and the block underneath stays clickable. The summary card for a recording with Bonus Time now says so ("Recording now · in Bonus Time until 7:30 AM") and shows the +30m badge. Selecting the show that may run over lights its stripes up (brighter, solid edge, glow) so it is clearly the same object. Hovering the next show explains it: "Bonus Time: <show> may run up to 15 min into this show, so its start could be recorded as part of that one".
+- *Updated* — **Fixed: during Bonus Time the guide marked the wrong show as recording.** Once a recording ran past its slot, the next show's block (which covers "now") got the recording marker and the show actually being recorded showed as merely scheduled. The marker now goes to the airing the recording is capturing.
+
 ### Alerts and the terminal guide (`Dialogs`, `hdhr_guide`)
 
 - *Updated* — **Fixed: an alert shown without a window to attach to (for example "Couldn't Start FEED Relay") no longer shows two blank buttons and a "Do not show this message again" box.**

@@ -117,6 +117,12 @@ function showInfo(el){
   bstar.style.display='none';bstar.classList.remove('sb-anim');
   if(+d.recording){
     note.textContent='● Recording now';note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
+    if(d.showBonus==='1'&&_bonusEnabled){
+      // Bonus Time keeps the recording going past the guide's end by _bonusMins; say so, and when it is already running.
+      var bEnd=new Date((+d.end+_bonusMins*60)*1000),inBonus=Math.floor(Date.now()/1000)>+d.end;
+      note.textContent=inBonus?'● Recording now · in Bonus Time until '+ft(bEnd):'● Recording now · Bonus Time continues to '+ft(bEnd);
+      bstar.textContent='+'+_bonusMins+'m';bstar.style.display='inline-flex';triggerSb('sum-bonus-star');
+    }
     del.textContent='Stop & Delete';del.classList.add('danger');del.style.display='inline-block';
   } else if(+d.managed){
     note.textContent='★ Scheduled';note.style.color='var(--t2)';note.style.display='inline';

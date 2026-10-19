@@ -368,7 +368,17 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
    real selection (4) — an actual interaction with what's underneath always visually wins over this
    passive annotation. pointer-events:none (plus aria-hidden on the element itself) keeps it fully
    non-interactive, same reasoning as .g-gap/.g-now-bar above. */
-.g-bonus-overlay{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;background:var(--gg-sports);opacity:.3;z-index:2;pointer-events:none}
+/* Reads as "borrowed time": amber diagonal stripes with a dashed leading edge and a small +Nm tag, so it is clearly
+   different from the show's own colour. Still pointer-events:none — the block underneath stays fully clickable. */
+.g-bonus-overlay{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:0 5px 5px 0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(135deg,rgba(255,176,32,.30) 0 5px,rgba(255,176,32,.08) 5px 10px);
+  border-left:1.5px dashed rgba(255,176,32,.7);overflow:hidden}
+.g-bonus-overlay span{position:absolute;right:3px;bottom:2px;font-size:.55rem;font-weight:700;color:#fff;background:rgba(0,0,0,.4);border-radius:3px;padding:0 3px;line-height:1.3;letter-spacing:.02em;opacity:.85}
+/* The overlay sits right after its show's block, so selecting the show lights it up as the same object. */
+.g-prog.g-sel + .g-bonus-overlay{background:repeating-linear-gradient(135deg,rgba(255,176,32,.6) 0 5px,rgba(255,176,32,.22) 5px 10px);
+  border-left:2px solid #ffb020;box-shadow:0 0 0 1.5px var(--t0),0 0 10px rgba(255,176,32,.7)}
+.g-prog.g-sel + .g-bonus-overlay span{opacity:1;background:#ffb020;color:#2a1a00}
+html.lm .g-bonus-overlay span{color:#5a3a00;background:rgba(255,255,255,.7)}
 /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the
    g-prog-rec/-now/-sched background classes above, so genre colour stays untouched ── */
 :root{--vc-sched:#3b93ff;--vc-rec:#ff5a5a;--vc-skip:#8a92a3;--vc-conflict:#ff9500;--vc-inuse:#9b59b6}

@@ -99,6 +99,7 @@ html .g-now-bar{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
 html .g-gap{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html .g-bonus-overlay{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
+html .g-bonus-overlay{border-left:0;border-top:1.5px dashed rgba(255,176,32,.7);border-radius:0 0 5px 5px}
 html #g-hscroll{display:none}
 }
 /* ── Small-phone refinement: vertical mode's channel columns sit side by side (often several
@@ -114,3 +115,4 @@ html #g-hscroll{display:none}
 html:root{--ch-w:108px}
 html .g-cn,html .g-cname{font-size:.6rem;overflow:hidden;text-overflow:ellipsis}
 }
+html .g-prog.g-sel + .g-bonus-overlay{border-left:0;border-top:2px solid #ffb020}
