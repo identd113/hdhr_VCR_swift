@@ -100,7 +100,7 @@ enum HLSConverter {
     }
 
     /// Feeds sample buffers from one reader output into one writer input until the reader runs dry.
-    private static func pump(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, label: String) async {
+    static func pump(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, label: String) async {
         let box = PumpBox(output: output, input: input)
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             box.input.requestMediaDataWhenReady(on: DispatchQueue(label: label)) {
@@ -117,14 +117,14 @@ enum HLSConverter {
     }
 
     // AVFoundation objects are used from one queue at a time here; the box only carries them into the closure.
-    private final class PumpBox: @unchecked Sendable {
+    final class PumpBox: @unchecked Sendable {
         let output: AVAssetReaderTrackOutput
         let input: AVAssetWriterInput
         init(output: AVAssetReaderTrackOutput, input: AVAssetWriterInput) { self.output = output; self.input = input }
     }
 
     /// Receives the writer's init segment and media segments and saves them as files.
-    private final class SegmentSink: NSObject, AVAssetWriterDelegate, @unchecked Sendable {
+    final class SegmentSink: NSObject, AVAssetWriterDelegate, @unchecked Sendable {
         private let directory: URL
         private let lock = NSLock()
         private var items: [HLSSegment] = []
