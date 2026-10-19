@@ -413,7 +413,6 @@ struct WatchNowRow: View {
         "\(Self.timeFmt.string(from: entry.startDate)) – \(Self.timeFmt.string(from: entry.endDate))"
     }
 
-    private var timeRemainingStr: String { timeRemaining(until: entry.endDate) }
 
     private var channelLogo: NSImage? {
         state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
@@ -548,7 +547,7 @@ struct WatchNowRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Text("\(timeRange)  ·  \(timeRemainingStr)")
+            Text(timeRange)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             actionRow(managed: managed)

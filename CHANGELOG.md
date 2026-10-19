@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **Times show when a show ends, not a countdown.** The player status bar, Watch Now and the Discord card no longer say "37 min left" or "12m elapsed · 25m remaining"; they show the time range ("NOW · 6:00 – 7:00 AM"), which stays the same for the whole show. The Discord card is now edited only when a recording stops, is skipped or ends; the old "progress updates every 5 minutes" setting is gone. The status bar's progress line now refreshes every minute instead of every 15 seconds.
+
 ### Terminal guide (`hdhr_guide`)
 
 - *Added* — **Transcode choice, a Bonus Time overlap marker and fuller summary text.** On the schedule screen `c` cycles the transcode profile (it starts on your Default transcode, and warns when the tuner can't transcode). A show that starts while the one before it is still in Bonus Time gets an amber `~`, with the same "may run up to N min into this show" note the web guide shows in the info panel and the Enter screen, and a recording's status says "in Bonus Time until 7:30 AM". The `?` card now lists the search keys, `Ctrl-C`, `c` and the `~` marker.

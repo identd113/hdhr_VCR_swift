@@ -218,7 +218,7 @@ The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General
   - **Lifecycle events** — `Discord_on_start`, `Discord_on_complete`, `Discord_on_failed`, `Discord_on_paused`
   - **Reminders** — `Discord_on_upnext`, `Discord_on_soon`
   - **Problems** — `Discord_on_skipped` (disk full), `Discord_on_duplicate` (already recorded), `Discord_on_conflict`, `Discord_on_guide_error`
-  - **Other** — `Discord_on_show_added`, `Discord_on_progress` (edits the start embed in-place every 5 min with elapsed/remaining time while recording)
+  - **Other** — `Discord_on_show_added`
 
 #### Discord embed structure
 

@@ -547,8 +547,8 @@ struct SettingsView: View {
                                 "Skipped (disk full), skipped (already recorded or not a new episode), tuner conflict, and guide load failures.",
                                 fields: [\.Discord_on_skipped, \.Discord_on_duplicate, \.Discord_on_conflict, \.Discord_on_guide_error])
                     groupToggle("Other",
-                                "Show added, and progress updates every 5 minutes while recording.",
-                                fields: [\.Discord_on_show_added, \.Discord_on_progress])
+                                "Show added.",
+                                fields: [\.Discord_on_show_added])
                 }
             }
         }

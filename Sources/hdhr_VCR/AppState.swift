@@ -3149,31 +3149,6 @@ final class AppState: ObservableObject {
                     discordEpisodeSnapshot(entry: entry, show: show)
             }
 
-            // Discord progress update — edit start embed once per 5-min boundary during active recordings
-            // isRunning guard is load-bearing: the mid-recording FAIL branch above tears down the
-            // recording (show_recording = false, live) but does not `continue`, so `show` here is a
-            // stale snapshot still reading show_recording == true with discord_start_msg_id set —
-            // without the liveness check this would post a bogus "In Progress" edit for a just-died
-            // recording, bypassing the showRuntime[showId]?.discordCardTask serialization chain.
-            if show.show_recording, recordingManager.isRunning(showId: show.show_id),
-               !show.discord_start_msg_id.isEmpty,
-               config.Discord_on_progress, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
-                guard let showStart = show.show_next else { continue }
-                let elapsedSec = Int(now.timeIntervalSince(showStart))
-                let prevSec    = elapsedSec - config.Idle_timer_interval
-                let interval   = 5 * 60
-                if elapsedSec > 0, elapsedSec / interval > max(0, prevSec) / interval {
-                    let elapsedMin   = elapsedSec / 60
-                    let totalMin     = show.show_end.map { Int($0.timeIntervalSince(show.show_next ?? $0) / 60) } ?? show.show_length
-                    let remainingMin = max(0, show.show_end.map { Int($0.timeIntervalSince(now) / 60) } ?? (totalMin - elapsedMin))
-                    let progressText = "\(elapsedMin)m elapsed · \(remainingMin)m remaining"
-                    let embed = buildDiscordShowEmbed(event: "⏺ Recording In Progress", show: show,
-                                                     color: 0xE67E22, extra: [("Progress", progressText, false)],
-                                                     snapshot: resolvedDiscordEpisodeSnapshot(for: show))
-                    editDiscordEmbed(webhookURL: config.Discord_webhook_url,
-                                     messageId: show.discord_start_msg_id, embed: embed)
-                }
-            }
             // Advance shows stranded with a past window and show_recording = false.
             // Happens when the app restarts after curl exits normally but before the idle loop
             // fires the natural-stop handler above (which requires show_recording == true).

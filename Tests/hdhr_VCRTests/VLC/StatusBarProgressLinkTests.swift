@@ -20,14 +20,6 @@ struct StatusBarProgressTests {
     @Test func progress_zeroLengthShow_isZero() {
         #expect(PlayerStatusFormat.progress(start: start, end: start, now: start) == 0)
     }
-
-    @Test func remainingText_minutesHoursAndEnding() {
-        let now = start
-        #expect(PlayerStatusFormat.remainingText(end: now.addingTimeInterval(22 * 60), now: now) == "22 min left")
-        #expect(PlayerStatusFormat.remainingText(end: now.addingTimeInterval(65 * 60), now: now) == "1 h 05 min left")
-        #expect(PlayerStatusFormat.remainingText(end: now.addingTimeInterval(20), now: now) == "1 min left")   // rounds up
-        #expect(PlayerStatusFormat.remainingText(end: now.addingTimeInterval(-5), now: now) == "Ending")
-    }
 }
 
 @Suite("Status bar FEED next show")

@@ -122,31 +122,6 @@ struct BuildGuideRefreshPayloadOnlyDevicesTests {
     }
 }
 
-// MARK: - timeRemaining(until:)
-
-@Suite("timeRemaining(until:) duration formatting")
-struct TimeRemainingTests {
-
-    // One (offset → label) table: every body was identical except the interval and the
-    // expected string. Future rows add 5 s so Int(...) truncation of sub-millisecond
-    // execution time never crosses the boundary being tested; the three ≤ 60 s rows pin
-    // the "ending soon" floor (zero, past, and under-a-minute).
-    @Test(arguments: [
-        (seconds: 0.0,     expected: "ending soon"),
-        (seconds: -60.0,   expected: "ending soon"),
-        (seconds: 30.0,    expected: "ending soon"),
-        (seconds: 65.0,    expected: "1m left"),      // 1 min
-        (seconds: 2705.0,  expected: "45m left"),     // 45 min
-        (seconds: 3665.0,  expected: "1h 1m left"),   // 61 min
-        (seconds: 5405.0,  expected: "1h 30m left"),  // 90 min
-        // 120 min: clearly ≥ 120m so h=2, m=0 → "2h left" (no dangling "0m").
-        (seconds: 7205.0,  expected: "2h left"),
-        (seconds: 7505.0,  expected: "2h 5m left"),   // 125 min
-    ])
-    func formatsRemainingDuration(_ row: (seconds: Double, expected: String)) {
-        #expect(timeRemaining(until: Date(timeIntervalSinceNow: row.seconds)) == row.expected)
-    }
-}
 
 // MARK: - AppConfig Codable — web server fields
 

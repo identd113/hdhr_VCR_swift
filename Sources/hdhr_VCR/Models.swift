@@ -615,7 +615,6 @@ struct AppConfig: Equatable {
     var Discord_on_upnext:    Bool   = false   // Up Next reminder
     var Discord_on_soon:      Bool   = false   // Recording Soon reminder
     var Discord_on_show_added: Bool  = false   // Show Added
-    var Discord_on_progress:  Bool   = false   // Edit start embed every 5 min with elapsed/remaining
     var Discord_enabled:      Bool   = false   // Master enable/disable toggle
 
     // Web server
@@ -768,7 +767,6 @@ extension AppConfig: Codable {
         Discord_on_upnext       = (try? c.decode(Bool.self,   forKey: .Discord_on_upnext))       ?? false
         Discord_on_soon         = (try? c.decode(Bool.self,   forKey: .Discord_on_soon))         ?? false
         Discord_on_show_added   = (try? c.decode(Bool.self,   forKey: .Discord_on_show_added))   ?? false
-        Discord_on_progress     = (try? c.decode(Bool.self,   forKey: .Discord_on_progress))     ?? false
         // Migration: existing configs with a URL had Discord working, so default to enabled for them.
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false

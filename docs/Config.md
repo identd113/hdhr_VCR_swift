@@ -60,7 +60,6 @@ Discord_on_guide_error  Bool    true    embed on guide load failure
 Discord_on_upnext       Bool    false   embed for Up Next reminder
 Discord_on_soon         Bool    false   embed for Recording Soon reminder
 Discord_on_show_added   Bool    false   embed when show is added
-Discord_on_progress     Bool    false   edit the "Recording Started" embed every 5 min with elapsed/remaining time
 Web_server_enabled      Bool    false   enable NWListener LAN web server (Settings → Sharing → Enable Web LAN)
 Web_server_port         Int     1980    TCP port for the web server (1025–65534; macOS requires root for <1024)
 Terminal_guide_enabled  Bool    false   sub-switch under Web_server_enabled — hdhr_guide (bundled CLI) refuses to run when false; courtesy gate only, not a security boundary (see docs/TUIGuide.md)

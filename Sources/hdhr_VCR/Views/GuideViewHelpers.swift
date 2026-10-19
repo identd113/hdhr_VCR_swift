@@ -297,14 +297,6 @@ func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
 }
 
-func timeRemaining(until endDate: Date) -> String {
-    let mins = Int(max(0, endDate.timeIntervalSinceNow) / 60)
-    if mins < 1  { return "ending soon" }
-    if mins < 60 { return "\(mins)m left" }
-    let h = mins / 60; let m = mins % 60
-    return m == 0 ? "\(h)h left" : "\(h)h \(m)m left"
-}
-
 // Returns true when OriginalAirdate (midnight UTC for the broadcast calendar date) matches
 // today or tonight in the server's local timezone — a proxy for "new/first-run today."
 func isNewEpisode(_ entry: GuideEntry) -> Bool {

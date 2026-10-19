@@ -115,13 +115,6 @@ enum PlayerStatusFormat {
         return min(1, max(0, now.timeIntervalSince(start) / total))
     }
 
-    /// "22 min left", "1 h 05 min left", or "Ending" once past the end.
-    static func remainingText(end: Date, now: Date = Date()) -> String {
-        let minutes = Int((end.timeIntervalSince(now) / 60).rounded(.up))
-        guard minutes > 0 else { return "Ending" }
-        return minutes >= 60 ? String(format: "%d h %02d min left", minutes / 60, minutes % 60) : "\(minutes) min left"
-    }
-
     /// The tuner/source text next to the health word.
     static func sourceText(_ source: PlayerStatusInfo.Source) -> String {
         switch source {
@@ -234,7 +227,7 @@ struct PlayerStatusBar: View {
     }
 
     private var titleBlock: some View {
-        TimelineView(.periodic(from: .now, by: 15)) { ctx in
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
             // Running over: the guide's slot for this show has ended but we are still watching it (a Bonus Time
             // recording, or a FEED/recording playing past its slot) while the next show has already begun.
             let overrun: Bool = {
@@ -298,11 +291,10 @@ struct PlayerStatusBar: View {
         .accessibilityHidden(true)
     }
 
-    /// "NOW · 6:00 – 7:00 AM · 22 min left", or "OVER TIME · SCHEDULED 6:00 – 7:00 AM" once the slot has ended.
+    /// "NOW · 6:00 – 7:00 AM", or "OVER TIME · SCHEDULED 6:00 – 7:00 AM" once the slot has ended.
     private func headerLine(overrun: Bool, now: Date) -> String {
         if overrun { return "OVER TIME · SCHEDULED " + (info.timeRange ?? "") }
-        return (["NOW", info.timeRange, info.airing.map { PlayerStatusFormat.remainingText(end: $0.end, now: now) }]
-            .compactMap { $0 }).joined(separator: " · ")
+        return (["NOW", info.timeRange].compactMap { $0 }).joined(separator: " · ")
     }
 
     /// A 2 pt line along the top edge: how far through the show we are.

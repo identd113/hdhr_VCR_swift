@@ -81,7 +81,7 @@ The next shows are `UpcomingShowCard`s (250 pt wide, 42 pt high) in a horizontal
 
 ### Progress, FEED next show and connection (added 2026-10-18)
 
-- **Progress line:** a 2 pt line along the bar's top edge in the genre color (accent without one), plus "N min left" after the time range, refreshed every 15 s (`PlayerStatusFormat.progress` / `remainingText`, `PlayerStatusInfo.airing`). Live tuner sessions only — a recording plays from disk, so wall-clock progress means nothing.
+- **Progress line:** a 2 pt line along the bar's top edge in the genre color (accent without one), refreshed every 60 s (`PlayerStatusFormat.progress`, `PlayerStatusInfo.airing`). The header shows only the time range ("NOW · 6:00 – 7:00 AM"), never a countdown, so the text stays the same for the whole show. Live tuner sessions only — a recording plays from disk, so wall-clock progress means nothing.
 - **FEED next show:** the relay's lineup has no channel number, so `feedGuideMatch` finds the airing by title (`GuideStore.currentEntryByTitle`, anchored a minute after the relay's `virtualRelayFileStartedAt`) in the guides we hold, then lists the following shows as usual. The card's Record menu stays disabled for FEED. Without a match (the source tuner's guide isn't loaded here) there is no card.
 - **Connection (Stream popover):** `NetworkLinkProbe` (`NetworkLinkInfo.swift`) opens three short TCP connects to the tuner/relay each time the popover opens (never on a timer) and shows Ethernet / Wi-Fi, link rate (`getifaddrs` baudrate, or CoreWLAN transmit rate), Wi-Fi signal, and the median connect time ("Ping to tuner"), colored good ≤ 20 ms / fair ≤ 50 ms and by Wi-Fi signal (≥ −67 dBm good, ≥ −75 fair). Hidden for a recording played from disk.
 
