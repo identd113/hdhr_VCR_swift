@@ -111,7 +111,8 @@ actor StreamSessions {
                                    isGrowing: { [growing = session.growing] in growing.isOn })
         session.task = Task.detached(priority: .utility) {
             do { _ = try await follower.run() } catch is CancellationError {} catch {
-                glog("[Stream] \(showId) stopped: \(error.localizedDescription)", level: .warning)
+                // After a stop the folder is already gone and the follower may trip over that: not worth a warning.
+                if !Task.isCancelled { glog("[Stream] \(showId) stopped: \(error.localizedDescription)", level: .warning) }
             }
         }
         sessions[showId] = session

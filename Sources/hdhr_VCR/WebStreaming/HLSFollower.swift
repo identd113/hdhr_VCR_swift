@@ -23,6 +23,7 @@ final class HLSFollower: @unchecked Sendable {
     /// Longest a pass waits for the writer to take the next sample before leaving the rest for the next pass.
     private static let feedPatience = 1.5
 
+    private var activeWriter: AVAssetWriter?
     private var streamStart = 0.0
     private var frameDuration = 1.0 / 30
 
@@ -67,7 +68,7 @@ final class HLSFollower: @unchecked Sendable {
             if let vt = tracks.first(where: { $0.mediaType == .video }), duration.isFinite, duration > 0 {
                 let at = tracks.first(where: { $0.mediaType == .audio })
                 if writer == nil, let made = try? await makeWriter(video: vt, hasAudio: at != nil, sink: sink) {
-                    writer = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
+                    writer = made.writer; activeWriter = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
                     videoCursor = startTime.seconds - 1
                     audioCursor = startTime.seconds - 1
                     streamStart = startTime.seconds
@@ -89,8 +90,15 @@ final class HLSFollower: @unchecked Sendable {
                                                videoCursor: &videoCursor, audioCursor: &audioCursor, end: end, includeAudio: false)
                         }
                         failedPasses = 0
+                        // A failed writer never becomes ready again, so every later pass would just wait: report it now.
+                        if let w = writer, w.status == .failed {
+                            throw HLSConverterError.cannotWrite(w.error.map { "\($0)" } ?? "writer failed")
+                        }
                     } catch {
                         failedPasses += 1
+                        if failedPasses == 1 || failedPasses % 10 == 0 {
+                            glog("[Stream] \(input.lastPathComponent): read pass failed (\(failedPasses) in a row): \(error.localizedDescription)", level: .warning)
+                        }
                         if finalPass || failedPasses >= Self.maxFailedPasses { throw error }
                     }
                 }
@@ -208,22 +216,28 @@ final class HLSFollower: @unchecked Sendable {
         }
     }
 
-    /// Appends both streams in timestamp order (the writer wants video and audio roughly interleaved), waiting
-    /// whenever the writer is busy. `requestMediaDataWhenReady` is not usable here: AVFoundation allows it once
-    /// per input, and these inputs live across many passes. Inputs are NOT finished here.
+    /// Appends both streams, earliest timestamp first (the writer wants video and audio roughly interleaved), but always
+    /// to whichever input the writer is READY to take. The writer holds one track back until the other has caught up, so
+    /// insisting on the earlier track while the writer is waiting for the later one deadlocks: video stuck "not ready"
+    /// waiting for audio that this loop would only offer after the video. Waits only when neither input is ready.
+    /// `requestMediaDataWhenReady` is not usable here: AVFoundation allows it once per input, and these inputs live
+    /// across many passes. Inputs are NOT finished here.
     private func feed(video: Stream?, audio: Stream?) async throws {
-        while let pick = [video, audio].compactMap({ $0 }).filter({ $0.next != nil }).min(by: { $0.nextPTS < $1.nextPTS }),
-              let sample = pick.next {
-            var waited = 0.0
-            while !pick.input.isReadyForMoreMediaData {
+        var waited = 0.0
+        while true {
+            let pending = [video, audio].compactMap { $0 }.filter { $0.next != nil }.sorted { $0.nextPTS < $1.nextPTS }
+            guard !pending.isEmpty else { return }
+            guard let pick = pending.first(where: { $0.input.isReadyForMoreMediaData }), let sample = pick.next else {
                 try Task.checkCancellation()
-                // The writer holds one track back until the other has caught up (interleaving). If the other track has
-                // nothing more in this snapshot it will never catch up during this pass, so give up the rest of the
-                // pass: the unsent samples stay put and the next pass (with fresher data) resumes from the cursors.
+                if let w = activeWriter, w.status == .failed { throw HLSConverterError.cannotWrite(w.error.map { "\($0)" } ?? "writer failed") }
+                // Neither input will take a sample right now. Give up the rest of this pass after a while: the unsent
+                // samples stay put and the next pass (with fresher data) resumes from the cursors.
                 if waited >= Self.feedPatience { return }
                 try await Task.sleep(nanoseconds: 3_000_000)
                 waited += 0.003
+                continue
             }
+            waited = 0
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             guard pick.input.append(sample) else { throw HLSConverterError.cannotWrite("writer refused a sample") }
             pick.maxPTS = max(pick.maxPTS ?? -.infinity, pts)

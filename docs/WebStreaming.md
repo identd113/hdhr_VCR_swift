@@ -82,6 +82,25 @@ Audio was started muted (autoplay rules), so sound itself is unconfirmed by ear.
 - Opt-in real-recording test: `HLS_REAL_SOURCE=/path/to/recording.ts swift test --filter realRecordingFollowedAtLiveSpeed` (`HLS_REAL_OUT=` keeps the output).
 - Not hooked to the web server, settings or any UI yet. Nothing changes for users.
 
+## Live test on the Mini with a real tuner (2026-10-19)
+
+Branch build deployed, `Web_streaming_enabled` set in the config, and `tools/mock_scenario.py start` recorded channel 2.5 (720p60 MPEG-2, mono + stereo AC-3) from the EXTEND to disk.
+
+| Check | Result |
+|---|---|
+| `GET /api/hls/<show>/index.m3u8` | 200 in ~2.5 s, `application/vnd.apple.mpegurl`, `Cache-Control: no-store`, EVENT playlist; init and segments `video/mp4`; `..%2F` paths, short names and unknown shows all 404 |
+| Chrome (hls.js) and Safari (native) playing the live recording | Both play 1280×720 while it records; Chrome dropped ~1.4% of frames while another browser and the encoder ran |
+| App CPU while streaming | ~14% at peak, ~0.4% between segments (hardware encode) |
+| Stream length over a 2+ minute recording | Grows continuously (28 segments at 130 s); **found and fixed two stalls**, below |
+| Recording stopped while watched | Playlist became VOD with `#EXT-X-ENDLIST` within 5 s (36 segments); `ffmpeg` decodes it over HTTP with no errors: 140 s, 8402 frames, max gap 0.018 s (one frame at 59.94 fps), 0 duplicates, AAC stereo |
+| Idle cleanup | 30 s after the last request the session stopped and `Caches/hdhrVCRplus/stream/` was empty |
+
+Stalls found by this test (neither shows up with the 6 s synthetic file, both with a real channel):
+1. The writer holds one track back until the other has caught up. A loop that insisted on offering the earlier-timestamp track waited forever while the writer waited for the other one (video "not ready", audio never offered). Now it offers whichever track the writer is ready for and waits only when neither is, for a bounded time, resuming on the next pass.
+2. A recording whose audio ends before its video (or lags it) left the writer holding the video back at the end: the final pass now finishes audio first, then drains the video. Regression test `finishesWhenAudioEndsBeforeVideo` (30 s timeout; fails on the old code).
+
+Also found: a writer that has failed never becomes ready again, so every pass would wait for nothing; the follower now checks the writer's status and reports the error. Latency is ~15–18 s behind the recording (hold-back + 3 s pass interval + 4 s segments + encoder buffering); tuning is still to do.
+
 ## Decision
 
 Build the web stream on **AVFoundation (AVAssetReader → hardware H.264 + AAC → HLS segments)**, reading from a local growing file (a recording, or a rolling temp spool of a live tuner stream). VLC x264 stays as the fallback for sources AVFoundation cannot read, and for macOS versions where it cannot (macOS 15 unverified). Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) remains a possible live-TV shortcut, but the spool-and-convert path works for every tuner, so it is not required.

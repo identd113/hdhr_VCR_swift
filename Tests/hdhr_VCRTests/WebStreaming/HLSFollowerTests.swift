@@ -141,6 +141,21 @@ struct HLSFollowerTests {
         #expect(lag < 15)
     }
 
+    /// Opt-in (HLS_FOLLOW_PATH=/path/to/growing.ts): follows a file that something else is writing, for
+    /// HLS_FOLLOW_SECONDS (default 60), then finishes. For checking behaviour on the real recordings volume.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HLS_FOLLOW_PATH"] != nil))
+    func followsAFileInPlace() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let seconds = Double(env["HLS_FOLLOW_SECONDS"] ?? "60") ?? 60
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("hls-inplace-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: out) }
+        let flag = Flag()
+        Task { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)); flag.off() }
+        let follower = HLSFollower(input: URL(fileURLWithPath: env["HLS_FOLLOW_PATH"]!), outputDir: out, isGrowing: { flag.isOn })
+        let result = try await follower.run()
+        print("IN-PLACE FOLLOW: \(result.segments.count) segments, \(String(format: "%.1f", result.duration))s of video in \(seconds)s")
+    }
+
     private final class LiveWatch: @unchecked Sendable {
         private let lock = NSLock()
         private var flag = false
