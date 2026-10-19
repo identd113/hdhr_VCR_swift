@@ -2259,7 +2259,10 @@ final class AppState: ObservableObject {
         // One pass over the lineups instead of a linear isFavoriteChannel(_:) scan per comparison.
         var favoriteChannelKeys = Set<String>()
         for (deviceId, lineup) in lineups {
-            for ch in lineup where ch.isFavorite { favoriteChannelKeys.insert("\(deviceId):\(ch.GuideNumber)") }
+            var seen = Set<String>()
+            for ch in lineup where seen.insert(ch.GuideNumber).inserted {        // first entry per number wins, like first(where:)
+                if ch.isFavorite { favoriteChannelKeys.insert("\(deviceId):\(ch.GuideNumber)") }
+            }
         }
         func isFavorite(_ show: Show) -> Bool { favoriteChannelKeys.contains("\(show.hdhr_record):\(show.show_channel)") }
         var newConflicts = Set<String>()
@@ -2435,6 +2438,14 @@ final class AppState: ObservableObject {
         let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
         addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
         return true
+    }
+
+    /// Schedules a recording of a show that has NOT started yet — the player status bar's "next on this channel" card.
+    /// Unlike `quickRecord`, no "are the tuners full right now" gate: that test is about starting immediately, and a
+    /// future airing needs no tuner until it begins (the scheduler's own conflict handling covers that moment).
+    func recordUpcoming(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) {
+        let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
+        addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
     }
 
     // Whether a device's tuners are full for a reason this instance can fix on the user's own
@@ -6071,6 +6082,9 @@ final class AppState: ObservableObject {
     // write pointer), while still landing the viewer close to "now" instead of the recording's
     // start. Purely a starting-position default; the scrub bar can reach anywhere from 0 to live.
     private static let recordingLiveEdgeBackoffSeconds: Double = 30
+    /// Where the Live Edge button lands: a few seconds behind the write pointer, so the player keeps a small buffer
+    /// (aim 5–8 s buffered) without stalling. Never moves the viewer backward — see `seekRecordingToLiveEdge`.
+    static let recordingJumpToLiveSeconds: Double = 4
 
     private func recordingElapsedSeconds(_ show: Show) -> Double {
         max(1, Date().timeIntervalSince(show.show_next ?? Date()))
@@ -6384,7 +6398,10 @@ final class AppState: ObservableObject {
     func seekRecordingToLiveEdge(showId: String) {
         guard let source = recordingRelaySource(showId: showId) else { return }
         let elapsed = recordingRelayElapsedSeconds(source)
-        seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
+        let target = max(0, elapsed - Self.recordingJumpToLiveSeconds)
+        // Already that close (or closer): a jump would only move the viewer backward.
+        if VLCBridge.shared.recordingPlaybackSeconds >= target - 2 { return }
+        seekRecording(showId: showId, toSeconds: target)
     }
 
     /// Re-anchors VLCBridge's recording-relay scrub state after a PiP swap

@@ -65,4 +65,25 @@ struct AppStateConflictDetectionTests {
         #expect(state.showRuntime[a.show_id]?.isConflicting != true)
         #expect(state.showRuntime[b.show_id]?.isConflicting != true)
     }
+
+    // Regression (code review): a lineup with the same GuideNumber twice used to count as favorite if ANY entry was one;
+    // isFavoriteChannel has always used the first entry, and the set built for the conflict pass must agree.
+    @Test @MainActor func duplicateGuideNumber_usesTheFirstEntryLikeIsFavoriteChannel() {
+        let next = Date().addingTimeInterval(7200)
+        let a = overlapping("A", channel: "3.1", next: next)
+        let b = overlapping("B", channel: "4.1", next: next)
+        let device = HDHRDevice(DeviceID: "FFFFFFFF", LocalIP: "192.168.1.100", BaseURL: "http://192.168.1.100",
+                                TunerCount: 1, FirmwareVersion: nil, DeviceAuth: nil)
+        let lineup = [
+            LineupEntry(GuideNumber: "3.1", GuideName: "A", URL: nil, HD: nil, Favorite: nil),
+            LineupEntry(GuideNumber: "4.1", GuideName: "B", URL: nil, HD: nil, Favorite: nil),   // first 4.1: not a favorite
+            LineupEntry(GuideNumber: "4.1", GuideName: "B2", URL: nil, HD: nil, Favorite: 1),     // duplicate, favorite
+        ]
+        let state = makeTestAppState(shows: [a, b], devices: [device], lineups: ["FFFFFFFF": lineup])
+        #expect(state.isFavoriteChannel(b) == false)             // the rule the set must match
+        state.rebuildMenuEntries()
+        let flagged = [a, b].filter { state.showRuntime[$0.show_id]?.isConflicting == true }
+        #expect(flagged.count == 1)
+        #expect(state.showRuntime[flagged[0].show_id]?.conflictBeatenByFavorite != true)
+    }
 }

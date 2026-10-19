@@ -493,6 +493,8 @@ since it's cheap and generically useful for the next thing that doesn't behave a
 
 ## Robustness fixes (code review follow-up)
 
+**Exit when stdin closes (2026-10-17).** `Terminal.readKey()` set `Terminal.stdinClosed` on end-of-file (a 0-byte read) or a hard read error, `pollStdin` treats hang-up/error as ready so the read happens, and `main.swift`'s loop is `while !interrupted && !Terminal.stdinClosed`. Before this, a terminal that vanished without a SIGHUP (a dropped connection, a test harness closing its pty) left the process looping on `nil` keys at 100% CPU forever — found as an orphaned process 38 hours old. Raw mode only clears `ICANON|ECHO`, so a 0-byte read after the poll reports ready really is end-of-input. Regression test: `terminalHangUp_exitsInsteadOfSpinning`.
+
 A full review of this file found several real issues beyond the wrapping/redraw bugs already
 covered above. Fixed, low-code (no architecture change):
 

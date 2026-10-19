@@ -48,6 +48,28 @@ private func settleBeforeNextAction() {
     humanPause(2)
 }
 
+/// The app's CPU once it has settled: reads up to `attempts` times (each reading itself averages ~6 s) and stops at the first one
+/// under `limit`. A transient spike (recording stop/start, a teardown, a guide rebuild) passes on a later reading; a sustained
+/// problem — a window that keeps rendering — stays high on every reading and still fails. Returns every reading.
+private func settledCPU(below limit: Double, attempts: Int = 4) -> [Double]? {
+    var readings: [Double] = []
+    for _ in 0..<attempts {
+        guard let cpu = appCPUPercent() else { return nil }
+        readings.append(cpu)
+        if cpu < limit { break }
+    }
+    return readings
+}
+
+/// The player window's height in points, read through System Events (nil when it can't be read).
+private func playerWindowHeight(_ title: String) -> Double? {
+    let escaped = title.replacingOccurrences(of: "\"", with: "\\\"")
+    let out = runAppleScript("""
+    tell application "System Events" to tell process "hdhr_VCR" to return (item 2 of (get size of window "\(escaped)")) as text
+    """)
+    return out.flatMap { Double($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+}
+
 /// Polls `condition` every 0.1 s; returns the seconds it took, or nil if it never became true within `timeout`.
 private func waitFor(_ timeout: TimeInterval, _ condition: () -> Bool) -> TimeInterval? {
     let start = Date()
@@ -283,12 +305,7 @@ extension WindowNavigationTests {
         // Recording start, Discord card and grid rebuilds spike the CPU for several seconds (50–80 % seen) and then it falls
         // to ~0. Give it up to ~30 s (each reading itself averages 6 s) and require the steady state to be low.
         Thread.sleep(forTimeInterval: 8)
-        var readings: [Double] = []
-        for _ in 0..<4 {
-            guard let cpu = appCPUPercent() else { Issue.record("could not read the app's CPU from top"); return }
-            readings.append(cpu)
-            if cpu < 10 { break }
-        }
+        guard let readings = settledCPU(below: 10) else { Issue.record("could not read the app's CPU from top"); return }
         #expect(readings.last! < 10, "app still at \(readings.last!)% CPU with a recording and no windows after settling (readings \(readings)) — hidden windows are probably re-rendering")
     }
 }
@@ -304,6 +321,7 @@ extension WindowNavigationTests {
         if let why = MockRecording.realRecordingConflict(leadMinutes: 1) { skip(why); return }
         MockRecording.clean()
         closeStrayWindows()
+        settleBeforeNextAction()
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.hdhr.vcrplus" }) else { return }
         let pid = app.processIdentifier
         clickAppMenuItem("Settings…")
@@ -313,7 +331,7 @@ extension WindowNavigationTests {
         guard waitFor(5, { axFound("text=Preview Launch Splash") }) != nil else { Issue.record("no Preview Launch Splash row in Maintenance"); return }
 
         Thread.sleep(forTimeInterval: 2)
-        if let before = appCPUPercent() { #expect(before < 5, "app already at \(before)% CPU before the splash") }
+        if let before = settledCPU(below: 5) { #expect(before.last! < 5, "app still at \(before.last!)% CPU before the splash (readings \(before))") }
 
         for play in 1...2 {
             #expect(ax(["row", "", "text=Preview Launch Splash", "role=AXButton&title=Run", "--press"]).status == 0, "could not press Run (play \(play))")
@@ -322,8 +340,8 @@ extension WindowNavigationTests {
                     "play \(play): the splash window still exists after it finished — it should be destroyed, not just hidden")
             #expect(appRunning() && app.isTerminated == false, "play \(play): the app died during the splash")
             Thread.sleep(forTimeInterval: 2)   // let the teardown and the last frame settle
-            if let after = appCPUPercent() {
-                #expect(after < 5, "play \(play): app at \(after)% CPU after the splash ended — the poster wall is still rendering")
+            if let after = settledCPU(below: 5, attempts: 3) {
+                #expect(after.last! < 5, "play \(play): app at \(after.last!)% CPU after the splash ended (readings \(after)) — the poster wall is still rendering")
             } else { Issue.record("could not read the app's CPU from top") }
         }
     }
@@ -344,4 +362,183 @@ private func appCPUPercent() -> Double? {
     top.waitUntilExit()
     return (String(data: data, encoding: .utf8) ?? "").split(separator: "\n")
         .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.last
+}
+
+extension WindowNavigationTests {
+
+    /// The status bar toggle in the real player (docs/VLCPlayerView.md, "Status bar"): pressing it draws the bar under the
+    /// video — its health line and next-show area are reachable — and grows the window by exactly the bar's 52 pt, so the
+    /// video keeps its size; pressing again removes the bar and the window shrinks back. Uses a recording relay session
+    /// (the always-available live session here), so the bar's source reads "From disk", not a tuner.
+    @Test func statusBarToggleShowsTheBarAndResizesTheWindow() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean(); closeStrayWindows() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+
+        clickAppMenuItem("Watch Now…")
+        #expect(waitFor(8) { axWindows().contains("Watch Now") } != nil, "Watch Now never opened")
+        #expect(waitFor(15) { axPress("role=AXButton&help^=Play the in-progress recording", window: "Watch Now") } != nil,
+                "Watch Now never offered the recording's relay button")
+        var found: String?
+        _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
+        guard let title = found else { Issue.record("the player window never opened"); return }
+        Thread.sleep(forTimeInterval: 2)   // the toolbar's AX subtree fills in after the window itself
+
+        let bar = "id=vlc-status-bar", toggle = "id=vlc-status-bar-toggle"
+        // The choice is remembered across launches, so first bring it to a known "off".
+        if axFound(bar, window: title) {
+            #expect(axPress(toggle, window: title), "could not press the status bar toggle to switch it off")
+            #expect(waitFor(5) { !axFound(bar, window: title) } != nil, "the bar did not go away")
+            Thread.sleep(forTimeInterval: 1)
+        }
+        guard let before = playerWindowHeight(title) else { Issue.record("could not read the player window's height"); return }
+
+        #expect(axPress(toggle, window: title), "could not press the status bar toggle")
+        #expect(waitFor(6) { axFound(bar, window: title) } != nil, "the status bar never appeared")
+        #expect(waitFor(4) { axFound("id=vlc-status-title", window: title) } != nil, "the bar has no title block")
+        Thread.sleep(forTimeInterval: 1)   // the window's resize animation
+        if let grown = playerWindowHeight(title) {
+            #expect(abs((grown - before) - 52) <= 3, "window grew by \(grown - before) pt, expected the bar's 52 pt")
+        } else { Issue.record("could not read the window's height with the bar on") }
+
+        #expect(axPress(toggle, window: title), "could not press the status bar toggle to switch it off again")
+        #expect(waitFor(5) { !axFound(bar, window: title) } != nil, "the bar did not go away the second time")
+        Thread.sleep(forTimeInterval: 1)
+        if let after = playerWindowHeight(title) {
+            #expect(abs(after - before) <= 3, "window did not shrink back (\(before) -> \(after))")
+        }
+    }
+}
+
+extension WindowNavigationTests {
+
+    /// Regression (code review): the player window is recreated at its default size after being closed, while the window
+    /// manager is a singleton. With the bar on, closing and reopening the player must give a window that is again the
+    /// default size plus the bar's 52 pt, not one that thinks it already grew.
+    @Test func statusBarStaysSizedAfterClosingAndReopeningThePlayer() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean(); closeStrayWindows() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+
+        func openPlayer() -> String? {
+            clickAppMenuItem("Watch Now…")
+            guard waitFor(8, { axWindows().contains("Watch Now") }) != nil,
+                  waitFor(15, { axPress("role=AXButton&help^=Play the in-progress recording", window: "Watch Now") }) != nil else { return nil }
+            var found: String?
+            _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
+            Thread.sleep(forTimeInterval: 2)
+            return found
+        }
+        let bar = "id=vlc-status-bar", toggle = "id=vlc-status-bar-toggle"
+
+        guard let first = openPlayer() else { Issue.record("the player never opened"); return }
+        if axFound(bar, window: first) { _ = axPress(toggle, window: first); _ = waitFor(5) { !axFound(bar, window: first) }; Thread.sleep(forTimeInterval: 1) }
+        guard let base = playerWindowHeight(first) else { Issue.record("could not read the window height"); return }
+        #expect(axPress(toggle, window: first), "could not switch the bar on")
+        #expect(waitFor(6) { axFound(bar, window: first) } != nil, "the bar never appeared")
+        Thread.sleep(forTimeInterval: 1)
+
+        // Close the player (Watch Now stays open), then open a fresh one.
+        closePlayerWindowOnly(first)
+        guard waitFor(8, { !axWindows().contains(first) }) != nil else { Issue.record("the player window did not close"); return }
+        guard let second = openPlayer() else { Issue.record("the player did not reopen"); return }
+        #expect(waitFor(6) { axFound(bar, window: second) } != nil, "the remembered bar was not drawn in the reopened player")
+        Thread.sleep(forTimeInterval: 1)
+        if let height = playerWindowHeight(second) {
+            #expect(abs(height - (base + 52)) <= 3, "reopened window is \(height) pt tall, expected the default \(base) + 52")
+        } else { Issue.record("could not read the reopened window's height") }
+
+        // Leave the preference off.
+        _ = axPress(toggle, window: second)
+        _ = waitFor(5) { !axFound(bar, window: second) }
+    }
+}
+
+/// Closes just the named window, leaving Watch Now and others open.
+private func closePlayerWindowOnly(_ title: String) {
+    let escaped = title.replacingOccurrences(of: "\"", with: "\\\"")
+    _ = runAppleScript("""
+    tell application "System Events" to tell process "hdhr_VCR"
+        try
+            click (first button of window "\(escaped)" whose description is "close button")
+        end try
+    end tell
+    """)
+}
+
+extension WindowNavigationTests {
+
+    /// The player's Zoom (Window ▸ Zoom, same as Option-clicking the green button) snaps the window to the picture's native
+    /// size and the next Zoom returns to the size it had — `VLCPlayerWindowManager.standardFrame`. Uses the mock
+    /// recording relay, whose picture is smaller than the default window, so the zoomed window is visibly smaller.
+    @Test func zoomTogglesBetweenNativeSizeAndTheEarlierSize() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean(); closeStrayWindows() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+
+        clickAppMenuItem("Watch Now…")
+        #expect(waitFor(8) { axWindows().contains("Watch Now") } != nil, "Watch Now never opened")
+        #expect(waitFor(15) { axPress("role=AXButton&help^=Play the in-progress recording", window: "Watch Now") } != nil,
+                "Watch Now never offered the recording's relay button")
+        var found: String?
+        _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
+        guard let title = found else { Issue.record("the player window never opened"); return }
+        Thread.sleep(forTimeInterval: 4)   // a decoded frame must exist before Zoom knows the native size
+
+        func size() -> String {
+            runAppleScript("tell application \"System Events\" to tell process \"hdhr_VCR\" to return (get size of window \"\(title)\") as text") ?? "?"
+        }
+        func zoom() {
+            _ = runAppleScript("tell application \"System Events\" to tell process \"hdhr_VCR\" to click menu item \"Zoom\" of menu \"Window\" of menu bar item \"Window\" of menu bar 1")
+            Thread.sleep(forTimeInterval: 2)   // the zoom animation
+        }
+        let before = size()
+        zoom()
+        let zoomed = size()
+        #expect(zoomed != before, "Zoom did not resize the player window (\(before))")
+        zoom()
+        #expect(size() == before, "a second Zoom did not return to the earlier size: \(before) → \(zoomed) → \(size())")
+    }
+}
+
+extension WindowNavigationTests {
+
+    /// A stream that opens with the status bar off pops the bar down for about 5 s (the window grows by the bar's height),
+    /// then it goes away on its own and the window returns to its first height.
+    @Test func statusBarSlidesInBrieflyWhenAStreamOpens() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean(); closeStrayWindows() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+        // The persistent choice is remembered across launches; this test is about the bar being off.
+        _ = runAppleScript("do shell script \"defaults write com.hdhr.vcrplus playerStatusBarVisible -bool false\"")
+
+        clickAppMenuItem("Watch Now…")
+        #expect(waitFor(8) { axWindows().contains("Watch Now") } != nil, "Watch Now never opened")
+        #expect(waitFor(15) { axPress("role=AXButton&help^=Play the in-progress recording", window: "Watch Now") } != nil,
+                "Watch Now never offered the recording's relay button")
+        var found: String?
+        _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
+        guard let title = found else { Issue.record("the player window never opened"); return }
+
+        let bar = "id=vlc-status-bar"
+        let before = playerWindowHeight(title) ?? 0
+        #expect(waitFor(12) { axFound(bar, window: title) } != nil, "the status bar never popped down when the stream opened")
+        Thread.sleep(forTimeInterval: 1.5)
+        #expect((playerWindowHeight(title) ?? 0) > before, "the window did not grow for the bar")
+        #expect(waitFor(14) { !axFound(bar, window: title) } != nil, "the status bar did not go away again")
+        Thread.sleep(forTimeInterval: 1.5)
+        #expect((playerWindowHeight(title) ?? 0) == before, "the window did not return to its first height")
+    }
 }

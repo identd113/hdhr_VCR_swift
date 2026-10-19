@@ -328,7 +328,8 @@ Published snapshot of the live buffer state, updated on every `tickController` t
 struct VLCBufferInfo {
     var lagSec:       Double  // estimated buffer lag behind live edge (0..8s)
     var rate:         Float   // current playback rate (minRate..1.0)
-    var demuxBitrate: Float   // f_demux_bitrate from libvlc stats (kB/s); 0 when stats unavailable
+    var demuxBitrate: Float   // raw f_demux_bitrate from libvlc stats — bytes/µs, so × 8 = Mbps (not kB/s, corrected 2026-10-17); 0 when stats unavailable
+    // @Published private(set) var throughput: VLCThroughput — current/average Mbps, ThroughputTracker.State and the window's history, updated each stats tick from a fresh f_demux_bitrate (raw × 8); see docs/VLCPlayerView.md "Status bar"
     var corrupted:    Int32   // cumulative i_demux_corrupted count
     var enabled:      Bool    // false when minRate == 1.0 (buffering disabled)
 }

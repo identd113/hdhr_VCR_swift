@@ -45,6 +45,7 @@ ChannelIconCache.swift     Actor: async disk-backed cache for channel logos
 CachePruner.swift          Pure, injectable stale-file pruner (guide cache, --dump-header temp files) — see docs/GuideStore.md, docs/RecordingManager.md
 ChannelSignalStore.swift   Actor-like @MainActor store: per-channel SNQ history + stats
 VirtualTunerService.swift  UDP discovery responder for the recording-relay virtual tuner (see docs/VirtualTunerService.md)
+ThroughputTracker.swift   Rolling 2-minute bitrate window → steady / trending / stalled (VLC raw × 8 = Mbps); pure, unit-tested (docs/VLCPlayerView.md "Status bar")
 LocalRelay.swift           URL shapes for the in-process /api/watch-recording and FEED-cache relays the player reads from
 LANFetch.swift             Bounded-timeout LAN HTTP fetch helper (tuner requests are cut off after 10 s and logged as [LAN])
 AppRelocator.swift         Release-build "Move to Applications?" prompt — atomic copy-then-swap, never offered inside a git checkout
@@ -70,6 +71,7 @@ Views/
   RecordingDefaultsFields.swift  Shared default-recording fields (transcode, Time Machine, Bonus Time…) for Settings and the first-run wizard
   FirstRunWizardView.swift  First-run setup wizard (docs/FirstRunWizardView.md); ShowFormSection.swift = shared Add/Edit form (docs/ShowFormSection.md)
   WatchNowView.swift       Watch Now window (docs/WatchNowView.md); VLCPlayerView.swift = player/PiP (docs/VLCPlayerView.md); VLCBridge.swift = libvlc wrapper (docs/VLCBridge.md)
+  PlayerStatusBar.swift    Optional 52 pt status bar under the player's video + ThroughputGraph (docs/VLCPlayerView.md "Status bar")
   TunerDiscoveryCard.swift Wizard's tuner checking/found/not-found card; NetworkFlowDiagram / WebLANDiagram / TerminalTypingDiagram = wizard "how it works" maps; DiagramAnimationSupport = shared cyclic-progress math
   Dialogs.swift            Non-blocking alerts/sheets/file pickers (`Dialogs.show`/`present`/`choose`) — the only way to show a dialog; see the "No blocking dialogs" invariant
   CaveatBanner.swift, InfoButton.swift, WindowAction.swift  Small shared pieces: muted caveat banner, (i) help popover, SwiftUI→NSWindow bridge (floating level, re-centering)

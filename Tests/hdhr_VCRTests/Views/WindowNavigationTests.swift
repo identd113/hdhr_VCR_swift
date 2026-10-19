@@ -1377,8 +1377,8 @@ struct WindowNavigationTests {
         // which are FEED-only and recording-relay-hidden respectively (see this test's own doc
         // comment and VLCPlayerView.swift's own CC-picker condition).
         let expected: Set<String> = [
-            "vlc-channel-picker", "vlc-catch-up-button", "vlc-native-resolution",
-            "vlc-volume-slider", "vlc-info-button",
+            "vlc-channel-picker", "vlc-catch-up-button",
+            "vlc-volume-slider", "vlc-status-bar-toggle",
         ]
         let missing = expected.subtracting(foundIds)
         #expect(missing.isEmpty, "VLC player window is missing expected accessibility identifiers: \(missing.sorted())")

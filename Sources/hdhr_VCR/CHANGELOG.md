@@ -2,6 +2,38 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+### Player (`VLCPlayerView`, `PlayerStatusBar`)
+
+- *Updated* — **The status bar says when a show is running over, and the left side shows as much as the next-show cards.** The left block now opens with "NOW · 6:00 – 7:00 AM · 22 min left" like the cards' "NEXT · 7:00 AM"; once the guide slot has ended while you are still watching it, that line turns orange ("OVER TIME · SCHEDULED …") with "Running over — <next show> started at 7:00 AM", and the next-show card reads "STARTED" instead of "NEXT". FEED sessions now borrow the matching show's time, genre, episode and synopsis from this Mac's guide, so they are no longer just a title.
+- *Updated* — **Fixed: the status bar and info banner no longer go generic during Bonus Time.** Once a recording ran past its guide slot, the show's details were looked up as "still airing" and came back empty; they are now looked up as of when the recording started.
+- *Updated* — **Player toolbar: no blue focus box, the Stream popover goes away when the pointer leaves, and Live Edge shows how far behind you are.** Live Edge now lands about 4 s behind live (was 30 s) and never moves you backward. Clicking it flashes "5 seconds to live" with a fast-forward chevron on the picture. Playing a recording (or a FEED cache) from disk now reads "Live Edge · 12s behind" on the button and "Behind live" in the Stream popover.
+
+- *Added* — **An optional status bar under the player's video.** A button in the toolbar (or the I key) shows or hides a slim strip: the show's image, its title with genre tags and a highlighted NEW tag, the episode and time, how healthy the stream is with the live Mbps, and a small card for the next show on the channel. The card lists the two shows after it, has arrows to step through the next six hours, and a red ● that records the next show with the same four choices as the toolbar's Record. If a show has no image, the channel's logo is shown instead. Switching it on makes the window taller by exactly the strip's height, so the picture keeps its size and shape. It is off until you turn it on, and it is not drawn in fullscreen.
+- *Updated* — **The Stream popover is organized into groups** (Health, Source, Video, Throughput, Connection) and shows the video file's resolution next to the resolution on screen, with "(33% smaller)" or "(50% larger)" when they differ.
+- *Added* — **The status bar pops down for five seconds when a stream opens** (if it is switched off), then rises back — about half a second each way, with a springy bounce and a soft highlight sweep as it opens and a small wind-up as it closes, and when you switch the bar on it pops down from under the picture as the window grows, then rises back as the window shrinks — and the ⓘ icon pulses to remind you where to bring it back; the icon pulses whenever you close the bar, too.
+- *Fixed* — **The picture no longer jitters when you switch the status bar on or off.**
+- *Updated* — **Stream health moved into the Stream popover.** The dot, Good/Fair/Poor, tuner name, signal quality and Mbps are now the top of the hover popover, and the status bar uses the room for the show's synopsis (or when it first aired).
+- *Updated* — **The Native button is gone; use the window's Zoom.** Option-click the green button (or Window ▸ Zoom, or double-click the title bar) to snap the picture to its real pixel size — a clean half when the display is too small — and again to return to the size you had. A plain click on the green button is full screen. The Stream popover now opens from the ⓘ button.
+- *Updated* — **The status bar's next shows scroll sideways (no scroll bar, through the end of the guide) and fill the rest of the bar.** Each is tinted in its own genre color with its own red record dot, and the toggle is the ⓘ icon again.
+- *Added* — **The status bar shows how far through the show you are,** a thin line along its top edge with "22 min left" next to the time (live TV only). **FEED sessions now get the next-show card** when this Mac holds the source channel's guide.
+- *Added* — **The Stream popover shows your connection to the tuner:** Ethernet or Wi-Fi, link speed, Wi-Fi signal, and the ping time, colored green, yellow or red.
+- *Updated* — **The old Info button is gone.** The I key and the status bar button now show the status bar (in fullscreen, I still flashes the short info banner). The bar is tinted with the show's genre color, the same colors as the guide grid.
+- *Updated* — **The picture-quality hover is now a "Stream" popover.** Hovering the 1:1 button still shows the source, resolution, display size and codecs, and now also the live bitrate in Mbps (green when steady, yellow when it is trending down, red when it stalls), its two-minute average, and a small graph of the last two minutes.
+- *Updated* — **Fixed: the bitrate in the player was shown in the wrong unit** (it printed a number labelled kB/s that was really about an eighth of the true Mbps). It is now measured against a recording's real file size and shown in Mbps.
+- *Removed* — **The Live Buffer hover.** The pill next to the toolbar's clock still shows how full the buffer is, but hovering it no longer opens lag, rate, bitrate and corruption details; the bitrate moved into the Stream popover.
+- *Updated* — **Fixed: a paused recording no longer shows as "Stalled".**
+
+### Alerts and the terminal guide (`Dialogs`, `hdhr_guide`)
+
+- *Updated* — **Fixed: an alert shown without a window to attach to (for example "Couldn't Start FEED Relay") no longer shows two blank buttons and a "Do not show this message again" box.**
+- *Updated* — **Fixed: the terminal guide no longer keeps running at full speed after its terminal goes away** (a dropped connection, a closed pane); it now exits.
+
+### Responsiveness & performance (`AppState`, `GuideStore`)
+
+- *Updated* — **Recording-conflict checks and guide reloads do less work as the lineup and show list grow:** the favorite-channel lookup is built once per check instead of scanned for every comparison, and reloading one tuner's guide now only touches the series that tuner carried.
+
 ## v2.6.5 — 2026-10-15
 
 Grouped by area of the code (each entry is still tagged *Added*, *Updated*, *Removed* or *Info*); an entry that spans several areas is listed under the one it mostly touches.
