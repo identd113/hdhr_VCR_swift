@@ -17,6 +17,18 @@ Source: a real OTA recording (`FOX 9 … .ts`): MPEG-2 720p60 progressive, AC-3 
 | Segments left after exit | VLC deletes old segments by default (`delsegs`); the running session must own the folder and its cleanup. |
 | Playback in Chrome via hls.js | **Not verified from the automation tab** (a hidden tab never starts playback). Open the test page in a visible browser. |
 
+## Spike 2: VideoToolbox outside VLC (AVFoundation), 2026-10-19
+
+`avconvert --source <MPEG-2 .ts> --preset Preset1280x720 --duration 10` (AVFoundation + VideoToolbox) on the same recording:
+
+| Question | Result |
+|---|---|
+| Can AVFoundation read the MPEG-2 / AC-3 transport stream? | **Yes**, on macOS 27.0.1 on both the Mini (M2) and the laptop (M4). Output: H.264 Main 1280×720 59.94 fps + AAC (both audio programs, 5.1 and stereo). |
+| Cost | ~0.8 s CPU for 10 s of video (0.5 s on the M4), ~4 s wall including startup. Software x264 used ~14 CPU-s for the same 10 s. |
+| Not yet known | macOS 15 (the app's minimum) may not read MPEG-2 TS; a still-growing file (AVAsset reads a snapshot); live tuner streams (AVFoundation does not read raw TS over HTTP); 1080i deinterlacing; the preset's bitrate (≈10 Mb/s, not tuned). |
+
+Implication: a native AVAssetReader → AVAssetWriter (H.264 hardware + AAC, HLS segment output) pipeline needs no VLC.app and is ~15× cheaper than x264, but it is file-based and must be proven for growing recordings and on older macOS. VLC remains the fallback for sources AVFoundation cannot read.
+
 ## Decision
 
 Phase 1 ships on **software x264 + AAC → HLS** (works today, shared per show). The VideoToolbox/AVAssetWriter encoder stays a later optimization, built only if measured CPU on the Mini justifies it. Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) is the live-TV fast path in Phase 2.
