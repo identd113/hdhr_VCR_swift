@@ -2256,6 +2256,12 @@ final class AppState: ObservableObject {
             guard let t = d.TunerCount, t > 0 else { return nil }
             return (d.DeviceID, t)
         })
+        // One pass over the lineups instead of a linear isFavoriteChannel(_:) scan per comparison.
+        var favoriteChannelKeys = Set<String>()
+        for (deviceId, lineup) in lineups {
+            for ch in lineup where ch.isFavorite { favoriteChannelKeys.insert("\(deviceId):\(ch.GuideNumber)") }
+        }
+        func isFavorite(_ show: Show) -> Bool { favoriteChannelKeys.contains("\(show.hdhr_record):\(show.show_channel)") }
         var newConflicts = Set<String>()
         var newBeatenByFavorite = Set<String>()
         let byDevice = Dictionary(grouping: candidateShows.filter { $0.show_next != nil && $0.show_end != nil },
@@ -2265,7 +2271,7 @@ final class AppState: ObservableObject {
             let ordered = deviceShows.sorted { a, b in
                 let an = a.show_next!, bn = b.show_next!
                 if an != bn { return an < bn }
-                let af = isFavoriteChannel(a), bf = isFavoriteChannel(b)
+                let af = isFavorite(a), bf = isFavorite(b)
                 if af != bf { return af && !bf }
                 return a.show_id < b.show_id
             }
@@ -2276,9 +2282,9 @@ final class AppState: ObservableObject {
                     slotFreeAt[slot] = end
                 } else {
                     newConflicts.insert(show.show_id)
-                    if !isFavoriteChannel(show) {
+                    if !isFavorite(show) {
                         let beatenByFavorite = ordered.contains { other in
-                            other.show_id != show.show_id && isFavoriteChannel(other)
+                            other.show_id != show.show_id && isFavorite(other)
                             && other.show_next! <= next && other.show_end! > next
                         }
                         if beatenByFavorite { newBeatenByFavorite.insert(show.show_id) }

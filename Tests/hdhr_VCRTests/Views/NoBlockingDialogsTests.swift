@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import Testing
+@testable import hdhr_VCR
 
 // `NSAlert.runModal()` / `NSSavePanel.runModal()` park the main thread in their own event loop, which
 // stops every web-server handler, the idle loop and recording start/stop until someone answers
@@ -28,5 +30,29 @@ struct NoBlockingDialogsTests {
             }
         }
         #expect(offenders.isEmpty, "use Dialogs.show / Dialogs.present / Dialogs.choose (Views/Dialogs.swift), not runModal(): \(offenders)")
+    }
+
+    // A floating alert (no app window to hang a sheet off) used to show NSAlert's unused template controls —
+    // two blank buttons and a "<Do not show this message again>" checkbox — because the window was shown without
+    // NSAlert.layout() ever running. Only the buttons the caller added (and no suppression checkbox) may be visible.
+    @MainActor @Test func standaloneAlertShowsOnlyTheButtonsItWasGiven() {
+        _ = NSApplication.shared
+        let alert = NSAlert()
+        alert.messageText = "Couldn't Start FEED Relay"
+        alert.informativeText = "Could not connect to the remote"
+        alert.addButton(withTitle: "OK")
+        Dialogs.show(alert)   // no host window in the test process -> the standalone floating window
+        defer { alert.window.orderOut(nil) }
+
+        func visibleButtons(in view: NSView) -> [NSButton] {
+            var found: [NSButton] = []
+            if let b = view as? NSButton, !b.isHidden { found.append(b) }
+            for sub in view.subviews where !sub.isHidden { found += visibleButtons(in: sub) }
+            return found
+        }
+        let visible = visibleButtons(in: alert.window.contentView!)
+        let titles = visible.map(\.title)
+        #expect(titles == ["OK"], "visible buttons: \(titles)")
+        #expect(!alert.showsSuppressionButton)
     }
 }

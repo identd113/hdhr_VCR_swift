@@ -4,6 +4,12 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## Test: launch with no cached show icons
+
+Try launching with the show/channel icon caches empty (cold `ChannelIconCache` disk cache, no cached posters) and see what the menu, Watch Now, guide and launch splash do: placeholders, layout shifts, blocking fetches, CPU spike while ~100+ logos download. Not started — wanted as a check, not a known bug.
+
+---
+
 ## Accepted — not our bug / not scheduled
 
 ### macOS Local Network permission block — lineup fetch can silently fail on launch

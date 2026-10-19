@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release-to-release performance baseline for hdhrVCRplus.
 
-  tools/perf_baseline.py run  <app | hdhr_VCR binary | .dmg> --label v2.6.5 [--runs 3] [--no-splash] [--port 1985]
+  tools/perf_baseline.py run  <app | hdhr_VCR binary | .dmg> --label v2.6.5 [--runs 3] [--no-splash] [--port 1985] [--tuner-ip 10.0.2.101]
   tools/perf_baseline.py prime <app | binary | .dmg> --label v2.6.5     # once per build: lets macOS ask for Local Network access
   tools/perf_baseline.py compare [--dir docs/perf]            # table of every saved run, change vs the previous row
 
@@ -18,6 +18,10 @@ recording and nothing is due. Each run measures:
   rss_mb        resident memory after that idle window
   web_*_ms      GET / (cold, then median of warm), /api/guide.json, /vertical; web_*_kb the response sizes
   binary_mb     size of the executable
+
+Each saved result also records how the Mac is connected (Ethernet link speed, or Wi-Fi band / signal / noise / link rate) and
+the ping round trip to the tuner and the gateway, so a slower number on Wi-Fi isn't mistaken for a slower build. The tuner
+address comes from `--tuner-ip`, else the last "[Discovery]" line of the real app's log.
 
 Medians over --runs are saved to docs/perf/<label>.json. Compare builds made the same way (release vs release) on the same
 Mac at a similar load: tuner and network timing vary, which is why runs are repeated.
@@ -181,6 +185,89 @@ def one_run(app, port, splash):
     return res
 
 
+def network_info(tuner_ip=None):
+    """How this Mac reaches the LAN right now: connection type + link quality, and ping round trips (ms) to the tuner and
+    the default gateway. Best-effort — every field is omitted rather than guessed when a lookup fails."""
+    net = {}
+    route = sh(["route", "-n", "get", "default"]).stdout
+    m = re.search(r"interface:\s*(\S+)", route)
+    iface = m.group(1) if m else None
+    g = re.search(r"gateway:\s*(\S+)", route)
+    gateway = g.group(1) if g else None
+    if iface:
+        net["interface"] = iface
+        ports = sh(["networksetup", "-listallhardwareports"]).stdout
+        pm = re.search(r"Hardware Port:\s*(.+)\nDevice:\s*" + re.escape(iface) + r"\b", ports)
+        port = pm.group(1).strip() if pm else ""
+        net["type"] = "Wi-Fi" if "wi-fi" in port.lower() or "airport" in port.lower() else (port or "unknown")
+        if net["type"] == "Wi-Fi":
+            r = sh(["system_profiler", "SPAirPortDataType", "-json"], timeout=60)
+            try:
+                for i in json.loads(r.stdout)["SPAirPortDataType"][0]["spairport_airport_interfaces"]:
+                    if i.get("_name") != iface:
+                        continue
+                    c = i.get("spairport_current_network_information") or {}
+                    net["wifi_channel"] = c.get("spairport_network_channel")
+                    sn = re.findall(r"(-?\d+) dBm", c.get("spairport_signal_noise") or "")
+                    if len(sn) == 2:
+                        net["wifi_signal_dbm"], net["wifi_noise_dbm"] = int(sn[0]), int(sn[1])
+                    net["wifi_rate_mbps"] = c.get("spairport_network_rate")
+                    net["wifi_phy"] = c.get("spairport_network_phymode")
+            except (ValueError, KeyError, IndexError, TypeError):
+                pass
+        else:
+            media = re.search(r"media:\s*(.+)", sh(["ifconfig", iface]).stdout)
+            if media:
+                net["link"] = media.group(1).strip()
+
+    def ping(host):
+        out = sh(["ping", "-c", "10", "-i", "0.2", "-q", host], timeout=30).stdout
+        pm = re.search(r"= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms", out)
+        loss = re.search(r"([\d.]+)% packet loss", out)
+        if not pm:
+            return None
+        return {"min_ms": float(pm.group(1)), "avg_ms": float(pm.group(2)), "max_ms": float(pm.group(3)),
+                "jitter_ms": float(pm.group(4)), "loss_pct": float(loss.group(1)) if loss else None}
+
+    if not tuner_ip:
+        log = os.path.expanduser("~/Library/Logs/hdhrVCRplus.log")
+        try:
+            lines = [l for l in open(log, errors="replace").read().splitlines()[-20000:] if "[Discovery]" in l and "tuner(s):" in l]
+            ips = re.findall(r"\b[0-9A-F]{8} (\d+\.\d+\.\d+\.\d+)", lines[-1]) if lines else []
+            tuner_ip = ips[0] if ips else None
+        except OSError:
+            pass
+    if tuner_ip:
+        net["tuner_ip"] = tuner_ip
+        net["tuner_ping"] = ping(tuner_ip)
+    if gateway:
+        net["gateway_ping"] = ping(gateway)
+    return net
+
+
+def net_summary(net):
+    """One short cell for the compare table, e.g. 'Ethernet 1000baseT · tuner 0.6 ms' or 'Wi-Fi 6GHz −31 dBm 2401 Mbps · tuner 3.2 ms'."""
+    if not net:
+        return "–"
+    if net.get("type") == "Wi-Fi":
+        band = re.search(r"\((\d+GHz)", net.get("wifi_channel") or "")
+        bits = ["Wi-Fi" + (" " + band.group(1) if band else "")]
+        if net.get("wifi_signal_dbm") is not None:
+            bits.append(f"{net['wifi_signal_dbm']} dBm")
+        if net.get("wifi_rate_mbps"):
+            bits.append(f"{net['wifi_rate_mbps']} Mbps")
+    else:
+        bits = [net.get("type") or "?"]
+        if net.get("link"):
+            speed = re.search(r"\((\S+)", net["link"])
+            bits.append(speed.group(1) if speed else net["link"].split()[0])
+    tp = net.get("tuner_ping")
+    if tp:
+        bits.append(f"· tuner {tp['avg_ms']:.1f} ms" + (f" ±{tp['jitter_ms']:.1f}" if tp.get("jitter_ms") is not None else "")
+                    + (f", {tp['loss_pct']:.0f}% loss" if tp.get("loss_pct") else ""))
+    return " ".join(bits)
+
+
 def cmd_run(a):
     app, cleanup = resolve_app(a.target)
     try:
@@ -207,7 +294,7 @@ def cmd_run(a):
         med["binary_mb"] = os.path.getsize(binary) / 1048576
         out = {"label": a.label, "version": ver, "splash": not a.no_splash, "runs": len(runs),
                "host": sh(["hostname", "-s"]).stdout.strip(), "date": time.strftime("%Y-%m-%d %H:%M"),
-               "median": med, "all": runs}
+               "network": network_info(a.tuner_ip), "median": med, "all": runs}
         os.makedirs(a.dir, exist_ok=True)
         path = os.path.join(a.dir, re.sub(r"[^A-Za-z0-9._-]+", "_", a.label) + ("-nosplash" if a.no_splash else "") + ".json")
         with open(path, "w") as f:
@@ -272,8 +359,8 @@ def cmd_compare(a):
     rows = [json.load(open(f)) for f in files]
     if not rows:
         sys.exit(f"no results in {a.dir}")
-    print("| build | host | " + " | ".join(c[1] for c in COLS) + " |")
-    print("|---|---|" + "---|" * len(COLS))
+    print("| build | host | network | " + " | ".join(c[1] for c in COLS) + " |")
+    print("|---|---|---|" + "---|" * len(COLS))
     prev = None
     for r in rows:
         m = r["median"]
@@ -290,7 +377,7 @@ def cmd_compare(a):
                 s += f" ({d:+.0f}%)"
             cells.append(s)
         tag = r["label"] + ("" if r.get("splash", True) else " (no splash)")
-        print(f"| {tag} | {r.get('host', '')} | " + " | ".join(cells) + " |")
+        print(f"| {tag} | {r.get('host', '')} | {net_summary(r.get('network'))} | " + " | ".join(cells) + " |")
         prev = r
 
 
@@ -303,6 +390,7 @@ if __name__ == "__main__":
     r.add_argument("--runs", type=int, default=3)
     r.add_argument("--no-splash", action="store_true")
     r.add_argument("--port", type=int, default=1985)
+    r.add_argument("--tuner-ip", help="tuner address to ping (default: from the real app's log)")
     r.add_argument("--dir", default=DEFAULT_DIR)
     pr = sub.add_parser("prime")
     pr.add_argument("target")
