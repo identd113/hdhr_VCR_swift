@@ -5,7 +5,7 @@ import WebKit
 struct AddShowView: View {
 
     @EnvironmentObject var state: AppState
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismissWindow) var dismissWindow   // closes the window by id; `dismiss` from inside the sheet only closed the sheet
 
     // No device-selection step — the tuner is chosen inside the web guide.
     enum Step { case guide, details }
@@ -17,7 +17,6 @@ struct AddShowView: View {
     @AppStorage("addShowGuideHeight") private var savedGuideHeight: Double = 820
 
     @State private var step: Step = .guide
-    @State private var slidingForward = true   // direction of the light slide between the two steps
     @State private var show = Show.blank()   // transcode overridden in onAppear
 
     // Step 1
@@ -34,39 +33,29 @@ struct AddShowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Group {
-                switch step {
-                case .guide:   guideStep.transition(stepSlide)
-                case .details: detailsStep.transition(stepSlide)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .overlay(alignment: .bottomTrailing) {
-                if step == .details && show.show_bonus_time && state.config.Sports_padding_enabled {
-                    StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 65)
-                        .padding(.trailing, 12).padding(.bottom, 12)
-                        .transition(.asymmetric(
-                            insertion: .identity,
-                            removal: .scale(scale: 0.05).combined(with: .opacity)
-                        ))
-                }
-            }
-
-            if step != .guide {
+            guideStep
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        // The guide window keeps one size. The details step is a sheet that slides down from the title bar (the system's
+        // own animation), so nothing resizes and the guide stays loaded underneath.
+        .sheet(isPresented: Binding(get: { step == .details }, set: { if !$0 { step = .guide } })) {
+            VStack(spacing: 0) {
+                detailsStep
+                    .overlay(alignment: .bottomTrailing) {
+                        if show.show_bonus_time && state.config.Sports_padding_enabled {
+                            StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 65)
+                                .padding(.trailing, 12).padding(.bottom, 12)
+                                .transition(.asymmetric(insertion: .identity,
+                                                        removal: .scale(scale: 0.05).combined(with: .opacity)))
+                        }
+                    }
                 Divider()
                 navBar
             }
+            .frame(width: 560, height: 540)
         }
-        .frame(
-            minWidth:    step == .guide ? 1100 : 560,
-            idealWidth:  step == .guide ? max(1100, CGFloat(savedGuideWidth))  : 560,
-            maxWidth:    step == .guide ? .infinity : 560,
-            minHeight:   step == .guide ? 720  : 540,
-            idealHeight: step == .guide ? max(720, CGFloat(savedGuideHeight)) : 540,
-            maxHeight:   step == .guide ? .infinity : 540
-        )
-        .animation(.easeInOut(duration: 0.2), value: step)
+        .frame(minWidth: 1100, idealWidth: max(1100, CGFloat(savedGuideWidth)), maxWidth: .infinity,
+               minHeight: 720, idealHeight: max(720, CGFloat(savedGuideHeight)), maxHeight: .infinity)
         // Remember the guide-step size across reopens/restarts — pure SwiftUI, no AppKit. This
         // background GeometryReader reads the window-content size (== window size under .contentSize)
         // and writes it to @AppStorage on resize. Sizes narrower than 1000 (the details step) are
@@ -79,15 +68,8 @@ struct AddShowView: View {
                 }
             }
         })
-        // Esc backs out one screen at a time rather than always closing the whole wizard — from
-        // Details it returns to the Guide (goBack(), the same transition the Back button uses),
-        // and only actually dismisses the window once already on Guide (step 1).
-        .onExitCommand {
-            switch step {
-            case .details: goBack()
-            case .guide: dismiss()
-            }
-        }
+        // Esc on the guide closes the window; on the details sheet it cancels the sheet (its Cancel button's shortcut).
+        .onExitCommand { dismissWindow(id: "add-show") }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
             // Acquire the internal web server for this wizard instance on EVERY entry path — the
@@ -328,7 +310,8 @@ struct AddShowView: View {
                 EmptyView()
             case .details:
                 HStack(spacing: 8) {
-                    Button("Back") { goBack() }
+                    Button("Cancel") { step = .guide }
+                        .keyboardShortcut(.cancelAction)
                     Button("Record") {
                         save()
                     }
@@ -356,25 +339,7 @@ struct AddShowView: View {
         }
     }
 
-    /// Moves to a step with a light slide: forward to Details slides in from the right, Back slides in from the left.
-    private func go(_ next: Step) {
-        slidingForward = next == .details
-        step = next
-    }
-
-    private var stepSlide: AnyTransition {
-        let d: CGFloat = slidingForward ? 1 : -1
-        return .asymmetric(
-            insertion: .modifier(active: SlideFade(dx: 48 * d, opacity: 0), identity: SlideFade(dx: 0, opacity: 1)),
-            removal: .modifier(active: SlideFade(dx: -48 * d, opacity: 0), identity: SlideFade(dx: 0, opacity: 1)))
-    }
-
-    private func goBack() {
-        switch step {
-        case .details: go(.guide)
-        default: break
-        }
-    }
+    private func go(_ next: Step) { step = next }
 
     // MARK: - Logic
 
@@ -534,7 +499,8 @@ struct AddShowView: View {
         // (2026-10-05 triage T10).
         switch state.addShow(show) {
         case .added:
-            dismiss()
+            step = .guide   // drop the sheet, then close the window
+            dismissWindow(id: "add-show")
         case .alreadyExists:
             showAddRefusal("This show was already added (the wizard kept an earlier show's identity). Close this window and start again from the guide.")
         case .watchOnlyTuner:
@@ -734,11 +700,4 @@ extension LineupEntry: Hashable, Equatable {
 }
 extension HDHRDevice: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(DeviceID) }
-}
-
-/// A short horizontal nudge plus fade — the "light slide" between the Add Show steps.
-private struct SlideFade: ViewModifier {
-    let dx: CGFloat
-    let opacity: Double
-    func body(content: Content) -> some View { content.offset(x: dx).opacity(opacity) }
 }

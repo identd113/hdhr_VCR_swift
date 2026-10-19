@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step. The guide-step size is **remembered across reopens and app restarts** — persisted in `UserDefaults` via `@AppStorage("addShowGuideWidth"/"addShowGuideHeight")` (defaults 1450×820), fed as the guide-step ideal width/height on open. A background `GeometryReader` (pure SwiftUI, no AppKit) reads the window-content size and writes it back on resize via `onChange`; sizes narrower than 1000 (the details step) are ignored so they never overwrite the saved guide size. The window animates between sizes with a 0.2s ease-in-out. Escape backs out one step at a time (Details → Guide, same transition `goBack()`/the Back button use) and only closes the window once already on the Guide step (step 1) — see "Navigation" below.
+The window is always the guide: resizable, **min 1100×720**. The details step is a **sheet** (560×540) that slides down from the title bar over it (2026-10-19, explicit request — resizing the window between steps looked bad). The guide-step size is **remembered across reopens and app restarts** — persisted in `UserDefaults` via `@AppStorage("addShowGuideWidth"/"addShowGuideHeight")` (defaults 1450×820), fed as the guide-step ideal width/height on open. A background `GeometryReader` (pure SwiftUI, no AppKit) reads the window-content size and writes it back on resize via `onChange`; sizes narrower than 1000 (the details step) are ignored so they never overwrite the saved guide size. The window animates between sizes with a 0.2s ease-in-out. Escape backs out one step at a time (Details → Guide, same transition `goBack()`/the Back button use) and only closes the window once already on the Guide step (step 1) — see "Navigation" below.
 
 **Top of window (all steps)**: nothing — the step content starts directly under the title bar. The 2-dot progress indicator and the `Divider` below it were removed 2026-10-19 (explicit request: they only added dead space above the guide).
 
@@ -15,7 +15,7 @@ A `WKWebView` (`AddShowWebView`) loading `http://localhost:{port}/`. The web gui
 If the web server is not yet running, a `ProgressView("Starting guide…")` is shown until it becomes ready.
 
 ### Step 2 — Details
-Fixed 560×540 window. White/system background. `ScrollView` containing a `VStack` with 16pt spacing.
+Fixed 560×540 **sheet** over the guide window. White/system background. `ScrollView` containing a `VStack` with 16pt spacing.
 
 - A `CaveatBanner` (shared soft-tinted warning component, `Views/CaveatBanner.swift` — see `docs/ShowFormSection.md`'s own note on it) if `show.show_url` is empty — lineup may not have loaded yet.
 - Form fields using `ShowFormSection` (shared with `EditShowView`) — this now includes a **Signal** row (bars for the selected channel + a weak-signal `CaveatBanner` when the channel's signal is poor), gated on `Signal_quality_enabled`. See `docs/ShowFormSection.md`.
@@ -23,13 +23,13 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 - **Double-click a row to switch the Details step to that airing** (`AddShowView.switchToAiring(channel:entry:)`): re-anchors `show.show_title`/`show_channel`/`show_length`/`show_next`/`show_end`/`show_logo_url`/`show_genre`/`hdhr_record`/`show_url`/`show_time` (and `selectedDevice`, if the airing is on a different device) to the clicked entry — the same field set the initial guide selection populates, minus `seriesType`, which is left as already set on this step. `airDays` **is** updated (recomputed from the clicked entry's weekday) — it was left alone in an earlier version on the theory that only `seriesType`/`airDays`/`show_bonus_time` were user-set-and-preserved, but nothing stops the user from switching Type to `.dateTime` after using this panel, and a stale `airDays` from whatever the initial guide selection's weekday was would then silently mismatch the newly-chosen airing's actual day. `show_bonus_time` **is** also recomputed now (`Show.genreImpliesBonusTime(show.show_genre) && state.config.Sports_padding_enabled`, same formula as `applyWebGuideEntry`/`applyPendingEntry`) — an earlier version left it alone too, so switching to a differently-genred airing (e.g. non-sports → a sports simulcast of the same series) could leave the Bonus Time toggle silently stuck at whatever the first-selected airing implied; see `issues_resolved.md`'s "`AddShowView.switchToAiring` didn't recompute `show_bonus_time`" entry. Since the panel recomputes from `show.show_channel`/`show.show_next` on every render, the just-switched-from airing reappears in the list — a swap, not an append.
 - Bottom-right: orange `StarburstBadge` (65pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if `show_bonus_time == true` and `Sports_padding_enabled`. Sports entries have Bonus Time pre-checked; any show type can enable it. Sized down from an earlier 115pt so it no longer covers the Folder row / Other Upcoming Airings panel underneath — see `docs/StarburstBadge.md`.
 
-**Nav bar** (bottom): **Back** and **Record** grouped together and right-aligned (`HStack { Spacer(); HStack { Back; Record } }`) — Record is `.borderedProminent`, tinted `recordRed` (same red as the web guide's Record button, `#c0392b`, see `GuideViewHelpers.swift`). A `Divider` above.
+**Nav bar** (bottom): **Cancel** (Esc, `.cancelAction`) and **Record** grouped together and right-aligned (`HStack { Spacer(); HStack { Cancel; Record } }`) — Record is `.borderedProminent`, tinted `recordRed` (same red as the web guide's Record button, `#c0392b`, see `GuideViewHelpers.swift`). A `Divider` above.
 
 ## Intent
 
 `AddShowView` is a 2-step wizard window for adding a new recording schedule: web guide browsing → recording details (see the note under "Overall window" above for why there's no separate device-selection step).
 
-Window size: **560×540** for the details step; **resizable** (min 1100×720) for the guide step, which remembers its size across reopens/restarts (mechanism in "Overall window" above) and can otherwise be resized freely — the web guide fills the available width.
+Window size: always the guide's (**resizable**, min 1100×720; the details step is a 560×540 sheet), which remembers its size across reopens/restarts (mechanism in "Overall window" above) and can otherwise be resized freely — the web guide fills the available width.
 
 ---
 
@@ -155,7 +155,7 @@ For SeriesID shows (`show_use_seriesid == true`), channel is looked up from the 
 | `save()` | Applies series flags; sets `show_dir` to the chosen `recordFolder` and `show_temp_dir` to `Show.localFallbackDir` (a genuinely distinct local fallback, not a copy of `recordFolder` — see `Show.localFallbackDir`'s doc comment and `docs/EditShowView.md`'s `saveWithoutDismiss()` entry for the bug this fixed); for a SeriesID type, strips any episode-specific suffix (e.g. " S24E116 Trey Parker; Matt Stone; Alison Brie") from `show_title` via `Show.seriesTitle(from:)` — `applyPendingEntry`/`applyWebGuideEntry`/`switchToAiring` all set `show_title` straight from the raw guide entry with no stripping, so this is the one gate that actually applies it, no matter which of those last touched the title; optionally calls `resolveSeriesAir`; calls `state.addShow` |
 | `chooseFolder()` | `NSOpenPanel` folder picker; writes to `UserDefaults["defaultSaveDirectory"]` |
 | `resetShowForNewEntry()` | Starts each guide pick from a fresh `Show.blank()` with the config's default transcode, and re-reads the current default save folder into `recordFolder` |
-| `goBack()` | Step navigation: `.details → .guide` (the guide step advances via the web guide's own Record button, so there is no `goForward()`) |
+| `go(_:)` | Sets `step`; `.details` presents the sheet, `.guide` dismisses it (the guide advances via the web guide's own Record button, so there is no `goForward()`) |
 
 ---
 
@@ -167,4 +167,4 @@ For SeriesID shows (`show_use_seriesid == true`), channel is looked up from the 
 
 **Other-airings channel icon (2026-10-04):** the 18×18 icon beside each row now shows `stationLogoPlaceholder` (the app icon) instead of the `tv` SF Symbol whenever the station's real logo isn't cached (no `ImageURL`, still downloading, or failed); the real logo replaces it once `ChannelIconCache` has it.
 
-**Step slide (2026-10-19):** moving between the guide and details steps is a light horizontal slide with a fade (`go(_:)`, `stepSlide`, 48 pt over the existing 0.2 s ease): Details slides in from the right, Back (button or Escape) slides the guide in from the left.
+**Details sheet (2026-10-19):** `.sheet(isPresented:)` bound to `step == .details`; Cancel (or Esc) sets `step = .guide`, Record saves and closes the window (`dismissWindow(id: "add-show")` — `dismiss` inside a sheet only closes the sheet). The guide web view stays mounted underneath, so nothing reloads and the window never resizes. An entry that arrives pre-filled (`pendingAddEntry`) opens the window with the sheet already showing. The earlier slide/resize attempts were removed.
