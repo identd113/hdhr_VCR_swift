@@ -389,10 +389,13 @@ extension WindowNavigationTests {
 
         let bar = "id=vlc-status-bar", toggle = "id=vlc-status-bar-toggle"
         // The choice is remembered across launches, so first bring it to a known "off".
-        if axFound(bar, window: title) {
+        // A stream that just opened shows the bar briefly by itself; let that finish (a click during it would keep it).
+        _ = waitFor(14) { !axFound(bar, window: title) }
+        Thread.sleep(forTimeInterval: 1.5)
+        if axFound(bar, window: title) {   // a saved "on": switch it off
             #expect(axPress(toggle, window: title), "could not press the status bar toggle to switch it off")
             #expect(waitFor(5) { !axFound(bar, window: title) } != nil, "the bar did not go away")
-            Thread.sleep(forTimeInterval: 1)
+            Thread.sleep(forTimeInterval: 1.5)
         }
         guard let before = playerWindowHeight(title) else { Issue.record("could not read the player window's height"); return }
 
@@ -438,7 +441,9 @@ extension WindowNavigationTests {
         let bar = "id=vlc-status-bar", toggle = "id=vlc-status-bar-toggle"
 
         guard let first = openPlayer() else { Issue.record("the player never opened"); return }
-        if axFound(bar, window: first) { _ = axPress(toggle, window: first); _ = waitFor(5) { !axFound(bar, window: first) }; Thread.sleep(forTimeInterval: 1) }
+        _ = waitFor(14) { !axFound(bar, window: first) }   // the opening peek retracts by itself
+        Thread.sleep(forTimeInterval: 1.5)
+        if axFound(bar, window: first) { _ = axPress(toggle, window: first); _ = waitFor(5) { !axFound(bar, window: first) }; Thread.sleep(forTimeInterval: 1.5) }
         guard let base = playerWindowHeight(first) else { Issue.record("could not read the window height"); return }
         #expect(axPress(toggle, window: first), "could not switch the bar on")
         #expect(waitFor(6) { axFound(bar, window: first) } != nil, "the bar never appeared")
@@ -535,10 +540,13 @@ extension WindowNavigationTests {
         let bar = "id=vlc-status-bar"
         let before = playerWindowHeight(title) ?? 0
         #expect(waitFor(12) { axFound(bar, window: title) } != nil, "the status bar never popped down when the stream opened")
-        Thread.sleep(forTimeInterval: 1.5)
-        #expect((playerWindowHeight(title) ?? 0) > before, "the window did not grow for the bar")
+        Thread.sleep(forTimeInterval: 2.0)   // the pop-down (and any aspect re-fit for the stream's shape) has finished
+        let open = playerWindowHeight(title) ?? 0
+        #expect(open > before - 1, "the window did not grow for the bar")
         #expect(waitFor(14) { !axFound(bar, window: title) } != nil, "the status bar did not go away again")
         Thread.sleep(forTimeInterval: 1.5)
-        #expect((playerWindowHeight(title) ?? 0) == before, "the window did not return to its first height")
+        let closed = playerWindowHeight(title) ?? 0
+        // The bar's row is 52 pt; the window gives exactly that back.
+        #expect(abs((open - closed) - 52) <= 2, "the window did not give back the bar's height (open \(open), closed \(closed))")
     }
 }

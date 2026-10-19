@@ -174,9 +174,11 @@ struct PlayerStatusBar: View {
     let channelLogoURL: String?          // the network logo to fall back to when the show has no image
     let upcoming: [GuideEntry]           // the channel's next shows, soonest first
     let canRecordUpcoming: Bool
+    var shimmerToken = 0                     // bumped each time the bar opens; runs one shimmer wave across the current show's block
     var accessibilityID = "vlc-status-bar"   // the brief slide-up copy uses its own, so tests can tell the two apart
 
     @State private var logo: NSImage?
+    @State private var shine: CGFloat = -1   // -1...1.6, the wave's position, animated here so nothing else interferes
     @State private var leadingID: Int?        // StartTime of the card at the left of the strip
 
     var body: some View {
@@ -211,6 +213,15 @@ struct PlayerStatusBar: View {
             logo = await ChannelIconCache.shared.image(for: url)
         }
         .onChange(of: upcoming.first?.StartTime) { _, _ in leadingID = nil }
+        .task(id: shimmerToken) {
+            guard shimmerToken > 0 else { return }
+            shine = -1
+            try? await Task.sleep(for: .milliseconds(900))   // let the bar drop and settle first
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 1.2)) { shine = 1.6 }
+            try? await Task.sleep(for: .milliseconds(1300))
+            shine = -1
+        }
     }
 
     /// The image, or the app icon stand-in while neither the show's image nor the network logo is available.
@@ -264,9 +275,29 @@ struct PlayerStatusBar: View {
             }
         }
         .frame(minWidth: 220, maxWidth: 560, alignment: .leading)
+        .overlay { shimmer }
         .layoutPriority(1)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("vlc-status-title")
+    }
+
+    /// A slight, soft band of light that passes once over the current show's block to draw the eye.
+    private var shimmer: some View {
+        GeometryReader { g in
+            // A soft, wide band: bright enough to catch the eye, slow and feathered enough not to distract.
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .white.opacity(0.14), location: 0.3),
+                                   .init(color: .white.opacity(0.34), location: 0.5),
+                                   .init(color: .white.opacity(0.14), location: 0.7),
+                                   .init(color: .clear, location: 1)],
+                           startPoint: .leading, endPoint: .trailing)
+                .frame(width: g.size.width * 0.5)
+                .offset(x: shine * g.size.width - g.size.width * 0.25)
+                .opacity(shine > -1 && shine < 1.4 ? 1 : 0)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// "NOW · 6:00 – 7:00 AM · 22 min left", or "OVER TIME · SCHEDULED 6:00 – 7:00 AM" once the slot has ended.

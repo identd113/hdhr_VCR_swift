@@ -190,7 +190,8 @@ struct VLCPlayerView: View {
     @State private var posterNSImage: NSImage? = nil
     @ObservedObject private var bridge = VLCBridge.shared
     // Optional status bar under the video (docs/VLCPlayerView.md, "Status bar"); remembered across windows and launches.
-    @AppStorage("playerStatusBarVisible") private var statusBarEnabled = false
+    @AppStorage("playerStatusBarVisible") private var statusBarEnabled = false   // the user's choice only; a brief peek never writes it
+    @State private var barRowOpen = false          // the bar's row exists in the window (the choice, or a peek in progress)
     // A stream that opens with the bar switched off still shows it briefly: it slides up over the bottom of the picture
     // for tempBarSeconds, then slides away and the ⓘ icon pulses as a hint to press it. See `revealStatusBarBriefly`.
     @State private var liveJumpTextShown = false   // the words follow the chevron by a beat
@@ -198,14 +199,14 @@ struct VLCPlayerView: View {
     @State private var barIsPeek = false           // the bar is open only briefly (a stream just opened); a click keeps it
     @State private var barSlidIn = false           // the persistent bar is wanted (true from the moment it starts opening)
     @State private var barContentOffset: CGFloat = 0   // the bar's own bounce inside its growing row
-    @State private var barShine: CGFloat = -1          // 0...1 sweeps a soft highlight across the bar as it opens
+    @State private var barShimmerToken = 0             // bumped when the bar opens; PlayerStatusBar runs its shimmer wave
     @State private var barRowHeight: CGFloat = 0   // animated 0...52 in step with the window's own resize
     @State private var barCloseTask: Task<Void, Never>?
     @State private var tempBarToken = 0
     @State private var upcomingSnapshot: [GuideEntry] = []   // next-show strip, rebuilt only when the current show changes
     @State private var infoFlashCount = 0     // bumped to pulse the ⓘ icon
     @State private var infoGlow = false
-    private static let tempBarSeconds: Double = 5
+    private static let tempBarSeconds: Double = 5.5   // plus the 0.45 s slide-in: back up about 6 s after the video starts
     /// One quick motion for every appearance of the status bar: about half a second, the window and the bar's row on
     /// the same curve, with a bounce and a highlight sweep as it opens and a small wind-up as it closes.
     private static let barSlideSeconds: Double = 0.45
@@ -910,12 +911,11 @@ struct VLCPlayerView: View {
             }
             // Optional status bar: a fixed row under the video, part of the window (never over the picture). Not drawn
             // in fullscreen, where there is no room below the video.
-            if statusBarEnabled && !isFullScreen {
+            if barRowOpen && !isFullScreen {
                 // The row is reserved at full height (window already resized, no animation) so the picture never
                 // moves; only the bar inside it slides.
                 // The row grows (and the window grows with it) so the bar pops down from the picture's bottom edge.
                 statusBarView()
-                    .overlay { barShineOverlay }
                     .offset(y: barContentOffset)
                     .frame(height: barRowHeight, alignment: .bottom)
                     .clipped()
@@ -955,7 +955,8 @@ struct VLCPlayerView: View {
         }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
-            barSlidIn = statusBarEnabled   // a bar left on opens already in place
+            barRowOpen = statusBarEnabled   // a bar left on opens already in place
+            barSlidIn = statusBarEnabled
             barRowHeight = statusBarEnabled ? VLCPlayerWindowManager.playerStatusBarHeight : 0
             VLCPlayerWindowManager.shared.setStatusBarVisible(statusBarEnabled)
             if bridge.hasVideoFrame { revealStatusBarBriefly() }
@@ -1294,67 +1295,77 @@ struct VLCPlayerView: View {
     private func statusBarView(id: String = "vlc-status-bar") -> some View {
         PlayerStatusBar(state: state, device: device, channel: selectedChannel, info: statusBarInfo,
                         poster: posterNSImage, channelLogoURL: statusBarChannelLogoURL,
-                        upcoming: statusBarUpcoming, canRecordUpcoming: statusBarCanRecordUpcoming, accessibilityID: id)
+                        upcoming: statusBarUpcoming, canRecordUpcoming: statusBarCanRecordUpcoming, shimmerToken: barShimmerToken, accessibilityID: id)
     }
 
     /// Switches the persistent status bar on or off. The window is resized in the same step as the state change (and
     /// without animation), so the picture never sees an intermediate layout — animating the window while the bar's row
     /// appeared at once made the video jitter.
-    private func setStatusBar(_ on: Bool) {
+    private func setStatusBar(_ on: Bool, persist: Bool = true) {
         guard on != barWanted else { return }
         barCloseTask?.cancel()
         let seconds = Self.barSlideSeconds
         let motion = Animation.easeInOut(duration: seconds)   // the window animates on the same curve and time
         barSlidIn = on
+        if persist { statusBarEnabled = on }   // a peek leaves the saved choice alone, so it can never get stuck open
+        let target = on ? VLCPlayerWindowManager.playerStatusBarHeight : 0
         if on {
             barRowHeight = 0
             barContentOffset = -22   // the bar starts lifted into the picture, then drops and bounces into place
-            barShine = -1
-            statusBarEnabled = true
-            barCloseTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(30))   // let the empty row exist first
-                guard !Task.isCancelled else { return }
-                VLCPlayerWindowManager.shared.setStatusBarVisible(true, slideSeconds: seconds)
-                withAnimation(motion) { barRowHeight = VLCPlayerWindowManager.playerStatusBarHeight }
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) { barContentOffset = 0 }
-                withAnimation(.easeInOut(duration: 0.6).delay(0.2)) { barShine = 1.6 }
-            }
+            barShimmerToken += 1
+            barRowOpen = true
         } else {
             // A small upward wind-up, then the row and window collapse together.
             withAnimation(.easeOut(duration: 0.12)) { barContentOffset = -7 }
-            barCloseTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(120))
-                guard !Task.isCancelled else { return }
-                VLCPlayerWindowManager.shared.setStatusBarVisible(false, slideSeconds: seconds)
-                withAnimation(motion) { barRowHeight = 0 }
-                try? await Task.sleep(for: .seconds(seconds))
-                guard !Task.isCancelled else { return }
-                statusBarEnabled = false   // the window has already shrunk; this just drops the empty row
+        }
+        barCloseTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(on ? 30 : 120))   // let the empty row exist / the wind-up play
+            guard !Task.isCancelled else { return }
+            if on {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) { barContentOffset = 0 }
+            }
+            await slideBarRow(to: target, seconds: seconds)
+            guard !Task.isCancelled else { return }
+            if !on {
+                barRowOpen = false   // the window has already shrunk; this just drops the empty row
                 barContentOffset = 0
+                infoFlashCount += 1   // hint: press ⓘ to bring it back
             }
         }
     }
 
-    /// A soft diagonal-free highlight that passes once across the bar as it opens.
-    private var barShineOverlay: some View {
-        GeometryReader { g in
-            LinearGradient(colors: [.clear, .white.opacity(0.3), .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: g.size.width * 0.3)
-                .offset(x: barShine * g.size.width - g.size.width * 0.15)
-                .opacity(barShine > -1 && barShine < 1.5 ? 1 : 0)
+    /// Moves the bar's row and the window together, one frame at a time from a single clock. Two separate animations
+    /// (SwiftUI for the row, AppKit for the window) drift apart by a frame or two, which shows as the video shaking;
+    /// here the window's height and the row's height are set in the same step from the same eased value, so the
+    /// video area never changes size.
+    private func slideBarRow(to target: CGFloat, seconds: Double) async {
+        let manager = VLCPlayerWindowManager.shared
+        let from = barRowHeight
+        guard from != target else { manager.commitStatusBarHeight(target); return }
+        guard let base = manager.beginStatusBarSlide() else {   // fullscreen or no window: nothing to resize
+            barRowHeight = target; manager.setStatusBarVisible(target > 0); return   // owes the resize until fullscreen ends
         }
-        .clipped()
-        .allowsHitTesting(false)
+        let start = Date()
+        while !Task.isCancelled {
+            let t = min(1, Date().timeIntervalSince(start) / seconds)
+            let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+            let row = from + (target - from) * CGFloat(eased)
+            barRowHeight = row
+            manager.setContentHeightDuringSlide(base + (row - from))
+            if t >= 1 { break }
+            try? await Task.sleep(for: .milliseconds(16))
+        }
+        if !Task.isCancelled { manager.commitStatusBarHeight(target) }
     }
 
     /// ⓘ / the I key. During the brief opening peek a click keeps the bar open instead of closing it.
     private func userToggleStatusBar() {
-        if barIsPeek { barIsPeek = false; return }
+        if barIsPeek { barIsPeek = false; statusBarEnabled = true; return }   // a click during the peek keeps the bar
         setStatusBar(!barWanted)
     }
 
     /// What the user has asked for: on from the moment it starts sliding in, off from the moment it starts sliding out.
-    private var barWanted: Bool { statusBarEnabled && barSlidIn }
+    private var barWanted: Bool { barRowOpen && barSlidIn }
 
     /// Opens the bar for `tempBarSeconds` when a stream starts (the same pop-down as switching it on, window and all),
     /// then closes it and pulses ⓘ. Only when the bar is off, and never in full screen.
@@ -2449,20 +2460,17 @@ struct VLCPlayerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: statusBarEnabled) { _, on in
-            if !on { infoFlashCount += 1 }                          // hint: press ⓘ to bring it back
-        }
         // Slide the bar in when a stream's first frame is decoded (every new stream, not just the window opening).
         .onChange(of: bridge.hasVideoFrame) { _, has in if has { revealStatusBarBriefly() } }
         .task(id: upcomingKey) { upcomingSnapshot = computeUpcoming() }
         .task(id: tempBarToken) {
             guard tempBarToken > 0 else { return }
             barIsPeek = true
-            setStatusBar(true)
+            setStatusBar(true, persist: false)
             try? await Task.sleep(for: .seconds(Self.barSlideSeconds + Self.tempBarSeconds))
             guard !Task.isCancelled, barIsPeek else { return }   // a click made it permanent
             barIsPeek = false
-            setStatusBar(false)
+            setStatusBar(false, persist: false)
         }
         // Pulses the ⓘ icon three times.
         .task(id: infoFlashCount) {
@@ -3894,6 +3902,25 @@ final class VLCPlayerWindowManager {
     func setStatusBarVisible(_ visible: Bool, slideSeconds: Double? = nil) {
         statusBarHeight = visible ? Self.playerStatusBarHeight : 0
         syncWindowToStatusBar(slideSeconds: slideSeconds)
+    }
+
+    /// The window's current content height, for a per-frame slide (`setContentHeightDuringSlide`); nil in fullscreen or
+    /// without a window, where nothing is resized.
+    func beginStatusBarSlide() -> CGFloat? {
+        guard let win = window, !win.styleMask.contains(.fullScreen), let h = win.contentView?.frame.height else { return nil }
+        return h
+    }
+
+    /// Sets the window's content height (top edge fixed, width unchanged), unanimated — called once per frame.
+    func setContentHeightDuringSlide(_ height: CGFloat) {
+        guard let win = window, let w = win.contentView?.frame.width else { return }
+        applyContentSize(CGSize(width: w, height: height), to: win, animate: false)
+    }
+
+    /// Records the bar's final height as both wanted and already applied to the frame, once a slide has finished.
+    func commitStatusBarHeight(_ height: CGFloat) {
+        statusBarHeight = height
+        frameStatusBarHeight = height
     }
 
     /// Grows or shrinks the window by whatever the bar's height differs from what the frame was sized for, top edge fixed,
