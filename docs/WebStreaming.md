@@ -62,6 +62,13 @@ A 1080i recording was written to disk at ~16 Mb/s while a follower re-opened it 
 
 So following a growing recording in passes is sound. Keeping the last 1.5 s unread per pass avoids a half-written tail at the cost of ~1.5 s added delay.
 
+## Built so far (branch `feature/web-streaming-hls`)
+
+- `Sources/hdhr_VCR/WebStreaming/HLSConverter.swift`: `HLSConverter.convert(input:outputDir:options:)` reads a transport-stream file with `AVAssetReader` and writes `init.mp4`, `seg-NNNNN.m4s` and `index.m3u8` (fMP4 HLS, hardware H.264 High + stereo AAC, keyframe at least every 2 s). No VLC. Interlaced video comes out progressive (checked: a 1080i WCCO clip, 301/301 frames interlaced in, 297/301 progressive out). Prototype timing: 40 s of 1080i in 6.7 s using 1.7 s CPU.
+- `HLSPlaylist.swift`: pure playlist text (VOD or EVENT) and `isServableName` (the only file names the web server will ever serve).
+- Tests: `HLSPlaylistTests`, `HLSConverterTests` (a 6 s synthetic MPEG-2 + AC-3 sample, `Fixtures/sample-mpeg2-ac3.ts`).
+- Not hooked to the web server, settings or any UI yet. Nothing changes for users.
+
 ## Decision
 
 Build the web stream on **AVFoundation (AVAssetReader → hardware H.264 + AAC → HLS segments)**, reading from a local growing file (a recording, or a rolling temp spool of a live tuner stream). VLC x264 stays as the fallback for sources AVFoundation cannot read, and for macOS versions where it cannot (macOS 15 unverified). Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) remains a possible live-TV shortcut, but the spool-and-convert path works for every tuner, so it is not required.
