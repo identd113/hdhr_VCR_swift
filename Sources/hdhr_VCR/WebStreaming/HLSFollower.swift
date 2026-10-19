@@ -20,6 +20,8 @@ final class HLSFollower: @unchecked Sendable {
 
     /// Consecutive failed passes (about a minute at the default interval) before giving up.
     private static let maxFailedPasses = 20
+    /// Longest a pass waits for the writer to take the next sample before leaving the rest for the next pass.
+    private static let feedPatience = 1.5
 
     private var streamStart = 0.0
     private var frameDuration = 1.0 / 30
@@ -50,6 +52,7 @@ final class HLSFollower: @unchecked Sendable {
         var audioCursor = -Double.infinity
         var startTime: CMTime = .zero
         var finalPass = false
+        var audioFinished = false
         var failedPasses = 0   // consecutive passes that could not open/read the file
 
         while true {
@@ -77,6 +80,14 @@ final class HLSFollower: @unchecked Sendable {
                     do {
                         try await readPass(asset: asset, videoTrack: vt, audioTrack: at, videoIn: videoIn, audioIn: audioIn,
                                            videoCursor: &videoCursor, audioCursor: &audioCursor, end: end)
+                        if finalPass {
+                            // Nothing more will arrive: finish audio so the writer stops holding video back for
+                            // interleaving, then hand over whatever video was left unsent.
+                            audioIn?.markAsFinished()
+                            audioFinished = true
+                            try await readPass(asset: asset, videoTrack: vt, audioTrack: at, videoIn: videoIn, audioIn: audioIn,
+                                               videoCursor: &videoCursor, audioCursor: &audioCursor, end: end, includeAudio: false)
+                        }
                         failedPasses = 0
                     } catch {
                         failedPasses += 1
@@ -91,7 +102,7 @@ final class HLSFollower: @unchecked Sendable {
 
         guard let writer else { throw HLSConverterError.noVideoTrack }
         videoIn?.markAsFinished()
-        audioIn?.markAsFinished()
+        if !audioFinished { audioIn?.markAsFinished() }
         await writer.finishWriting()
         guard writer.status == .completed else { throw HLSConverterError.cannotWrite(writer.error?.localizedDescription ?? "status \(writer.status.rawValue)") }
         let segments = sink.segments
@@ -143,7 +154,7 @@ final class HLSFollower: @unchecked Sendable {
     /// Video and audio each have their own cursor, so neither re-sends nor skips a sample at a pass boundary.
     private func readPass(asset: AVURLAsset, videoTrack: AVAssetTrack, audioTrack: AVAssetTrack?,
                           videoIn: AVAssetWriterInput, audioIn: AVAssetWriterInput?,
-                          videoCursor: inout Double, audioCursor: inout Double, end: Double) async throws {
+                          videoCursor: inout Double, audioCursor: inout Double, end: Double, includeAudio: Bool = true) async throws {
         var video: Stream?
         var audio: Stream?
         if end > videoCursor {
@@ -155,7 +166,7 @@ final class HLSFollower: @unchecked Sendable {
             guard r.startReading() else { throw HLSConverterError.cannotRead(r.error?.localizedDescription ?? "unknown") }
             video = Stream(reader: r, output: o, input: videoIn, skipUpTo: videoCursor + frameDuration / 2)
         }
-        if let audioTrack, let audioIn, end > audioCursor {
+        if includeAudio, let audioTrack, let audioIn, end > audioCursor {
             let r = try AVAssetReader(asset: asset)
             r.timeRange = CMTimeRange(start: CMTime(seconds: max(audioCursor, streamStart), preferredTimescale: 90000), end: CMTime(seconds: end, preferredTimescale: 90000))
             let o = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
@@ -203,9 +214,15 @@ final class HLSFollower: @unchecked Sendable {
     private func feed(video: Stream?, audio: Stream?) async throws {
         while let pick = [video, audio].compactMap({ $0 }).filter({ $0.next != nil }).min(by: { $0.nextPTS < $1.nextPTS }),
               let sample = pick.next {
+            var waited = 0.0
             while !pick.input.isReadyForMoreMediaData {
                 try Task.checkCancellation()
+                // The writer holds one track back until the other has caught up (interleaving). If the other track has
+                // nothing more in this snapshot it will never catch up during this pass, so give up the rest of the
+                // pass: the unsent samples stay put and the next pass (with fresher data) resumes from the cursors.
+                if waited >= Self.feedPatience { return }
                 try await Task.sleep(nanoseconds: 3_000_000)
+                waited += 0.003
             }
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             guard pick.input.append(sample) else { throw HLSConverterError.cannotWrite("writer refused a sample") }

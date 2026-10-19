@@ -70,6 +70,29 @@ struct HLSFollowerTests {
         for s in result.segments.dropLast() { #expect(s.duration > 0.4 && s.duration < 2.6, "\(s.name) lasted \(s.duration)") }
     }
 
+    /// Regression: a recording whose audio ends well before its video (or whose audio lags) made the writer hold the
+    /// video back for interleaving and the follower wait forever; the stream stalled mid-recording with no error.
+    @Test func finishesWhenAudioEndsBeforeVideo() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-follow-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let shortAudio = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/sample-short-audio.ts")
+        var opts = HLSFollower.Options()
+        opts.convert.videoKbps = 800
+        opts.convert.segmentSeconds = 1
+        opts.passInterval = 0.2
+        opts.holdBack = 0.3
+        let follower = HLSFollower(input: shortAudio, outputDir: dir, options: opts, isGrowing: { false })
+        let result: HLSConversionResult? = await withTaskGroup(of: HLSConversionResult?.self) { group in
+            group.addTask { try? await follower.run() }
+            group.addTask { try? await Task.sleep(nanoseconds: 30_000_000_000); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        let finished = try #require(result, "the follower hung (the writer was holding video back waiting for audio)")
+        #expect(finished.duration > 4.5, "all of the 6 s of video should come through, got \(finished.duration)")
+    }
+
     @Test func cancellingStopsTheFollower() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-follow-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
