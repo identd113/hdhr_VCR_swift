@@ -196,6 +196,8 @@ struct VLCPlayerView: View {
     // for tempBarSeconds, then slides away and the ⓘ icon pulses as a hint to press it. See `revealStatusBarBriefly`.
     @State private var liveJumpTextShown = false   // the words follow the chevron by a beat
     @State private var liveJumpText: String?       // "5 seconds to live" flash on the picture after Live Edge is clicked
+    @State private var handledPeekToken = 0        // last peek token acted on (see the .task on the toolbar)
+    @State private var handledFlashCount = 0
     @State private var barIsPeek = false           // the bar is open only briefly (a stream just opened); a click keeps it
     @State private var barSlidIn = false           // the persistent bar is wanted (true from the moment it starts opening)
     @State private var barContentOffset: CGFloat = 0   // the bar's own bounce inside its growing row
@@ -902,6 +904,7 @@ struct VLCPlayerView: View {
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
+                if isFullScreen, barIsPeek { barIsPeek = false; setStatusBar(false, persist: false) }   // its timer ends with the toolbar copy
                 // The bar may have been toggled while fullscreen (no resize then); catch the window up on the way out.
                 if !isFullScreen { VLCPlayerWindowManager.shared.syncWindowToStatusBar() }
             }
@@ -1310,8 +1313,10 @@ struct VLCPlayerView: View {
         if persist { statusBarEnabled = on }   // a peek leaves the saved choice alone, so it can never get stuck open
         let target = on ? VLCPlayerWindowManager.playerStatusBarHeight : 0
         if on {
-            barRowHeight = 0
-            barContentOffset = -22   // the bar starts lifted into the picture, then drops and bounces into place
+            if !barRowOpen {   // a bar still closing re-opens from where it is, not from zero
+                barRowHeight = 0
+                barContentOffset = -22   // the bar starts lifted into the picture, then drops and bounces into place
+            }
             barShimmerToken += 1
             barRowOpen = true
         } else {
@@ -2464,7 +2469,10 @@ struct VLCPlayerView: View {
         .onChange(of: bridge.hasVideoFrame) { _, has in if has { revealStatusBarBriefly() } }
         .task(id: upcomingKey) { upcomingSnapshot = computeUpcoming() }
         .task(id: tempBarToken) {
-            guard tempBarToken > 0 else { return }
+            // The toolbar exists as two copies (windowed / full-screen overlay), so a fresh copy would otherwise re-run an
+            // old token: handle each token once, and never while in full screen.
+            guard tempBarToken > handledPeekToken, !isFullScreen else { return }
+            handledPeekToken = tempBarToken
             barIsPeek = true
             setStatusBar(true, persist: false)
             try? await Task.sleep(for: .seconds(Self.barSlideSeconds + Self.tempBarSeconds))
@@ -2474,7 +2482,8 @@ struct VLCPlayerView: View {
         }
         // Pulses the ⓘ icon three times.
         .task(id: infoFlashCount) {
-            guard infoFlashCount > 0 else { return }
+            guard infoFlashCount > handledFlashCount else { return }
+            handledFlashCount = infoFlashCount
             for _ in 0..<3 {
                 withAnimation(.easeInOut(duration: 0.3)) { infoGlow = true }
                 try? await Task.sleep(for: .milliseconds(300))

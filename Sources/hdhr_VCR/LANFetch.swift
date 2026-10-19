@@ -67,7 +67,11 @@ enum LANFetch {
         let started = Date()
         let host = url.host ?? "?"
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, response) = try await session.data(from: url)
+            // A tuner error page (4xx/5xx) is a failure, not a reachable device.
+            if let status = (response as? HTTPURLResponse)?.statusCode, !(200..<300).contains(status) {
+                throw URLError(.badServerResponse)
+            }
             let elapsed = Date().timeIntervalSince(started)
             if let n = withThrottle({ $0.recordSuccess("fail:\(host)") }) {
                 glog("[LAN] \(host) reachable again (\(label))" + (n > 0 ? " — \(n) failure(s) were not logged" : ""))

@@ -242,7 +242,10 @@ final class GuideStore {
         glog("[\(id)] GET \(Self.redactingDeviceAuth(url.absoluteString))")
         let t0 = Date()
         do {
-            let (data, response) = try await session.data(from: url)
+            // 20 s of silence, not the 60 s default: a hung guide.php must not hold up startup (the idle loop waits on it).
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 20
+            let (data, response) = try await session.data(for: request)
             let ms = Int(Date().timeIntervalSince(t0) * 1000)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let levelHttp: LogLevel = status == 200 ? .info : .warning

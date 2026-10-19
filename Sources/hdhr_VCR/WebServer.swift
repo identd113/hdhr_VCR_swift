@@ -3452,21 +3452,27 @@ final class WebServer: @unchecked Sendable {
     // would otherwise flag its own in-progress file as a duplicate), the owning show doesn't have
     // "ignore duplicate once" armed, and the episode's SxxExx tag is already on disk for that show.
     // One function so a future tweak to the skip rule can't apply to one builder and not the other.
-    /// Which guide block is *the recording one* on a recording channel. Normally the block covering now, but during Bonus
-    /// Time the recording's own slot has ended and the next show's block covers now — so a block is anchored to the
-    /// airing each active recording captures (its `show_next`) when we know it, falling back to "covers now" for a
-    /// recording with no known show (a manual start) or a pending one.
-    nonisolated static func isRecordingBlock(onRecordingChannel: Bool, anchors: [Int], start: Int, end: Int, nowTs: Int) -> Bool {
+    /// Which guide blocks are *the recording one* on a recording channel: the airing each active recording started on
+    /// (`anchors`, its `show_next`), so Bonus Time — when the next show's block covers "now" — keeps the marker on the
+    /// show being recorded. `coversNowToo` adds the block covering now for a recording with no known airing (a manual
+    /// start) and when no anchor falls inside the window.
+    nonisolated static func isRecordingBlock(onRecordingChannel: Bool, anchors: [Int], coversNowToo: Bool,
+                                             start: Int, end: Int, nowTs: Int) -> Bool {
         guard onRecordingChannel else { return false }
-        if anchors.isEmpty { return start <= nowTs && end > nowTs }
-        return anchors.contains { start <= $0 && end > $0 }
+        if anchors.contains(where: { start <= $0 && end > $0 }) { return true }
+        return coversNowToo && start <= nowTs && end > nowTs
     }
 
-    /// `show_next` (epoch) of each active recording on this device and channel.
-    @MainActor private func recordingAnchors(state: AppState, deviceId: String, channelNum: String) -> [Int] {
-        state.recordingShows
-            .filter { $0.hdhr_record == deviceId && $0.show_channel == channelNum }
-            .compactMap { $0.show_next.map { Int($0.timeIntervalSince1970) } }
+    /// Pure: whether the block covering now must also be flagged — some recording has no anchor, or no anchor lands in a block.
+    nonisolated static func coversNowToo(anchors: [Int], hasUnanchored: Bool, blocks: [(start: Int, end: Int)]) -> Bool {
+        hasUnanchored || !anchors.contains { a in blocks.contains { $0.start <= a && $0.end > a } }
+    }
+
+    /// `show_next` (epoch) of each active recording on this device and channel, and whether any has none.
+    @MainActor private func recordingAnchors(state: AppState, deviceId: String, channelNum: String)
+        -> (epochs: [Int], hasUnanchored: Bool) {
+        let shows = state.recordingShows.filter { $0.hdhr_record == deviceId && $0.show_channel == channelNum }
+        return (shows.compactMap { $0.show_next.map { Int($0.timeIntervalSince1970) } }, shows.contains { $0.show_next == nil })
     }
 
     private func isSkippedAiring(skipEnabled: Bool, isRecordingNow: Bool, owner: Show?,
@@ -3601,7 +3607,8 @@ final class WebServer: @unchecked Sendable {
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                 let isOtherTunerCh = hwOtherChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false
 
-                let recAnchors = isRecCh ? recordingAnchors(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber) : []
+                let recA = isRecCh ? recordingAnchors(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber) : ([], true)
+                let recCoversNow = Self.coversNowToo(anchors: recA.0, hasUnanchored: recA.1, blocks: entries.map { ($0.StartTime, $0.EndTime) })
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>"]
                 var cursor = winStart
                 for e in entries {
@@ -3621,7 +3628,7 @@ final class WebServer: @unchecked Sendable {
                     guard ce > cs else { continue }
 
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
-                    let isEntryRec = Self.isRecordingBlock(onRecordingChannel: isRecCh, anchors: recAnchors, start: e.StartTime, end: e.EndTime, nowTs: nowTs)
+                    let isEntryRec = Self.isRecordingBlock(onRecordingChannel: isRecCh, anchors: recA.0, coversNowToo: recCoversNow, start: e.StartTime, end: e.EndTime, nowTs: nowTs)
                     // Owning show for a managed block (reused by showDA below and the skip check).
                     let owner = guideMatcher.owner(for: e)
                     let isMgd = owner != nil
@@ -3737,7 +3744,7 @@ final class WebServer: @unchecked Sendable {
                     // whatever's underneath while staying non-interactive (pointer-events: none,
                     // aria-hidden) so click/keyboard behavior on the real blocks underneath is
                     // completely unaffected.
-                    if state.config.Sports_padding_enabled, owner?.show_bonus_time == true {
+                    if state.config.Sports_padding_enabled, owner?.show_bonus_time == true, !willSkip {   // a skipped airing records nothing
                         let bonusEndTs = e.EndTime + state.config.Sports_padding_minutes * 60
                         let bce = min(bonusEndTs, winEnd) - winStart
                         bonusSpill = (e.Title, bonusEndTs)
@@ -4509,13 +4516,7 @@ final class WebServer: @unchecked Sendable {
         let recordedTagsByShow = cachedRecordedTagsByShow
             ?? computeRecordedTagsByShow(state: state, activeMgd: activeMgd, skipEnabled: skipEnabled)
 
-        // Channel-level "is something recording here" (same shared definitions buildGuideGridHTML's
-        // ring/badge and the Watch Now section use — see their own comments) is not by itself
-        // enough to flag a single entry: applied to every entry in the window, it marked every
-        // guide slot on a recording channel as isRecording — past showings and ones that haven't
-        // aired yet included, not just the one actually being captured. Must also require the
-        // entry's own time span to cover *now* (`isNow`, same test buildGuideGridHTML's own
-        // `isEntryRec` uses) — see issues_resolved.md.
+        // A recording channel flags only its recording block (see isRecordingBlock), not every slot on the channel.
         let nowTs = Int(Date().timeIntervalSince1970)
         let isNewTest = newEpisodeTest()
         let recChannels = state.activeRecordingChannels(for: device.DeviceID)
@@ -4534,11 +4535,12 @@ final class WebServer: @unchecked Sendable {
         }
         let channels: [GuideChannel] = channelList.map { ch in
             let isRecCh = recChannels.contains(ch.GuideNumber)
-            let recAnchors = isRecCh ? recordingAnchors(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber) : []
-            let entries = entriesInWindow(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber,
-                winStart: winStart, winEnd: winEnd).map { entry -> GuideEntryJSON in
-                let isNow = entry.StartTime <= nowTs && entry.EndTime > nowTs
-                let isRec = Self.isRecordingBlock(onRecordingChannel: isRecCh, anchors: recAnchors, start: entry.StartTime, end: entry.EndTime, nowTs: nowTs)
+            let windowEntries = entriesInWindow(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber,
+                winStart: winStart, winEnd: winEnd)
+            let recA = isRecCh ? recordingAnchors(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber) : ([], true)
+            let recCoversNow = Self.coversNowToo(anchors: recA.0, hasUnanchored: recA.1, blocks: windowEntries.map { ($0.StartTime, $0.EndTime) })
+            let entries = windowEntries.map { entry -> GuideEntryJSON in
+                let isRec = Self.isRecordingBlock(onRecordingChannel: isRecCh, anchors: recA.0, coversNowToo: recCoversNow, start: entry.StartTime, end: entry.EndTime, nowTs: nowTs)
                 // One owner(for:) lookup, not isManaged(entry:) + a second owner(for:) — both do
                 // the same key-matching work, so calling both here would double it per entry.
                 let owner = guideMatcher.owner(for: entry)
@@ -4560,7 +4562,7 @@ final class WebServer: @unchecked Sendable {
                     scheduledShowId: owner?.show_id,
                     isSkipped: willSkip,
                     isNew: isNewTest(entry),
-                    bonusEndTime: (state.config.Sports_padding_enabled && owner?.show_bonus_time == true)
+                    bonusEndTime: (state.config.Sports_padding_enabled && owner?.show_bonus_time == true && !willSkip)
                         ? entry.EndTime + state.config.Sports_padding_minutes * 60 : nil
                 )
             }

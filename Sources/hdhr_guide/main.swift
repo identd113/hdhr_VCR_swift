@@ -617,7 +617,7 @@ func bonusNote(_ e: GuideEntryDTO) -> String? {
     guard let end = e.bonusEndDate else { return nil }
     let until = timeFormatter.string(from: end)
     if e.isRecording && Date() > e.endDate { return "In Bonus Time now, until \(until)" }
-    let mins = max(1, (e.bonusEndTime ?? e.endTime) - e.endTime) / 60
+    let mins = max(1, ((e.bonusEndTime ?? e.endTime) - e.endTime) / 60)
     return "Runs up to \(mins) min past \(timeFormatter.string(from: e.endDate)) (until \(until))"
 }
 

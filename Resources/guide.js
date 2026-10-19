@@ -128,7 +128,7 @@ function showInfo(el){
     note.textContent='★ Scheduled';note.style.color='var(--t2)';note.style.display='inline';
     del.textContent='Remove';del.style.display='inline-block';
     if(d.showId)edit.style.display='inline-block';
-    if(d.showBonus==='1'){bstar.textContent='+'+_bonusMins+'m';bstar.style.display='inline-flex';triggerSb('sum-bonus-star');}
+    if(d.showBonus==='1'&&_bonusEnabled){bstar.textContent='+'+_bonusMins+'m';bstar.style.display='inline-flex';triggerSb('sum-bonus-star');}
   } else {
     var nowTs=Math.floor(Date.now()/1000);
     var isLive=(_s<=nowTs&&_e>nowTs);

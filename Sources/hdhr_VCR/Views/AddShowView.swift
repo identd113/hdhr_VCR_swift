@@ -599,6 +599,8 @@ private struct AddShowWebView: NSViewRepresentable {
     // addShowGuideSearchBoxIsAccessibleAndTypingDoesNotAutoSelect caught this — see its own
     // history for the repro) once it was firing on effectively every tick.
     func updateNSView(_ nsView: WKWebView, context: Context) {
+        context.coordinator.onRecord = onRecord   // the coordinator is made once; keep its callbacks current
+        context.coordinator.onAppearanceChanged = onAppearanceChanged
         guard context.coordinator.appearanceMode != appearanceMode else { return }
         context.coordinator.appearanceMode = appearanceMode
         context.coordinator.pushAppearance(to: nsView)
@@ -615,8 +617,8 @@ private struct AddShowWebView: NSViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var appearanceMode: String
-        let onRecord: ([String: Any]) -> Void
-        let onAppearanceChanged: (String) -> Void
+        var onRecord: ([String: Any]) -> Void
+        var onAppearanceChanged: (String) -> Void
 
         init(appearanceMode: String, onRecord: @escaping ([String: Any]) -> Void,
              onAppearanceChanged: @escaping (String) -> Void) {

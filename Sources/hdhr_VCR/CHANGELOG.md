@@ -10,6 +10,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - *Updated* — **Fixed: the status bar and info banner no longer go generic during Bonus Time.** Once a recording ran past its guide slot, the show's details were looked up as "still airing" and came back empty; they are now looked up as of when the recording started.
 - *Updated* — **Player toolbar: no blue focus box, the Stream popover goes away when the pointer leaves, and Live Edge shows how far behind you are.** Live Edge now lands about 4 s behind live (was 30 s) and never moves you backward. Clicking it flashes "5 seconds to live" with a fast-forward chevron on the picture. Playing a recording (or a FEED cache) from disk now reads "Live Edge · 12s behind" on the button and "Behind live" in the Stream popover.
 
+- *Updated* — **Fixed: re-opening the status bar while it was still closing made the window jump, and going full screen could restart the brief peek or leave it open.** The bar now re-opens from where it is, and the peek (and the ⓘ hint) run once per stream and never in full screen.
 - *Added* — **An optional status bar under the player's video.** A button in the toolbar (or the I key) shows or hides a slim strip: the show's image, its title with genre tags and a highlighted NEW tag, the episode and time, how healthy the stream is with the live Mbps, and a small card for the next show on the channel. The card lists the two shows after it, has arrows to step through the next six hours, and a red ● that records the next show with the same four choices as the toolbar's Record. If a show has no image, the channel's logo is shown instead. Switching it on makes the window taller by exactly the strip's height, so the picture keeps its size and shape. It is off until you turn it on, and it is not drawn in fullscreen.
 - *Updated* — **The Stream popover is organized into groups** (Health, Source, Video, Throughput, Connection) and shows the video file's resolution next to the resolution on screen, with "(33% smaller)" or "(50% larger)" when they differ.
 - *Fixed* — **The brief status bar could stay open instead of retracting.** The peek used to save "bar on" as your setting, so a window closed mid-peek reopened with the bar permanently out. The peek no longer touches the setting, and it now retracts about 6 seconds after the video starts.
@@ -28,6 +29,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ### Web guide (`WebServer`)
 
+- *Updated* — **Fixed: Bonus Time details were wrong in a few cases.** A show that will be skipped (already recorded) no longer gets Bonus Time stripes or a "+30m" in the terminal guide; the recording marker still lands on the right block when a manual recording runs beside a scheduled one or the recording's block has scrolled out of view; the summary card no longer shows "+30m" when Bonus Time is off in Settings; and the terminal guide no longer reads a Bonus Time under a minute as "0 min".
 - *Updated* — **Add Show: the step change is a light slide.** Going to Details slides in from the right; Back (or Escape) slides the guide back in from the left.
 - *Removed* — **The two progress dots at the top of the Add Show window.** They only marked the guide and details steps and added empty space above the guide; the guide now starts right under the title bar.
 - *Added* — **The terminal guide shows Bonus Time.** A managed show with Bonus Time now reads "Runs up to 30 min past 7:00 AM (until 7:30 AM)" on its summary screen, and "In Bonus Time now, until 7:30 AM" while recording past its slot; the info panel adds the end time to its status.
@@ -36,6 +38,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ### Alerts and the terminal guide (`Dialogs`, `hdhr_guide`)
 
+- *Updated* — **Fixed: a hung guide download can no longer hold up startup for a minute, and a tuner error page is no longer treated as a reachable tuner.** Guide requests give up after 20 seconds of silence (they used to wait 60), so scheduled recordings are not delayed; a 4xx/5xx reply from a tuner now counts as a failure.
 - *Updated* — **Fixed: an alert shown without a window to attach to (for example "Couldn't Start FEED Relay") no longer shows two blank buttons and a "Do not show this message again" box.**
 - *Updated* — **Fixed: the terminal guide no longer keeps running at full speed after its terminal goes away** (a dropped connection, a closed pane); it now exits.
 
