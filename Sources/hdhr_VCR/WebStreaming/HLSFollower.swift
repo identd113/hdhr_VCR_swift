@@ -16,6 +16,11 @@ final class HLSFollower: @unchecked Sendable {
         var passInterval = 3.0
         /// Seconds at the end of each snapshot left unread (the tail may be half-written).
         var holdBack = 1.5
+        /// For a file that is still growing: begin this many seconds before its end instead of at its first frame,
+        /// so a viewer joining a long recording is not made to wait for (or store) the whole backlog. nil = from the start.
+        var startBehindLive: Double?
+        /// Most recent segments kept on disk (older ones are deleted so a long show cannot fill the disk). nil = keep all.
+        var keepSegments: Int?
     }
 
     /// Consecutive failed passes (about a minute at the default interval) before giving up.
@@ -45,7 +50,7 @@ final class HLSFollower: @unchecked Sendable {
     /// (throws `CancellationError`, leaving the files for the caller to delete).
     func run() async throws -> HLSConversionResult {
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
-        let sink = HLSConverter.SegmentSink(directory: outputDir)
+        let sink = HLSConverter.SegmentSink(directory: outputDir, keep: options.keepSegments)
         // Publish the live playlist as segments land, not only at the end of a pass: the first pass over an
         // already-long recording can take longer than a browser is willing to wait for index.m3u8.
         let playlistURL = outputDir.appendingPathComponent("index.m3u8")
@@ -73,7 +78,8 @@ final class HLSFollower: @unchecked Sendable {
             let duration = (try? await asset.load(.duration).seconds) ?? 0
             if let vt = tracks.first(where: { $0.mediaType == .video }), duration.isFinite, duration > 0 {
                 let at = tracks.first(where: { $0.mediaType == .audio })
-                if writer == nil, let made = try? await makeWriter(video: vt, hasAudio: at != nil, sink: sink) {
+                let joinAt = (options.startBehindLive != nil && !finalPass) ? max(0, duration - hold - options.startBehindLive!) : nil
+                if writer == nil, let made = try? await makeWriter(video: vt, hasAudio: at != nil, sink: sink, startOffset: joinAt) {
                     writer = made.writer; activeWriter = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
                     videoCursor = startTime.seconds - 1
                     audioCursor = startTime.seconds - 1
@@ -133,10 +139,11 @@ final class HLSFollower: @unchecked Sendable {
         return url
     }
 
-    private func makeWriter(video: AVAssetTrack, hasAudio: Bool, sink: HLSConverter.SegmentSink) async throws
+    private func makeWriter(video: AVAssetTrack, hasAudio: Bool, sink: HLSConverter.SegmentSink, startOffset: Double?) async throws
         -> (writer: AVAssetWriter, video: AVAssetWriterInput, audio: AVAssetWriterInput?, start: CMTime) {
         let size = try await video.load(.naturalSize)
-        let start = try await video.load(.timeRange).start
+        let trackStart = try await video.load(.timeRange).start
+        let start = startOffset.map { CMTimeAdd(trackStart, CMTime(seconds: $0, preferredTimescale: 90000)) } ?? trackStart
         let writer = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
         writer.outputFileTypeProfile = .mpeg4AppleHLS
         writer.preferredOutputSegmentInterval = CMTime(seconds: options.convert.segmentSeconds, preferredTimescale: 1)

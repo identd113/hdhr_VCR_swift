@@ -129,7 +129,9 @@ enum HLSConverter {
         private let lock = NSLock()
         private var items: [HLSSegment] = []
         private var count = 0
-        init(directory: URL) { self.directory = directory }
+        private let keep: Int?
+        /// `keep`: most recent media segments to keep on disk and in the playlist (nil = all). Older files are deleted.
+        init(directory: URL, keep: Int? = nil) { self.directory = directory; self.keep = keep }
 
         var segments: [HLSSegment] { lock.lock(); defer { lock.unlock() }; return items }
 
@@ -147,7 +149,11 @@ enum HLSConverter {
                 lock.lock(); count += 1; let name = String(format: "seg-%05d.m4s", count); lock.unlock()
                 try? segmentData.write(to: directory.appendingPathComponent(name))
                 let seconds = segmentReport?.trackReports.first(where: { $0.mediaType == .video })?.duration.seconds ?? 4
-                lock.lock(); items.append(HLSSegment(name: name, duration: seconds)); let all = items, handler = publish; lock.unlock()
+                lock.lock(); items.append(HLSSegment(name: name, duration: seconds))
+                var dropped: [HLSSegment] = []
+                if let keep, items.count > keep { dropped = Array(items.prefix(items.count - keep)); items.removeFirst(dropped.count) }
+                let all = items, handler = publish; lock.unlock()
+                for old in dropped { try? FileManager.default.removeItem(at: directory.appendingPathComponent(old.name)) }
                 handler?(all)
             @unknown default:
                 break

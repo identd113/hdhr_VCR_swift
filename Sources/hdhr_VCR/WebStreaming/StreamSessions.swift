@@ -43,6 +43,11 @@ actor StreamSessions {
         func set(_ v: Bool) { lock.lock(); value = v; lock.unlock() }
     }
 
+    /// A viewer joining a recording that is still being written starts this far behind its end (the rest of the backlog is not converted).
+    static let joinBehindLive = 120.0
+    /// Segments kept per stream: 450 × 4 s = 30 minutes (about 0.9 GB at 4 Mb/s).
+    static let keepSegments = 450
+
     private let root: URL
     private let snapshot: @Sendable ([String]) async -> StreamSnapshot
     private let idleSeconds: TimeInterval
@@ -55,7 +60,7 @@ actor StreamSessions {
     init(root: URL = StreamSessions.defaultRoot,
          idleSeconds: TimeInterval = 30,
          lookupTimeout: TimeInterval = 2,
-         followerOptions: HLSFollower.Options = HLSFollower.Options(),
+         followerOptions: HLSFollower.Options = HLSFollower.Options(startBehindLive: StreamSessions.joinBehindLive, keepSegments: StreamSessions.keepSegments),
          snapshot: @escaping @Sendable ([String]) async -> StreamSnapshot) {
         self.root = root
         self.idleSeconds = idleSeconds
@@ -107,7 +112,11 @@ actor StreamSessions {
         try? FileManager.default.removeItem(at: dir)   // never serve a previous run's segments
         let session = Session(directory: dir)
         session.growing.set(src.isRecording)
-        let follower = HLSFollower(input: URL(fileURLWithPath: src.path), outputDir: dir, options: followerOptions,
+        // A recording that is still being written is joined near its live end and kept as a rolling window; a finished one
+        // is converted whole from the start, so every part can be reached.
+        var options = followerOptions
+        if !src.isRecording { options.startBehindLive = nil; options.keepSegments = nil }
+        let follower = HLSFollower(input: URL(fileURLWithPath: src.path), outputDir: dir, options: options,
                                    isGrowing: { [growing = session.growing] in growing.isOn })
         session.task = Task.detached(priority: .utility) {
             do { _ = try await follower.run() } catch is CancellationError {} catch {

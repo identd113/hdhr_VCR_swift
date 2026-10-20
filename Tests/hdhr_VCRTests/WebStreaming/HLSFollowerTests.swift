@@ -33,6 +33,45 @@ struct HLSFollowerTests {
         }
     }
 
+    @Test func joiningAGrowingFileStartsBehindLiveInsteadOfAtTheBeginning() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-join-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let input = dir.appendingPathComponent("recording.ts")
+        try FileManager.default.copyItem(at: fixture, to: input)   // 6 s already on disk, "still recording"
+        let flag = Flag()
+        var opts = HLSFollower.Options(startBehindLive: 2)
+        opts.convert.videoKbps = 800
+        opts.convert.segmentSeconds = 1
+        opts.passInterval = 0.4
+        opts.holdBack = 0.5
+        let follower = HLSFollower(input: input, outputDir: dir.appendingPathComponent("out"), options: opts, isGrowing: { flag.isOn })
+        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); flag.off() }
+        let result = try await follower.run()
+        #expect(result.duration > 1.5)
+        #expect(result.duration < 5.0, "joined \(result.duration)s of a 6 s recording; expected only the last couple of seconds")
+    }
+
+    @Test func onlyTheMostRecentSegmentsStayOnDisk() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-keep-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let input = dir.appendingPathComponent("recording.ts")
+        try FileManager.default.copyItem(at: fixture, to: input)
+        var opts = HLSFollower.Options(keepSegments: 2)
+        opts.convert.videoKbps = 800
+        opts.convert.segmentSeconds = 1
+        opts.passInterval = 0.3
+        let out = dir.appendingPathComponent("out")
+        let result = try await HLSFollower(input: input, outputDir: out, options: opts, isGrowing: { false }).run()
+        let files = try FileManager.default.contentsOfDirectory(atPath: out.path).filter { $0.hasSuffix(".m4s") }
+        #expect(files.count == 2, "kept \(files.count) segment files")
+        #expect(result.segments.count == 2)
+        let playlist = try String(contentsOf: out.appendingPathComponent("index.m3u8"), encoding: .utf8)
+        #expect(!playlist.contains("MEDIA-SEQUENCE:1\n"))
+        for seg in result.segments { #expect(files.contains(seg.name)) }
+    }
+
     @Test func followsAGrowingFileAndFinishesWhenItStopsGrowing() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-follow-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

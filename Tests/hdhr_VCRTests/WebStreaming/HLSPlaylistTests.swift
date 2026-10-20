@@ -29,4 +29,14 @@ struct HLSPlaylistTests {
 
     @Test(arguments: ["", "../seg-00001.m4s", "seg-1.m4s", "seg-00001.ts", "seg-0000a.m4s", "/etc/passwd", "seg-00001.m4s/..", "SEG-00001.m4s", "seg-٠٠٠٠١.m4s"])
     func unservableNames(_ name: String) { #expect(!HLSPlaylist.isServableName(name)) }
+
+    @Test func aPlaylistThatDroppedItsStartIsNeitherEventNorVod() {
+        let segs = [HLSSegment(name: "seg-00003.m4s", duration: 4), HLSSegment(name: "seg-00004.m4s", duration: 4)]
+        for finished in [false, true] {
+            let text = HLSPlaylist.render(segments: segs, finished: finished)
+            #expect(text.contains("#EXT-X-MEDIA-SEQUENCE:3"))
+            #expect(!text.contains("PLAYLIST-TYPE"))
+            #expect(text.contains("#EXT-X-ENDLIST") == finished)
+        }
+    }
 }

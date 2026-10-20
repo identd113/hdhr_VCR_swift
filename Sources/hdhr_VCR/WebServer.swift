@@ -391,12 +391,13 @@ final class WebServer: @unchecked Sendable {
         self.appState     = appState
         self.stateCallback = onState
         let streams = StreamSessions(snapshot: { [weak appState] ids in
-            await MainActor.run {
+            let appState = appState   // a plain constant: a weak capture is a var and cannot be sent into MainActor.run
+            return await MainActor.run {
                 guard let appState else { return StreamSnapshot(enabled: false, sources: [:]) }
                 var sources: [String: StreamSource] = [:]
                 for id in ids {
-                    guard let show = appState.shows.first(where: { $0.show_id == id }), show.show_recording,
-                          !show.show_recording_path.isEmpty else { continue }
+                    guard let show = appState.shows.first(where: { $0.show_id == id }),
+                          !show.show_recording_path.isEmpty else { continue }   // active or last recording; the manager checks the file exists
                     sources[id] = StreamSource(path: show.show_recording_path, isRecording: appState.recordingManager.isRunning(showId: id))
                 }
                 return StreamSnapshot(enabled: appState.config.Web_streaming_enabled, sources: sources)

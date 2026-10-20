@@ -13,11 +13,21 @@ enum HLSPlaylist {
     /// `finished` adds `#EXT-X-ENDLIST` and marks it VOD; an unfinished one is an EVENT playlist that keeps growing.
     static func render(segments: [HLSSegment], initName: String = "init.mp4", finished: Bool) -> String {
         let target = max(1, Int((segments.map(\.duration).max() ?? 4).rounded(.up)))
-        var out = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:\(target)\n#EXT-X-MEDIA-SEQUENCE:1\n"
-        out += "#EXT-X-PLAYLIST-TYPE:\(finished ? "VOD" : "EVENT")\n#EXT-X-MAP:URI=\"\(initName)\"\n"
+        // Old segments may have been deleted to bound disk use: the first one still listed sets the media sequence,
+        // and a playlist that has dropped its start can no longer claim to be EVENT/VOD (those only ever grow).
+        let first = segments.first.flatMap { sequenceNumber(of: $0.name) } ?? 1
+        var out = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:\(target)\n#EXT-X-MEDIA-SEQUENCE:\(first)\n"
+        if first == 1 { out += "#EXT-X-PLAYLIST-TYPE:\(finished ? "VOD" : "EVENT")\n" }
+        out += "#EXT-X-MAP:URI=\"\(initName)\"\n"
         for s in segments { out += "#EXTINF:\(String(format: "%.3f", s.duration)),\n\(s.name)\n" }
         if finished { out += "#EXT-X-ENDLIST\n" }
         return out
+    }
+
+    /// The number in `seg-00042.m4s` (42), or nil for any other name.
+    static func sequenceNumber(of name: String) -> Int? {
+        guard name.hasPrefix("seg-"), name.hasSuffix(".m4s") else { return nil }
+        return Int(name.dropFirst(4).dropLast(4))
     }
 
     /// Segment file names the web server may serve: `seg-00001.m4s` and the init segment — nothing else, no paths.
