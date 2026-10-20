@@ -1556,6 +1556,12 @@ function openWatchNow(id,title,sub){
       v.play().catch(function(){});
     });
   }
+  // Lock-screen / Control Center info and buttons (iOS pauses the video when the screen locks; Play there resumes the sound).
+  try{if('mediaSession' in navigator){
+    navigator.mediaSession.metadata=new MediaMetadata({title:title,artist:sub||'hdhrVCRplus'});
+    navigator.mediaSession.setActionHandler('play',function(){v.play().catch(function(){});});
+    navigator.mediaSession.setActionHandler('pause',function(){v.pause();});
+  }}catch(e){}
   v.onplaying=function(){if(gen===_wn.gen)wnMsg('');};
   v.onwaiting=function(){if(gen===_wn.gen&&!_wn.ended)wnState('Buffering\u2026',false);};
   clearInterval(_wn.timer);
@@ -1610,6 +1616,7 @@ function closeWatchNow(){
   if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
   var v=wnVideo();
   v.onerror=v.onplaying=v.onwaiting=null;
+  try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
   if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
   document.getElementById('wn-modal').style.display='none';
