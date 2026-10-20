@@ -13,6 +13,15 @@ struct HLSConversionOptions {
     var maxSeconds: Double?
 }
 
+extension HLSConversionOptions {
+    /// Video bitrate for a picture of this size: `videoKbps` is the 720p-and-up figure; smaller pictures get a
+    /// share of it by pixel count (never below 1200 kb/s), so a 480p show is not stored at 720p's size.
+    func videoKbps(width: Int, height: Int) -> Int {
+        let scaled = Double(videoKbps) * Double(width * height) / Double(1280 * 720)
+        return min(videoKbps, max(1200, Int(scaled)))
+    }
+}
+
 struct HLSConversionResult {
     let segments: [HLSSegment]
     let duration: Double
@@ -65,7 +74,7 @@ enum HLSConverter {
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: options.videoKbps * 1000,
+                AVVideoAverageBitRateKey: options.videoKbps(width: Int(size.width), height: Int(size.height)) * 1000,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoMaxKeyFrameIntervalDurationKey: 2,   // a keyframe at least every 2 s so every segment starts on one
                 AVVideoAllowFrameReorderingKey: true]])

@@ -124,12 +124,12 @@ Chrome on the laptop played streams served by the Mini (the laptop's Chrome firs
 3. **Unbounded disk use**: segments were never deleted, so a 3-hour game would have written about 3 GB to Caches. A rolling window keeps the last 450 segments (30 minutes); the playlist's media sequence follows, and a playlist that has dropped its start is no longer EVENT/VOD.
 4. **Finished recordings returned 404**: only shows with `show_recording` true streamed. Now the last recording file streams, converted whole from the start (no window).
 5. **Log noise**: a stop was logged as "read pass failed (CancellationError)"; now silent.
-6. Earlier (see "Live test on the Mini"): writer deadlock, audio-ends-first stall, failed-writer detection.
+6. **Fixed 4 Mb/s for every picture size** (a 704×480 show was stored like 720p): bitrate now scales with pixel count, 4 Mb/s at 720p and above, down to 1.2 Mb/s.
+7. Earlier (see "Live test on the Mini"): writer deadlock, audio-ends-first stall, failed-writer detection.
 
 ### Open / not built
 - **Live TV from a tuner** is not wired into the app: only tested by spooling to a file and following it (rows 7–8).
 - **Hardware-transcode input is re-encoded**: the tuner already gives H.264, so the cheapest path is copying that video and converting only AC-3 to AAC. The AVAssetWriter route always encodes video.
-- **Bitrate is fixed at 4 Mb/s**, even for 480p sources (Star Trek's 704×480 conversion is about as large as 720p). Scale by resolution.
 - **No Watch button or player yet in the web guide.** hls.js is loaded from a CDN only in these tests.
 - **Late joiners start 2 minutes behind live** and cannot seek earlier; a finished recording is only reachable once converted (about 11× real time).
 - **Not tested**: audible audio, Safari/Firefox/Edge/phones on this build, macOS 15, a recording that ends while watched on the rolling-window build, two different shows at once under load.

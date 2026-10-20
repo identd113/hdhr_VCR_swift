@@ -153,7 +153,7 @@ final class HLSFollower: @unchecked Sendable {
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: options.convert.videoKbps * 1000,
+                AVVideoAverageBitRateKey: options.convert.videoKbps(width: Int(size.width), height: Int(size.height)) * 1000,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoMaxKeyFrameIntervalDurationKey: 2,
                 AVVideoAllowFrameReorderingKey: true]])

@@ -45,4 +45,12 @@ struct HLSConverterTests {
             _ = try await HLSConverter.convert(input: junk, outputDir: out)
         }
     }
+
+    @Test func bitrateScalesDownForSmallPicturesAndNeverAboveTheConfiguredCeiling() {
+        let o = HLSConversionOptions()
+        #expect(o.videoKbps(width: 1280, height: 720) == 4000)
+        #expect(o.videoKbps(width: 1920, height: 1080) == 4000)
+        #expect(o.videoKbps(width: 704, height: 480) < 2000)
+        #expect(o.videoKbps(width: 320, height: 240) == 1200)
+    }
 }
