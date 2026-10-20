@@ -29,6 +29,9 @@ final class HLSFollower: @unchecked Sendable {
     private static let feedPatience = 1.5
 
     private var activeWriter: AVAssetWriter?
+    /// The audio-only twin of the stream (same audio samples, no picture); nil when the file has no audio or it failed.
+    private var audioOnlyWriter: AVAssetWriter?
+    private var audioOnlyIn: AVAssetWriterInput?
     private var streamStart = 0.0
     private var frameDuration = 1.0 / 30
 
@@ -58,6 +61,12 @@ final class HLSFollower: @unchecked Sendable {
             guard segments.count >= HLSPlaylist.minLiveSegments else { return }
             try? HLSPlaylist.render(segments: segments, finished: false).write(to: playlistURL, atomically: true, encoding: .utf8)
         }
+        let audioSink = HLSConverter.SegmentSink(directory: outputDir, keep: options.keepSegments, prefix: "a-")
+        let audioPlaylistURL = outputDir.appendingPathComponent(HLSPlaylist.audioPlaylistName)
+        audioSink.startPublishing { segments in
+            guard segments.count >= HLSPlaylist.minLiveSegments else { return }
+            try? HLSPlaylist.render(segments: segments, initName: "a-init.mp4", finished: false).write(to: audioPlaylistURL, atomically: true, encoding: .utf8)
+        }
         var writer: AVAssetWriter?
         var videoIn: AVAssetWriterInput?
         var audioIn: AVAssetWriterInput?
@@ -82,6 +91,7 @@ final class HLSFollower: @unchecked Sendable {
                 let joinAt = (options.startBehindLive != nil && !finalPass) ? max(0, duration - hold - options.startBehindLive!) : nil
                 if writer == nil, let made = try? await makeWriter(video: vt, hasAudio: at != nil, sink: sink, startOffset: joinAt) {
                     writer = made.writer; activeWriter = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
+                    if at != nil { makeAudioOnlyWriter(sink: audioSink, start: startTime) }
                     videoCursor = startTime.seconds - 1
                     audioCursor = startTime.seconds - 1
                     streamStart = startTime.seconds
@@ -98,6 +108,7 @@ final class HLSFollower: @unchecked Sendable {
                             // Nothing more will arrive: finish audio so the writer stops holding video back for
                             // interleaving, then hand over whatever video was left unsent.
                             audioIn?.markAsFinished()
+                            audioOnlyIn?.markAsFinished()
                             audioFinished = true
                             try await readPass(asset: asset, videoTrack: vt, audioTrack: at, videoIn: videoIn, audioIn: audioIn,
                                                videoCursor: &videoCursor, audioCursor: &audioCursor, end: end, includeAudio: false)
@@ -124,8 +135,15 @@ final class HLSFollower: @unchecked Sendable {
 
         guard let writer else { throw HLSConverterError.noVideoTrack }
         videoIn?.markAsFinished()
-        if !audioFinished { audioIn?.markAsFinished() }
+        if !audioFinished { audioIn?.markAsFinished(); audioOnlyIn?.markAsFinished() }
         await writer.finishWriting()
+        if let aw = audioOnlyWriter {
+            await aw.finishWriting()
+            audioSink.stopPublishing()
+            if aw.status == .completed {
+                try? HLSPlaylist.render(segments: audioSink.segments, initName: "a-init.mp4", finished: true).write(to: audioPlaylistURL, atomically: true, encoding: .utf8)
+            }
+        }
         sink.stopPublishing()   // the final VOD playlist below must not be overwritten by a late live one
         guard writer.status == .completed else { throw HLSConverterError.cannotWrite(writer.error?.localizedDescription ?? "status \(writer.status.rawValue)") }
         let segments = sink.segments
@@ -138,6 +156,37 @@ final class HLSFollower: @unchecked Sendable {
         let url = outputDir.appendingPathComponent("index.m3u8")
         try HLSPlaylist.render(segments: sink.segments, finished: finished).write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    /// A second, audio-only HLS writer fed with the same audio as the main one (for listening with the screen locked, at a
+    /// fraction of the bandwidth). Optional: if it cannot be set up, the stream simply has no audio-only twin.
+    private func makeAudioOnlyWriter(sink: HLSConverter.SegmentSink, start: CMTime) {
+        let w = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
+        w.outputFileTypeProfile = .mpeg4AppleHLS
+        w.preferredOutputSegmentInterval = CMTime(seconds: options.convert.segmentSeconds, preferredTimescale: 1)
+        w.initialSegmentStartTime = start
+        w.delegate = sink
+        let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000,
+            AVEncoderBitRateKey: options.convert.audioKbps * 1000])
+        a.expectsMediaDataInRealTime = false
+        guard w.canAdd(a) else { return }
+        w.add(a)
+        guard w.startWriting() else { glog("[Stream] audio-only twin unavailable: \(w.error?.localizedDescription ?? "unknown")", level: .warning); return }
+        w.startSession(atSourceTime: start)
+        audioOnlyWriter = w; audioOnlyIn = a
+    }
+
+    /// Hands one audio sample to the audio-only twin, waiting briefly if it is busy. Never throws: a problem here must not
+    /// stop the picture stream, it just ends the twin.
+    private func appendToAudioOnly(_ sample: CMSampleBuffer) async {
+        guard let w = audioOnlyWriter, let a = audioOnlyIn else { return }
+        if w.status == .failed { audioOnlyWriter = nil; audioOnlyIn = nil; return }
+        var waited = 0.0
+        while !a.isReadyForMoreMediaData, waited < Self.feedPatience {
+            try? await Task.sleep(nanoseconds: 3_000_000); waited += 0.003
+        }
+        if a.isReadyForMoreMediaData { a.append(sample) }
     }
 
     private func makeWriter(video: AVAssetTrack, hasAudio: Bool, sink: HLSConverter.SegmentSink, startOffset: Double?) async throws
@@ -256,6 +305,7 @@ final class HLSFollower: @unchecked Sendable {
             waited = 0
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             guard pick.input.append(sample) else { throw HLSConverterError.cannotWrite("writer refused a sample") }
+            if pick === audio { await appendToAudioOnly(sample) }
             pick.maxPTS = max(pick.maxPTS ?? -.infinity, pts)
             pick.pullNext()
         }

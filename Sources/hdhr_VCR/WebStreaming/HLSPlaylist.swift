@@ -29,17 +29,24 @@ enum HLSPlaylist {
         return out
     }
 
-    /// The number in `seg-00042.m4s` (42), or nil for any other name.
+    /// Name of the audio-only twin of the stream: `audio.m3u8` lists `a-seg-00001.m4s`… with `a-init.mp4`.
+    static let audioPlaylistName = "audio.m3u8"
+
+    /// The number in `seg-00042.m4s` or `a-seg-00042.m4s` (42), or nil for any other name.
     static func sequenceNumber(of name: String) -> Int? {
-        guard name.hasPrefix("seg-"), name.hasSuffix(".m4s") else { return nil }
-        return Int(name.dropFirst(4).dropLast(4))
+        let base = name.hasPrefix("a-") ? String(name.dropFirst(2)) : name
+        guard base.hasPrefix("seg-"), base.hasSuffix(".m4s") else { return nil }
+        return Int(base.dropFirst(4).dropLast(4))
     }
 
-    /// Segment file names the web server may serve: `seg-00001.m4s` and the init segment — nothing else, no paths.
+    /// Segment file names the web server may serve: the playlists, the init segments and `seg-00001.m4s` / `a-seg-00001.m4s` — nothing else, no paths.
     static func isServableName(_ name: String) -> Bool {
-        if name == "init.mp4" || name == "index.m3u8" { return true }
-        guard name.hasPrefix("seg-"), name.hasSuffix(".m4s") else { return false }
-        let digits = name.dropFirst(4).dropLast(4)
-        return digits.count >= 5 && digits.count <= 9 && digits.allSatisfy(\.isASCII) && digits.allSatisfy(\.isNumber)
+        if ["init.mp4", "index.m3u8", "a-init.mp4", audioPlaylistName].contains(name) { return true }
+        guard let number = sequenceNumber(of: name) else { return false }
+        let digits = String(number).count
+        // The file name must be exactly the canonical zero-padded form: 5–9 ASCII digits.
+        let base = name.hasPrefix("a-") ? String(name.dropFirst(2)) : name
+        let text = base.dropFirst(4).dropLast(4)
+        return digits >= 1 && text.count >= 5 && text.count <= 9 && text.allSatisfy(\.isASCII) && text.allSatisfy(\.isNumber)
     }
 }

@@ -139,8 +139,10 @@ enum HLSConverter {
         private var items: [HLSSegment] = []
         private var count = 0
         private let keep: Int?
+        private let prefix: String
         /// `keep`: most recent media segments to keep on disk and in the playlist (nil = all). Older files are deleted.
-        init(directory: URL, keep: Int? = nil) { self.directory = directory; self.keep = keep }
+        /// `prefix`: put in front of every file name ("a-" for the audio-only twin of a stream).
+        init(directory: URL, keep: Int? = nil, prefix: String = "") { self.directory = directory; self.keep = keep; self.prefix = prefix }
 
         var segments: [HLSSegment] { lock.lock(); defer { lock.unlock() }; return items }
 
@@ -153,9 +155,9 @@ enum HLSConverter {
         func assetWriter(_ writer: AVAssetWriter, didOutputSegmentData segmentData: Data, segmentType: AVAssetSegmentType, segmentReport: AVAssetSegmentReport?) {
             switch segmentType {
             case .initialization:
-                try? segmentData.write(to: directory.appendingPathComponent("init.mp4"))
+                try? segmentData.write(to: directory.appendingPathComponent(prefix + "init.mp4"))
             case .separable:
-                lock.lock(); count += 1; let name = String(format: "seg-%05d.m4s", count); lock.unlock()
+                lock.lock(); count += 1; let name = prefix + String(format: "seg-%05d.m4s", count); lock.unlock()
                 try? segmentData.write(to: directory.appendingPathComponent(name))
                 let seconds = segmentReport?.trackReports.first(where: { $0.mediaType == .video })?.duration.seconds ?? 4
                 lock.lock(); items.append(HLSSegment(name: name, duration: seconds))

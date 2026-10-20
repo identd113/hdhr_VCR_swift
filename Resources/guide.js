@@ -1511,12 +1511,12 @@ function wnMsg(t){var m=document.getElementById('wn-msg');m.textContent=t||'';m.
 function watchNowFromSummary(){
   var el=document.querySelector('.g-prog.g-sel');
   if(!el||!el.dataset.showId)return;
-  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent);
+  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'');
 }
 function watchNowFromEdit(){
   var t=document.getElementById('em-title-in').value,id=_editId;
   closeEditShow();
-  openWatchNow(id,t,'Recording now');
+  openWatchNow(id,t,'Recording now','',_editPoster||'');
 }
 function loadHlsJs(cb){
   if(window.Hls){cb(true);return;}
@@ -1525,7 +1525,7 @@ function loadHlsJs(cb){
   s.onerror=function(){cb(false);};
   document.head.appendChild(s);
 }
-function openWatchNow(id,title,sub){
+function openWatchNow(id,title,sub,episode,art){
   closeWatchNow();
   _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;
   var gen=_wn.gen;
@@ -1535,7 +1535,6 @@ function openWatchNow(id,title,sub){
   wnState('Starting\u2026',false);wnMsg('Preparing the stream\u2026 this can take a few seconds.');
   var v=wnVideo();
   var url='/api/hls/'+encodeURIComponent(id)+'/index.m3u8';
-  _wn.url=url;wnListenUI(false);document.getElementById('wn-listen').style.display=wnVideo().canPlayType('application/vnd.apple.mpegurl')?'inline-block':'none';
   v.muted=false;
   if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=url;
@@ -1557,10 +1556,14 @@ function openWatchNow(id,title,sub){
       v.play().catch(function(){});
     });
   }
-  // Lock-screen / Control Center info and buttons (iOS pauses the video when the screen locks; Play there resumes the sound).
+  // Lock screen / Control Center: show name, episode and art. iOS pauses the video when the screen locks; pressing Play there
+  // starts the audio-only stream instead (no button needed), and coming back to the page returns to the picture.
+  _wn.audioUrl='/api/hls/'+encodeURIComponent(id)+'/'+'audio.m3u8';
   try{if('mediaSession' in navigator){
-    navigator.mediaSession.metadata=new MediaMetadata({title:title,artist:sub||'hdhrVCRplus'});
-    navigator.mediaSession.setActionHandler('play',function(){wnActive().play().catch(function(){});});
+    var info={title:title,artist:episode||sub||'hdhrVCRplus',album:episode?(sub||''):'hdhrVCRplus'};
+    if(art)info.artwork=[{src:art,sizes:'512x512'}];
+    navigator.mediaSession.metadata=new MediaMetadata(info);
+    navigator.mediaSession.setActionHandler('play',function(){wnRemotePlay();});
     navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
   }}catch(e){}
   v.onplaying=function(){if(gen===_wn.gen)wnMsg('');};
@@ -1610,22 +1613,25 @@ function watchNowFullscreen(){
   var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;
   if(f)try{f.call(v);}catch(e){}
 }
-// Listen: the same stream through an <audio> element, which iOS keeps playing with the screen locked (it pauses a <video>).
 var _wnAudio=null;
-function wnActive(){return _wn.listening&&_wnAudio?_wnAudio:wnVideo();}
-function wnListenUI(on){_wn.listening=on;var b=document.getElementById('wn-listen');b.textContent=on?'Watch video':'Listen';}
-function watchNowListen(){
-  var v=wnVideo();
-  if(!_wnAudio){_wnAudio=new Audio();_wnAudio.preload='auto';}
-  if(!_wn.listening){
-    _wnAudio.muted=v.muted;_wnAudio.src=_wn.url;
-    _wnAudio.play().catch(function(){});
-    v.pause();wnListenUI(true);wnMsg('Listening \u2014 sound only. You can lock the screen.');
-  }else{
-    wnStopAudio();wnListenUI(false);wnMsg('');v.play().catch(function(){});
-  }
+function wnActive(){return _wn.audio&&_wnAudio?_wnAudio:wnVideo();}
+// Play pressed in Control Center / on the lock screen: while the page is hidden, play the sound-only stream.
+function wnRemotePlay(){
+  if(!document.hidden&&!_wn.audio){wnVideo().play().catch(function(){});return;}
+  if(!_wnAudio)_wnAudio=new Audio();
+  if(!_wn.audio){_wnAudio.src=_wn.audioUrl;_wn.audio=true;}
+  _wnAudio.play().catch(function(){});
 }
-function wnStopAudio(){if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
+function wnStopAudio(){_wn.audio=false;if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
+document.addEventListener('visibilitychange',function(){
+  if(!_wn.open)return;
+  if(document.hidden){   // warm up the sound-only stream so Play on the lock screen starts at once
+    if(!_wnAudio)_wnAudio=new Audio();
+    _wnAudio.preload='auto';_wnAudio.src=_wn.audioUrl;
+  }else if(_wn.audio){   // back in the page: return to the picture at the live edge
+    wnStopAudio();wnVideo().play().catch(function(){});
+  }
+});
 function closeWatchNow(){
   if(!_wn.open&&!_wn.hls)return;
   _wn.open=false;_wn.gen++;
@@ -1634,7 +1640,7 @@ function closeWatchNow(){
   var v=wnVideo();
   v.onerror=v.onplaying=v.onwaiting=null;
   try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
-  wnStopAudio();wnListenUI(false);
+  wnStopAudio();
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
   if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
   document.getElementById('wn-modal').style.display='none';
