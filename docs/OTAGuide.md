@@ -44,3 +44,7 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
 - **Rescan automatically** (`OTA_scan_hour`, Settings → Advanced; -1 = never): `AppState.startScheduledOTAScanIfDue()`, called from the idle
   loop, starts a full scan once a day from that hour on if the last scan is older than today's mark. One attempt per day. It uses the same
   tuner rules above, so it waits for idle tuners and yields to recordings and the player.
+- **A full scan is two passes** (whole band, not an explicit `rf` list): pass 1 reads every RF channel's channel list (as above, about 3 min) and saves
+  it at once; pass 2 reads the guide (full `seconds`) of only the stations pass 1 found that announce a guide. Stations pass 2 skips or loses keep
+  their pass 1 result. A scan cancelled in pass 2 keeps the saved channel list and leaves the earlier guide untouched. (Why: on the Twin Cities test
+  the air lineup matched SiliconDust's closely, so the list is worth having early; 32 of 49 RF channels carry nothing and need no guide pass.)

@@ -14,7 +14,7 @@ struct OTAScanView: View {
                 .accessibilityValue("\(progress.finished) of \(progress.total) RF channels")
                 .accessibilityIdentifier("ota-scan-progress")
             HStack {
-                Text("\(progress.finished) of \(progress.total) RF channels").font(.caption.monospacedDigit())
+                Text((progress.twoPass ? (progress.pass == 1 ? "Pass 1 of 2, channel lists: " : "Pass 2 of 2, guides: ") : "") + "\(progress.finished) of \(progress.total) \(progress.pass == 2 ? "stations" : "RF channels")").font(.caption.monospacedDigit())
                     .accessibilityIdentifier("ota-scan-count")
                 Spacer()
                 Text(timeLine).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("ota-scan-time-left")
@@ -88,7 +88,7 @@ struct OTAScanView: View {
     }
 
     private func stateWord(_ s: OTAMultiplexRow.State) -> String {
-        switch s { case .scanning: return "scanning"; case .done: return "done"; case .noGuide(let why): return "no guide: \(why)" }
+        switch s { case .waiting: return "waiting for guide"; case .scanning: return "scanning"; case .done: return "done"; case .noGuide(let why): return "no guide: \(why)" }
     }
 
     @ViewBuilder private func multiplexView(_ row: OTAMultiplexRow) -> some View {
@@ -121,6 +121,7 @@ struct OTAScanView: View {
 
     @ViewBuilder private func marker(_ s: OTAMultiplexRow.State) -> some View {
         switch s {
+        case .waiting: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
         case .scanning: ProgressView().controlSize(.small)
         case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .noGuide: Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)

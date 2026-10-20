@@ -13,7 +13,7 @@ struct OTASubChannelRow: Identifiable, Equatable {
 }
 
 struct OTAMultiplexRow: Identifiable, Equatable {
-    enum State: Equatable { case scanning, done, noGuide(String) }
+    enum State: Equatable { case waiting, scanning, done, noGuide(String) }   // waiting = on the air, its guide not read yet
     var id: Int { rf }
     var rf: Int
     var state: State
@@ -31,17 +31,24 @@ final class OTAScanProgress: ObservableObject {
     @Published var withoutSignal = 0
     @Published var running = false
     @Published var lineupOnly = false
+    /// A full scan reads the channel list of every RF channel first (pass 1), then the guide of the stations it found (pass 2).
+    @Published var twoPass = false
+    @Published var pass = 1
+    private var queuedCalls = 0
     @Published var summary = ""
     private var startedAt = Date()
 
     var channelCount: Int { rows.reduce(0) { $0 + $1.subChannels.count } }
     var listingCount: Int { rows.reduce(0) { $0 + $1.listings } }
 
-    func reset(lineupOnly: Bool) {
+    func reset(lineupOnly: Bool, twoPass: Bool = false) {
         rows = []; tuning = []; finished = 0; total = 0; withoutSignal = 0; summary = ""
         running = true
         startedAt = Date()
         self.lineupOnly = lineupOnly
+        self.twoPass = twoPass
+        pass = 1
+        queuedCalls = 0
     }
 
     /// Rough time left: the average time per RF channel so far, times those still to go. Rough because stations with a guide take
@@ -53,7 +60,12 @@ final class OTAScanProgress: ObservableObject {
 
     func apply(_ event: OTAScanEvent) {
         switch event {
-        case .queued(let total): self.total = total
+        case .queued(let total):
+            queuedCalls += 1
+            pass = queuedCalls
+            self.total = total
+            finished = 0
+            startedAt = Date()
         case .started(let rf): tuning.insert(rf)
         case .update(let rf, let result): upsert(rf: rf, result: result, done: false)
         case .finished(let rf, let result):
@@ -63,7 +75,9 @@ final class OTAScanProgress: ObservableObject {
         case .skipped(let rf, let why):
             tuning.remove(rf)
             finished += 1
-            if why == "no signal" || why == "no free tuner" || why == "cancelled" || why.hasPrefix("a recording") || why == "tuner needed" {
+            if pass == 2 {
+                if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].state = .noGuide(why) }   // keeps its channel list from pass 1
+            } else if why == "no signal" || why == "no free tuner" || why == "cancelled" || why.hasPrefix("a recording") || why == "tuner needed" {
                 withoutSignal += 1
             } else if let i = rows.firstIndex(where: { $0.rf == rf }) {
                 rows[i].state = .noGuide(why)
@@ -74,10 +88,10 @@ final class OTAScanProgress: ObservableObject {
     private func upsert(rf: Int, result: OTADecodeResult, done: Bool) {
         let counts = Dictionary(grouping: result.events, by: \.sourceId).mapValues(\.count)
         let subs = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }.map {
-            OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done)
+            OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1))
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
         guard !subs.isEmpty else { return }
-        let row = OTAMultiplexRow(rf: rf, state: done ? .done : .scanning, subChannels: subs)
+        let row = OTAMultiplexRow(rf: rf, state: !done ? .scanning : (twoPass && pass == 1 ? .waiting : .done), subChannels: subs)
         if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i] = row }
         else { rows.append(row); rows.sort { $0.rf < $1.rf } }
     }

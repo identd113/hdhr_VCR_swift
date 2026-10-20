@@ -8,6 +8,7 @@ the web server and recording start/stop (the "No blocking dialogs" invariant); a
 - **Progress bar + status line:** RF channels finished / total, and which RF channels the tuners are on.
 - **Tuners pulldown** (`AppState.otaTunerLimit`, 1…tuner count; id `ota-scan-tuners`): read between channels by the scanner. Lowering it
   lets the capture in progress finish and then idles that worker; raising it starts the idle worker within a second.
+- **Two passes (full scan):** the progress line reads "Pass 1 of 2, channel lists: N of 49 RF channels", then "Pass 2 of 2, guides: N of M stations"; the bar and time estimate restart for each pass. After pass 1 every station row shows a dashed circle (waiting for its guide) until pass 2 reaches it.
 - **List:** one row per multiplex, ordered by RF. The one being read shows its sub-channels (spinner each, listing count beside it);
   when it finishes the sub-channels collapse and the row gets a green check. Orange = a station that announces or sends no guide.
   Sub-channels of one multiplex are read together from one stream, so they finish together.
