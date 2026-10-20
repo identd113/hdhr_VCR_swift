@@ -842,6 +842,29 @@ final class WebServer: @unchecked Sendable {
     // GET /api/hls/<show>/<file> — web streaming (docs/WebStreaming.md). Runs entirely off the main thread: the session
     // manager is its own actor and the file read happens on fileIOQueue. A playlist request for a stream that is just
     // starting waits (asynchronously) for the first segments instead of failing.
+    // GET /api/art?u=<https://img.hdhomerun.com/...> — a show poster fetched by the app and handed to the browser from the same
+    // address as the page, so the web player can build lock-screen artwork without cross-site image rules. Only that one image host is
+    // allowed (no general proxy). A few recent posters are kept in memory.
+    private static let artCache = NSCache<NSString, NSData>()
+    private func handleArt(urlString: String, conn: NWConnection) {
+        guard let url = URL(string: urlString), url.scheme == "https", url.host == "img.hdhomerun.com" else {
+            send(.notFound("not available"), on: conn); return
+        }
+        if let hit = Self.artCache.object(forKey: urlString as NSString) {
+            send(.ok(contentType: "image/jpeg", body: hit as Data), on: conn); return
+        }
+        Task { [weak self] in
+            var req = URLRequest(url: url); req.timeoutInterval = 6
+            let data = try? await URLSession.shared.data(for: req).0
+            guard let self else { return }
+            self.queue.async {
+                guard let data, !data.isEmpty, data.count < 2_000_000 else { self.send(.notFound("not available"), on: conn); return }
+                Self.artCache.setObject(data as NSData, forKey: urlString as NSString)
+                self.send(.ok(contentType: "image/jpeg", body: data), on: conn)
+            }
+        }
+    }
+
     private func handleHLS(showId: String, name: String, conn: NWConnection) {
         guard let streams else { send(.notFound("streaming unavailable"), on: conn); return }
         Task { [weak self] in
@@ -2359,6 +2382,10 @@ final class WebServer: @unchecked Sendable {
                     self?.queue.async { self?.send(.okNoStore(contentType: "application/json", body: Data("{\"enabled\":\(on)}".utf8)), on: conn) }
                 }
                 return
+            }
+            if cleanPath == "/api/art" && method == "GET" {
+                let u = (URLComponents(string: path)?.queryItems ?? []).first(where: { $0.name == "u" })?.value ?? ""
+                self.handleArt(urlString: u, conn: conn); return
             }
             if cleanPath.hasPrefix("/api/hls/") && method == "GET" {
                 let parts = cleanPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)   // api, hls, <show>, <file>

@@ -912,7 +912,7 @@ document.addEventListener('click',function(e){
   if(!sBar){closeSearchDrop();closeSearchHelp();}
 });
 // ── Edit show modal ──
-var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='',_editDev='';
+var _editRow=null,_editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='',_editDev='';
 var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
 function updateDaysVisibility(){
@@ -957,7 +957,7 @@ function updateScopeUI(){
 }
 function openEditShow(el){
   var d=el.dataset;
-  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';_editDev=d.dev||'';
+  _editRow=d;_editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';_editDev=d.dev||'';
   document.getElementById('em-title-in').value=d.title||'';
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
@@ -1505,18 +1505,20 @@ function streamingEnabled(cb){
   if(_streamOn!==null&&Date.now()-_streamOnAt<10000){cb(_streamOn);return;}
   fetch('/api/hls-status').then(function(r){return r.json();}).then(function(j){_streamOn=!!j.enabled;_streamOnAt=Date.now();cb(_streamOn);}).catch(function(){cb(false);});
 }
-var _wn={open:false,id:'',gen:0,hls:null,timer:null,retries:0,ended:false,hlsLoading:false};
+var _wn={posTick:0,startEpoch:0,endEpoch:0,open:false,id:'',gen:0,hls:null,timer:null,retries:0,ended:false,hlsLoading:false};
 function wnVideo(){return document.getElementById('wn-video');}
 function wnMsg(t){var m=document.getElementById('wn-msg');m.textContent=t||'';m.style.display=t?'flex':'none';}
 function watchNowFromSummary(){
   var el=document.querySelector('.g-prog.g-sel');
   if(!el||!el.dataset.showId)return;
-  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'');
+  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'',_s,_e);
 }
 function watchNowFromEdit(){
   var t=document.getElementById('em-title-in').value,id=_editId;
   closeEditShow();
-  openWatchNow(id,t,'Recording now','',_editPoster||'');
+  var sx=+(_editRow&&_editRow.next)||0,len=(+(_editRow&&_editRow.length)||0)*60;
+  if(!sx||sx>Date.now()/1000||Date.now()/1000-sx>len*1.5)sx=0;   // show_next is only the start while the show is airing
+  openWatchNow(id,t,'Recording now','',_editPoster||'',sx,sx?sx+len:0);
 }
 function loadHlsJs(cb){
   if(window.Hls){cb(true);return;}
@@ -1525,7 +1527,7 @@ function loadHlsJs(cb){
   s.onerror=function(){cb(false);};
   document.head.appendChild(s);
 }
-function openWatchNow(id,title,sub,episode,art){
+function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
   closeWatchNow();
   _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;
   var gen=_wn.gen;
@@ -1561,8 +1563,13 @@ function openWatchNow(id,title,sub,episode,art){
   _wn.audioUrl='/api/hls/'+encodeURIComponent(id)+'/'+'audio.m3u8';
   try{if('mediaSession' in navigator){
     var info={title:title,artist:episode||sub||'hdhrVCRplus',album:episode?(sub||''):'hdhrVCRplus'};
-    if(art)info.artwork=[{src:art,sizes:'512x512'}];
     navigator.mediaSession.metadata=new MediaMetadata(info);
+    wnArtwork(art,function(dataUrl){   // square 512 px image made here: iOS shows it without fetching anything itself
+      if(gen!==_wn.gen||!dataUrl)return;
+      info.artwork=[{src:dataUrl,sizes:'512x512',type:'image/jpeg'}];
+      try{navigator.mediaSession.metadata=new MediaMetadata(info);}catch(e){}
+    });
+    _wn.startEpoch=startEpoch||0;_wn.endEpoch=endEpoch||0;wnPosition();
     navigator.mediaSession.setActionHandler('play',function(){wnRemotePlay();});
     navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
   }}catch(e){}
@@ -1595,7 +1602,32 @@ function wnIsLive(){
   if(_wn.hls){var l=_wn.hls.levels&&_wn.hls.levels[_wn.hls.currentLevel>=0?_wn.hls.currentLevel:0];return !!(l&&l.details&&l.details.live);}
   return wnVideo().duration===Infinity;
 }
+// Control Center timeline: how far into the show we are (the show's own start and end), not the length of the stream.
+function wnPosition(){
+  try{
+    if(!('mediaSession' in navigator)||!navigator.mediaSession.setPositionState||!_wn.endEpoch||_wn.endEpoch<=_wn.startEpoch)return;
+    var dur=_wn.endEpoch-_wn.startEpoch,pos=Math.min(dur,Math.max(0,Date.now()/1000-_wn.startEpoch));
+    navigator.mediaSession.setPositionState({duration:dur,position:pos,playbackRate:1});
+  }catch(e){}
+}
+// Poster -> square 512 px JPEG data URL, through the app (/api/art) so the browser's cross-site image rules do not apply.
+function wnArtwork(src,cb){
+  if(!src){cb('');return;}
+  var img=new Image();
+  img.onload=function(){
+    try{
+      var c=document.createElement('canvas');c.width=c.height=512;var x=c.getContext('2d');
+      x.fillStyle='#111';x.fillRect(0,0,512,512);
+      var k=Math.min(512/img.naturalWidth,512/img.naturalHeight),w=img.naturalWidth*k,h=img.naturalHeight*k;
+      x.drawImage(img,(512-w)/2,(512-h)/2,w,h);
+      cb(c.toDataURL('image/jpeg',0.85));
+    }catch(e){cb('');}
+  };
+  img.onerror=function(){cb('');};
+  img.src='/api/art?u='+encodeURIComponent(src);
+}
 function wnTick(){
+  if(++_wn.posTick%5===0)wnPosition();
   var v=wnVideo();
   if(!v.currentTime&&v.paused&&!v.readyState)return;
   var live=wnIsLive();
@@ -1625,7 +1657,7 @@ function wnRemotePlay(){
 function wnStopAudio(){_wn.audio=false;if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
 document.addEventListener('visibilitychange',function(){
   if(!_wn.open)return;
-  if(document.hidden){   // warm up the sound-only stream so Play on the lock screen starts at once
+  if(document.hidden){wnPosition();   // warm up the sound-only stream so Play on the lock screen starts at once
     if(!_wnAudio)_wnAudio=new Audio();
     _wnAudio.preload='auto';_wnAudio.src=_wn.audioUrl;
   }else if(_wn.audio){   // back in the page: return to the picture at the live edge
