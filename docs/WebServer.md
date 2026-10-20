@@ -252,6 +252,15 @@ On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. A `s
 
 ---
 
+## Web streaming — `/api/hls/<show>/<file>`, `/api/hls-status`, `/hls.min.js` (beta, `Web_streaming_enabled`)
+
+Off by default; a Settings toggle with no restart. Full design and live-test log: [`WebStreaming.md`](WebStreaming.md).
+
+- `GET /api/hls/<show_id>/index.m3u8 | init.mp4 | seg-NNNNN.m4s` — an on-demand HLS stream (hardware H.264 + AAC, fragmented MP4) of the show's active or last recording file, made by `StreamSessions`/`HLSFollower`. Only those file names are served (`HLSPlaylist.isServableName`); ids are letters/digits/`-`/`_` only; anything else, an unknown show, a missing file, or the setting being off is a 404. The playlist request waits up to 25 s for the first playlist (a live playlist is withheld until it lists 3 segments, because Chrome's built-in HLS player fails on fewer). Runs entirely off the main thread; the app is asked about shows with a 2 s timeout. Playlists are `Cache-Control: no-store`.
+- `GET /api/hls-status` → `{"enabled":true|false}` — lets the guide show or hide **Watch Now!** without a reload.
+- `GET /hls.min.js` — hls.js 1.5.17 (Apache-2.0, `Resources/hls.min.js`), loaded by the guide only for browsers without native HLS.
+- Web guide: a blue **Watch Now!** button (`#sum-watch`) in the summary panel for a show that is recording (when streaming is on) opens the player modal `#wn-modal` (`openWatchNow` in `guide.js`): Live Edge, Fullscreen, state line ("LIVE" / "N s behind live" / "recording ended"), keys Space, ←/→ (10 s), L, M, F, Esc. While it is open it owns the keyboard (the guide's search and shortcuts are suppressed).
+
 ## Recording playback relay — `/api/watch-recording?show={id}&start={byteOffset}`
 
 Lets `AppState.watchRecordingInApp(_:)` (`MenuContent`'s "Watch Now!" on an actively-recording show) play the in-progress recording without opening a second tuner. VLC's plain `file://` access module snapshots a file's length at open time and won't read past it even though curl keeps appending — so a direct `file://` URL onto a growing recording stalls/ends once playback catches up. This endpoint reframes the file as an open-ended HTTP response instead: no `Content-Length`, connection held open, bytes drip-fed as they land on disk — the same shape as the real HDHomeRun tuner stream, which VLC already handles.

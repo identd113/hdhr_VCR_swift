@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Added* — **Watch a recording in your browser (beta).** With Settings → Web Streaming switched on, a recording that is in progress shows a blue **Watch Now!** button in the web guide's summary panel. It opens a player in the page that converts the recording to browser-friendly H.264/AAC video on this Mac (hardware encode, off the main thread), works in Chrome, Safari and other browsers, keeps the last 30 minutes of a long recording, and offers Live Edge, 10-second skips, mute and fullscreen (Space, ← →, L, M, F, Esc). Switching the setting on or off needs no restart. Finished recordings can be played the same way. Temporary files are removed 30 seconds after the last viewer leaves.
+
 - *Updated* — **Times show when a show ends, not a countdown.** The player status bar, Watch Now and the Discord card no longer say "37 min left" or "12m elapsed · 25m remaining"; they show the time range ("NOW · 6:00 – 7:00 AM"), which stays the same for the whole show. The Discord card is now edited only when a recording stops, is skipped or ends; the old "progress updates every 5 minutes" setting is gone. The status bar's progress line now refreshes every minute instead of every 15 seconds.
 
 ### Terminal guide (`hdhr_guide`)
