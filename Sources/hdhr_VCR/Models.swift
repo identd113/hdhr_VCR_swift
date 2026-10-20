@@ -647,6 +647,11 @@ struct AppConfig: Equatable {
     // turn just this off. Off by default, same "every LAN-facing Sharing toggle defaults off" reasoning.
     var Home_assistant_status_enabled: Bool = false
 
+    // Web streaming (docs/WebStreaming.md): when true, the web guide can play an in-progress recording in a browser
+    // (HLS from /api/hls/<show>/…, converted on this Mac). Off by default like every LAN-facing sharing toggle.
+    // Read per request, so changing it needs no restart; turning it off ends all web streams immediately.
+    var Web_streaming_enabled: Bool = false
+
     // Master hide switch for the entire Recording FEED / virtual-tuner-relay feature (both the
     // publish side below and the consume side — MenuContent's "Recording on Another Mac" section,
     // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Config-file-only (no UI sets this
@@ -775,6 +780,7 @@ extension AppConfig: Codable {
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
         Home_assistant_status_enabled = (try? c.decode(Bool.self, forKey: .Home_assistant_status_enabled)) ?? false
+        Web_streaming_enabled   = (try? c.decode(Bool.self,   forKey: .Web_streaming_enabled))   ?? false
         // ?? true (flipped for v2.5.0, matching the struct default's own doc comment above) — a
         // config file that already has this key explicitly saved (true or false) always wins
         // regardless; this fallback only matters for a config with no saved value at all, i.e. a

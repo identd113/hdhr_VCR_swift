@@ -769,6 +769,15 @@ struct SettingsView: View {
             // terminalGuideEnabled field) and refuses to run when off, letting someone share the web
             // guide with the household without also advertising/allowing the terminal client.
             let lanEnabled = draft.Web_server_enabled
+            Section("Web Streaming (Beta)") {
+                Toggle(isOn: $draft.Web_streaming_enabled) {
+                    HStack {
+                        Text(gatedLabel("Watch recordings in a browser", met: lanEnabled, requirement: "Web LAN"))
+                        InfoButton("Lets anyone who can open the web guide on your network play a recording that is in progress, in Safari, Chrome, Firefox or Edge. This Mac converts the video as it plays, so it uses some CPU while someone is watching. Off by default. Turning it off stops every web stream right away; no restart needed.")
+                    }
+                }
+                .disabled(!lanEnabled)
+            }
             Section("Terminal Guide") {
                 Toggle(isOn: $draft.Terminal_guide_enabled) {
                     HStack {
