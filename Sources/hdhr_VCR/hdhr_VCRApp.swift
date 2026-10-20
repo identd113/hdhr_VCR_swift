@@ -199,7 +199,15 @@ struct hdhr_VCRApp: App {
             // The status item renders at launch even though nothing opens the menu — the earliest reliable hook.
             .onAppear { openLaunchSplashIfNeeded() }
             .onChange(of: appState.otaWindowRequest) { _, _ in
-                if appState.otaWindowActivates { activateAndOpen(windowId: "ota-scan") } else { openWindow(id: "ota-scan") }
+                if appState.otaWindowActivates { activateAndOpen(windowId: "ota-scan") } else {
+                    // A scheduled scan must not take the keyboard from whatever the person is typing into: open the window,
+                    // then hand key status back to the window that had it.
+                    let prior = NSApp.keyWindow
+                    openWindow(id: "ota-scan")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if let prior, prior.isVisible { prior.makeKey() }
+                    }
+                }
             }
         }
         .menuBarExtraStyle(.menu)

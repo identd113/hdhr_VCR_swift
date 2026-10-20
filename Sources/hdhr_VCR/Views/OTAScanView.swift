@@ -5,6 +5,7 @@ import SwiftUI
 struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -47,7 +48,7 @@ struct OTAScanView: View {
                 }
                 Spacer()
                 if progress.running { Button("Cancel Scan") { state.cancelOTAScan() }.accessibilityIdentifier("ota-scan-cancel") }
-                else { Button("Close") { NSApp.keyWindow?.close() }.accessibilityIdentifier("ota-scan-close") }
+                else { Button("Close") { dismissWindow(id: "ota-scan") }.accessibilityIdentifier("ota-scan-close") }
             }
         }
         .padding(16)
