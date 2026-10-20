@@ -198,6 +198,9 @@ struct hdhr_VCRApp: App {
             }
             // The status item renders at launch even though nothing opens the menu — the earliest reliable hook.
             .onAppear { openLaunchSplashIfNeeded() }
+            .onChange(of: appState.otaWindowRequest) { _, _ in
+                if appState.otaWindowActivates { activateAndOpen(windowId: "ota-scan") } else { openWindow(id: "ota-scan") }
+            }
         }
         .menuBarExtraStyle(.menu)
 
@@ -244,6 +247,15 @@ struct hdhr_VCRApp: App {
         // ("Watch Now!" + "Watch from Beginning" side by side, replacing a single-button pull-down
         // menu) — "Watch from Beginning" was clipping. Still user-resizable/shrinkable below this.
         .defaultSize(width: 480, height: 620)
+
+        // Over-the-air scan dashboard — single instance, small and floating (never a blocking modal); opens when a scan starts.
+        Window("Over-the-Air Scan", id: "ota-scan") {
+            OTAScanView(progress: appState.otaProgress)
+                .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
 
         // Add Picture-in-Picture picker — single instance; lets the user start a PIP corner
         // thumbnail directly (Live TV or a discovered FEED source), without anything already

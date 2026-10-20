@@ -240,6 +240,15 @@ final class AppState: ObservableObject {
     // Over-the-air guide scan (OTAGuide/, overtime/APP_PLAN.md). Status line also read by /api/ota-status (a few writes per scan, like signalScanProgress).
     var otaScanTask: Task<Void, Never>? = nil
     @Published var otaScanStatus: String = ""
+    var lastScheduledOTAAttempt: Date? = nil
+    var otaScanGeneration = 0
+    /// Live progress shown by the OTA scan window, and the user's tuner allowance for the running scan (the window's pulldown).
+    let otaProgress = OTAScanProgress()
+    @Published var otaTunerLimit = 2
+    @Published var otaTunerMax = 2
+    /// Bumped to make the app open the scan window (hdhr_VCRApp watches it); `otaWindowActivates` = a person asked, so take focus.
+    @Published var otaWindowRequest = 0
+    var otaWindowActivates = true
 
     // Tracks optimistically-toggled favorite state: [deviceId: [GuideNumber: expectedBool]]
     // Cleared per-device after the next lineup reload; mismatches are logged as warnings.
@@ -2852,6 +2861,7 @@ final class AppState: ObservableObject {
         maintainVLCSleepAssertionIfNeeded()
         warnOfLiveWatchPreemptionIfNeeded()
         maintainFeedCacheSessions()
+        startScheduledOTAScanIfDue()
         let now = Date()
         var dirty = false
 

@@ -212,6 +212,7 @@ struct SettingsView: View {
         }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
         if draft.Guide_use_ota       != old.Guide_use_ota       { glog("[Settings] GuideUseOta: \(old.Guide_use_ota) → \(draft.Guide_use_ota)") }
+        if draft.OTA_scan_hour       != old.OTA_scan_hour       { glog("[Settings] OTAScanHour: \(old.OTA_scan_hour) → \(draft.OTA_scan_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
@@ -697,6 +698,12 @@ struct SettingsView: View {
                     }
                 }
                 Section("Over-the-Air Guide") {
+                    Picker(selection: $draft.OTA_scan_hour) {
+                        Text("Never").tag(-1)
+                        ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
+                    } label: {
+                        HStack { Text("Rescan automatically"); InfoButton("Rescans the full guide once a day from this hour on, using only idle tuners. It waits for a free tuner and gives it up the moment a recording or the player needs it.") }
+                    }
                     Text("Tunes every TV channel in turn and reads the guide listings stations broadcast with their signal, then saves them as a guide that works with no internet. Takes about 10 minutes and uses idle tuners only; it stops for a recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -710,9 +717,15 @@ struct SettingsView: View {
                         if !state.otaScanStatus.isEmpty {
                             Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
                         }
-                        Button("Scan the Air Now") { state.startOTAScan() }
-                            .disabled(state.recordableDevices.isEmpty)
-                            .accessibilityIdentifier("settings-ota-scan")
+                        HStack {
+                            Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
+                                .disabled(state.recordableDevices.isEmpty)
+                                .accessibilityIdentifier("settings-ota-lineup-scan")
+                            InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.")
+                            Button("Scan the Air Now") { state.startOTAScan() }
+                                .disabled(state.recordableDevices.isEmpty)
+                                .accessibilityIdentifier("settings-ota-scan")
+                        }
                     }
                 }
             }

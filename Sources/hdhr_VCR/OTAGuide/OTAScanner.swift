@@ -16,6 +16,18 @@ struct OTAScanEnvironment: Sendable {
     var appBusyTuners: @Sendable () async -> Int
     /// Seconds until the next scheduled recording on this device starts, or nil if none is due.
     var secondsUntilNextRecording: @Sendable () async -> TimeInterval?
+    /// How many tuners the user currently allows the scan (the window's pulldown). Read between channels: lowering it lets a running
+    /// capture finish and then leaves that worker idle; raising it puts an idle worker back to work within a second.
+    var tunerLimit: @Sendable () async -> Int = { Int.max }
+}
+
+/// What the scan window shows, as it happens.
+enum OTAScanEvent: Sendable {
+    case queued(total: Int)
+    case started(rf: Int)
+    case update(rf: Int, result: OTADecodeResult)    // about once a second while a multiplex is being read
+    case finished(rf: Int, result: OTADecodeResult)
+    case skipped(rf: Int, why: String)
 }
 
 struct OTAMultiplex: Sendable, Equatable {
@@ -50,21 +62,28 @@ actor OTAScanner {
     private var outcome = OTAScanOutcome()
     private var finished = 0
     private var total = 0
+    private var events: @Sendable (OTAScanEvent) -> Void = { _ in }
 
     /// Scans `rfChannels` (default: the whole band), up to `env.tunerCount` at a time. `progress` gets short status lines.
-    func scan(env: OTAScanEnvironment, rfChannels: [Int] = OTAScanner.allRFChannels, secondsPerChannel: TimeInterval = 90,
+    func scan(env: OTAScanEnvironment, rfChannels: [Int] = OTAScanner.allRFChannels, secondsPerChannel: TimeInterval = 90, lineupOnly: Bool = false,
+              onEvent: @escaping @Sendable (OTAScanEvent) -> Void = { _ in },
               progress: @escaping @Sendable (String) -> Void) async -> OTAScanOutcome {
         queue = rfChannels.filter { Self.frequencyHz(rf: $0) != nil }
         outcome = OTAScanOutcome()
         claimed = []
         finished = 0
         total = queue.count
+        events = onEvent
+        onEvent(.queued(total: total))
         let workers = max(1, env.tunerCount)
         await withTaskGroup(of: Void.self) { group in
-            for _ in 0..<workers {
+            for index in 0..<workers {
                 group.addTask { [self] in
-                    while !Task.isCancelled, let rf = await self.nextChannel() {
-                        await self.scanOne(rf: rf, env: env, seconds: secondsPerChannel, progress: progress)
+                    while !Task.isCancelled, await self.hasWork() {
+                        // Worker `index` only runs while the user's tuner limit is above it.
+                        if index >= max(1, await env.tunerLimit()) { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
+                        guard let rf = await self.nextChannel() else { break }
+                        await self.scanOne(rf: rf, env: env, seconds: secondsPerChannel, lineupOnly: lineupOnly, progress: progress)
                     }
                 }
             }
@@ -73,30 +92,36 @@ actor OTAScanner {
         return outcome
     }
 
+    private func hasWork() -> Bool { !queue.isEmpty }
+
     private func nextChannel() -> Int? { queue.isEmpty ? nil : queue.removeFirst() }
 
     private func record(rf: Int, multiplex: OTAMultiplex?, skipped: String?, progress: @Sendable (String) -> Void) {
         finished += 1
         if let multiplex {
+            events(.finished(rf: rf, result: multiplex.result))
             outcome.multiplexes.append(multiplex)
             progress("RF \(rf): \(multiplex.result.channels.count) channels, \(multiplex.result.events.count) events (\(finished)/\(total))")
         } else if let skipped {
+            events(.skipped(rf: rf, why: skipped))
             outcome.skipped[rf] = skipped
             progress("RF \(rf): \(skipped) (\(finished)/\(total))")
         }
     }
 
-    private func scanOne(rf: Int, env: OTAScanEnvironment, seconds: TimeInterval, progress: @escaping @Sendable (String) -> Void) async {
+    private func scanOne(rf: Int, env: OTAScanEnvironment, seconds: TimeInterval, lineupOnly: Bool, progress: @escaping @Sendable (String) -> Void) async {
         guard let hz = Self.frequencyHz(rf: rf) else { return }
         // Wait (up to ~15 min) for a tuner that is free for real: idle in hardware, not ours already, and one the app does not need.
         guard let tuner = await claimTuner(env: env) else {
             record(rf: rf, multiplex: nil, skipped: Task.isCancelled ? "cancelled" : "no free tuner", progress: progress); return
         }
         defer { release(tuner) }
+        events(.started(rf: rf))
         if let due = await env.secondsUntilNextRecording(), due < seconds + 30 {
             record(rf: rf, multiplex: nil, skipped: "a recording starts in \(Int(due)) s", progress: progress); return
         }
-        let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds) { [self] in await self.shouldYield(env: env) }
+        let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly,
+                                      onUpdate: { [events] result in events(.update(rf: rf, result: result)) }) { [self] in await self.shouldYield(env: env) }
         switch capture {
         case .decoded(let result, let bytes):
             record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes), skipped: nil, progress: progress)
@@ -150,9 +175,10 @@ actor OTAScanner {
 
     enum CaptureOutcome: Sendable { case decoded(OTADecodeResult, bytes: Int); case skipped(String) }
 
-    /// Streams one multiplex into a decoder. Ends early when there is no signal (almost no bytes after 3 s), no guide tables after
+    /// Streams one multiplex into a decoder (`lineupOnly`: stops as soon as the channel list is read, a couple of seconds). Ends early when there is no signal (almost no bytes after 3 s), no guide tables after
     /// 12 s, a station that announces no guide at all (after 15 s), or when `shouldYield` says so (checked every 5 s).
-    static func capture(host: String, tuner: String, hz: Int, seconds: TimeInterval,
+    static func capture(host: String, tuner: String, hz: Int, seconds: TimeInterval, lineupOnly: Bool = false,
+                        onUpdate: @escaping @Sendable (OTADecodeResult) -> Void = { _ in },
                         shouldYield: @escaping @Sendable () async -> Bool) async -> CaptureOutcome {
         guard let url = URL(string: "http://\(host):5004/\(tuner)/ch\(hz)") else { return .skipped("bad address") }
         let reader = StreamReader(url: url)
@@ -160,6 +186,7 @@ actor OTAScanner {
         let started = Date()
         var bytes = 0
         var lastYieldCheck = started
+        var lastUpdate = started
         let outcome: CaptureOutcome = await withTaskCancellationHandler {
             for await event in reader.events {
                 switch event {
@@ -172,7 +199,14 @@ actor OTAScanner {
                 let elapsed = Date().timeIntervalSince(started)
                 if elapsed >= 3, bytes < 100_000 { return .skipped("no signal") }
                 if elapsed >= 12, !decoder.hasMasterGuide { return .skipped("no guide tables") }
-                if elapsed >= 15, decoder.hasMasterGuide, decoder.result().announcedEITCount == 0 { break }   // names only: a guide is never coming
+                // result() copies every table, so look at it once a second, not once per 19 Mb/s chunk.
+                if Date().timeIntervalSince(lastUpdate) >= 1, decoder.hasMasterGuide {
+                    lastUpdate = Date()
+                    let snapshot = decoder.result()
+                    onUpdate(snapshot)
+                    if elapsed >= 15, snapshot.announcedEITCount == 0 { break }   // names only: a guide is never coming
+                    if lineupOnly, !snapshot.channels.isEmpty { break }           // the channel list repeats several times a second
+                }
                 if elapsed >= seconds { break }
                 if Date().timeIntervalSince(lastYieldCheck) >= 5 {
                     lastYieldCheck = Date()

@@ -53,7 +53,7 @@ AppIcon.swift              Pre-baked menu-bar/About bitmaps (idle, recording, up
 CompatibilityHelpers.swift CRC-32 shared by HDHRManager's UDP discovery trailer and WebServer's gzip trailer
 UpdateChecker.swift        GitHub-release update check (Sparkle is a parked dead end — SPM resolve hangs)
 XmltvParser.swift          XMLTV → [GuideChannel], same output shape as the guide.php JSON decoder (`Guide_use_xml`)
-OTAGuide/                  Over-the-air guide (beta): PSIPDecoder (ATSC tables → channels/events), OTAGuideConverter (→ [GuideChannel]), OTAScanner (actor: sweeps RF channels on idle tuners), OTAStore, AppState+OTA — docs/OTAGuide.md, research in overtime/
+OTAGuide/                  Over-the-air guide (beta; scan window = Views/OTAScanView.swift, docs/OTAScanView.md): PSIPDecoder (ATSC tables → channels/events), OTAGuideConverter (→ [GuideChannel]), OTAScanner (actor: sweeps RF channels on idle tuners), OTAStore, AppState+OTA — docs/OTAGuide.md, research in overtime/
 TunerSharing.swift         Menu-header note for tuners in use by something other than this instance (hw vs app count)
 Version.swift              `appVersion` build stamp — rewritten by deploy.sh, never commit it
 Views/

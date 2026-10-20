@@ -7,14 +7,17 @@ import Foundation
 extension AppState {
     /// Starts a scan of one device (default: the first real tuner). Returns a one-line status for the caller.
     @discardableResult
-    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90) -> String {
+    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true) -> String {
         if otaScanTask != nil { return "A scan is already running: \(otaScanStatus)" }
         guard let device = recordableDevices.first(where: { deviceId == nil || $0.DeviceID == deviceId }), device.isAvailable else {
             return "No tuner available to scan."
         }
         let id = device.DeviceID
         let tunerCount = device.TunerCount ?? 1
+        let seconds = lineupOnly ? min(seconds, 10) : seconds
         let host = device.LocalIP
+        otaTunerMax = tunerCount
+        otaTunerLimit = tunerCount
         let env = OTAScanEnvironment(
             host: host, tunerCount: tunerCount,
             appBusyTuners: { [weak self] in
@@ -32,30 +35,61 @@ extension AppState {
                         .compactMap(\.show_next).filter { $0 > Date() }.min()
                     return next.map { $0.timeIntervalSinceNow }
                 }
-            })
+            },
+            tunerLimit: { [weak self] in await MainActor.run { [weak self] in self?.otaTunerLimit ?? 1 } })
         otaScanStatus = "Scanning \(id)…"
-        glog("[OTA] scan starting on \(id) (\(host)), \(tunerCount) tuner(s), \(Int(seconds)) s per channel")
+        otaProgress.reset(lineupOnly: lineupOnly)
+        otaWindowActivates = userInitiated
+        otaWindowRequest += 1
+        glog("[OTA] \(lineupOnly ? "lineup-only " : "")scan starting on \(id) (\(host)), \(tunerCount) tuner(s), \(Int(seconds)) s per channel")
         let report: @Sendable (String) -> Void = { [weak self] line in Task { @MainActor in self?.otaScanStatus = line } }
+        otaScanGeneration += 1
+        let generation = otaScanGeneration
+        let applyEvent: @MainActor (OTAScanEvent) -> Void = { [weak self] event in
+            if let self, self.otaScanGeneration == generation { self.otaProgress.apply(event) }
+        }
         otaScanTask = Task { [weak self] in
-            let outcome = await OTAScanner().scan(env: env, rfChannels: rfChannels ?? OTAScanner.allRFChannels, secondsPerChannel: seconds, progress: report)
+            let outcome = await OTAScanner().scan(env: env, rfChannels: rfChannels ?? OTAScanner.allRFChannels, secondsPerChannel: seconds, lineupOnly: lineupOnly,
+                                                     onEvent: { event in Task { @MainActor in applyEvent(event) } },
+                                                     progress: report)
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.otaScanTask = nil
-                if let summary = OTAStore.save(outcome, deviceId: id) {
-                    self.otaScanStatus = "Done: \(summary.channels) channels, \(summary.events) events from \(summary.multiplexes) multiplexes"
-                    glog("[OTA] scan finished: \(self.otaScanStatus); skipped \(summary.skipped.count) RF channel(s)")
+                // A cancelled scan's late finish must not clear the state of a scan started right after it.
+                let current = self.otaScanGeneration == generation
+                if current { self.otaScanTask = nil; self.otaProgress.running = false }
+                if let summary = OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly) {
+                    let done = "Done: \(summary.channels) channels, \(summary.events) events from \(summary.multiplexes) multiplexes"
+                    if current { self.otaScanStatus = done }
+                    glog("[OTA] scan finished: \(done); skipped \(summary.skipped.count) RF channel(s)")
                 } else {
-                    self.otaScanStatus = outcome.cancelled ? "Scan cancelled" : "Scan found nothing usable (earlier results kept)"
-                    glog("[OTA] \(self.otaScanStatus)", level: .warning)
+                    let why = outcome.cancelled ? "Scan cancelled" : "Scan found nothing usable (earlier results kept)"
+                    if current { self.otaScanStatus = why }
+                    glog("[OTA] \(why)", level: .warning)
                 }
             }
         }
         return otaScanStatus
     }
 
+    /// Idle-loop hook: starts a scan in the background when the user's schedule (`OTA_scan_hour`) says one is due. Never interrupts
+    /// anything: the scanner itself only takes idle tuners and yields to a recording or the player.
+    func startScheduledOTAScanIfDue(now: Date = Date()) {
+        guard config.OTA_scan_hour >= 0, otaScanTask == nil,
+              let device = recordableDevices.first(where: \.isAvailable) else { return }
+        let id = device.DeviceID
+        let cal = Calendar.current
+        guard let dueToday = cal.date(bySettingHour: config.OTA_scan_hour, minute: 0, second: 0, of: now), now >= dueToday else { return }
+        if let last = OTAStore.loadSummary(deviceId: id)?.date, last >= dueToday { return }
+        if let tried = lastScheduledOTAAttempt, tried >= dueToday { return }   // one try per day: a scan that found nothing is not retried every tick
+        lastScheduledOTAAttempt = now
+        glog("[OTA] scheduled scan due (\(config.OTA_scan_hour):00)")
+        startOTAScan(deviceId: id, userInitiated: false)
+    }
+
     func cancelOTAScan() {
         otaScanTask?.cancel()
         otaScanTask = nil
+        otaProgress.running = false
         otaScanStatus = "Scan cancelled"
     }
 }

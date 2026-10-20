@@ -35,4 +35,12 @@ tuner. The scan uses `recordableDevices` only (never the virtual relay), and is 
 ## Known gaps
 No series IDs (series recording falls back on titles), no genre tags (genre dimming and the sports Bonus Time default have nothing to
 read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Cities test) or no PSIP at all. Depth varies, from about
-12 hours to 3 days. Not scheduled yet: a scan runs only when asked.
+12 hours to 3 days. 
+
+## Quick lineup scan and schedule
+- **Scan Channel List Only** (Settings → Advanced; `startOTAScan(lineupOnly: true)`): reads just the Virtual Channel Table, which repeats
+  several times a second, so a channel ends after about 1.5 s (10 s cap; 3 s with no signal). A whole band takes a couple of minutes. It writes
+  `lineup.json`, and `guide.json` only if none exists yet (channels with no listings); it never replaces an earlier guide or `scan.json`.
+- **Rescan automatically** (`OTA_scan_hour`, Settings → Advanced; -1 = never): `AppState.startScheduledOTAScanIfDue()`, called from the idle
+  loop, starts a full scan once a day from that hour on if the last scan is older than today's mark. One attempt per day. It uses the same
+  tuner rules above, so it waits for idle tuners and yields to recordings and the player.
