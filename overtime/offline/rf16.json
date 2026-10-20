@@ -1,0 +1,2657 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:36:23+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430,
+   7431
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686,
+   7687
+  ],
+  "mgt_entries": 18
+ },
+ "channels": [
+  {
+   "name": "ION",
+   "major": 41,
+   "minor": 1,
+   "number": "41.1",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 3,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Bounce",
+   "major": 41,
+   "minor": 2,
+   "number": "41.2",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 4,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Grit",
+   "major": 41,
+   "minor": 3,
+   "number": "41.3",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 5,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Mystery",
+   "major": 41,
+   "minor": 4,
+   "number": "41.4",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 6,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Laff",
+   "major": 41,
+   "minor": 5,
+   "number": "41.5",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 7,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "CourtTV",
+   "major": 41,
+   "minor": 6,
+   "number": "41.6",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 8,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "BUSTED",
+   "major": 41,
+   "minor": 7,
+   "number": "41.7",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 9,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "QVC",
+   "major": 41,
+   "minor": 8,
+   "number": "41.8",
+   "modulation": 4,
+   "tsid": 1603,
+   "program": 10,
+   "source_id": 8,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 1,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Chicago P.D.",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Everyone on the team reaches their breaking point as they hurry to find Escano after an explosion impacts the investigation."
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Inogen Portable Oxygen - No More Tanks!",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Regain independence and enjoy greater mobility with the compact design and long-lasting battery of portable oxygen."
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Whats Your Injury Case Worth?",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Legal professionals standing by 24/7. Call now for your free case evaluation!"
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Through the Bible with Les Feldick",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Bible teacher Les Feldick, an Oklahoma rancher who teaches by the Holy Spirit's guidance, presents lessons that are free of denominational bias."
+  },
+  {
+   "event_id": 6,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Law & Order: Special Victims Unit",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Benson and Carisi are shocked when several assaults have the same MO, but they cannot get a DNA match; Muncy is determined to prove Elias Olsen has resurfaced."
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Law & Order: Special Victims Unit",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "In pursuit of a revenge operation, Benson and Stabler work on the case that has spread; Fin and Bruno help a rape victim that was assaulted a second time."
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Law & Order: Special Victims Unit",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Bureau Chief Mike Cutter and ADA Alex Cabot prosecute the case of a hotel maid reporting being assaulted by Italian diplomat Robert Distasio."
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Law & Order: Special Victims Unit",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "A star player's past must be uncovered by new detective Nick Amaro along with Benson and Tutuola when a basketball coach is accused of sexual abuse."
+  },
+  {
+   "event_id": 12,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Law & Order: Special Victims Unit",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A pregnant teen refuses to identify the father, causing the squad to investigate two teens; a family secret is uncovered, and someone goes missing."
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Casey and Dawson are in the midst of a political catastrophe; Stella must make a choice regarding her ex-boyfriend; first responders are put in harms way."
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Susan Weller helps Casey with a crucial personal matter; Severide is presented with a chance to travel luxuriously with a wealthy party-goer."
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "During a warehouse inspection, a forklift punctures a tank storing acid, forcing Casey to go to extremes to rescue a father and daughter."
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "When Casey fails to save a woman trapped inside of a burning greystone, Severide's opinion of the husband's role in the event causes a rift."
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Dawson mistakenly hits a pedestrian with an ambulance while responding to a call in the field; Casey and Severide are at odds over an arson case."
+  },
+  {
+   "event_id": 18,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Dawson and Antonio's mother and father travel to Chicago for their anniversary party; Chief Boden decides to take control after a secret is revealed."
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Dawson and Lt. Casey are met with an obstacle when they decide to apply for permanent adoption of Louie; Jeff Clarke proposes an idea to Lt. Severide."
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Dawson and Casey face legal issues that risk their guardianship of Louie; Severide is focused on Anna's bone marrow transplant; Brett confides in Dawson."
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "An accident at work jeopardizes Severide's plans to donate bone marrow; Dawson and Casey take steps toward a more peaceful home life."
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Dawson is shaken by an ambulance run involving a pregnant teenager; Casey has to make a quick decision when two fire victims need assistance at the same time."
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "The Chicago Police Department intervenes when a man with a vendetta against Lt. Casey and Firehouse 51 goes free; Severide's old friend Dennis Mack turns up."
+  },
+  {
+   "event_id": 24,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Chief Boden makes a snap decision that steps on the toes of another chief, who responds to the incident by making things miserable for House 51."
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Chief Anderson takes out his frustrations with Chief Boden by reassigning the members of House 51 to other location across the city."
+  },
+  {
+   "event_id": 26,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Firehouse 51 responds to the scene of a factory-turned-living-space that has caught ablaze; the doctors at Chicago Med are tested by the increase in patients."
+  },
+  {
+   "event_id": 27,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Members of truck and squad are caught in the middle of a turf war that escalates into an armed hostage situation at Firehouse 51."
+  },
+  {
+   "event_id": 28,
+   "start_gps": 1476505818,
+   "length_s": 9000,
+   "title": "Along Came a Spider",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T04:30:00+00:00",
+   "description": "A police profiler returns to duty to help a Secret Service agent redeem herself by finding the daughter of a U.S. Senator who was kidnapped on her watch."
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476514818,
+   "length_s": 7200,
+   "title": "A Low Down Dirty Shame",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "A private eye gets involved when the DEA goes after a drug lord who eluded him during his days as an L.A. police detective, and he faces his foe unaided."
+  },
+  {
+   "event_id": 30,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Family Feud Favorites",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Steve Harvey hosts a special show featuring the funniest, most viral and most unforgettable moments from America's favorite game show."
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Family Feud Favorites",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Steve Harvey hosts a special show featuring the funniest, most viral and most unforgettable moments from America's favorite game show."
+  },
+  {
+   "event_id": 32,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 33,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 34,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Tamron Hall",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Funny Marco opens up about his comedy career, Azzy Milan discusses fashion and her new show, and Tamron showcases top products on a new Shop Tam Fam segment."
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "The Jennifer Hudson Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Jennifer welcomes back \"Abbott Elementary\" star Lisa Ann Walter. Plus, actress and Lisa's best friend Elaine Hendrix stops by!"
+  },
+  {
+   "event_id": 36,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "Couples Court with the Cutlers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The court enlists a polygraph examiner and a private investigator to determine if a Wisconsin man is cheating on his pregnant girlfriend."
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "Couples Court with the Cutlers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "A man desperately wants to reconcile with his wife, but to do so he needs confirmation that she is no longer involved with the man she made a racy video with."
+  },
+  {
+   "event_id": 38,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Couples Court with the Cutlers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A cyber-security expert and a polygraph examiner work together to untangle the relationship between a 49-year-old Chicago woman and her 26-year-old boyfriend."
+  },
+  {
+   "event_id": 39,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Couples Court with the Cutlers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "A Texas man tries to convince his pregnant fianc\u00e9 that his encounter with another woman was purely innocent, but the video evidence says otherwise."
+  },
+  {
+   "event_id": 40,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Lauren Lake's Paternity Court",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "A man takes his ex to court to stop her from moving with his young daughter, but she claims that her new husband is the biological dad."
+  },
+  {
+   "event_id": 41,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Lauren Lake's Paternity Court",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "A man takes his ex to court to prove he is not the father of her 2-year old son and that the actual father is a man in the neighborhood."
+  },
+  {
+   "event_id": 42,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Lauren Lake's Paternity Court",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "A couple planned to have a baby, but now that the baby is here the father is questioning whether the child his is."
+  },
+  {
+   "event_id": 43,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Lauren Lake's Paternity Court",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "A woman is furious when her ex comes back after 25 years to claim that his is not the father of their children."
+  },
+  {
+   "event_id": 44,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Detective Tibbs agonizes over his accidental shooting of an innocent teenager while confronting an armed suspect during a botched bank robbery."
+  },
+  {
+   "event_id": 45,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Tibbs' niece and Skinner's nephew both unwittingly encounter a dangerous ex-convict in their innocent efforts to spice up the monotony of small town life."
+  },
+  {
+   "event_id": 46,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "An ambitious pimp and a dubious drifter become prime suspects after Sparta police discover the mangled body of a young prostitute in the red light district."
+  },
+  {
+   "event_id": 47,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Lorraine stars becoming extra nice when she thinks that Daniel and Toni are going to put her in a retirement home."
+  },
+  {
+   "event_id": 48,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "While helping Terri prepare for the coming school talent show, Toni ends up taking things a little too far; Daniel gets injured."
+  },
+  {
+   "event_id": 49,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Daniel and Michael formulate a plan to go undercover in a comedy club to locate and catch a criminal; Toni decides to run for the school board."
+  },
+  {
+   "event_id": 50,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "During a sexual harassment training, Daniel's female instructor makes a pass at him; Terri has a feeling that DJ's new girlfriend might be bad news."
+  },
+  {
+   "event_id": 51,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Lorraine believes that Toni is cheating on Daniel after finding love notes, new perfume and sneaky behavior from her; Daniel begins a fight with a neighbor."
+  },
+  {
+   "event_id": 52,
+   "start_gps": 1476570618,
+   "length_s": 7200,
+   "title": "Four Brothers",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "After their foster mother is killed in a robbery, four men return to the old neighborhood and their criminal roots in order to catch the murderers."
+  },
+  {
+   "event_id": 53,
+   "start_gps": 1476577818,
+   "length_s": 8100,
+   "title": "Beverly Hills Cop",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "A Detroit cop turns the city of Los Angeles and local police upside down while tracking down an old buddy's killer with a system of unorthodox measures."
+  },
+  {
+   "event_id": 54,
+   "start_gps": 1476585918,
+   "length_s": 7200,
+   "title": "Beverly Hills Cop II",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:45:00+00:00",
+   "description": "Detroit cop Axel Foley returns to the West coast to help the Beverly Hills police force catch the crooked thieves involved in a series of local robberies."
+  },
+  {
+   "event_id": 55,
+   "start_gps": 1476593118,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:45:00+00:00",
+   "description": "Daniel unexpectedly stumbles onto clues about who his father could be while he is cleaning out his car; Daniel's ex-wife helps DJ work on driving."
+  },
+  {
+   "event_id": 56,
+   "start_gps": 1476594918,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:15:00+00:00",
+   "description": "The new lieutenant arrives at the precinct, and everybody quickly finds out she and Hobbs have a romantic past; a cable installer mistakes Toni for Tamela Mann."
+  },
+  {
+   "event_id": 57,
+   "start_gps": 1476596718,
+   "length_s": 1800,
+   "title": "Mann & Wife",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:45:00+00:00",
+   "description": "A police officer and his new wife, who both have two children from their former marriages, move their joint families into his Suburban home, and work to make su"
+  },
+  {
+   "event_id": 58,
+   "start_gps": 1476505818,
+   "length_s": 8100,
+   "title": "Branded",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T04:30:00+00:00",
+   "description": "A drifter poses as the long-lost son of a wealthy rancher to inherit his money but has a change of heart and tries to find the man's real son."
+  },
+  {
+   "event_id": 59,
+   "start_gps": 1476513918,
+   "length_s": 900,
+   "title": "Raiders of Ghost City",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:45:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 60,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 61,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 62,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 63,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 64,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 65,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 66,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Death Valley Days",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "A hard luck miner at the center of a robbery-murder trial, being identified by each witness, recalls a meeting with a man who is almost his exact double."
+  },
+  {
+   "event_id": 67,
+   "start_gps": 1476527418,
+   "length_s": 7200,
+   "title": "Town Tamer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 68,
+   "start_gps": 1476534618,
+   "length_s": 9000,
+   "title": "Shane",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "A lonesome cowboy bonds with a small family on their peaceful ranch, assisting the settlers by fighting off a ruthless gang of cattle barons in the area."
+  },
+  {
+   "event_id": 69,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "The Rifleman",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Lucas is spooked and thinks he sees a ghost when a young man, who looks just like a man he killed in the Civil War, demands a showdown."
+  },
+  {
+   "event_id": 70,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "The Rifleman",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "The townspeople become angry and upset at a new store owner who demands that every single credit account must be paid in full immediately."
+  },
+  {
+   "event_id": 71,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "The Lone Ranger",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "After the evil plans of a vicious outlaw are thwarted, the enraged criminal develops a sinister and clever plot to execute his revenge."
+  },
+  {
+   "event_id": 72,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "The Lone Ranger",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "In an attempt to have his demands successfully met, a relentless and violent tyrant will devise a plan to kidnap the governor's daughter."
+  },
+  {
+   "event_id": 73,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Tombstone Territory",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Claibourne sees Vic Reel kill a newspaperman, and while Hollister works to discover the motive for the murder, he manages to capture the Taylor gang."
+  },
+  {
+   "event_id": 74,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Tombstone Territory",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "A newly married rancher is baited into a gunfight by an infamous gunslinger, and Hollister discovers the new bride may be working with the gunslinger."
+  },
+  {
+   "event_id": 75,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Death Valley Days",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "An outlaw and her gang are determined to rob a train bound for Montana."
+  },
+  {
+   "event_id": 76,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Death Valley Days",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Caught up in the gold frenzy, a man travels to California in 1853 to seek his fortune."
+  },
+  {
+   "event_id": 77,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "Zane Grey Theatre",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "A man saves another man, a criminal, from being lynched and wants to prove that the state of Nevada is a place law and worthy of having statehood."
+  },
+  {
+   "event_id": 78,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "Zane Grey Theatre",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "A man wishes to own the entire valley and puts a plan into action to scare off all of the ranchers; he hires a notorious gunman, who recognizes a rancher."
+  },
+  {
+   "event_id": 79,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Bat Masterson",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Ellie Winters has been charged with murder and in an attempt to save her, Bat tries a poker bluff, but complications arise when a witness does not show up."
+  },
+  {
+   "event_id": 80,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Bat Masterson",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Bat goes up against a vindictive judge, known for issuing many fines, in an arraignment after getting arrested while on his way to a boxing match."
+  },
+  {
+   "event_id": 81,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Tales of Wells Fargo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Hardie investigates the death of Marshal Dave Prescott, who recently finished cleaning up his town."
+  },
+  {
+   "event_id": 82,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Tales of Wells Fargo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "A vengeful woman tells Hardie about a plot to rob a Wells Fargo station."
+  },
+  {
+   "event_id": 83,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Tales of Wells Fargo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A man who was once an actor returns to the ghost town where he was last seen with his deceased wife."
+  },
+  {
+   "event_id": 84,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Tales of Wells Fargo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "An Army captain is wanted for a series of crimes."
+  },
+  {
+   "event_id": 85,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "After an infamous murderer has finally been captured by Josh, the trial quickly runs into trouble when none of the townspeople want to testify against him."
+  },
+  {
+   "event_id": 86,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "Frustrated with their constant gun use, the women of the town leave the men, vowing to not return until they have put their weapons in someplace safe."
+  },
+  {
+   "event_id": 87,
+   "start_gps": 1476576018,
+   "length_s": 9000,
+   "title": "Arrowhead",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "A bigoted Army scout avoids encounters with the Natives while working with his cavalry as the Army tries to talk peace with an Apache tribe."
+  },
+  {
+   "event_id": 88,
+   "start_gps": 1476585018,
+   "length_s": 9000,
+   "title": "Pony Express",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Two cowboys come to the aid of an emerging transcontinental mail delivery system when it comes under the attack of Indians and California Separatists."
+  },
+  {
+   "event_id": 89,
+   "start_gps": 1476594018,
+   "length_s": 7200,
+   "title": "The Texican",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "After being framed by a corrupt saloon keeper, an ex-lawman takes refuge in Mexico, but he later returns to avenge to avenge his brother's murder."
+  },
+  {
+   "event_id": 90,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "FBI: Most Wanted",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "A new member is introduced to the team while they chase after a repeat offender; Jess attempts to deal with the uneasiness of her and Sarah's last exchange."
+  },
+  {
+   "event_id": 91,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Scorpion",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Walter notices the subtleties of listening and not giving any advice to Paige; Team Scorpion meets their new neighbor at the garage."
+  },
+  {
+   "event_id": 92,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Scorpion",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "The team tries celebrating Sylvester's birthday at a renaissance festival, but an attempted robbery at a nearby police evidence locker cuts the event short."
+  },
+  {
+   "event_id": 93,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Scorpion",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Team Scorpion's new neighbor joins them on a mission to demolish an island of floating trash out at sea; Tobe and Cabe learn more about her father's death."
+  },
+  {
+   "event_id": 94,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "The Five-0 team works in conjunction with the CIA in their efforts to find a dangerous killer loose on the island; McGarrett's visits Wo Fat in prison."
+  },
+  {
+   "event_id": 95,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "After McGarrett and Wo Fat's escape, Five-0's headquarters are stormed, leading Kono and Adam's location in Hong Kong to become compromised."
+  },
+  {
+   "event_id": 96,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The team's investigation of a murder leads them to help a Texas Ranger find his missing daughter; Adam and Kono struggle to stay alive."
+  },
+  {
+   "event_id": 97,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "When a valuable artifact that has the answers as to who murdered two victims turns up missing, the Five-0 team seeks assistance from a conspiracy theorist."
+  },
+  {
+   "event_id": 98,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "The investigation into the death of a wedding crasher reveals that the main suspect may be the runaway bride; Danny makes a decision about his relationship."
+  },
+  {
+   "event_id": 99,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "After Catherine's seemingly harmless surveillance job takes a sudden fatal turn, Adam considers sacrificing himself in order to save Kono."
+  },
+  {
+   "event_id": 100,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "After a zombie-like character is shot during Halloween, the Five-0 team must stop a madman in his tracks before he can continue using humans for experiments."
+  },
+  {
+   "event_id": 101,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The Five-0 team must watch over Mary's newly-adopted baby while investigating the murder of an undercover ATF agent after she calls in sick."
+  },
+  {
+   "event_id": 102,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "The Governor issues a warrant for a youthful computer hacker, forcing McGarrett and SWAT captain Lou Grover to work together to protect national security."
+  },
+  {
+   "event_id": 103,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "The Five-0 team investigate the murder of a Secret Service agent on the eve of the President's trip to Oahu; McGarrett's aunt visits for Thanksgiving."
+  },
+  {
+   "event_id": 104,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "The Five-0 team investigates a murder attempt on a Pearl Harbor veteran and a deadly crime committed decades ago in an internment camp during World War II."
+  },
+  {
+   "event_id": 105,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Chin's life is threatened after a murder investigation reveals that the culprit may actually be a serial killer; Danny and Grace find a mysterious puzzle box."
+  },
+  {
+   "event_id": 106,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "McGarrett helps Grover investigate the disappearance of a friend who is suspected of committing a murder; Kono continues her search for Adam."
+  },
+  {
+   "event_id": 107,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Chin is called in by Internal Affairs regarding his relationship with Malia's family and how it may have affected the investigation into his father's murder."
+  },
+  {
+   "event_id": 108,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "An escaped convict kidnaps McGarrett and Danny in an effort to get the Five-0 team to prove his innocence; Danny must deal with Grace after she punches someone."
+  },
+  {
+   "event_id": 109,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Five-0 investigates a real estate agent that is found dead in the walls of one of his listings; Danny's mother travels to Oahu to deliver some shocking news."
+  },
+  {
+   "event_id": 110,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "The Five-0 team investigates a triple homicide that may be connected to a downed, top-secret Chinese satellite; Grover takes Danny's mother for a ride-along."
+  },
+  {
+   "event_id": 111,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "The team tries to figure out why a girl was taken from her home while her father is shot in the process; Danny tries to get his parents back together."
+  },
+  {
+   "event_id": 112,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "The Five-0 team is on the case when the daughter of a macadamia nut tycoon is found murdered with a stiletto shoe's heel at Chin's high school reunion."
+  },
+  {
+   "event_id": 113,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Hawaii Five-0",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "The Five-0 team are set up for a trap after a bad tip leads them to an abandoned building that is rigged to explode with McGarrett and Danny trapped inside."
+  },
+  {
+   "event_id": 114,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Family Feud Favorites",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Steve Harvey hosts a special show featuring the funniest, most viral and most unforgettable moments from America's favorite game show."
+  },
+  {
+   "event_id": 115,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Family Feud Favorites",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Steve Harvey hosts a special show featuring the funniest, most viral and most unforgettable moments from America's favorite game show."
+  },
+  {
+   "event_id": 116,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 117,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 118,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 119,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 120,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 121,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 122,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Jim finds himself embroiled in a crisis of faith after he manages to successfully cheat during a church-sponsored bingo game for charity."
+  },
+  {
+   "event_id": 123,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Cheryl tells Jim that a friend bought his wife jewelry for no reason and gets upset when Jim says that the man probably bought jewelry because he was cheating."
+  },
+  {
+   "event_id": 124,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "The Conners",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Mark has a difficult time fitting in at public school; Darlene discovers what Mark has been doing to make extra cash for college, and she is not pleased."
+  },
+  {
+   "event_id": 125,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "The Conners",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Darlene learns she has a better chance of getting the house she loves if she is in a relationship; Becky and Professor Davis try to keep a secret."
+  },
+  {
+   "event_id": 126,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Bob Hearts Abishola",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Dele shows his first instance of rebellious behavior when he refuses to follow Abishola's demands for him to go with his father to Nigeria."
+  },
+  {
+   "event_id": 127,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Bob Hearts Abishola",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Christina's decision to have a baby sees Bob and Abishola reconsidering their own thoughts about having a child as well."
+  },
+  {
+   "event_id": 128,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Tim inadvertently breaks Jill's first pottery project when she leaves her wheel in the garage; Al is given the job of hosting Tool Time for a day."
+  },
+  {
+   "event_id": 129,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Tim plans for an entertaining evening filled with playing cards and poker chips are ruined when Jill's sister and Al unexpectedly show up."
+  },
+  {
+   "event_id": 130,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Al attempts to ask a woman out on a date but screws it up; Tim gets nosey when Jill finds her old diary; Tim notices Brad's odd behavior around a girl."
+  },
+  {
+   "event_id": 131,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Tim wants to get a better stereo system, but Jill just wants to replace the broken speakers; a musician inspires the guys at K&B Construction."
+  },
+  {
+   "event_id": 132,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Andy gets hurt while playing snow football, Jim tries to cover up the reason for the injury from Andy's girlfriend, who warned him not to play."
+  },
+  {
+   "event_id": 133,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Jim tries to be cool to impress Ruby and her friends, but he soon realizes he's being used so they can do things that Cheryl would never agree to."
+  },
+  {
+   "event_id": 134,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Jim is forced to take potent prescribed meds to ease his pain, and the family takes advantage of his mellow attitude to tell him some bad news."
+  },
+  {
+   "event_id": 135,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "According to Jim",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Jim tries to use his passion for sports to bond with Kyle, but the athletically impaired boy instead bonds with Andy, a fellow sci-fi nerd."
+  },
+  {
+   "event_id": 136,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Vanessa must choose which granddaughter to feature in an advertisement; Mike interferes with Ryan's attempt to purchase a home on his street."
+  },
+  {
+   "event_id": 137,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Mike comes to regret suggesting that Joe purchase a classic Jeep; Kristin and Ryan become concerned that Sarah is learning bad language from Mandy and Kyle."
+  },
+  {
+   "event_id": 138,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Vanessa is pushed to return a political figure to help her granddaughters; Mike is worried about Kyle and that Reverend Paul is taking advantage of him."
+  },
+  {
+   "event_id": 139,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Chuck teaches Mike and Joe an important lesson as they look for another classic car to renovate; Mandy, Kyle and Vanessa intervene in Jen's love life."
+  },
+  {
+   "event_id": 140,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "A series of misfortunes threatens to overwhelm any of the fun the Hecks were hoping to have at Walt Disney World during their hard won vacation."
+  },
+  {
+   "event_id": 141,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "When Frankie finds out that school began a week before she thought, Sue and Brick have to work double-time to catch up; Axl beats Mike at a game of basketball."
+  },
+  {
+   "event_id": 142,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Frankie and Mike look for second jobs to help pay for Sue's future college tuition; Sue and Brad write, direct and act in the senior play."
+  },
+  {
+   "event_id": 143,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Brick announces that he wants to go to his school's Fall Dance; Axl's anxiety reaches an all time high when he finds out he must decide his major by week's end."
+  },
+  {
+   "event_id": 144,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "When Brad's new car is stolen, Tim and Al devise a plan that involves their undercover skills and a distinctive mark on the vehicle to track down the thieves."
+  },
+  {
+   "event_id": 145,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "When Tim is left alone for the weekend to work on writing a book, he procrastinates by distracting himself with dreams of becoming wealthy and famous."
+  },
+  {
+   "event_id": 146,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "After tripping over a rolled-up carpet and injuring his knee during a Tool Time shoot at the house, Brad blames Tim for possibly ruining his soccer career."
+  },
+  {
+   "event_id": 147,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Home Improvement",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Tim asks Mark to shoot a video to highlight his newly completed hot rod, and he decides to add a dance number set to \"Greased Lightning\"."
+  },
+  {
+   "event_id": 148,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "As her wedding day approaches, Mandy begins to get intense and fires her wedding planner; Mandy puts the whole family to work; Ed opts out."
+  },
+  {
+   "event_id": 149,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "Mike wants to buy the car that Chuck's late father left him, though Joe might beat him to it; Kyle arrives at the Baxter home for Thanksgiving with an heirloom."
+  },
+  {
+   "event_id": 150,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Mandy selects local-celebrity Mike to be the speaker for her business school's graduation; Mike is faced with a choice when he is told what the speech must be."
+  },
+  {
+   "event_id": 151,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Last Man Standing",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Vanessa has been spending more and more time in her family's business since she lost her teaching job; Ryan and Kyle battle over their zombie knowledge."
+  },
+  {
+   "event_id": 152,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Sue is overcome with events that threaten to ruin her graduation; Frankie and Mike find out Brick has been offered the opportunity to skip eighth grade."
+  },
+  {
+   "event_id": 153,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "The Heck family has mixed emotions about Sue moving into a college dorm; Frankie isn't sad that Sue is moving out; Cindy wants to go to the next level."
+  },
+  {
+   "event_id": 154,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Sue is nervous about meeting her new roommate, but she thinks she's met her next best friend; Axl and Hutch experience an infestation of ants at their house."
+  },
+  {
+   "event_id": 155,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "The Middle",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Frankie is struck speechless when Mike decides to wear a Hawaiian shirt out to dinner; Sue signs up for all the campus clubs that can't turn away new people."
+  },
+  {
+   "event_id": 156,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Kelso's plan to propose to Jackie gets sidetracked when he gets a job offer he can't refuse, while Donna fumes over Eric's failure to contact her."
+  },
+  {
+   "event_id": 157,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Fez and Jackie get themselves into an embarrassing situation after they are caught spying on Donna and Randy; Red comes to have respect for Leo."
+  },
+  {
+   "event_id": 158,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "A routine trip to the local burger joint turns tragic when the surly owner prompts Randy to steal Fatso the Clown, the burger chain mascot."
+  },
+  {
+   "event_id": 159,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Fez's new girlfriend from the salon turns out to be a close friend of Kitty's, and Jackie stumbles upon a secret crush of Donna's."
+  },
+  {
+   "event_id": 160,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "While Jackie finds that her new career in showbiz isn't all she thought it would be, Hyde finds that his honeymoon is finally over."
+  },
+  {
+   "event_id": 161,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "That '70s Show",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Jackie wins over her new boss with some of Kitty's homemade brownies, but creates a new enemy when she claims the recipe as her own."
+  },
+  {
+   "event_id": 162,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Judgment with Ashleigh Banfield",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 163,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Judgment with Ashleigh Banfield",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 164,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Judgment with Ashleigh Banfield",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 165,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Judgment with Ashleigh Banfield",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 166,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Judgment with Ashleigh Banfield",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 167,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Accomplice To Murder with Vinnie Politan",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 168,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "VPI: Vinnie Politan Investigates",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 169,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 170,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 171,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 172,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 173,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 174,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 175,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 176,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 177,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Court TV Live",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 178,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "48 Hours",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Peter Van Sant reports on the murder of millionaire widow Marjorie Nugent, whose companion shot her and left her body in a freezer."
+  },
+  {
+   "event_id": 179,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "VPI: Vinnie Politan Investigates",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 180,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "VPI: Vinnie Politan Investigates",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 181,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Interview With a Killer",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 182,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Interview With a Killer",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 183,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Interview with a Killer",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 184,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "VPI: Vinnie Politan Investigates",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 185,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Interview With a Killer",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 186,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Cheaters",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Suspicious lovers enlist the help of a camera crew to dig up dirt on the partners they suspect of cheating and then confront them with the evidence."
+  },
+  {
+   "event_id": 187,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Cheaters",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Suspicious lovers enlist the help of a camera crew to dig up dirt on the partners they suspect of cheating and then confront them with the evidence."
+  },
+  {
+   "event_id": 188,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Cheaters",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Suspicious lovers enlist the help of a camera crew to dig up dirt on the partners they suspect of cheating and then confront them with the evidence."
+  },
+  {
+   "event_id": 189,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Cheaters",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Suspicious lovers enlist the help of a camera crew to dig up dirt on the partners they suspect of cheating and then confront them with the evidence."
+  },
+  {
+   "event_id": 190,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Car Chase",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 191,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Bounty Tank",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 192,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Bounty Tank",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 193,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "World's Wildest Police Videos",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Footage from video surveillance feeds and cameras mounted inside police cruisers demonstrate the dangerous daily lives lead by law enforcement officers."
+  },
+  {
+   "event_id": 194,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "World's Wildest Police Videos",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Footage from video surveillance feeds and cameras mounted inside police cruisers demonstrate the dangerous daily lives lead by law enforcement officers."
+  },
+  {
+   "event_id": 195,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "World's Wildest Police Videos",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Footage from video surveillance feeds and cameras mounted inside police cruisers demonstrate the dangerous daily lives lead by law enforcement officers."
+  },
+  {
+   "event_id": 196,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "World's Wildest Police Videos",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Footage from video surveillance feeds and cameras mounted inside police cruisers demonstrate the dangerous daily lives lead by law enforcement officers."
+  },
+  {
+   "event_id": 197,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A teenager and a neighbor fight over a hoverboard incident; neighbors in New Jersey argue over a political candidate's campaign sign."
+  },
+  {
+   "event_id": 198,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "A woman plots revenge after a neighbor tosses dog poop on her driveway; an organic gardener uses cameras to discover who is destroying his crops."
+  },
+  {
+   "event_id": 199,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "A neighbor worries for her well-being as a property line dispute plays out in Tennessee; a fisherman in Florida gets revenge on a territorial neighbor."
+  },
+  {
+   "event_id": 200,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "A stranger uses a neighbor's porch to set up an erotic photoshoot at night; a woman shouts insults at two landscapers; a tenant opts to lock out his landlord."
+  },
+  {
+   "event_id": 201,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Neighbors get upset when newlyweds build a tiny home in Missouri out of shipping containers; neighbors fight in New York; a man claims his dog was stolen."
+  },
+  {
+   "event_id": 202,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "A woman in Chicago gets upset when a neighbor bicycles on the sidewalk; a man confronts a driver in South Carolina for using a handicapped parking spot."
+  },
+  {
+   "event_id": 203,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "A neighbor fights with an Idaho family over the height of their lawn; authorities in Florida carry out a home eviction but realize they are at the wrong home."
+  },
+  {
+   "event_id": 204,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "A late-night partygoer shows up unannounced and receives a rude welcome; a woman accuses two men of trespassing and blocks their car."
+  },
+  {
+   "event_id": 205,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Relationships between neighbors are spotlighted to reveal emotionally charged events caught on cell phones, drones, home security cameras and other devices, and"
+  },
+  {
+   "event_id": 206,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Neighbors come prepared to fight and pose as a threat to one another, even though only some of them are armed."
+  },
+  {
+   "event_id": 207,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "A neighbor threatens to cut the hydraulic cables of a painter's lift because of its constant beeping; a neighbor calls the police on a babysitter."
+  },
+  {
+   "event_id": 208,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "A protester prays to Satan during a neighborhood meeting in Florida; a remote-controlled car with a camera drives along neighborhood sidewalks."
+  },
+  {
+   "event_id": 209,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Neighbors in Texas continue their decades-long dispute with daily yelling matches over the fence; teenagers annoy a man in Utah, so he lashes out with an ax."
+  },
+  {
+   "event_id": 210,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "A man in Florida gets upset when his neighbor sets off fireworks for the Fourth of July; a couple spots their neighbor throwing cat litter over the fence."
+  },
+  {
+   "event_id": 211,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Neighbors get upset when a man trims their hedge so that he can park his car on the street; workers climb over a homeowner's fence to fix a blocked sewer pipe."
+  },
+  {
+   "event_id": 212,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Trouble arises with a restaurant bill, sparking a woman to treat her neighbors to an unexpected show; dads fight at the neighborhood pool."
+  },
+  {
+   "event_id": 213,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Ten memorable moments are recapped that showcase neighbors out for revenge."
+  },
+  {
+   "event_id": 214,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "A neighbor gets upset at a 12-year-old boy for riding his bike on the sidewalk; neighbors encroach on a woman's land in rural Kentucky."
+  },
+  {
+   "event_id": 215,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Two couples in Indiana confront a neighbor who is ruining their lives; a family in Arizona wakes up to find an intruder inside their home."
+  },
+  {
+   "event_id": 216,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "A neighbor in Texas whips out his gun on a man accused of speeding on the street; a man in New Orleans discovers that his car is blocked in by a block party."
+  },
+  {
+   "event_id": 217,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "A young man in Dallas shows up at his neighbor's door with a whip in tow; a neighbor intervenes in a parking lot fight in South Carolina."
+  },
+  {
+   "event_id": 218,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "A woman wakes up her neighbors as she gets rid of her cheating boyfriend and all his belongings; a grandmother targets a con artist."
+  },
+  {
+   "event_id": 219,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Upset parents respond after a school bus driver refuses to let the children off the bus; residents in a quiet neighborhood react to a noisy birthday event."
+  },
+  {
+   "event_id": 220,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "An individual gets revenge after a neighbor accidentally kills some flowers; a young woman turns down a neighbor's romantic advances."
+  },
+  {
+   "event_id": 221,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "A homeowner discovers one of his neighbors naked on his lawn, snacking on his mail; a package thief follows a delivery truck; trouble arises at the movies."
+  },
+  {
+   "event_id": 222,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "A man uses an axe to beat on his neighbor's front door; a couple gets mad at their neighbor for revving his car's engine in the middle of the night."
+  },
+  {
+   "event_id": 223,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "An angry neighbor alerts the police as two bikers explore an abandoned building in Missouri; a nearly naked man in Seattle protects his neighbor's property."
+  },
+  {
+   "event_id": 224,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "A man gets into his SUV during a fight with a neighbor; a beauty salon owner takes action against a neighbor she accuses of spitting on her window."
+  },
+  {
+   "event_id": 225,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "Neighborhood Wars",
+   "rating": "TV-14",
+   "source_id": 7,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Downstairs neighbors get mad at a Los Angeles couple for stomping around their apartment and making too much noise; a base jumper's parachute gets twisted."
+  },
+  {
+   "event_id": 226,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Women with Control\u00ae by Renee Greenstein",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Fashionable Tops and Bottoms to Give Attitude and Confidence"
+  },
+  {
+   "event_id": 227,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Vionic\u00ae - Footwear - All Free Shipping",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Styles that improve body alignment & contribute to your well-being"
+  },
+  {
+   "event_id": 228,
+   "start_gps": 1476518418,
+   "length_s": 7200,
+   "title": "Susan Graver Style",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Fashion designer and QVC native Susan Graver debuts her new line of elegant apparel, comprised of breezy specialty fabrics that ensure comfort and convenience."
+  },
+  {
+   "event_id": 229,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Vionic\u00ae - Footwear - All Free Shipping",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Styles that improve body alignment & contribute to your well-being"
+  },
+  {
+   "event_id": 230,
+   "start_gps": 1476529218,
+   "length_s": 7200,
+   "title": "Wake Up with John - Gift Edition",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Start your Tuesday with a smile when you Wake Up with Program Host John Battagliese. John is ON, and in this special Gift Edition, he's bringing you a host of i"
+  },
+  {
+   "event_id": 231,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Shoe Shopping",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Weekly Footwear Showcase Featuring Leading Brands"
+  },
+  {
+   "event_id": 232,
+   "start_gps": 1476540018,
+   "length_s": 7200,
+   "title": "Denim & Co.\u00ae",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "An extensive showcase featuring the latest developments in Denim, this QVC exclusive focuses on providing a stylish new approach to a classically casual fabric."
+  },
+  {
+   "event_id": 233,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Q Check\u00ae Gifts - A Big Deal(SM)",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Fast-Paced, Weekday Gift Shopping Destination"
+  },
+  {
+   "event_id": 234,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "philosophy - beauty",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Cutting edge skin care products, fragrances, bath and body products and color cosmetics are available from philosophy."
+  },
+  {
+   "event_id": 235,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Calista - Hair Care & Tools",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Calista Tools offers nourishing shampoos, conditions and styling products in addition to unique tools like hot rollers to create a variety of salon-style looks."
+  },
+  {
+   "event_id": 236,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "How to Sparkle with Courtney - Jewelry",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Program Host Courtney Khondabi has a passion for jewelry that she can't wait to share with you. Tune in as she shows you how to elevate any outfit with fine and"
+  },
+  {
+   "event_id": 237,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Courtney's Gift Favorites",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Gift Suggestions from Program Host Courtney Khondabi"
+  },
+  {
+   "event_id": 238,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "KORA Organics with Miranda Kerr - Beauty",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Skincare from wellness guru and supermodel Miranda Kerr."
+  },
+  {
+   "event_id": 239,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Shoe Shopping with Jane",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A stylist shares her passion for shoes and gives a fun and informative look at the latest trends and styles; some styles include fashion, sport and comfort."
+  },
+  {
+   "event_id": 240,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Laura Geller Makeup Studio",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Host Laura Geller shares her makeup style tips with interested viewers, discussing the proper cosmetic application techniques and which makeup she prefers."
+  },
+  {
+   "event_id": 241,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Dennis Basso & Friends - Holiday Edition",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Festive fashion, food, friendship and fun with celebrated New York designer and special guests"
+  },
+  {
+   "event_id": 242,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Off/Duty by Coco Rocha",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Collection inspired by the effortless style internationally renowned supermodel, entrepreneur, and fashion icon has perfected when she's off the runway"
+  },
+  {
+   "event_id": 243,
+   "start_gps": 1476583218,
+   "length_s": 7200,
+   "title": "Inspired Style\u00ae with Amy",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Popular weekly show returns as Program Host Amy Stran shares fashion, accessories, beauty & jewelry tips"
+  },
+  {
+   "event_id": 244,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Gifts for the Cook",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Kitchen Gadgets, Cookbooks, Gourmet Food, Cookware & More"
+  },
+  {
+   "event_id": 245,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "True Botanicals - Beauty",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": ""
+  }
+ ],
+ "rf": 16,
+ "mhz": 485,
+ "signal": {
+  "SignalStrengthPercent": 59,
+  "SignalQualityPercent": 65
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 0x0",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 8,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 9,
+   "name": "",
+   "video": "mpeg2video 0x0",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 10,
+   "name": "",
+   "video": "mpeg2video 0x0",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

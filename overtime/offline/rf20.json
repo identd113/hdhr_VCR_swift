@@ -1,0 +1,2074 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T02:39:26+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686
+  ],
+  "mgt_entries": 15
+ },
+ "channels": [
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 1,
+   "number": "43.1",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1001,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 2,
+   "number": "43.2",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1002,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 3,
+   "number": "43.3",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1003,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 4,
+   "number": "43.4",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1004,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 5,
+   "number": "43.5",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1005,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 6,
+   "number": "43.6",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1006,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KMBD-LD",
+   "major": 43,
+   "minor": 7,
+   "number": "43.7",
+   "modulation": 4,
+   "tsid": 9481,
+   "program": 1007,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 14834,
+   "start_gps": 1476509837,
+   "length_s": 8520,
+   "title": "Criminal",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:36:59+00:00",
+   "description": "CIA agent Bill Pope dies while traveling to a secret location to meet a hacker who can launch missiles at will. Desperate to find his whereabouts, officials turn to an experimental neurosurgeon who can tran"
+  },
+  {
+   "event_id": 14835,
+   "start_gps": 1476518357,
+   "length_s": 5460,
+   "title": "Bonanza",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:58:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14836,
+   "start_gps": 1476518357,
+   "length_s": 5460,
+   "title": "Bonanza",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:58:59+00:00",
+   "description": "When a neighbor agrees to sell his property, the Cartwrights fear the loss of water rights for their cattle."
+  },
+  {
+   "event_id": 14837,
+   "start_gps": 1476523817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14838,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Men's Health - All-Natural Secret for Prostate Health",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14839,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14840,
+   "start_gps": 1476529217,
+   "length_s": 6780,
+   "title": "The Old Way",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14841,
+   "start_gps": 1476529217,
+   "length_s": 6780,
+   "title": "The Old Way",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": "Retired gunslinger Colton Briggs faces the consequences of his past when the son of a man he murdered arrives to take his revenge. Briggs must take up arms once more after his wife is killed, and is joined by his young daughter."
+  },
+  {
+   "event_id": 14842,
+   "start_gps": 1476535997,
+   "length_s": 6540,
+   "title": "Forsaken",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:52:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14843,
+   "start_gps": 1476542537,
+   "length_s": 6240,
+   "title": "Gunless",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:41:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14844,
+   "start_gps": 1476542537,
+   "length_s": 6240,
+   "title": "Gunless",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:41:59+00:00",
+   "description": "An American gunslinger is unable to find someone to duel in a Canadian town where no one understands the brutal code of the American Wild West."
+  },
+  {
+   "event_id": 14845,
+   "start_gps": 1476548777,
+   "length_s": 7260,
+   "title": "Jericho",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:25:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14846,
+   "start_gps": 1476548777,
+   "length_s": 7260,
+   "title": "Jericho",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:25:59+00:00",
+   "description": "Jericho wakes up with no memory, but it's apparent that he's quite skilled with a gun. He is befriended by Joshua , who appears to be his polar opposite: He's a black man and true believer in the Lord, whereas Jerich"
+  },
+  {
+   "event_id": 14847,
+   "start_gps": 1476556037,
+   "length_s": 8640,
+   "title": "Dust",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:26:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14848,
+   "start_gps": 1476564677,
+   "length_s": 8100,
+   "title": "Frank and Jesse",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:50:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14849,
+   "start_gps": 1476564677,
+   "length_s": 8100,
+   "title": "Frank and Jesse",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:50:59+00:00",
+   "description": "A Pinkerton agent pursues the James and Younger brothers as they rob banks, stagecoaches and trains."
+  },
+  {
+   "event_id": 14850,
+   "start_gps": 1476572777,
+   "length_s": 6960,
+   "title": "Pharaoh's Army",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:05:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14851,
+   "start_gps": 1476572777,
+   "length_s": 6960,
+   "title": "Pharaoh's Army",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:05:59+00:00",
+   "description": "Abston , a Union Army captain, leads his Civil War regiment to a Kentucky farm run by Sarah Anders , whose husband is off fighting for the Confederates. Although"
+  },
+  {
+   "event_id": 14852,
+   "start_gps": 1476579737,
+   "length_s": 7860,
+   "title": "Sheriff of Contention",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:01:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1,
+   "start_gps": 1476511217,
+   "length_s": 3600,
+   "title": "Swamp People",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476514817,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476518417,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476522017,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3540,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3541,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476534617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476536417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3535,
+   "start_gps": 1476538217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3536,
+   "start_gps": 1476540017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3542,
+   "start_gps": 1476541817,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476543617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476545417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 12,
+   "start_gps": 1476547217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3530,
+   "start_gps": 1476549017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3531,
+   "start_gps": 1476550817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3537,
+   "start_gps": 1476552617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476554417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476556217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476558017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3525,
+   "start_gps": 1476559817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3526,
+   "start_gps": 1476561617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3532,
+   "start_gps": 1476563417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476565217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476567017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 18,
+   "start_gps": 1476568817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3520,
+   "start_gps": 1476570617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3521,
+   "start_gps": 1476572417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3527,
+   "start_gps": 1476574217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476576017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476577817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476579617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3515,
+   "start_gps": 1476581417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3516,
+   "start_gps": 1476583217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3522,
+   "start_gps": 1476585017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10098,
+   "start_gps": 1476511217,
+   "length_s": 7200,
+   "title": "My Favorite Brunette",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10099,
+   "start_gps": 1476518417,
+   "length_s": 1800,
+   "title": "New Bath for Seniors",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10100,
+   "start_gps": 1476520217,
+   "length_s": 5400,
+   "title": "The Phantom Express",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10101,
+   "start_gps": 1476520217,
+   "length_s": 5400,
+   "title": "The Phantom Express",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10102,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "Under Eye Bags? SOLUTION!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10103,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "Under Eye Bags? SOLUTION!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10104,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "Embarrassed by Hearing Loss?",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10105,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "Embarrassed by Hearing Loss?",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10106,
+   "start_gps": 1476547217,
+   "length_s": 10800,
+   "title": "3 Vacuums in 1! NEW Shark Transformer!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10107,
+   "start_gps": 1476547217,
+   "length_s": 10800,
+   "title": "3 Vacuums in 1! NEW Shark Transformer!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10108,
+   "start_gps": 1476558017,
+   "length_s": 10800,
+   "title": "Best Reverse Mortgage!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10109,
+   "start_gps": 1476558017,
+   "length_s": 10800,
+   "title": "Best Reverse Mortgage!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10110,
+   "start_gps": 1476568817,
+   "length_s": 7200,
+   "title": "The Jackie Robinson Story",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10111,
+   "start_gps": 1476576017,
+   "length_s": 3600,
+   "title": "POOF! Bye Bye Under Eye Bags!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10112,
+   "start_gps": 1476579617,
+   "length_s": 10800,
+   "title": "Bathroom Makeover",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6242,
+   "start_gps": 1476511217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6243,
+   "start_gps": 1476513017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7354,
+   "start_gps": 1476514817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7364,
+   "start_gps": 1476516617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7365,
+   "start_gps": 1476518417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7367,
+   "start_gps": 1476520217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6236,
+   "start_gps": 1476522017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6237,
+   "start_gps": 1476523817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7347,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7361,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7362,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7366,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6228,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6229,
+   "start_gps": 1476534617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7340,
+   "start_gps": 1476536417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7358,
+   "start_gps": 1476538217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7359,
+   "start_gps": 1476540017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7363,
+   "start_gps": 1476541817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6218,
+   "start_gps": 1476543617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6219,
+   "start_gps": 1476545417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7333,
+   "start_gps": 1476547217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7351,
+   "start_gps": 1476549017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7352,
+   "start_gps": 1476550817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7360,
+   "start_gps": 1476552617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6206,
+   "start_gps": 1476554417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6207,
+   "start_gps": 1476556217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7326,
+   "start_gps": 1476558017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7344,
+   "start_gps": 1476559817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7345,
+   "start_gps": 1476561617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7353,
+   "start_gps": 1476563417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6192,
+   "start_gps": 1476565217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6193,
+   "start_gps": 1476567017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7319,
+   "start_gps": 1476568817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7337,
+   "start_gps": 1476570617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7338,
+   "start_gps": 1476572417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7346,
+   "start_gps": 1476574217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6176,
+   "start_gps": 1476576017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6177,
+   "start_gps": 1476577817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T00:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7312,
+   "start_gps": 1476579617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7330,
+   "start_gps": 1476581417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7331,
+   "start_gps": 1476583217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7339,
+   "start_gps": 1476585017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1252,
+   "start_gps": 1476507617,
+   "length_s": 7200,
+   "title": "Kickboxer 4: The Aggressor",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T04:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1253,
+   "start_gps": 1476514817,
+   "length_s": 10800,
+   "title": "Bait",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1254,
+   "start_gps": 1476514817,
+   "length_s": 10800,
+   "title": "Bait",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1255,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1256,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1257,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1258,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Roc",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1259,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Roc",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1260,
+   "start_gps": 1476534617,
+   "length_s": 9000,
+   "title": "Surviving the Game",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1261,
+   "start_gps": 1476543617,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1262,
+   "start_gps": 1476547217,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1263,
+   "start_gps": 1476550817,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1264,
+   "start_gps": 1476554417,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1265,
+   "start_gps": 1476558017,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1266,
+   "start_gps": 1476561617,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1267,
+   "start_gps": 1476565217,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1268,
+   "start_gps": 1476568817,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1269,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Lethal Weapon",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1270,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Lethal Weapon",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1271,
+   "start_gps": 1476581417,
+   "length_s": 10800,
+   "title": "Lethal Weapon 2",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8023,
+   "start_gps": 1476511217,
+   "length_s": 14400,
+   "title": "The Assassination of Jesse James by the Coward Robert Ford",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7994,
+   "start_gps": 1476511217,
+   "length_s": 14400,
+   "title": "The Assassination of Jesse James by the Coward Robert Ford",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8024,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "A Distant Trumpet",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8025,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "A Distant Trumpet",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8026,
+   "start_gps": 1476536417,
+   "length_s": 16200,
+   "title": "Wyatt Earp",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8027,
+   "start_gps": 1476536417,
+   "length_s": 16200,
+   "title": "Wyatt Earp",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8028,
+   "start_gps": 1476552617,
+   "length_s": 7200,
+   "title": "The Bounty Hunter",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8029,
+   "start_gps": 1476552617,
+   "length_s": 7200,
+   "title": "The Bounty Hunter",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8030,
+   "start_gps": 1476559817,
+   "length_s": 12600,
+   "title": "The Wild Bunch",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8031,
+   "start_gps": 1476559817,
+   "length_s": 12600,
+   "title": "The Wild Bunch",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8032,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Tom Horn",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8033,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Tom Horn",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8034,
+   "start_gps": 1476581417,
+   "length_s": 9000,
+   "title": "Drum Beat",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1,
+   "start_gps": 1476511217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476513017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476514817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476516617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476518417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 316,
+   "start_gps": 1476520217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476522017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476523817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 315,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476534617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476536417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476538217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476540017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 314,
+   "start_gps": 1476541817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476543617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476545417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476547217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476549017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476550817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 313,
+   "start_gps": 1476552617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476554417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 26,
+   "start_gps": 1476556217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 27,
+   "start_gps": 1476558017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 28,
+   "start_gps": 1476559817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476561617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 312,
+   "start_gps": 1476563417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476565217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 32,
+   "start_gps": 1476567017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 33,
+   "start_gps": 1476568817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 34,
+   "start_gps": 1476570617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476572417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 311,
+   "start_gps": 1476574217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T23:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476576017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 38,
+   "start_gps": 1476577817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 39,
+   "start_gps": 1476579617,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 40,
+   "start_gps": 1476581417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 41,
+   "start_gps": 1476583217,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 310,
+   "start_gps": 1476585017,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T02:29:59+00:00",
+   "description": ""
+  }
+ ],
+ "rf": 20,
+ "mhz": 509,
+ "signal": {
+  "SignalStrengthPercent": 79,
+  "SignalQualityPercent": 90
+ },
+ "pmt_programs": [
+  {
+   "program": 1001,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1002,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1003,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1004,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1005,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1006,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1007,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

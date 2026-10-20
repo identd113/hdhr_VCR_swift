@@ -1,0 +1,1498 @@
+{
+ "gps_utc_offset": 0,
+ "broadcast_time_utc": "2026-10-20T07:38:51+00:00",
+ "tables": {
+  "eit_pids": [
+   7680,
+   7681,
+   7682,
+   7683
+  ],
+  "ett_pids": [
+   7808,
+   7809,
+   7810,
+   7811
+  ],
+  "mgt_entries": 10
+ },
+ "channels": [
+  {
+   "name": "KKTW-LD",
+   "major": 19,
+   "minor": 1,
+   "number": "19.1",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 2,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "RTV\u0000\u0000LD",
+   "major": 19,
+   "minor": 2,
+   "number": "19.2",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 4,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Hasbro",
+   "major": 19,
+   "minor": 3,
+   "number": "19.3",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 6,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "REVACT",
+   "major": 19,
+   "minor": 4,
+   "number": "19.4",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 8,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Family",
+   "major": 19,
+   "minor": 5,
+   "number": "19.5",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 10,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Revival",
+   "major": 19,
+   "minor": 6,
+   "number": "19.6",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 12,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "GLTVii",
+   "major": 19,
+   "minor": 7,
+   "number": "19.7",
+   "modulation": 4,
+   "tsid": 10037,
+   "program": 14,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 9189,
+   "start_gps": 1476504000,
+   "length_s": 3600,
+   "title": "Heartland",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T04:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9190,
+   "start_gps": 1476507600,
+   "length_s": 3600,
+   "title": "Third Shift",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": "Country music videos are featured."
+  },
+  {
+   "event_id": 9191,
+   "start_gps": 1476511200,
+   "length_s": 3600,
+   "title": "Third Shift",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Country music videos are featured."
+  },
+  {
+   "event_id": 9192,
+   "start_gps": 1476514800,
+   "length_s": 3600,
+   "title": "Third Shift",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Country music videos are featured."
+  },
+  {
+   "event_id": 9193,
+   "start_gps": 1476518400,
+   "length_s": 3600,
+   "title": "Third Shift",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Country music videos are featured."
+  },
+  {
+   "event_id": 9194,
+   "start_gps": 1476522000,
+   "length_s": 3600,
+   "title": "Third Shift",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Country music videos are featured."
+  },
+  {
+   "event_id": 9195,
+   "start_gps": 1476525600,
+   "length_s": 7200,
+   "title": "Country Music Today",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Country music performances are featured; news items are shared about celebrities in the country music industry."
+  },
+  {
+   "event_id": 9196,
+   "start_gps": 1476532800,
+   "length_s": 3600,
+   "title": "Crook & Chase",
+   "rating": " TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The hosts discuss the latest news in the country music world, interview musicians, and watch live performances by some of the biggest stars."
+  },
+  {
+   "event_id": 9197,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "Southern Fried Fitness",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The host blends her passion for delicious Southern food with her commitment to a healthy lifestyle as she shares cooking lessons for viewers."
+  },
+  {
+   "event_id": 9198,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "Celebrity Kitchen",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9199,
+   "start_gps": 1476540000,
+   "length_s": 3600,
+   "title": "Country Music Rewind",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A selection of classic country music videos is presented."
+  },
+  {
+   "event_id": 9200,
+   "start_gps": 1476543600,
+   "length_s": 7200,
+   "title": "Love Me Tender",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "When a young man's older brother heads off to fight in the Confederate army during the Civil War, he marries the absent brother's sweetheart."
+  },
+  {
+   "event_id": 9212,
+   "start_gps": 1476504000,
+   "length_s": 3600,
+   "title": "The Carol Burnett Show",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T04:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9213,
+   "start_gps": 1476507600,
+   "length_s": 1800,
+   "title": "Doctor Who",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": "Accompanied by his companions, a humanoid space alien fights evil and undertakes difficult tasks while traveling throughout time and space in an advanced machin"
+  },
+  {
+   "event_id": 9214,
+   "start_gps": 1476509400,
+   "length_s": 1800,
+   "title": "Doctor Who",
+   "rating": " TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "Accompanied by his companions, a humanoid space alien fights evil and undertakes difficult tasks while traveling throughout time and space in an advanced machin"
+  },
+  {
+   "event_id": 9215,
+   "start_gps": 1476511200,
+   "length_s": 3600,
+   "title": "21 Jump Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Loki runs into a boy who he previously advised to turn in his own family for drug abuse, and the troubled teen holds him at gunpoint and threatens to kill him."
+  },
+  {
+   "event_id": 9216,
+   "start_gps": 1476514800,
+   "length_s": 3600,
+   "title": "The Commish",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Cyd breaks up with her boyfriend, and already she is met with misfortune shortly after; Scali and his men are after a Mother-Son team of bank robbers."
+  },
+  {
+   "event_id": 9217,
+   "start_gps": 1476518400,
+   "length_s": 7200,
+   "title": "The Little Princess",
+   "rating": " TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "When her military father disappears abroad, a resourceful little girl in Victorian London is banished to the attic of her snooty boarding school."
+  },
+  {
+   "event_id": 9218,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": " TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 9219,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": " TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 9220,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": " TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 9221,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 9222,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Four Star Playhouse",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Four actors take turns helming comedy or drama sequences."
+  },
+  {
+   "event_id": 9223,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Four Star Playhouse",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Four actors take turns helming comedy or drama sequences."
+  },
+  {
+   "event_id": 9224,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "The Doctors",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The dedicated Chief of Staff for Hope Memorial Hospital is faced with a series of daunting tasks on a daily basis while managing the New England medical center."
+  },
+  {
+   "event_id": 9225,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "The Doctors",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Host Dr. Travis Stork, along with his co-hosts, Dr. Andrew Ordon, Dr. Nita Landry and Dr. Sonia Batra, examine real-life stories and provide answers and care."
+  },
+  {
+   "event_id": 9226,
+   "start_gps": 1476540000,
+   "length_s": 1800,
+   "title": "Doctor Who",
+   "rating": " TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Accompanied by his companions, a humanoid space alien fights evil and undertakes difficult tasks while traveling throughout time and space in an advanced machin"
+  },
+  {
+   "event_id": 9227,
+   "start_gps": 1476541800,
+   "length_s": 1800,
+   "title": "Doctor Who",
+   "rating": " TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Accompanied by his companions, a humanoid space alien fights evil and undertakes difficult tasks while traveling throughout time and space in an advanced machin"
+  },
+  {
+   "event_id": 9228,
+   "start_gps": 1476543600,
+   "length_s": 3600,
+   "title": "The Carol Burnett Show",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Comedian and stage actress, Carol Burnett, hosts this one-hour variety series, with talented supporting players, including comedians and musicians."
+  },
+  {
+   "event_id": 9229,
+   "start_gps": 1476547200,
+   "length_s": 3600,
+   "title": "The Commish",
+   "rating": " TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Cyd breaks up with her boyfriend, and already she is met with misfortune shortly after; Scali and his men are after a Mother-Son team of bank robbers."
+  },
+  {
+   "event_id": 9250,
+   "start_gps": 1476507480,
+   "length_s": 1500,
+   "title": "G.I. Joe Renegades",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T04:58:00+00:00",
+   "description": "Soldiers are forced to go into hiding as fugitives when they are falsely accused of committing crimes, but they continue to battle the evil forces of the world."
+  },
+  {
+   "event_id": 9251,
+   "start_gps": 1476508980,
+   "length_s": 1560,
+   "title": "G.I. Joe Renegades",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:23:00+00:00",
+   "description": "Soldiers are forced to go into hiding as fugitives when they are falsely accused of committing crimes, but they continue to battle the evil forces of the world."
+  },
+  {
+   "event_id": 9252,
+   "start_gps": 1476510540,
+   "length_s": 1500,
+   "title": "GI Joe Sigma 6",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:49:00+00:00",
+   "description": "An exclusive team of GI Joes, SIGMA 6, has been formed for the sole purpose of fighting against and defeating the terrorist organization, COBRA."
+  },
+  {
+   "event_id": 9253,
+   "start_gps": 1476512040,
+   "length_s": 1500,
+   "title": "GI Joe Sigma 6",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:14:00+00:00",
+   "description": "An exclusive team of GI Joes, SIGMA 6, has been formed for the sole purpose of fighting against and defeating the terrorist organization, COBRA."
+  },
+  {
+   "event_id": 9254,
+   "start_gps": 1476513540,
+   "length_s": 1500,
+   "title": "GI Joe Sigma 6",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:39:00+00:00",
+   "description": "An exclusive team of GI Joes, SIGMA 6, has been formed for the sole purpose of fighting against and defeating the terrorist organization, COBRA."
+  },
+  {
+   "event_id": 9255,
+   "start_gps": 1476515040,
+   "length_s": 1560,
+   "title": "GI Joe Sigma 6",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:04:00+00:00",
+   "description": "An exclusive team of GI Joes, SIGMA 6, has been formed for the sole purpose of fighting against and defeating the terrorist organization, COBRA."
+  },
+  {
+   "event_id": 9256,
+   "start_gps": 1476516600,
+   "length_s": 1500,
+   "title": "G.I. Joe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9257,
+   "start_gps": 1476518100,
+   "length_s": 1500,
+   "title": "G.I. Joe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:55:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9258,
+   "start_gps": 1476519600,
+   "length_s": 1560,
+   "title": "G.I. Joe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:20:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9259,
+   "start_gps": 1476521160,
+   "length_s": 1500,
+   "title": "G.I. Joe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:46:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9260,
+   "start_gps": 1476522660,
+   "length_s": 1500,
+   "title": "G.I. Joe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:11:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9261,
+   "start_gps": 1476524160,
+   "length_s": 1440,
+   "title": "G.I. Joe",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:36:00+00:00",
+   "description": "Enlisted members of US armed forces use extensive training and sophisticated technology to wage an ongoing battle against a terrorist organization."
+  },
+  {
+   "event_id": 9262,
+   "start_gps": 1476525600,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9263,
+   "start_gps": 1476527100,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:25:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9264,
+   "start_gps": 1476528600,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:50:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9265,
+   "start_gps": 1476530100,
+   "length_s": 1560,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:15:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9266,
+   "start_gps": 1476531660,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:41:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9267,
+   "start_gps": 1476533160,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:06:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9268,
+   "start_gps": 1476534660,
+   "length_s": 1560,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:31:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9269,
+   "start_gps": 1476536220,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:57:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9270,
+   "start_gps": 1476537720,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:22:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9271,
+   "start_gps": 1476539220,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:47:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9272,
+   "start_gps": 1476540720,
+   "length_s": 1560,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:12:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9273,
+   "start_gps": 1476542280,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:38:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9274,
+   "start_gps": 1476543780,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:03:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9275,
+   "start_gps": 1476545280,
+   "length_s": 1560,
+   "title": "Saban's BeetleBorgs",
+   "rating": " TV-Y7",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:28:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9276,
+   "start_gps": 1476546840,
+   "length_s": 1500,
+   "title": "Saban's BeetleBorgs",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:54:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9277,
+   "start_gps": 1476548340,
+   "length_s": 1500,
+   "title": "VR Troopers",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:19:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9278,
+   "start_gps": 1476549840,
+   "length_s": 1560,
+   "title": "VR Troopers",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:44:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9301,
+   "start_gps": 1476505800,
+   "length_s": 1800,
+   "title": "Inside Drag Racing",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T04:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9302,
+   "start_gps": 1476507600,
+   "length_s": 1800,
+   "title": "World of Speed and Beauty",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9303,
+   "start_gps": 1476509400,
+   "length_s": 1800,
+   "title": "The Car Guy Show",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "From automobiles and garages to clubs, events and more, the hosts check out Texas car auctions, museums, unique owners and other hotspots."
+  },
+  {
+   "event_id": 9304,
+   "start_gps": 1476511200,
+   "length_s": 1800,
+   "title": "Sam's Garage",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Automotive expert Sam Mahdavi teaches the proper techniques and the most effective methods which can help viewers find and fix problems in their own vehicles."
+  },
+  {
+   "event_id": 9305,
+   "start_gps": 1476513000,
+   "length_s": 1800,
+   "title": "Motorhead Garage",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Automotive enthusiasts John Gardner and Dave Dobson provide viewers with step-by-step instructions for installing the latest automotive products in a vehicle."
+  },
+  {
+   "event_id": 9306,
+   "start_gps": 1476514800,
+   "length_s": 1800,
+   "title": "Performance TV",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "The hosts have discussions with the top professionals in the industry while also providing vehicle-enthusiasts a look at techniques for increasing performance."
+  },
+  {
+   "event_id": 9307,
+   "start_gps": 1476516600,
+   "length_s": 1800,
+   "title": "Performance TV",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "The hosts have discussions with the top professionals in the industry while also providing vehicle-enthusiasts a look at techniques for increasing performance."
+  },
+  {
+   "event_id": 9308,
+   "start_gps": 1476518400,
+   "length_s": 1800,
+   "title": "World of Trucks",
+   "rating": " TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Host Claude Wood travels to truck shows and races around the country, with events to include rock climbing, mud drags, and pro street racing."
+  },
+  {
+   "event_id": 9309,
+   "start_gps": 1476520200,
+   "length_s": 1800,
+   "title": "Dream Car Garage",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "An ex-racecar driver and a car enthusiast showcase classic and modern cars from Legendary Motorcar Company ltd. and they restore old and broken down cars."
+  },
+  {
+   "event_id": 9310,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "Boats N Bikes",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9311,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "What Would Mike Do?",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9312,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Bidding Wars",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9313,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "The Car Guy Show",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "From automobiles and garages to clubs, events and more, the hosts check out Texas car auctions, museums, unique owners and other hotspots."
+  },
+  {
+   "event_id": 9314,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Hotrod Madness",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9315,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "MOTORZ",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "The host shows automotive enthusiasts how to properly maintain a variety of vehicles and install after-market products step-by-step in layman's terms in a typic"
+  },
+  {
+   "event_id": 9316,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Superlift's Off-Road Adventures",
+   "rating": " TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9317,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Dream Car Garage",
+   "rating": " TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "An ex-racecar driver and a car enthusiast showcase classic and modern cars from Legendary Motorcar Company ltd. and they restore old and broken down cars."
+  },
+  {
+   "event_id": 9318,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "Pleasure Boater",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Boaters visit many exotic locations on a number of elegant boats and show which types of yachts and motorboats are best in the marine industry."
+  },
+  {
+   "event_id": 9319,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "My Classic Car",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Host and car enthusiast Dennis Gage travels around the United States exploring car museums, classic car shows and all other events celebrating the automobile."
+  },
+  {
+   "event_id": 9320,
+   "start_gps": 1476540000,
+   "length_s": 1800,
+   "title": "Reality Rides E/I",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9321,
+   "start_gps": 1476541800,
+   "length_s": 1800,
+   "title": "Motorhead Garage",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Automotive enthusiasts John Gardner and Dave Dobson provide viewers with step-by-step instructions for installing the latest automotive products in a vehicle."
+  },
+  {
+   "event_id": 9322,
+   "start_gps": 1476543600,
+   "length_s": 1800,
+   "title": "Tech Garage",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Hosts John Gardner and Bryan Gregory the mechanics of various cars and their individual systems, exploring deep into the inner-workings of cars."
+  },
+  {
+   "event_id": 9323,
+   "start_gps": 1476545400,
+   "length_s": 1800,
+   "title": "Hooked on Dirt",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9324,
+   "start_gps": 1476547200,
+   "length_s": 3600,
+   "title": "Daily Flash",
+   "rating": " TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "The day's top entertainment news stories are presented, including celebrity gossip, fashion, health and wellness, focusing on lists, lifestyles, and trends."
+  },
+  {
+   "event_id": 9340,
+   "start_gps": 1476504000,
+   "length_s": 7200,
+   "title": "Revival Ministries International",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T04:00:00+00:00",
+   "description": "Rodney Howard-Browne preaches with a bit of biblical humor to uplift people's spirits, provide hope and remind everyone of the love God has for us all."
+  },
+  {
+   "event_id": 9341,
+   "start_gps": 1476511200,
+   "length_s": 7200,
+   "title": "Cyrano de Bergerac",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "A poetic and witty swordsman's large nose prevents him from declaring his undying love for a beautiful woman, so he woos her for another man."
+  },
+  {
+   "event_id": 9342,
+   "start_gps": 1476518400,
+   "length_s": 1800,
+   "title": "Biographies and Icons",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "A look is taken at a wide-range of fascinating profiles of the most popular personalities in the world."
+  },
+  {
+   "event_id": 9343,
+   "start_gps": 1476520200,
+   "length_s": 1800,
+   "title": "Lifestyle Magazine",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "The hosts are joined by special commentators to discuss relevant news topics regarding modern-day health, moral and spiritual issues each week."
+  },
+  {
+   "event_id": 9344,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "One Stroke Painting with Donna Dewberry",
+   "rating": " TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Artist Donna Dewberry provides viewers with step-by-step instruction on how to emulate the innovative painting technique she invented."
+  },
+  {
+   "event_id": 9345,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "7th Street Theater",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "A group of Christian actors perform in weekly dramas at their community theater and during the process they share their experiences and life lessons."
+  },
+  {
+   "event_id": 9346,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 9347,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "Give Water for Life Special",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Charity opportunities to share clean water resources."
+  },
+  {
+   "event_id": 9348,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Oasis Ministries",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Pastor Anthony Wynn leads the Miracle Deliverance Tabernacle church in Riceville, TN."
+  },
+  {
+   "event_id": 9349,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "Through the Bible with Les Feldick",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Bible teacher Les Feldick, an Oklahoma rancher who teaches by the Holy Spirit's guidance, presents lessons that are free of denominational bias."
+  },
+  {
+   "event_id": 9350,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Sports Stars of Tomorrow",
+   "rating": " TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The host gives viewers an inside and off the field look at young, up-and-coming high school and college athletes from around the country."
+  },
+  {
+   "event_id": 9351,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Pilates",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Instructors incorporate their 25 years of wisdom and experience along with a healthy dose of humor to demonstrate how one can benefit from performing pilates."
+  },
+  {
+   "event_id": 9352,
+   "start_gps": 1476536400,
+   "length_s": 3600,
+   "title": "Daytime",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The hosts discuss a range of topics, including entertainment news, cooking tips, do-it-yourself advice, popular fashion trends and travel destinations."
+  },
+  {
+   "event_id": 9353,
+   "start_gps": 1476540000,
+   "length_s": 1800,
+   "title": "The Suki and Scott Show",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Two former morning-show co-hosts take their personalities to the internet and welcome a variety of influencers, celebrities, and performers onto their show."
+  },
+  {
+   "event_id": 9354,
+   "start_gps": 1476541800,
+   "length_s": 1800,
+   "title": "Sidewalks",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Musical artists and other types of celebrities are met for candid conversations that stay away from celebrity gossip."
+  },
+  {
+   "event_id": 9355,
+   "start_gps": 1476543600,
+   "length_s": 3600,
+   "title": "Your Health with Dr. Richard and Cindy Becker",
+   "rating": " TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Dr. Richard Becker and Cindy Becker provide news in preventative care, recommended treatments and healthy food preparation while offering health advice."
+  },
+  {
+   "event_id": 9356,
+   "start_gps": 1476547200,
+   "length_s": 1800,
+   "title": "Yoga",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Images and poses of yoga are presented in an effort to provide viewers with stretch and relaxation."
+  },
+  {
+   "event_id": 9357,
+   "start_gps": 1476549000,
+   "length_s": 1800,
+   "title": "The Red Booth",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Host Kimberly Q interviews a variety of guests, such as actors, musicians, writers, athletes, and directors to hear about their latest projects and advice."
+  },
+  {
+   "event_id": 9372,
+   "start_gps": 1476504000,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T04:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9373,
+   "start_gps": 1476511200,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9374,
+   "start_gps": 1476518400,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9375,
+   "start_gps": 1476525600,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9376,
+   "start_gps": 1476532800,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9377,
+   "start_gps": 1476540000,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9378,
+   "start_gps": 1476547200,
+   "length_s": 7200,
+   "title": "Revival TV",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9391,
+   "start_gps": 1476505800,
+   "length_s": 1800,
+   "title": "Through the Bible with Les Feldick",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T04:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9392,
+   "start_gps": 1476507600,
+   "length_s": 1800,
+   "title": "Joseph Prince OTO",
+   "rating": " TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9393,
+   "start_gps": 1476509400,
+   "length_s": 3600,
+   "title": "Inspiration Ministries",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "The word of the Lord is preached to provide hope, inspiration, strengthen your walk with God and more."
+  },
+  {
+   "event_id": 9394,
+   "start_gps": 1476513000,
+   "length_s": 1800,
+   "title": "Mountain West Church",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Join Pastor Mo Huggins as he shares the Gospel and inspires faith on Greater Love TV. For prayer or more information, call 470-740-9007."
+  },
+  {
+   "event_id": 9395,
+   "start_gps": 1476514800,
+   "length_s": 1800,
+   "title": "Growing the Lamb",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9396,
+   "start_gps": 1476516600,
+   "length_s": 1800,
+   "title": "Operation Smiles",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9397,
+   "start_gps": 1476518400,
+   "length_s": 1800,
+   "title": "Anthony Wynn Ministries",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9398,
+   "start_gps": 1476520200,
+   "length_s": 1800,
+   "title": "Joseph Prince OTO",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9399,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "Mercy Ships",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9400,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "City On Hill with Pastor Barry Absher",
+   "rating": " TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Join Pastor Barry Absher as he shares the Gospel and our relationship with God  on Greater Love TV. For prayer or more information, call 865-773-0488."
+  },
+  {
+   "event_id": 9401,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Through the Bible with Les Feldick",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Bible teacher Les Feldick, an Oklahoma rancher who teaches by the Holy Spirit's guidance, presents lessons that are free of denominational bias."
+  },
+  {
+   "event_id": 9402,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "Created to Praise",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Join Bishop Tim Hill as he shares the Gospel and inspires faith on Greater Love TV. For prayer or more information, call 1-877-226-4088."
+  },
+  {
+   "event_id": 9403,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Jason Daughdrill",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9404,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "Lead By the Word",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Join Micah and Jessie Wynn as they journey through the Bible chapter by chapter, bringing it to life as they go."
+  },
+  {
+   "event_id": 9405,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Teri Talks",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9406,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Give Water for Life",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9407,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "Sandra Handcock",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Join Sandra Hancock as she shares the Gospel and inspires faith on Greater Love TV. For prayer or more information, call 1-888-694-8528."
+  },
+  {
+   "event_id": 9408,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "Faith Talk",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9409,
+   "start_gps": 1476540000,
+   "length_s": 1800,
+   "title": "Anthony Wynn Ministries",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9410,
+   "start_gps": 1476541800,
+   "length_s": 1800,
+   "title": "Getting to Know Your Bible With Billy Lambert",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Host Bill Lambert spreads the word of God in this program that proclaims the good news of Jesus Christ."
+  },
+  {
+   "event_id": 9411,
+   "start_gps": 1476543600,
+   "length_s": 1800,
+   "title": "Joseph Prince OTO",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "   "
+  },
+  {
+   "event_id": 9412,
+   "start_gps": 1476545400,
+   "length_s": 1800,
+   "title": "World Overcomers",
+   "rating": " TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Simple and impassioned preaching helps viewers ground their lives in the Word of God and turn to the Bible for guidance in their lives."
+  },
+  {
+   "event_id": 9413,
+   "start_gps": 1476547200,
+   "length_s": 1800,
+   "title": "International Fellowship of Christians and Jews",
+   "rating": " TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Rabbi Yechiel Eckstein serves as the leader of a non-profit organization dedicated to building bridges between the Jewish and Christian populations."
+  },
+  {
+   "event_id": 9414,
+   "start_gps": 1476549000,
+   "length_s": 1800,
+   "title": "Manna-Fest with Perry Stone",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Perry Stone provides a program dealing with the predictive and sensible studies of God's Word, helping to get a better understanding of biblical prophecy."
+  }
+ ],
+ "rf": 19,
+ "mhz": 503,
+ "signal": {
+  "SignalStrengthPercent": 62,
+  "SignalQualityPercent": 68
+ },
+ "pmt_programs": [
+  {
+   "program": 2,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 8,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 10,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 12,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 14,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

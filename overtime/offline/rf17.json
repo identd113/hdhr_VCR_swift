@@ -1,0 +1,947 @@
+{
+ "gps_utc_offset": 0,
+ "broadcast_time_utc": "2026-10-20T07:22:52+00:00",
+ "tables": {
+  "eit_pids": [
+   4000,
+   4001,
+   4002,
+   4003,
+   4004
+  ],
+  "ett_pids": [
+   5000,
+   5001,
+   5002,
+   5003,
+   5004
+  ],
+  "mgt_entries": 11
+ },
+ "channels": [
+  {
+   "name": "KMWE-LD",
+   "major": 17,
+   "minor": 1,
+   "number": "17.1",
+   "modulation": 4,
+   "tsid": 10223,
+   "program": 3,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "TXitos",
+   "major": 17,
+   "minor": 2,
+   "number": "17.2",
+   "modulation": 4,
+   "tsid": 10223,
+   "program": 4,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Sonlife",
+   "major": 17,
+   "minor": 3,
+   "number": "17.3",
+   "modulation": 4,
+   "tsid": 10223,
+   "program": 5,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "OnTV4U",
+   "major": 17,
+   "minor": 5,
+   "number": "17.5",
+   "modulation": 4,
+   "tsid": 10223,
+   "program": 7,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 2113,
+   "start_gps": 1476509400,
+   "length_s": 1800,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "Una pareja quiere dividir los derechos de la receta de un coctel y custodia de un bebe que sufre de ataques de epilepsia."
+  },
+  {
+   "event_id": 2114,
+   "start_gps": 1476511200,
+   "length_s": 3600,
+   "title": "En casa con Telemundo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Una entretenida mezcla de las noticias del entretenimiento, exclusivas con estrellas de la m\u00c3\u00basica, el cine y la televisi\u00c3\u00b3n, presentaciones en vivo, y el estilo"
+  },
+  {
+   "event_id": 2115,
+   "start_gps": 1476514800,
+   "length_s": 3600,
+   "title": "En casa con Telemundo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Una entretenida mezcla de las noticias del entretenimiento, exclusivas con estrellas de la m\u00c3\u00basica, el cine y la televisi\u00c3\u00b3n, presentaciones en vivo, y el estilo"
+  },
+  {
+   "event_id": 2116,
+   "start_gps": 1476518400,
+   "length_s": 3600,
+   "title": "La mesa caliente",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Un equipo de mujeres audaces y empoderadas, debate desde diversas perspectivas sobre el entretenimiento, los temas m\u00c3\u00a1s candentes y controversiales que afectan a"
+  },
+  {
+   "event_id": 2117,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Abuela karateka es condenada a pagarle a una v\u00c3\u00adctima por la golpiza que le propin\u00c3\u00b3. Y le exige a su pareja que pague porque ella actu\u00c3\u00b3 en defensa."
+  },
+  {
+   "event_id": 2118,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "Noticias Telemundo en la noche",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Noticias Telemundo en la Noche presenta las \u00c3\u00baltimas noticias de Estados Unidos y el mundo. Arantxa Loizaga trae la informaci\u00c3\u00b3n m\u00c3\u00a1s relevante."
+  },
+  {
+   "event_id": 2119,
+   "start_gps": 1476525600,
+   "length_s": 3600,
+   "title": "Al Rojo Vivo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Al Rojo Vivo es una de las revistas de noticias que define la agenda de la televisi\u00c3\u00b3n en espa\u00c3\u00b1ol en el EE. UU y ofrece historias nunca antes vistas que cautivan"
+  },
+  {
+   "event_id": 2120,
+   "start_gps": 1476529200,
+   "length_s": 3600,
+   "title": "Noticias Telemundo Ahora",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Las noticias m\u00c3\u00a1s recientes y las historias m\u00c3\u00a1s importantes para la comunidad latina."
+  },
+  {
+   "event_id": 2121,
+   "start_gps": 1476532800,
+   "length_s": 12600,
+   "title": "Hoy D\u00c3\u00ada",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Show de las ma\u00c3\u00b1anas que ofrece m\u00c3\u00a1s entretenimiento y diversi\u00c3\u00b3n.Titulares y noticias que la comunidad hispana en EE.UU. necesita para comenzar el d\u00c3\u00ada informada."
+  },
+  {
+   "event_id": 2122,
+   "start_gps": 1476545400,
+   "length_s": 1800,
+   "title": "Reina de corazones",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Una historia en un mundo de juegos, apuestas y secretos perversos, donde el amor deber\u00c3\u00a1 someterse a muchas pruebas, incluso atravesar la barrera de la memoria."
+  },
+  {
+   "event_id": 2123,
+   "start_gps": 1476547200,
+   "length_s": 1800,
+   "title": "Santa Diabla",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Un giro del destino cambia la vida de Santa Mart\u00c3\u00adnez, llev\u00c3\u00a1ndola a planear la perfecta venganza, pero su plan puede fallar cuando el amor toca a su puerta."
+  },
+  {
+   "event_id": 2124,
+   "start_gps": 1476549000,
+   "length_s": 1800,
+   "title": "Noticias Telemundo Mediod\u00c3\u00ada",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Un informativo con un estilo \u00c3\u00banico de narrar noticias, de una manera atractiva. Se presentan historias locales y nacionales, desde diferentes \u00c3\u00a1ngulos."
+  },
+  {
+   "event_id": 2125,
+   "start_gps": 1476550800,
+   "length_s": 3600,
+   "title": "En casa con Telemundo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Una entretenida mezcla de las noticias del entretenimiento, exclusivas con estrellas de la m\u00c3\u00basica, el cine y la televisi\u00c3\u00b3n, presentaciones en vivo, y el estilo"
+  },
+  {
+   "event_id": 2126,
+   "start_gps": 1476554400,
+   "length_s": 3600,
+   "title": "En casa con Telemundo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Una entretenida mezcla de las noticias del entretenimiento, exclusivas con estrellas de la m\u00c3\u00basica, el cine y la televisi\u00c3\u00b3n, presentaciones en vivo, y el estilo"
+  },
+  {
+   "event_id": 2127,
+   "start_gps": 1476558000,
+   "length_s": 3600,
+   "title": "La mesa caliente",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Un equipo de mujeres audaces y empoderadas, debate desde diversas perspectivas sobre el entretenimiento, los temas m\u00c3\u00a1s candentes y controversiales que afectan a"
+  },
+  {
+   "event_id": 2128,
+   "start_gps": 1476561600,
+   "length_s": 3600,
+   "title": "Al Rojo Vivo",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Al Rojo Vivo es una de las revistas de noticias que define la agenda de la televisi\u00c3\u00b3n en espa\u00c3\u00b1ol en el EE. UU y ofrece historias nunca antes vistas que cautivan"
+  },
+  {
+   "event_id": 2402,
+   "start_gps": 1476509400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2403,
+   "start_gps": 1476511200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2404,
+   "start_gps": 1476513000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2405,
+   "start_gps": 1476514800,
+   "length_s": 3600,
+   "title": "12 Corazones",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Las mujeres eligen al hombre menos compatible, quien es eliminado, luego, les llega el turno a los chicos, en la tercera ronda se revelan los signos zodiacales."
+  },
+  {
+   "event_id": 2406,
+   "start_gps": 1476518400,
+   "length_s": 3600,
+   "title": "12 Corazones",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Las mujeres eligen al hombre menos compatible, quien es eliminado, luego, les llega el turno a los chicos, en la tercera ronda se revelan los signos zodiacales."
+  },
+  {
+   "event_id": 2407,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Una pareja tiene problemas sexuales, porque el hombre siempre quiere usar una m\u00c3\u00a1quina energ\u00c3\u00a9tica que le genera placer."
+  },
+  {
+   "event_id": 2408,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2409,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2410,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2411,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2412,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2413,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2414,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 2415,
+   "start_gps": 1476536400,
+   "length_s": 3600,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Paola exige la custodia de su hijo ya que su ex utiliza al ni\u00c3\u00b1o para vender sus productos; Ilka e Irma se est\u00c3\u00a1n separando y pelean por la custodia de sus hijos."
+  },
+  {
+   "event_id": 2416,
+   "start_gps": 1476540000,
+   "length_s": 3600,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Fue la c\u00c3\u00a1rcel por asesinar a su padrastro, ahora reclama parte de la herencia de su hermana. Tiene negocio con su amigo, cuya esposa es infiel y derrochadora."
+  },
+  {
+   "event_id": 2417,
+   "start_gps": 1476543600,
+   "length_s": 3600,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Su hermano est\u00c3\u00a1 en coma por intento de suicidio que, seg\u00c3\u00ban \u00c3\u00a9l, fue inducido por una chica. Dennis y Jos\u00c3\u00a9 tienen una asociaci\u00c3\u00b3n de ayuda,Jos\u00c3\u00a9 cambi\u00c3\u00b3 su enfoque."
+  },
+  {
+   "event_id": 2418,
+   "start_gps": 1476547200,
+   "length_s": 3600,
+   "title": "Historias de la Virgen Morena",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Una mujer confirma que no puede ser madre y por miedo le oculta la verdad a su esposo."
+  },
+  {
+   "event_id": 2419,
+   "start_gps": 1476550800,
+   "length_s": 3600,
+   "title": "Historias de la Virgen Morena",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Antonio compra un boleto de loter\u00c3\u00ada que resulta el afortunado ganador, pero un acontecimiento hace que otra persona se quede con el dinero del premio."
+  },
+  {
+   "event_id": 2420,
+   "start_gps": 1476554400,
+   "length_s": 3600,
+   "title": "Lo que callamos las mujeres",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Nichole es una joven que perdi\u00c3\u00b3 a su madre un d\u00c3\u00ada que salieron en su moto, desde ah\u00c3\u00ad vive en depresi\u00c3\u00b3n sinti\u00c3\u00a9ndose culpable por la muerte de su madre."
+  },
+  {
+   "event_id": 2421,
+   "start_gps": 1476558000,
+   "length_s": 3600,
+   "title": "El final del para\u00c3\u00adso",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 2422,
+   "start_gps": 1476561600,
+   "length_s": 3600,
+   "title": "Caso cerrado",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Un hombre tiene miedo porque descubri\u00c3\u00b3 a su esposa haciendo b\u00c3\u00basquedas extra\u00c3\u00b1as en internet; en otro caso, una pareja fue testigo del ahogamiento de un hombre."
+  },
+  {
+   "event_id": 1456,
+   "start_gps": 1476507600,
+   "length_s": 7200,
+   "title": "Gabriel Swaggart",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1457,
+   "start_gps": 1476514800,
+   "length_s": 3600,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1458,
+   "start_gps": 1476518400,
+   "length_s": 3600,
+   "title": "Family Worship Center - Associate Pastors",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Family Worship Center provides viewers with some of its many sermons, featuring the teachings of Gabriel Swaggart, Loren Larson, Bob Cornell and Dave Borg."
+  },
+  {
+   "event_id": 1459,
+   "start_gps": 1476522000,
+   "length_s": 7200,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1460,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "A Study In The Word",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "A Study in the Word is an in-depth exposition of scripture and Bible doctrine which provides biblical wisdom that will assist growth, maturation and knowledge."
+  },
+  {
+   "event_id": 1461,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1462,
+   "start_gps": 1476532800,
+   "length_s": 3600,
+   "title": "The Message of the Cross",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Reverend Jimmy Swaggart leads a panel of ministers and Biblical professors and teachers in a discussion of Biblical topics and passages."
+  },
+  {
+   "event_id": 1463,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1464,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "Insight",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1465,
+   "start_gps": 1476540000,
+   "length_s": 7200,
+   "title": "Frances and Friends",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Host Frances Swaggart leads a panel of ministers, scholars, Bible teachers and advisers in discussions that revolve around religion."
+  },
+  {
+   "event_id": 1466,
+   "start_gps": 1476547200,
+   "length_s": 1800,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1467,
+   "start_gps": 1476549000,
+   "length_s": 1800,
+   "title": "A Study In The Word",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "A Study in the Word is an in-depth exposition of scripture and Bible doctrine which provides biblical wisdom that will assist growth, maturation and knowledge."
+  },
+  {
+   "event_id": 1468,
+   "start_gps": 1476550800,
+   "length_s": 3600,
+   "title": "Family Worship Center - Associate Pastors",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Family Worship Center provides viewers with some of its many sermons, featuring the teachings of Gabriel Swaggart, Loren Larson, Bob Cornell and Dave Borg."
+  },
+  {
+   "event_id": 1469,
+   "start_gps": 1476554400,
+   "length_s": 7200,
+   "title": "FWC Music",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Music produced by Family Worship Center is showcased, featuring music by Reverend Jimmy Swaggart, as well as other religious singers, music groups and choirs."
+  },
+  {
+   "event_id": 1470,
+   "start_gps": 1476561600,
+   "length_s": 7200,
+   "title": "Gabriel Swaggart",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3803,
+   "start_gps": 1476509400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T05:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3804,
+   "start_gps": 1476511200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3805,
+   "start_gps": 1476513000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3806,
+   "start_gps": 1476514800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3807,
+   "start_gps": 1476516600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3808,
+   "start_gps": 1476518400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3809,
+   "start_gps": 1476520200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3810,
+   "start_gps": 1476522000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3811,
+   "start_gps": 1476523800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3812,
+   "start_gps": 1476525600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3813,
+   "start_gps": 1476527400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3814,
+   "start_gps": 1476529200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3815,
+   "start_gps": 1476531000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3816,
+   "start_gps": 1476532800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3817,
+   "start_gps": 1476534600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3818,
+   "start_gps": 1476536400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3819,
+   "start_gps": 1476538200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3820,
+   "start_gps": 1476540000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3821,
+   "start_gps": 1476541800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3822,
+   "start_gps": 1476543600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3823,
+   "start_gps": 1476545400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3824,
+   "start_gps": 1476547200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3825,
+   "start_gps": 1476549000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3826,
+   "start_gps": 1476550800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3827,
+   "start_gps": 1476552600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3828,
+   "start_gps": 1476554400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3829,
+   "start_gps": 1476556200,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3830,
+   "start_gps": 1476558000,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3831,
+   "start_gps": 1476559800,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3832,
+   "start_gps": 1476561600,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 3833,
+   "start_gps": 1476563400,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Sponsored television programming."
+  }
+ ],
+ "rf": 17,
+ "mhz": 491,
+ "signal": {
+  "SignalStrengthPercent": 49,
+  "SignalQualityPercent": 53
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

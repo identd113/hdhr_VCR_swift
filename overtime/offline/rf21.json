@@ -1,0 +1,356 @@
+{
+ "gps_utc_offset": 0,
+ "broadcast_time_utc": "2026-10-20T07:42:23+00:00",
+ "tables": {
+  "eit_pids": [],
+  "ett_pids": [],
+  "mgt_entries": 1
+ },
+ "channels": [
+  {
+   "name": "WUMN",
+   "major": 21,
+   "minor": 1,
+   "number": "21.1",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 3,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Snapshp",
+   "major": 21,
+   "minor": 2,
+   "number": "21.2",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 4,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "GodTV",
+   "major": 21,
+   "minor": 3,
+   "number": "21.3",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 5,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Newsmax",
+   "major": 21,
+   "minor": 4,
+   "number": "21.4",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 6,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "AWSN",
+   "major": 21,
+   "minor": 5,
+   "number": "21.5",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 7,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "OAN",
+   "major": 21,
+   "minor": 6,
+   "number": "21.6",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 8,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Bridge2",
+   "major": 21,
+   "minor": 7,
+   "number": "21.7",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 9,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Sales",
+   "major": 21,
+   "minor": 8,
+   "number": "21.8",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 11,
+   "source_id": 8,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "BarkTV",
+   "major": 21,
+   "minor": 9,
+   "number": "21.9",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 18,
+   "source_id": 9,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "ZLiving",
+   "major": 21,
+   "minor": 10,
+   "number": "21.10",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 20,
+   "source_id": 10,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "FTF",
+   "major": 21,
+   "minor": 11,
+   "number": "21.11",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 22,
+   "source_id": 11,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "MTRSPR1",
+   "major": 21,
+   "minor": 12,
+   "number": "21.12",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 24,
+   "source_id": 12,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Binge",
+   "major": 21,
+   "minor": 13,
+   "number": "21.13",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 26,
+   "source_id": 13,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Bridge1",
+   "major": 21,
+   "minor": 14,
+   "number": "21.14",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 28,
+   "source_id": 14,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "beIN",
+   "major": 21,
+   "minor": 15,
+   "number": "21.15",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 30,
+   "source_id": 15,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "DrOz",
+   "major": 21,
+   "minor": 16,
+   "number": "21.16",
+   "modulation": 4,
+   "tsid": 8679,
+   "program": 32,
+   "source_id": 16,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [],
+ "rf": 21,
+ "mhz": 515,
+ "signal": {
+  "SignalStrengthPercent": 75,
+  "SignalQualityPercent": 91
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 8,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 9,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 11,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 18,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 20,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 22,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 24,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 26,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 28,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 30,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 32,
+   "name": "",
+   "video": "h264 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

@@ -1,0 +1,2509 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:46:13+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430,
+   7431,
+   7432,
+   7433,
+   7434,
+   7435,
+   7436,
+   7437,
+   7438,
+   7439
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686,
+   7687,
+   7688,
+   7689,
+   7690,
+   7691,
+   7692,
+   7693,
+   7694,
+   7695
+  ],
+  "mgt_entries": 35
+ },
+ "channels": [
+  {
+   "name": "KSTPDT",
+   "major": 5,
+   "minor": 1,
+   "number": "5.1",
+   "modulation": 4,
+   "tsid": 1607,
+   "program": 3,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "H & I",
+   "major": 5,
+   "minor": 7,
+   "number": "5.7",
+   "modulation": 4,
+   "tsid": 1607,
+   "program": 9,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "IonPlus",
+   "major": 5,
+   "minor": 8,
+   "number": "5.8",
+   "modulation": 4,
+   "tsid": 1607,
+   "program": 10,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "The CW",
+   "major": 23,
+   "minor": 1,
+   "number": "23.1",
+   "modulation": 4,
+   "tsid": 1607,
+   "program": 12,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 1,
+   "start_gps": 1476508938,
+   "length_s": 3600,
+   "title": "Twin Cities Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:22:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans.  Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476512538,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:22:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476514338,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:52:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476516138,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:22:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476517938,
+   "length_s": 4080,
+   "title": "ABC World News Now",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:52:00+00:00",
+   "description": "The hosts bring you overnight breaking news, weather, politics, and the stories and videos people will be talking about in the day ahead."
+  },
+  {
+   "event_id": 6,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Good Morning America First Look",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "\"Good Morning America First Look\" brings you overnight breaking news, weather, politics, and the stories and video people will be talking about."
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 4:30am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "The latest in breaking news, recent business and financial reports, local sports updates, weather information and tomorrow's forecast are presented."
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 5am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "The 5 Eyewitness Morning News Team provides a comprehensive look at overnight and morning news events, a weather forecast for the region and the latest sports."
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 5:30am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "News events affecting the city, the state and the nation are reviewed by the 5 Eyewitness News Team along with the latest sports, weather and traffic reports."
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "5 Eyewitness News at 6am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "The 5 Eyewitness News Team provides a first in-depth look at overnight news events as well as up-to-the-minute sports reports and the latest weather and traffic"
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476532818,
+   "length_s": 7200,
+   "title": "Good Morning America",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "A team of news anchors delivers the latest breaking news in politics, social issues, entertainment, lifestyle and weather, while they also conduct in-depth inte"
+  },
+  {
+   "event_id": 12,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Minnesota Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The View",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "The critically acclaimed presentation featuring dynamic women of different ages, experiences and backgrounds participate in various discussions on their opinion"
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "5 Eyewitness News Midday",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "The latest local, regional and national news events of the morning are presented by the 5 Eyewitness News Team along with updated sports, weather and traffic."
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "GMA3",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The host shares breaking news in politics, social issues, entertainment, lifestyle and weather, while also conducting interviews with expert analysts and people"
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "General Hospital",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Residents deal with everyday challenges in relationships, love, intriguing occurences, comedic situations, mysterious circumstances and murders surrounding the "
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "The Perfect Line",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Host Deborah Norville has contestants play a series of games in which they test their knowledge by arranging trivia and notable pop culture events, items or peo"
+  },
+  {
+   "event_id": 18,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "The Perfect Line",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Host Deborah Norville has contestants play a series of games in which they test their knowledge by arranging trivia and notable pop culture events, items or peo"
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Twin Cities Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans.  Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Twin Cities Live @ Four",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans. Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 4:30pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "A comprehensive examination of the major local, regional, state and national news events of the day is presented by the 5 Eyewitness Evening News Team."
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "5 Eyewitness News Live at 5pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "The news events of the day are examined by the 5 Eyewitness Evening News Team, along with the latest sports reports, weather forecast and traffic conditions."
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "ABC World News Tonight with David Muir",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Veteran news anchor David Muir and the ABC News Team deliver reports on all of the important events and headlines from across the nation and around the world, c"
+  },
+  {
+   "event_id": 24,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 6pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Local news, sports and weather."
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 6:30pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "The latest news events of the day, as well as updates on sports, weather conditions and rush-hour traffic issues are offered by the 5 Eyewitness News Team."
+  },
+  {
+   "event_id": 26,
+   "start_gps": 1476576018,
+   "length_s": 7260,
+   "title": "Dancing with the Stars",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Celebrities from the worlds of television, film, music and sports are paired off with professional dancers as they prepare the moves with which they hope to imp"
+  },
+  {
+   "event_id": 27,
+   "start_gps": 1476583278,
+   "length_s": 3540,
+   "title": "RJ Decker",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T02:01:00+00:00",
+   "description": "A disgraced newspaper photographer and ex-con starts over as a private investigator in Florida. He tackles cases that range from slightly odd to outright bizarr"
+  },
+  {
+   "event_id": 28,
+   "start_gps": 1476586818,
+   "length_s": 2100,
+   "title": "5 Eyewitness News: Nightcast",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476588918,
+   "length_s": 3720,
+   "title": "Jimmy Kimmel Live",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:35:00+00:00",
+   "description": "Jimmy Kimmel hosts a late-night talk show including monologues, comedy sketches and interviews with talented celebrities and musical guests."
+  },
+  {
+   "event_id": 30,
+   "start_gps": 1476592638,
+   "length_s": 1800,
+   "title": "Nightline",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:37:00+00:00",
+   "description": "News reporters anchor the critically acclaimed program that presents in-depth commentary on the major news stories of the day, including reports on entertainmen"
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476594438,
+   "length_s": 3600,
+   "title": "Twin Cities Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:07:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans.  Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 32,
+   "start_gps": 1476598038,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T06:07:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 33,
+   "start_gps": 1476599838,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T06:37:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 34,
+   "start_gps": 1476601638,
+   "length_s": 1800,
+   "title": "Shopper's Showcase",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T07:07:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476603438,
+   "length_s": 4980,
+   "title": "ABC World News Now",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T07:37:00+00:00",
+   "description": "The hosts bring you overnight breaking news, weather, politics, and the stories and videos people will be talking about in the day ahead."
+  },
+  {
+   "event_id": 36,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "Good Morning America First Look",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "\"Good Morning America First Look\" brings you overnight breaking news, weather, politics, and the stories and video people will be talking about."
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 4:30am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "The latest in breaking news, recent business and financial reports, local sports updates, weather information and tomorrow's forecast are presented."
+  },
+  {
+   "event_id": 38,
+   "start_gps": 1476612018,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 5am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "The 5 Eyewitness Morning News Team provides a comprehensive look at overnight and morning news events, a weather forecast for the region and the latest sports."
+  },
+  {
+   "event_id": 39,
+   "start_gps": 1476613818,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 5:30am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "News events affecting the city, the state and the nation are reviewed by the 5 Eyewitness News Team along with the latest sports, weather and traffic reports."
+  },
+  {
+   "event_id": 40,
+   "start_gps": 1476615618,
+   "length_s": 3600,
+   "title": "5 Eyewitness News at 6am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "The 5 Eyewitness News Team provides a first in-depth look at overnight news events as well as up-to-the-minute sports reports and the latest weather and traffic"
+  },
+  {
+   "event_id": 41,
+   "start_gps": 1476619218,
+   "length_s": 7200,
+   "title": "Good Morning America",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "A team of news anchors delivers the latest breaking news in politics, social issues, entertainment, lifestyle and weather, while they also conduct in-depth inte"
+  },
+  {
+   "event_id": 42,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "Minnesota Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 43,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The View",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "The critically acclaimed presentation featuring dynamic women of different ages, experiences and backgrounds participate in various discussions on their opinion"
+  },
+  {
+   "event_id": 44,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "5 Eyewitness News Midday",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "The latest local, regional and national news events of the morning are presented by the 5 Eyewitness News Team along with updated sports, weather and traffic."
+  },
+  {
+   "event_id": 45,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "GMA3",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "The host shares breaking news in politics, social issues, entertainment, lifestyle and weather, while also conducting interviews with expert analysts and people"
+  },
+  {
+   "event_id": 46,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "General Hospital",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Residents deal with everyday challenges in relationships, love, intriguing occurences, comedic situations, mysterious circumstances and murders surrounding the "
+  },
+  {
+   "event_id": 47,
+   "start_gps": 1476644418,
+   "length_s": 1800,
+   "title": "The Perfect Line",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Host Deborah Norville has contestants play a series of games in which they test their knowledge by arranging trivia and notable pop culture events, items or peo"
+  },
+  {
+   "event_id": 48,
+   "start_gps": 1476646218,
+   "length_s": 1800,
+   "title": "The Perfect Line",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Host Deborah Norville has contestants play a series of games in which they test their knowledge by arranging trivia and notable pop culture events, items or peo"
+  },
+  {
+   "event_id": 49,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "Twin Cities Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans.  Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 50,
+   "start_gps": 1476651618,
+   "length_s": 1800,
+   "title": "Twin Cities Live @ Four",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans. Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 51,
+   "start_gps": 1476653418,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 4:30pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "A comprehensive examination of the major local, regional, state and national news events of the day is presented by the 5 Eyewitness Evening News Team."
+  },
+  {
+   "event_id": 52,
+   "start_gps": 1476655218,
+   "length_s": 1800,
+   "title": "5 Eyewitness News Live at 5pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "The news events of the day are examined by the 5 Eyewitness Evening News Team, along with the latest sports reports, weather forecast and traffic conditions."
+  },
+  {
+   "event_id": 53,
+   "start_gps": 1476657018,
+   "length_s": 1800,
+   "title": "ABC World News Tonight with David Muir",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": "Veteran news anchor David Muir and the ABC News Team deliver reports on all of the important events and headlines from across the nation and around the world, c"
+  },
+  {
+   "event_id": 54,
+   "start_gps": 1476658818,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 6pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Local news, sports and weather."
+  },
+  {
+   "event_id": 55,
+   "start_gps": 1476660618,
+   "length_s": 1800,
+   "title": "5 Eyewitness News at 6:30pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": "The latest news events of the day, as well as updates on sports, weather conditions and rush-hour traffic issues are offered by the 5 Eyewitness News Team."
+  },
+  {
+   "event_id": 56,
+   "start_gps": 1476662418,
+   "length_s": 1800,
+   "title": "Scrubs",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "J.D. and Turk reunite at Sacred Heart, facing new interns, challenges, and plenty of laughs."
+  },
+  {
+   "event_id": 57,
+   "start_gps": 1476664218,
+   "length_s": 1860,
+   "title": "Abbott Elementary",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T00:30:00+00:00",
+   "description": "Passionate teachers and their principal work together in a Philadelphia public school in the hopes of helping their students succeed in life, but they face adde"
+  },
+  {
+   "event_id": 58,
+   "start_gps": 1476666078,
+   "length_s": 7140,
+   "title": "CMA Presents I Will Always Love You: A Celebration of Dolly Parton",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T01:01:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 59,
+   "start_gps": 1476673218,
+   "length_s": 2100,
+   "title": "5 Eyewitness News: Nightcast",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 60,
+   "start_gps": 1476675318,
+   "length_s": 3720,
+   "title": "Jimmy Kimmel Live",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-22T03:35:00+00:00",
+   "description": "Jimmy Kimmel hosts a late-night talk show including monologues, comedy sketches and interviews with talented celebrities and musical guests."
+  },
+  {
+   "event_id": 61,
+   "start_gps": 1476679038,
+   "length_s": 1800,
+   "title": "Nightline",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T04:37:00+00:00",
+   "description": "News reporters anchor the critically acclaimed program that presents in-depth commentary on the major news stories of the day, including reports on entertainmen"
+  },
+  {
+   "event_id": 62,
+   "start_gps": 1476680838,
+   "length_s": 3600,
+   "title": "Twin Cities Live",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T05:07:00+00:00",
+   "description": "A live, local talk show featuring food, fashion & fun for Minnesotans.  Discover new places to eat, fashion with local flair, and fresh recipes for your family."
+  },
+  {
+   "event_id": 63,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Renegade",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Criminals are putting together a complicated plot to incriminate Bobby and put him away; the plan is put into action upon receiving a request."
+  },
+  {
+   "event_id": 64,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Fall Guy",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "After Colt saves a tycoon from a group of thieves, she changes her opinion of him and makes him her bodyguard on a Caribbean Isle."
+  },
+  {
+   "event_id": 65,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Nash Bridges",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "A married woman is killed by her lover and his wife; upon trying to free his girlfriend from her pimp, Evan is physically attacked and later attempts suicide."
+  },
+  {
+   "event_id": 66,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Walker, Texas Ranger",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "The partner of an esteemed Texas Ranger is killed in cold blood during the midst of a bank robbery, and investigations point to an even larger heist."
+  },
+  {
+   "event_id": 67,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "The Rebel",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Johnny takes a wounded hunter back to his cabin after getting caught in a bear cage, but the blind daughter mistakes him for an enemy and calls officials."
+  },
+  {
+   "event_id": 68,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Trackdown",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Hoby takes a stand for a man in which he believes to be innocent before allowing the town to proceed with the legal lynching of him."
+  },
+  {
+   "event_id": 69,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Josh is surprised to learn his next case to apprehend a fugitive will involve having to go after a criminal posing as Santa Claus, making him hard to identify."
+  },
+  {
+   "event_id": 70,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "A pony express business turns to bounty hunter Josh Randall for his assistance in investigating the mysterious murder of their rider and a stolen ring."
+  },
+  {
+   "event_id": 71,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Cheyenne",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Driven by greed and willing to stop at nothing, treasure hunters hire Cheyenne to guide them on a search for diamond relics that are buried beneath the earth."
+  },
+  {
+   "event_id": 72,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "The High Chaparral",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The former owner of the land the Cannons have settled returns hoping to drive the family off of her land; a hired gunman shows up."
+  },
+  {
+   "event_id": 73,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "MacGyver joins archaeologists who are looking for Alexander the Great's tomb and its legendary \"Eye of Osiris\" after suspicious incidents threaten the project."
+  },
+  {
+   "event_id": 74,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The A-Team",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "After losing a soldier who wants them captured, a team of American soldiers helps a woman rescue a reporter who was kidnapped by a group of Mexican bandits."
+  },
+  {
+   "event_id": 75,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "JAG",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Harm and Mac are forced to explore every possibility in the recent disappearance of a Navy airplane and its pilots, including supernatural possibilities."
+  },
+  {
+   "event_id": 76,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "JAG",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Harm and Mac are forced to find out what happened when a civilian airplane from North Korea was shot down by the Navy, and they discover a spy in their midst."
+  },
+  {
+   "event_id": 77,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "JAG",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "A Lieutenant nominated for the Medal of Honor is investigated, and he agrees to give up details if Harm can make it through 24 hours of Navy SEAL training."
+  },
+  {
+   "event_id": 78,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "JAG",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Mac considers leaving the military after being offered a law firm position; Harm and Bud look into a helicopter crash until they are replaced by another agency."
+  },
+  {
+   "event_id": 79,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "JAG",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Harm finds himself being accused of murdering a member of the mafia when the man is shot while he is trying to acquire information about his father."
+  },
+  {
+   "event_id": 80,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "A K-9 is blamed for the vicious killing of a police officer; Finlay and Morgan set out to investigate the death of a hated high-profile divorce lawyer."
+  },
+  {
+   "event_id": 81,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "D.B. starts to take things personally when he is drawn into the investigation of the death of his son's college basketball coach, as his son is named a suspect."
+  },
+  {
+   "event_id": 82,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "The CSI team deal with a sensitive case as they investigate the untimely death of a reverend who was killed at the grave site of former CSI, Warrick Brown."
+  },
+  {
+   "event_id": 83,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Star Trek",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The Enterprise searches for a lost ship, only to discover a planet where the people are pacified by a supercomputer."
+  },
+  {
+   "event_id": 84,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Star Trek: The Next Generation",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "When her mother collapses, Counselor Troi is forced to probe her mind in order to discover the repressed memory that is quickly killing her."
+  },
+  {
+   "event_id": 85,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Star Trek: Deep Space Nine",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "The crew members discover that they have the ability to make their fantasies come true, and they struggle to reign in their imaginations amid a looming threat."
+  },
+  {
+   "event_id": 86,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Star Trek: Voyager",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "An identity-stealing alien switches bodies with Paris in order to board Voyager, where his strange behavior soon rouses suspicion."
+  },
+  {
+   "event_id": 87,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Star Trek: Enterprise",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "The crew members of the USS Enterprise evacuate a team of geologists after militants seize control of a planet; Phlox treats a reluctant patient."
+  },
+  {
+   "event_id": 88,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Walker, Texas Ranger",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "The members of an infamous gang succeed in escaping prison before setting out to achieve revenge on the lawmen that put them behind bars."
+  },
+  {
+   "event_id": 89,
+   "start_gps": 1476597618,
+   "length_s": 3600,
+   "title": "Renegade",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Bobbie has been tasked to look into the testimony of a convicted rapist and murderer on death row to find out if the man is actually innocent of the charges."
+  },
+  {
+   "event_id": 90,
+   "start_gps": 1476601218,
+   "length_s": 3600,
+   "title": "Fall Guy",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "While on vacation, Colt helps a federal drug enforcement agent apprehend a Miami cocaine boss."
+  },
+  {
+   "event_id": 91,
+   "start_gps": 1476604818,
+   "length_s": 3600,
+   "title": "Nash Bridges",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Frankie Dyer returns again with a contract on Nash's life while smuggling heroin; Evan is born again in baptism; Nash and Caitlin's relationship hits a snag."
+  },
+  {
+   "event_id": 92,
+   "start_gps": 1476608418,
+   "length_s": 3600,
+   "title": "Walker, Texas Ranger",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "An esteemed Texas Ranger discovers some plans for an upcoming robbery by the men who murdered his partner during a previous heist."
+  },
+  {
+   "event_id": 93,
+   "start_gps": 1476612018,
+   "length_s": 1800,
+   "title": "The Rebel",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "At a stage depot, Johnny waits with fellow passengers, including a bounty hunter and his prisoner, for a connection, but the hunter is mysteriously poisoned."
+  },
+  {
+   "event_id": 94,
+   "start_gps": 1476613818,
+   "length_s": 1800,
+   "title": "Trackdown",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Hoby is given the task of taking four prisoners to the state pen in Huntsville but all goes wrong when he discovers one of his prisoners is a woman."
+  },
+  {
+   "event_id": 95,
+   "start_gps": 1476615618,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Due to circumstantial evidence on murdering his stepdaughter, the fugitive a bounty hunter seeks may be hanged if Josh turns him over to the authorities."
+  },
+  {
+   "event_id": 96,
+   "start_gps": 1476617418,
+   "length_s": 1800,
+   "title": "Wanted: Dead or Alive",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Josh and his prisoner find their lives in jeopardy when they fall under attack while traveling back to the authorities, but unexpected help may save them."
+  },
+  {
+   "event_id": 97,
+   "start_gps": 1476619218,
+   "length_s": 3600,
+   "title": "Cheyenne",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Cheyenne earns the ire of an entire town when he tries to save the life of his old friend, the town sheriff, who has been accused of murder."
+  },
+  {
+   "event_id": 98,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "The High Chaparral",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Buck helps out a neighboring widow on her land, but John becomes upset when he realizes the job may be permanent after learning that Buck is falling in love."
+  },
+  {
+   "event_id": 99,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "A retired member of a biker gang who is just out of prison is being pressured to go back to his old life, and MacGyver joins his old gang to stop them."
+  },
+  {
+   "event_id": 100,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The A-Team",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Thanks to their clever disguises, the A-Team races to rescue the reporter, which in turn, will help put his kidnapper, the drug lord, behind bars."
+  },
+  {
+   "event_id": 101,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "A sailor is found dead in an abandoned building, and the team begins to believe that he was killed from a possible unintentional drug overdose."
+  },
+  {
+   "event_id": 102,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "A man from the International Atomic Energy Agency asks for help in solving his own murder due to a poisoning that is slowly taking his life."
+  },
+  {
+   "event_id": 103,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "An explosion in a mausoleum leads the NCIS team to discover the remains of five people, and they hope the families can make some connection between the victims."
+  },
+  {
+   "event_id": 104,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Ducky is startled by a Marine, believed to have been frozen to death, when he wakes up before his autopsy begins; a trip to Baghdad is linked to Gibbs's past."
+  },
+  {
+   "event_id": 105,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "A tip left for the NCIS team on their call line about the possibility of terrorists turns out to be a trap and ends deadly for two agents."
+  },
+  {
+   "event_id": 106,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "The streets of Las Vegas become crime scenes for brutal cases of murder for money, revenge and pure evil, and the crime scene investigators from the Las Vegas P"
+  },
+  {
+   "event_id": 107,
+   "start_gps": 1476655218,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "The CSI team helps local law enforcement on the strip with several arrests until a John Doe is found in a car; Captain Brass learns facts about his daughter."
+  },
+  {
+   "event_id": 108,
+   "start_gps": 1476658818,
+   "length_s": 3600,
+   "title": "CSI: Crime Scene Investigation",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "The CSI team is called in to investigate when a small plane crashes a mile off the Vegas strip killing five people; Sara is tempted by a former lover of hers."
+  },
+  {
+   "event_id": 109,
+   "start_gps": 1476662418,
+   "length_s": 3600,
+   "title": "Star Trek",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "The Enterprise finds a derelict Earth ship, and learns that it contains a genetically enhanced dictator and his henchmen."
+  },
+  {
+   "event_id": 110,
+   "start_gps": 1476666018,
+   "length_s": 3600,
+   "title": "Star Trek: The Next Generation",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Picard and Dr. Crusher escape from a Prytt prison, but they remain telepathically linked by the devices their captors implanted on their necks."
+  },
+  {
+   "event_id": 111,
+   "start_gps": 1476669618,
+   "length_s": 3600,
+   "title": "Star Trek: Deep Space Nine",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Odo becomes the unwanted target of Lwaxana Troi's romantic advances; Dr. Bashir must entertain several ambassadors; O'Brien tries to solve tech breakdowns."
+  },
+  {
+   "event_id": 112,
+   "start_gps": 1476673218,
+   "length_s": 3600,
+   "title": "Star Trek: Voyager",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Janeway receives an order to wipe out a dangerous, unstable molecule that has the power to destroy space, but Seven of Nine protests."
+  },
+  {
+   "event_id": 113,
+   "start_gps": 1476676818,
+   "length_s": 3600,
+   "title": "Star Trek: Enterprise",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "When the crew members of the USS Enterprise make contact with a tri-gendered race, Trip quickly discovers an inequity in their society."
+  },
+  {
+   "event_id": 114,
+   "start_gps": 1476680418,
+   "length_s": 3600,
+   "title": "Walker, Texas Ranger",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Walker and his fellow Rangers are on the lookout after being targeted for assassination by criminals that had once put behind bars."
+  },
+  {
+   "event_id": 115,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Murdoch Mysteries",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Stress is put on Murdoch by the new Chief Constable to make a quick arrest when a murder occurs of a white man in a black church."
+  },
+  {
+   "event_id": 116,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Murdoch Mysteries",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "The team helps Murdoch investigate a dark murder that they believe is connected to a wild young woman."
+  },
+  {
+   "event_id": 117,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Murdoch Mysteries",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Murdoch dons a disguise to find answers following the murder of a journalist whose investigative report on workhouse conditions may have led to their demise."
+  },
+  {
+   "event_id": 118,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Murdoch Mysteries",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Murdoch and Brackenreid inadvertently put their respective careers in the line of fire while searching for answers about corruption in the police force."
+  },
+  {
+   "event_id": 119,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Bull worries about his ability to make a jury believe that a religious leader is innocent of his wife's murder in the wake of a secret about his marriage."
+  },
+  {
+   "event_id": 120,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "An emergency room doctor is taken to court for malpractice after she ignored direct orders to save one critical patient instead of helping another."
+  },
+  {
+   "event_id": 121,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Bull and Benny prepare for a trying federal trial case in which they defend a young mother who is assumed to have aided and abetted her extremist husband."
+  },
+  {
+   "event_id": 122,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Bull represents a client in federal court who has been accused of stealing critical disease research from the company he works for."
+  },
+  {
+   "event_id": 123,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A controversial news commentor is taken to court after a man she claimed committed murder kills himself as a response to her accusations."
+  },
+  {
+   "event_id": 124,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Izzy attempts to get her best friend's body exhumed in light of claims from her friend's son that she was murdered, not the victim of an accidental death."
+  },
+  {
+   "event_id": 125,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Bull tries to get a court date to for a trial to save a prisoner whom he met 12 years before and who give him the inspiration to make a career in trial science."
+  },
+  {
+   "event_id": 126,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Bull",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The team becomes concerned about the potential for jury bias as Bull works on the defense for a murder trial involving a Black Lives Matter activist."
+  },
+  {
+   "event_id": 127,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "The BAU team travels to Atlantic City, N.J., to investigate a series of ritualistic casino-related murders; Garcia fights with her boyfriend."
+  },
+  {
+   "event_id": 128,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "The BAU team hits rough waters on the beaches of Southern California when they investigate a series of bodies hidden in lifeguard towers along the coast."
+  },
+  {
+   "event_id": 129,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "The BAU team investigates a series of brutal home invasions and murders occuring in the California suburbs of Inland Empire that seem gang-related."
+  },
+  {
+   "event_id": 130,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "The BAU team travels to Atlanta to help investigate the murders of women, but the clues they find lead them to look for an \"unsub\" who is not working alone."
+  },
+  {
+   "event_id": 131,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "The BAU team searches for a killer with a maternal-yet-murderous instinct when married couples fostering young children end up being killed in Seattle."
+  },
+  {
+   "event_id": 132,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "When a scared young boy is found wandering in the Arizona desert and another boy winds up missing, the BAU team goes on the hunt for the kidnapper."
+  },
+  {
+   "event_id": 133,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The BAU team travels to Oregon where they are set to investigate a mysterious series of gothic, ritualistic murders that have the local authorities puzzled."
+  },
+  {
+   "event_id": 134,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Morgan's sister sees a woman who looks just like their supposedly dead cousin, Cindi, which forces Morgan to confront a lie he told his family last year."
+  },
+  {
+   "event_id": 135,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "A copycat murderer begins murdering women in the same Oklahoma town and in the same fashion after a notorious serial killer is executed."
+  },
+  {
+   "event_id": 136,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Rossi and the team cover one of the longest-tenured cases of a serial killer to a class of college students, a chase that spanned nearly 20 years."
+  },
+  {
+   "event_id": 137,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "The BAU team is up against a gang of serial-killing bank robbers in Washington, D.C., and they try their best to negotiate the situation unfolding in the bank."
+  },
+  {
+   "event_id": 138,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "The BAU team continues to pursue the bank-robbing serial killer, and determines that the suspects have selected a target in the nation's capital."
+  },
+  {
+   "event_id": 139,
+   "start_gps": 1476597618,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "While investigating the mysterious death of a tattooed woman, Toby begins to suspect that espionage and blackmail may be at the root of her murder."
+  },
+  {
+   "event_id": 140,
+   "start_gps": 1476601218,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "While Toby and Michelle are trying to find the murderer of a British spy, they uncover his profile for an online dating site, which leads them to the truth."
+  },
+  {
+   "event_id": 141,
+   "start_gps": 1476604818,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Toby and Michelle enlist the efforts of a career con artist as they continue their mission to track down and apprehend an elusive human trafficker."
+  },
+  {
+   "event_id": 142,
+   "start_gps": 1476608418,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "After an actress is murdered on while filming an allegedly cursed horror movie, Toby and Michelle must investigate to uncover who is responsible."
+  },
+  {
+   "event_id": 143,
+   "start_gps": 1476612018,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Toby and Michelle pursue a suspect in the murder of a Latin crime boss until their superintendent steps in and interferes with the case."
+  },
+  {
+   "event_id": 144,
+   "start_gps": 1476615618,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Toby begins struggling with the turmoil of post-traumatic stress disorder after he shoots and kills a suspect as the IIB tries to stop an assassination attempt"
+  },
+  {
+   "event_id": 145,
+   "start_gps": 1476619218,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Toby and Dev work together to find a serial killer whose signature move, leaving living snakes at the scenes of crime, is familiar to Michelle."
+  },
+  {
+   "event_id": 146,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "The team is called into the investigate $200,000 that fell from the ceiling of a football team's dressing room; the team has a new IIB leader."
+  },
+  {
+   "event_id": 147,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Before the team can respond to reports of corruption involving a dance academy, a prima ballerina is kidnapped before she can leave for her overseas tour."
+  },
+  {
+   "event_id": 148,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "The team investigates the death of an investment guru who was killed when a magic stunt went wrong; Toby tries to keep his secret from Becker."
+  },
+  {
+   "event_id": 149,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "The Listener",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "The team looks into the death of one of Dev's friends, an accomplished video game developer who was found dead on the day before his new game's release date."
+  },
+  {
+   "event_id": 150,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "MacGyver helps a friend rebuild his home in Puerto Rico after being damaged in a hurricane, but he is soon taken hostage by a group of bank robbers."
+  },
+  {
+   "event_id": 151,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Masked men attack MacGyver and Riley while they investigate a crashed object; Riley finds information on MacGyver's father that she is unsure of sharing."
+  },
+  {
+   "event_id": 152,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "MacGyver receives a shocking surprise when he decides to try announcing his intentions of quitting the Phoenix Foundation to Matty."
+  },
+  {
+   "event_id": 153,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "MacGyver decides to move past his differences with his dad and come back after he learns Jack has been targeted by a murderous dictator whom he double-crossed."
+  },
+  {
+   "event_id": 154,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Jack and MacGyver work together to recruit the remaining members of Jack's former Delta team and execute an unsanctioned rescue operation."
+  },
+  {
+   "event_id": 155,
+   "start_gps": 1476655218,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "A deep-cover operative orchestrates deadly attacks around the planet and recruits college students to do so; Jack works with a bounty hunter."
+  },
+  {
+   "event_id": 156,
+   "start_gps": 1476658818,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "MacGyver, Riley and a father deliver a tanker full of liquid oxygen to a children's hospital; MacGyver thinks about letting his father back into his life."
+  },
+  {
+   "event_id": 157,
+   "start_gps": 1476662418,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "MacGyver and Jack rescue their boss from Mexico after a failed mission; Bozer and Riley take advantage of Halloween during an intelligence gathering mission."
+  },
+  {
+   "event_id": 158,
+   "start_gps": 1476666018,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Murdoc forces MacGyver to help him rescue his kidnapped son by kidnapping MacGyver's girlfriend; a dangerous figure from Murdoc's past returns."
+  },
+  {
+   "event_id": 159,
+   "start_gps": 1476669618,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "MacGyver and the team are sent at Matty's behest to recover a hard drive in Ghana from an e-waste landfill that is run by a dangerous and powerful individual."
+  },
+  {
+   "event_id": 160,
+   "start_gps": 1476673218,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "An Irish military intelligence officer claims to know the location of \"The Ghost,\" a dangerous bomb maker whom MacGyver has pursued for years."
+  },
+  {
+   "event_id": 161,
+   "start_gps": 1476676818,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "MacGyver and the team are in a race against the clock when an unknown thief steals a container full of a deadly virus that could cause a global pandemic."
+  },
+  {
+   "event_id": 162,
+   "start_gps": 1476680418,
+   "length_s": 3600,
+   "title": "MacGyver",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Matty reveals that she has a husband who has been operating undercover over the last eight years within a criminal organization known as D-Company."
+  },
+  {
+   "event_id": 163,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Extra",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "An in-depth look at the world of gathering the latest celebrity and entertainment news is presented by the hosts, who discuss breaking headlines from coast to c"
+  },
+  {
+   "event_id": 164,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Flip Side",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Two teams of players explore the answers to questions from opposite perspectives for the chance to win $10,000."
+  },
+  {
+   "event_id": 165,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Two and a Half Men",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Alan comes home with an ostentatiously distracting vase, causing Charlie to object to its presence in the house; Alan and Jake move in with a reluctant Evelyn."
+  },
+  {
+   "event_id": 166,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Crime Expos\u00e9 with Nancy O'Dell",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 167,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "iCrime with Elizabeth Vargas",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Interviews from victims, law enforcement and witnesses discuss the dramatic and raw material they happen to capture on their smartphone that show the instant a "
+  },
+  {
+   "event_id": 168,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Tribunal Justice",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Two couples sue a South Carolina builder for taking their money but not finishing their greenhouse projects."
+  },
+  {
+   "event_id": 169,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Cutlers Court",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "A reality court show where real people with real issues face real judgements."
+  },
+  {
+   "event_id": 170,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Cutlers Court",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "A reality court show where real people with real issues face real judgements."
+  },
+  {
+   "event_id": 171,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Shepherd's Chapel",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "From his nondenominational church in Gravette, Ark., Pastor Arnold Murray gives an in-depth analysis of the Bible, covering the entire book verse by verse."
+  },
+  {
+   "event_id": 172,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 173,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 174,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 175,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 176,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 177,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The Steve Wilkos Show",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "After learning his girlfriend cheated on him, a man returns to the show to take a lie detector test to prove that he never cheated, even if she did."
+  },
+  {
+   "event_id": 178,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Maury",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "A woman wants a guy to take a lie detector test because she suspects that he has been cheating; a woman returns to reveal a big secret to her sister."
+  },
+  {
+   "event_id": 179,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Judge Mathis rules on a case that involves a plaintiff who is suing the defendant over a loan and alleged property damage to an automobile."
+  },
+  {
+   "event_id": 180,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "The People's Court",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "A court case involves two parties undergoing an intense dispute with one another regarding a bad neighbor, so the judge figures out who is wrong."
+  },
+  {
+   "event_id": 181,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "Judy Justice",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "A woman accuses her future stepdaughter of tire slashing and social media slander; the stepdaughter counters with claims of an eviction and theft of property."
+  },
+  {
+   "event_id": 182,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "Judy Justice",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Former partners battle over competing assault allegations and the custody of their two beloved corgis, one of whom makes an appearance."
+  },
+  {
+   "event_id": 183,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Adam's Law",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Judge Adam Levy, a two-term district attorney, brings a fearless, unfiltered approach to the bench, combining sharp legal insight with a steadfast commitment to"
+  },
+  {
+   "event_id": 184,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Alfonso Ribiero's \"Carlton\" dance; a couple who try to take a selfie by the sea get a wet surprise; a man falls asleep with popcorn in his mouth."
+  },
+  {
+   "event_id": 185,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 186,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Flip Side",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "Two teams of players explore the answers to questions from opposite perspectives for the chance to win $10,000."
+  },
+  {
+   "event_id": 187,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Alfonso Ribiero's \"Carlton\" dance; a couple who try to take a selfie by the sea get a wet surprise; a man falls asleep with popcorn in his mouth."
+  },
+  {
+   "event_id": 188,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Two and a Half Men",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Alan gets a chance to temporarily sample his brother's wanton lifestyle after luckily meeting a sexually-uninhibited woman at the local grocery store."
+  },
+  {
+   "event_id": 189,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 190,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 191,
+   "start_gps": 1476576018,
+   "length_s": 7200,
+   "title": "WWE NXT",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Cruz Montana vs. Dion Lennox; The Creed Brothers vs. Hank & Tank and El Hijo de Wagner Jr. & Galeno vs. BirthRight in Dusty Rhodes Classic quarterfinals."
+  },
+  {
+   "event_id": 192,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 193,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 194,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 195,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 196,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "Extra",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "An in-depth look at the world of gathering the latest celebrity and entertainment news is presented by the hosts, who discuss breaking headlines from coast to c"
+  },
+  {
+   "event_id": 197,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "iCrime with Elizabeth Vargas",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Interviews from victims, law enforcement and witnesses discuss the dramatic and raw material they happen to capture on their smartphone that show the instant a "
+  },
+  {
+   "event_id": 198,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "Live PD Presents",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 199,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 200,
+   "start_gps": 1476597618,
+   "length_s": 1800,
+   "title": "Extra",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "An in-depth look at the world of gathering the latest celebrity and entertainment news is presented by the hosts, who discuss breaking headlines from coast to c"
+  },
+  {
+   "event_id": 201,
+   "start_gps": 1476599418,
+   "length_s": 1800,
+   "title": "Flip Side",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Two teams of players explore the answers to questions from opposite perspectives for the chance to win $10,000."
+  },
+  {
+   "event_id": 202,
+   "start_gps": 1476601218,
+   "length_s": 1800,
+   "title": "Two and a Half Men",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "Charlie finds fame as a wholesome children's singer, but his successful new career is directly impacting Alan in a negative fashion."
+  },
+  {
+   "event_id": 203,
+   "start_gps": 1476603018,
+   "length_s": 1800,
+   "title": "Crime Expos\u00e9 with Nancy O'Dell",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 204,
+   "start_gps": 1476604818,
+   "length_s": 1800,
+   "title": "iCrime with Elizabeth Vargas",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Interviews from victims, law enforcement and witnesses discuss the dramatic and raw material they happen to capture on their smartphone that show the instant a "
+  },
+  {
+   "event_id": 205,
+   "start_gps": 1476606618,
+   "length_s": 1800,
+   "title": "Tribunal Justice",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "A woman takes her landlord to court, accusing him of discarding over $4,000 worth of her personal belongings."
+  },
+  {
+   "event_id": 206,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "Cutlers Court",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "A reality court show where real people with real issues face real judgements."
+  },
+  {
+   "event_id": 207,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "Cutlers Court",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "A reality court show where real people with real issues face real judgements."
+  },
+  {
+   "event_id": 208,
+   "start_gps": 1476612018,
+   "length_s": 3600,
+   "title": "Shepherd's Chapel",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "From his nondenominational church in Gravette, Ark., Pastor Arnold Murray gives an in-depth analysis of the Bible, covering the entire book verse by verse."
+  },
+  {
+   "event_id": 209,
+   "start_gps": 1476615618,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 210,
+   "start_gps": 1476619218,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 211,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 212,
+   "start_gps": 1476626418,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 213,
+   "start_gps": 1476628218,
+   "length_s": 1800,
+   "title": "Karamo",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "Karamo explores an array of relationship and family-centered issues as he meets with guests to fix troubled relationships among romantic partners, estranged fri"
+  },
+  {
+   "event_id": 214,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The Steve Wilkos Show",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "A woman suspects one of her OnlyFans subscribers caused $9,000 worth of damage to her car due to an obsession for her."
+  },
+  {
+   "event_id": 215,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "Maury",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Sentoria and Lisa both want to prove that a man names Antione is the father of their daughters, though he claims that he can't be because he can't make girls."
+  },
+  {
+   "event_id": 216,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "A woman sues her former friend over an unpaid electric bill, as well as says she has five kids by three different men and makes her living as a stripper."
+  },
+  {
+   "event_id": 217,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "The People's Court",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "A court case involves two parties undergoing an intense dispute with one another regarding a wrecked parked car, so the judge figures out who is wrong."
+  },
+  {
+   "event_id": 218,
+   "start_gps": 1476644418,
+   "length_s": 1800,
+   "title": "Judy Justice",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "A woman sues her former friend for $3,500, claiming the friend's unattended 5-year-old son ruined her decade-old breast implants."
+  },
+  {
+   "event_id": 219,
+   "start_gps": 1476646218,
+   "length_s": 1800,
+   "title": "Judy Justice",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Former friends sue each other after an altercation where one woman stabbed the other two; claims of self-defense and harassment become further complicated."
+  },
+  {
+   "event_id": 220,
+   "start_gps": 1476648018,
+   "length_s": 1800,
+   "title": "Adam's Law",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Judge Adam Levy, a two-term district attorney, brings a fearless, unfiltered approach to the bench, combining sharp legal insight with a steadfast commitment to"
+  },
+  {
+   "event_id": 221,
+   "start_gps": 1476649818,
+   "length_s": 1800,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T20:30:00+00:00",
+   "description": "Highlights of a dog that has found a way around the \"sit and stay\" command; a woman that is frightened by a camel appearing in her car window."
+  },
+  {
+   "event_id": 222,
+   "start_gps": 1476651618,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 223,
+   "start_gps": 1476653418,
+   "length_s": 1800,
+   "title": "Flip Side",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "Two teams of players explore the answers to questions from opposite perspectives for the chance to win $10,000."
+  },
+  {
+   "event_id": 224,
+   "start_gps": 1476655218,
+   "length_s": 1800,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "Highlights of a dog that has found a way around the \"sit and stay\" command; a woman that is frightened by a camel appearing in her car window."
+  },
+  {
+   "event_id": 225,
+   "start_gps": 1476657018,
+   "length_s": 1800,
+   "title": "Two and a Half Men",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": "Charlie becomes ecstatic when he coincidentally runs into his dream girl and realizes that her marriage has fallen apart, allowing him to pursue her."
+  },
+  {
+   "event_id": 226,
+   "start_gps": 1476658818,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 227,
+   "start_gps": 1476660618,
+   "length_s": 1800,
+   "title": "Family Feud",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": "Two families composed of five members each compete against each other in a contest to see who can match more of their answers to survey questions with the most "
+  },
+  {
+   "event_id": 228,
+   "start_gps": 1476662418,
+   "length_s": 3600,
+   "title": "Police 24/7",
+   "rating": "TV-14",
+   "source_id": 4,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Police rush to the aid of a woman caught in a domestic dispute; an upset man threatens to jump off the side of a building; a dirt-bike rider decides to flee."
+  },
+  {
+   "event_id": 229,
+   "start_gps": 1476666018,
+   "length_s": 3600,
+   "title": "The Great American Road Rally: Celebrity Edition",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 230,
+   "start_gps": 1476669618,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 231,
+   "start_gps": 1476671418,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T02:30:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 232,
+   "start_gps": 1476673218,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 233,
+   "start_gps": 1476675018,
+   "length_s": 1800,
+   "title": "The National Desk",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T03:30:00+00:00",
+   "description": "Host DeeDee Gatton presents commentary-free news coverage from the perspectives of a local and national level, while reporters highlight remarkable stories."
+  },
+  {
+   "event_id": 234,
+   "start_gps": 1476676818,
+   "length_s": 1800,
+   "title": "Extra",
+   "rating": "TV-PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "An in-depth look at the world of gathering the latest celebrity and entertainment news is presented by the hosts, who discuss breaking headlines from coast to c"
+  },
+  {
+   "event_id": 235,
+   "start_gps": 1476678618,
+   "length_s": 1800,
+   "title": "iCrime with Elizabeth Vargas",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-22T04:30:00+00:00",
+   "description": "Interviews from victims, law enforcement and witnesses discuss the dramatic and raw material they happen to capture on their smartphone that show the instant a "
+  },
+  {
+   "event_id": 236,
+   "start_gps": 1476680418,
+   "length_s": 1800,
+   "title": "Live PD Presents",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 237,
+   "start_gps": 1476682218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 4,
+   "start_utc": "2026-10-22T05:30:00+00:00",
+   "description": "Sponsored television programming."
+  }
+ ],
+ "rf": 35,
+ "mhz": 599,
+ "signal": {
+  "SignalStrengthPercent": 95,
+  "SignalQualityPercent": 98
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 9,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 10,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 12,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

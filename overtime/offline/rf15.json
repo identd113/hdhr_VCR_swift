@@ -1,0 +1,1584 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:34:48+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686
+  ],
+  "mgt_entries": 15
+ },
+ "channels": [
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 1,
+   "number": "15.1",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1001,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 2,
+   "number": "15.2",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1002,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 3,
+   "number": "15.3",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1003,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 4,
+   "number": "15.4",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1004,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 5,
+   "number": "15.5",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1005,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 6,
+   "number": "15.6",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1006,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "KWJM-LD",
+   "major": 15,
+   "minor": 7,
+   "number": "15.7",
+   "modulation": 4,
+   "tsid": 9603,
+   "program": 1007,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 8907,
+   "start_gps": 1476509837,
+   "length_s": 8520,
+   "title": "Criminal",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:36:59+00:00",
+   "description": "CIA agent Bill Pope dies while traveling to a secret location to meet a hacker who can launch missiles at will. Desperate to find his whereabouts, officials turn to an experimental neurosurgeon who can tran"
+  },
+  {
+   "event_id": 8908,
+   "start_gps": 1476518357,
+   "length_s": 5460,
+   "title": "Bonanza",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:58:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8909,
+   "start_gps": 1476518357,
+   "length_s": 5460,
+   "title": "Bonanza",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:58:59+00:00",
+   "description": "When a neighbor agrees to sell his property, the Cartwrights fear the loss of water rights for their cattle."
+  },
+  {
+   "event_id": 8910,
+   "start_gps": 1476523817,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8911,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Men's Health - All-Natural Secret for Prostate Health",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8912,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8913,
+   "start_gps": 1476529217,
+   "length_s": 6780,
+   "title": "The Old Way",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8914,
+   "start_gps": 1476529217,
+   "length_s": 6780,
+   "title": "The Old Way",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": "Retired gunslinger Colton Briggs faces the consequences of his past when the son of a man he murdered arrives to take his revenge. Briggs must take up arms once more after his wife is killed, and is joined by his young daughter."
+  },
+  {
+   "event_id": 8915,
+   "start_gps": 1476535997,
+   "length_s": 6540,
+   "title": "Forsaken",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:52:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8916,
+   "start_gps": 1476542537,
+   "length_s": 6240,
+   "title": "Gunless",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:41:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8917,
+   "start_gps": 1476542537,
+   "length_s": 6240,
+   "title": "Gunless",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:41:59+00:00",
+   "description": "An American gunslinger is unable to find someone to duel in a Canadian town where no one understands the brutal code of the American Wild West."
+  },
+  {
+   "event_id": 8918,
+   "start_gps": 1476548777,
+   "length_s": 7260,
+   "title": "Jericho",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:25:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8919,
+   "start_gps": 1476548777,
+   "length_s": 7260,
+   "title": "Jericho",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:25:59+00:00",
+   "description": "Jericho wakes up with no memory, but it's apparent that he's quite skilled with a gun. He is befriended by Joshua , who appears to be his polar opposite: He's a black man and true believer in the Lord, whereas Jerich"
+  },
+  {
+   "event_id": 8920,
+   "start_gps": 1476556037,
+   "length_s": 8640,
+   "title": "Dust",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:26:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8921,
+   "start_gps": 1476564677,
+   "length_s": 8100,
+   "title": "Frank and Jesse",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:50:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8922,
+   "start_gps": 1476564677,
+   "length_s": 8100,
+   "title": "Frank and Jesse",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:50:59+00:00",
+   "description": "A Pinkerton agent pursues the James and Younger brothers as they rob banks, stagecoaches and trains."
+  },
+  {
+   "event_id": 8923,
+   "start_gps": 1476572777,
+   "length_s": 6960,
+   "title": "Pharaoh's Army",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:05:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8924,
+   "start_gps": 1476572777,
+   "length_s": 6960,
+   "title": "Pharaoh's Army",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:05:59+00:00",
+   "description": "Abston , a Union Army captain, leads his Civil War regiment to a Kentucky farm run by Sarah Anders , whose husband is off fighting for the Confederates. Although"
+  },
+  {
+   "event_id": 8925,
+   "start_gps": 1476579737,
+   "length_s": 7860,
+   "title": "Sheriff of Contention",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:01:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1,
+   "start_gps": 1476511217,
+   "length_s": 3600,
+   "title": "Swamp People",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476514817,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476518417,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476522017,
+   "length_s": 3600,
+   "title": "UFO Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1072,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1073,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476534617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476536417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1067,
+   "start_gps": 1476538217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1068,
+   "start_gps": 1476540017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1074,
+   "start_gps": 1476541817,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476543617,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476545417,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476547217,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1062,
+   "start_gps": 1476549017,
+   "length_s": 1800,
+   "title": "Parking Wars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1063,
+   "start_gps": 1476550817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1069,
+   "start_gps": 1476552617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476554417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 24,
+   "start_gps": 1476556217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476558017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1057,
+   "start_gps": 1476559817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1058,
+   "start_gps": 1476561617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1064,
+   "start_gps": 1476563417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476565217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 30,
+   "start_gps": 1476567017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476568817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1052,
+   "start_gps": 1476570617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1053,
+   "start_gps": 1476572417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1059,
+   "start_gps": 1476574217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476576017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 36,
+   "start_gps": 1476577817,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476579617,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1047,
+   "start_gps": 1476581417,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1048,
+   "start_gps": 1476583217,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 1054,
+   "start_gps": 1476585017,
+   "length_s": 1800,
+   "title": "Counting Cars",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7076,
+   "start_gps": 1476511217,
+   "length_s": 14400,
+   "title": "The Assassination of Jesse James by the Coward Robert Ford",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7047,
+   "start_gps": 1476511217,
+   "length_s": 14400,
+   "title": "The Assassination of Jesse James by the Coward Robert Ford",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7077,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "A Distant Trumpet",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7078,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "A Distant Trumpet",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7079,
+   "start_gps": 1476536417,
+   "length_s": 16200,
+   "title": "Wyatt Earp",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7080,
+   "start_gps": 1476536417,
+   "length_s": 16200,
+   "title": "Wyatt Earp",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7081,
+   "start_gps": 1476552617,
+   "length_s": 7200,
+   "title": "The Bounty Hunter",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7082,
+   "start_gps": 1476552617,
+   "length_s": 7200,
+   "title": "The Bounty Hunter",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7083,
+   "start_gps": 1476559817,
+   "length_s": 12600,
+   "title": "The Wild Bunch",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7084,
+   "start_gps": 1476559817,
+   "length_s": 12600,
+   "title": "The Wild Bunch",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7085,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Tom Horn",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7086,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Tom Horn",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7087,
+   "start_gps": 1476581417,
+   "length_s": 9000,
+   "title": "Drum Beat",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7306,
+   "start_gps": 1476511217,
+   "length_s": 3600,
+   "title": "Precious World of Pearls",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7276,
+   "start_gps": 1476514817,
+   "length_s": 3600,
+   "title": "Warehouse Sale",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7307,
+   "start_gps": 1476518417,
+   "length_s": 3600,
+   "title": "Bella Luce Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7308,
+   "start_gps": 1476522017,
+   "length_s": 3600,
+   "title": "Warehouse Sale",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7309,
+   "start_gps": 1476525617,
+   "length_s": 3600,
+   "title": "Moissanite Fire Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7310,
+   "start_gps": 1476529217,
+   "length_s": 7200,
+   "title": "Color Crush Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7311,
+   "start_gps": 1476529217,
+   "length_s": 7200,
+   "title": "Color Crush Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7312,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "Jewel School - Jewelry Making",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7313,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "Jewel School - Jewelry Making",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7314,
+   "start_gps": 1476547217,
+   "length_s": 7200,
+   "title": "Bella Luce Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7315,
+   "start_gps": 1476554417,
+   "length_s": 7200,
+   "title": "Color Crush Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7316,
+   "start_gps": 1476561617,
+   "length_s": 14400,
+   "title": "Artisan of Ireland Jewelry Collection",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7317,
+   "start_gps": 1476561617,
+   "length_s": 14400,
+   "title": "Artisan of Ireland Jewelry Collection",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 7318,
+   "start_gps": 1476576017,
+   "length_s": 10800,
+   "title": "Color Crush Jewelry",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8455,
+   "start_gps": 1476507617,
+   "length_s": 10800,
+   "title": "Larry Elder",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T04:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8456,
+   "start_gps": 1476518417,
+   "length_s": 3600,
+   "title": "Alex Marlow",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8457,
+   "start_gps": 1476522017,
+   "length_s": 3600,
+   "title": "Scott Jennings",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8458,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "O'Connor & Company",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8459,
+   "start_gps": 1476525617,
+   "length_s": 10800,
+   "title": "O'Connor & Company",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8460,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "The Mike Gallagher Show",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8461,
+   "start_gps": 1476536417,
+   "length_s": 10800,
+   "title": "The Mike Gallagher Show",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8462,
+   "start_gps": 1476547217,
+   "length_s": 3600,
+   "title": "Sekulow",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8463,
+   "start_gps": 1476550817,
+   "length_s": 7200,
+   "title": "Scott Jennings",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8464,
+   "start_gps": 1476550817,
+   "length_s": 7200,
+   "title": "Scott Jennings",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8465,
+   "start_gps": 1476558017,
+   "length_s": 10800,
+   "title": "The Hugh Hewitt Show",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8466,
+   "start_gps": 1476558017,
+   "length_s": 10800,
+   "title": "The Hugh Hewitt Show",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8467,
+   "start_gps": 1476568817,
+   "length_s": 10800,
+   "title": "Larry Elder",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8468,
+   "start_gps": 1476568817,
+   "length_s": 10800,
+   "title": "Larry Elder",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8469,
+   "start_gps": 1476579617,
+   "length_s": 3600,
+   "title": "Alex Marlow",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8470,
+   "start_gps": 1476583217,
+   "length_s": 1800,
+   "title": "The Right View: Lara Trump",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8471,
+   "start_gps": 1476585017,
+   "length_s": 1800,
+   "title": "O'Connor Tonight",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 269,
+   "start_gps": 1476504017,
+   "length_s": 10800,
+   "title": "Shawn Saves Christmas",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T03:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 159,
+   "start_gps": 1476514817,
+   "length_s": 3600,
+   "title": "Jill Martin's Gift Guide",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 270,
+   "start_gps": 1476518417,
+   "length_s": 7200,
+   "title": "Jane's Holiday Favorites",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 259,
+   "start_gps": 1476518417,
+   "length_s": 7200,
+   "title": "Jane's Holiday Favorites",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 151,
+   "start_gps": 1476525617,
+   "length_s": 3600,
+   "title": "Gifts Under $30",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 260,
+   "start_gps": 1476529217,
+   "length_s": 10800,
+   "title": "House to Home by Valerie -- Holiday Edition",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 249,
+   "start_gps": 1476529217,
+   "length_s": 10800,
+   "title": "House to Home by Valerie -- Holiday Edition",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 143,
+   "start_gps": 1476540017,
+   "length_s": 3600,
+   "title": "Q Check - A Big Deal",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 239,
+   "start_gps": 1476543617,
+   "length_s": 3600,
+   "title": "Rick St. Nick's Gifts",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 137,
+   "start_gps": 1476547217,
+   "length_s": 3600,
+   "title": "Holiday Decorating",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 271,
+   "start_gps": 1476550817,
+   "length_s": 3600,
+   "title": "Harry Slatkin Lights Up the Holidays",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 229,
+   "start_gps": 1476554417,
+   "length_s": 3600,
+   "title": "Martha Stewart - Home",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 132,
+   "start_gps": 1476558017,
+   "length_s": 3600,
+   "title": "Bethlehem Lights Seasonal Lighting",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 261,
+   "start_gps": 1476561617,
+   "length_s": 3600,
+   "title": "Over 50 & Fabulous",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 221,
+   "start_gps": 1476565217,
+   "length_s": 3600,
+   "title": "A Kim Gravel Christmas -- Holiday Decor",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 128,
+   "start_gps": 1476568817,
+   "length_s": 3600,
+   "title": "Bethlehem Lights Seasonal Lighting",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 251,
+   "start_gps": 1476572417,
+   "length_s": 3600,
+   "title": "Courtney's Gift Favorites",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 214,
+   "start_gps": 1476576017,
+   "length_s": 7200,
+   "title": "House to Home by Valerie -- Holiday Edition",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 124,
+   "start_gps": 1476583217,
+   "length_s": 3600,
+   "title": "Great Gifts",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8756,
+   "start_gps": 1476507617,
+   "length_s": 7200,
+   "title": "Kickboxer 4: The Aggressor",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T04:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8757,
+   "start_gps": 1476514817,
+   "length_s": 10800,
+   "title": "Bait",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8758,
+   "start_gps": 1476514817,
+   "length_s": 10800,
+   "title": "Bait",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8759,
+   "start_gps": 1476525617,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8760,
+   "start_gps": 1476527417,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8761,
+   "start_gps": 1476529217,
+   "length_s": 1800,
+   "title": "The Parent 'Hood",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8762,
+   "start_gps": 1476531017,
+   "length_s": 1800,
+   "title": "Roc",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8763,
+   "start_gps": 1476532817,
+   "length_s": 1800,
+   "title": "Roc",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8764,
+   "start_gps": 1476534617,
+   "length_s": 9000,
+   "title": "Surviving the Game",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:29:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8765,
+   "start_gps": 1476543617,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8766,
+   "start_gps": 1476547217,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8767,
+   "start_gps": 1476550817,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8768,
+   "start_gps": 1476554417,
+   "length_s": 3600,
+   "title": "Judge Mathis",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8769,
+   "start_gps": 1476558017,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8770,
+   "start_gps": 1476561617,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8771,
+   "start_gps": 1476565217,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8772,
+   "start_gps": 1476568817,
+   "length_s": 3600,
+   "title": "In the Heat of the Night",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8773,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Lethal Weapon",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8774,
+   "start_gps": 1476572417,
+   "length_s": 9000,
+   "title": "Lethal Weapon",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:59:59+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 8775,
+   "start_gps": 1476581417,
+   "length_s": 10800,
+   "title": "Lethal Weapon 2",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:29:59+00:00",
+   "description": ""
+  }
+ ],
+ "rf": 15,
+ "mhz": 479,
+ "signal": {
+  "SignalStrengthPercent": 56,
+  "SignalQualityPercent": 0
+ },
+ "pmt_programs": [
+  {
+   "program": 1001,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1002,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1003,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1004,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1005,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1006,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 1007,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

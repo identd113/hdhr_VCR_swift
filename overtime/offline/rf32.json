@@ -1,0 +1,6558 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:30:45+00:00",
+ "tables": {
+  "eit_pids": [
+   5000,
+   5001,
+   5002,
+   5003,
+   5004,
+   5005,
+   5006,
+   5007,
+   5008,
+   5009,
+   5010,
+   5011,
+   5012,
+   5013,
+   5014,
+   5015,
+   5016,
+   5017,
+   5018,
+   5019,
+   5020,
+   5021,
+   5022,
+   5023
+  ],
+  "ett_pids": [
+   5128,
+   5129,
+   5130,
+   5131,
+   5132,
+   5133,
+   5134,
+   5135,
+   5136,
+   5137,
+   5138,
+   5139,
+   5140,
+   5141,
+   5142,
+   5143,
+   5144,
+   5145,
+   5146,
+   5147,
+   5148,
+   5149,
+   5150,
+   5151
+  ],
+  "mgt_entries": 50
+ },
+ "channels": [
+  {
+   "name": "WCCO-DT",
+   "major": 4,
+   "minor": 1,
+   "number": "4.1",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 1,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WCCODT2",
+   "major": 4,
+   "minor": 2,
+   "number": "4.2",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 2,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WCCODT3",
+   "major": 4,
+   "minor": 3,
+   "number": "4.3",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 3,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WCCODT4",
+   "major": 4,
+   "minor": 4,
+   "number": "4.4",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 4,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WCCODT5",
+   "major": 4,
+   "minor": 5,
+   "number": "4.5",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 7,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Charge!",
+   "major": 23,
+   "minor": 3,
+   "number": "23.3",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 5,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "ROAR   ",
+   "major": 23,
+   "minor": 4,
+   "number": "23.4",
+   "modulation": 4,
+   "tsid": 1585,
+   "program": 6,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 5040,
+   "start_gps": 1476509838,
+   "length_s": 1920,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:37:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5041,
+   "start_gps": 1476511758,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:09:00+00:00",
+   "description": "Dana Eagle; James Davis; Elon Gold; Brent Terhune."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476513558,
+   "length_s": 1800,
+   "title": "Bathroom Makeover",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:39:00+00:00",
+   "description": "Transform your bath affordably in just one day!"
+  },
+  {
+   "event_id": 5043,
+   "start_gps": 1476515358,
+   "length_s": 60,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:09:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5044,
+   "start_gps": 1476515418,
+   "length_s": 1800,
+   "title": "Deadly Neighbors",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:10:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5045,
+   "start_gps": 1476517218,
+   "length_s": 1800,
+   "title": "Top Secret Files: Declassified",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:40:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5046,
+   "start_gps": 1476519018,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:10:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5047,
+   "start_gps": 1476520818,
+   "length_s": 1200,
+   "title": "CBS News Roundup",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:40:00+00:00",
+   "description": "Headlines one needs to know overnight, including technology news and the latest weather."
+  },
+  {
+   "event_id": 5048,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5049,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5050,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 5am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5051,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 6am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5052,
+   "start_gps": 1476532818,
+   "length_s": 7200,
+   "title": "CBS Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Actress Jane Leeves; author Dariush Mozaffarian."
+  },
+  {
+   "event_id": 5053,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "WCCO Mid-Morning",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5054,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The Price Is Right",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5055,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "The Young and the Restless",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "While friends and family celebrate Billy and Sally, Cane shares distressing news with Billy."
+  },
+  {
+   "event_id": 5056,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "WCCO News at 12 Noon",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Midday news update."
+  },
+  {
+   "event_id": 5057,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "The Bold and the Beautiful",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Katie confides in Wyatt; Brooke turns to a surprising person for help."
+  },
+  {
+   "event_id": 5058,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Beyond the Gates",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Bill receives a mysterious package from someone special; Nicole insists she's not holding back."
+  },
+  {
+   "event_id": 5059,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Let's Make a Deal",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5060,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Drew sits down with legendary actress Hilary Swank."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Holland Taylor tells Drew about starring in the hit new show \"Brothers.\""
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "WCCO the 4",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "WCCO News at 5pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Local and regional news coverage."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "WCCO News at 6pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Wheel of Fortune",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "NCIS",
+   "rating": "TV-14;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Torres' retired undercover identity is used to commit a string of murders."
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "NCIS: New York",
+   "rating": "TV-14;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "A prosecutor's children are kidnapped from a park carousel; Nick gets subpoenaed."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "NCIS: Origins",
+   "rating": "TV-14;D;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Gibbs reunites with a familiar face who assisted the team in a murder case decades earlier."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476586818,
+   "length_s": 2100,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476588918,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:35:00+00:00",
+   "description": "Maddy Kelly; Eagle Witt; Jason Sklar; Randy Sklar."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476590718,
+   "length_s": 1920,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:05:00+00:00",
+   "description": "Celebrity guests Justin Martindale, Heather Pasternak, Willie Macc and Adam Carolla."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476592638,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:37:00+00:00",
+   "description": "Jamie Kennedy; Sheryl Underwood; Adam Carolla; Byron Allen; Natasha Leggero; Jimmie Walker."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476594438,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:07:00+00:00",
+   "description": "Adam Carolla, Sheryl Underwood, Jamie Kennedy, Byron Allen, Natasha Leggero, and Brad Williams."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476596238,
+   "length_s": 1920,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:37:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476598158,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T06:09:00+00:00",
+   "description": "Maria Bamford; James Johann; J.B. Ball; Myq Kaplan."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476599958,
+   "length_s": 1860,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T06:39:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476601818,
+   "length_s": 1800,
+   "title": "I Met My Murderer Online",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T07:10:00+00:00",
+   "description": "Looking at cases where online relationships turned deadly."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476603618,
+   "length_s": 1800,
+   "title": "Fatal Crimes",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T07:40:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476605418,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T08:10:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476607218,
+   "length_s": 1200,
+   "title": "CBS News Roundup",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T08:40:00+00:00",
+   "description": "Headlines one needs to know overnight, including technology news and the latest weather."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476612018,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 5am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476615618,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 6am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476619218,
+   "length_s": 7200,
+   "title": "CBS Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Actor Sacha Baron Cohen; oncologist Ezekiel J. Emanuel; Vlad Duthiers visit New York Comic Con."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "WCCO Mid-Morning",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The Price Is Right",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "The Young and the Restless",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Sally and Billy meet first challenge as a married couple; Lily receives an update about her health."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476637218,
+   "length_s": 1800,
+   "title": "WCCO News at 12 Noon",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Midday news update."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476639018,
+   "length_s": 1800,
+   "title": "The Bold and the Beautiful",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "Will takes matters into his own hands; Li is stunned to learn about Steffy and Carter's plan."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "Beyond the Gates",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Smitty worries that Martin's ignoring the obvious; Dani preps for a major moment."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "Let's Make a Deal",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476648018,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Singer Steve Lacy tells Drew about taking his \"Oh Yeah?\" tour on the road to 27 cities."
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476649818,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T20:30:00+00:00",
+   "description": "John Turturro tells Drew about his new movie \"The Only Living Pickpocket in New York.\""
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "WCCO the 4",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476655218,
+   "length_s": 1800,
+   "title": "WCCO News at 5pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "Local and regional news coverage."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476657018,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476658818,
+   "length_s": 1800,
+   "title": "WCCO News at 6pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476660618,
+   "length_s": 1800,
+   "title": "Wheel of Fortune",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476662418,
+   "length_s": 5400,
+   "title": "Survivor",
+   "rating": "TV-PG;L",
+   "source_id": 1,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "This week's Immunity Challenge comes with double jeopardy when two tribes face tribal council."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476667818,
+   "length_s": 5400,
+   "title": "The Amazing Race",
+   "rating": "TV-PG;L",
+   "source_id": 1,
+   "start_utc": "2026-10-22T01:30:00+00:00",
+   "description": "Racers travel to Albania, where the \"Driver's Seat\" returns -- twice."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476673218,
+   "length_s": 2100,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476675318,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T03:35:00+00:00",
+   "description": "Ophira Eisenberg; Nicky Paris; Reg Thomas; Chris Strait."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476677118,
+   "length_s": 1920,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T04:05:00+00:00",
+   "description": "Celebrity guests Mo Mandel, Bill Bellamy, Annie Lederman and Danny Jolles."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476679038,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T04:37:00+00:00",
+   "description": "Jamie Kennedy; Sheryl Underwood; Adam Carolla; Byron Allen; Natasha Leggero; Jimmie Walker."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476680838,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T05:07:00+00:00",
+   "description": "Adam Carolla, Sheryl Underwood, Jamie Kennedy, Byron Allen, Natasha Leggero, and Brad Williams."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476682638,
+   "length_s": 1920,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T05:37:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5109,
+   "start_gps": 1476684558,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T06:09:00+00:00",
+   "description": "Aida Rodriguez; Josh Blue; Christopher Titus; Mike Estime."
+  },
+  {
+   "event_id": 5110,
+   "start_gps": 1476686358,
+   "length_s": 1800,
+   "title": "Hope for Pain Sufferers",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T06:39:00+00:00",
+   "description": "Discover how OmegaXL can provide relief from joint pain and improve the quality of life."
+  },
+  {
+   "event_id": 5111,
+   "start_gps": 1476688158,
+   "length_s": 60,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T07:09:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5112,
+   "start_gps": 1476688218,
+   "length_s": 1800,
+   "title": "Motive to Murder",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-22T07:10:00+00:00",
+   "description": "Complete, detailed investigation, expert analysis and dramatic storytelling of recent crime stories."
+  },
+  {
+   "event_id": 5113,
+   "start_gps": 1476690018,
+   "length_s": 1800,
+   "title": "Vacation Victims",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T07:40:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5114,
+   "start_gps": 1476691818,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T08:10:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5115,
+   "start_gps": 1476693618,
+   "length_s": 1200,
+   "title": "CBS News Roundup",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T08:40:00+00:00",
+   "description": "Headlines one needs to know overnight, including technology news and the latest weather."
+  },
+  {
+   "event_id": 5116,
+   "start_gps": 1476694818,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5117,
+   "start_gps": 1476696618,
+   "length_s": 1800,
+   "title": "CBS News Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "CBS News Mornings broadcasts on weekdays and offers viewers up-to-date news and weather forecast."
+  },
+  {
+   "event_id": 5118,
+   "start_gps": 1476698418,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 5am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5119,
+   "start_gps": 1476702018,
+   "length_s": 3600,
+   "title": "WCCO News This Morning at 6am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5120,
+   "start_gps": 1476705618,
+   "length_s": 7200,
+   "title": "CBS Mornings",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5121,
+   "start_gps": 1476712818,
+   "length_s": 3600,
+   "title": "WCCO Mid-Morning",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "News coverage to start the day."
+  },
+  {
+   "event_id": 5122,
+   "start_gps": 1476716418,
+   "length_s": 3600,
+   "title": "The Price Is Right",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5123,
+   "start_gps": 1476720018,
+   "length_s": 3600,
+   "title": "The Young and the Restless",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Victor interrogates Nick; Chelsea sees a new side to Adam; Billy makes a promise to Sally."
+  },
+  {
+   "event_id": 5124,
+   "start_gps": 1476723618,
+   "length_s": 1800,
+   "title": "WCCO News at 12 Noon",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Midday news update."
+  },
+  {
+   "event_id": 5125,
+   "start_gps": 1476725418,
+   "length_s": 1800,
+   "title": "The Bold and the Beautiful",
+   "rating": "TV-14;D",
+   "source_id": 1,
+   "start_utc": "2026-10-22T17:30:00+00:00",
+   "description": "Donna is hopeful that her sisters will end their feud; Steffy and Carter rush to the hospital."
+  },
+  {
+   "event_id": 5126,
+   "start_gps": 1476727218,
+   "length_s": 3600,
+   "title": "Beyond the Gates",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "The family celebrates Dani's life and career, but a surprise guest brings old wounds to the surface."
+  },
+  {
+   "event_id": 5127,
+   "start_gps": 1476730818,
+   "length_s": 3600,
+   "title": "Let's Make a Deal",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5128,
+   "start_gps": 1476734418,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "B.J. Novak tells Drew about writing his new children's book, \"The Little Book With No Pictures.\""
+  },
+  {
+   "event_id": 5129,
+   "start_gps": 1476736218,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-22T20:30:00+00:00",
+   "description": "Ali G sits down with Drew to talk about his new movie \"Ali G: Who Iz I?\""
+  },
+  {
+   "event_id": 5130,
+   "start_gps": 1476738018,
+   "length_s": 3600,
+   "title": "WCCO the 4",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5131,
+   "start_gps": 1476741618,
+   "length_s": 1800,
+   "title": "WCCO News at 5pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Local and regional news coverage."
+  },
+  {
+   "event_id": 5132,
+   "start_gps": 1476743418,
+   "length_s": 1800,
+   "title": "CBS Evening News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5133,
+   "start_gps": 1476745218,
+   "length_s": 1800,
+   "title": "WCCO News at 6pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5134,
+   "start_gps": 1476747018,
+   "length_s": 1800,
+   "title": "Wheel of Fortune",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-22T23:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5135,
+   "start_gps": 1476748818,
+   "length_s": 1860,
+   "title": "Georgie & Mandy's First Marriage",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Georgie and Mandy have a hard time coping with CeeCee starting preschool."
+  },
+  {
+   "event_id": 5136,
+   "start_gps": 1476750678,
+   "length_s": 1800,
+   "title": "Eternally Yours",
+   "rating": "TV-14;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-23T00:31:00+00:00",
+   "description": "The coven throws an initiation party for a new vampire and invites members of their community."
+  },
+  {
+   "event_id": 5137,
+   "start_gps": 1476752478,
+   "length_s": 3540,
+   "title": "Elsbeth",
+   "rating": "TV-14;D;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-23T01:01:00+00:00",
+   "description": "A former pop star is murdered; Elsbeth's mother Lydia comes to visit."
+  },
+  {
+   "event_id": 5138,
+   "start_gps": 1476756018,
+   "length_s": 3600,
+   "title": "Cupertino",
+   "rating": "TV-14;D;L;V",
+   "source_id": 1,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "A distraught mother believes a companion chatbot is responsible for her son's patricide."
+  },
+  {
+   "event_id": 5139,
+   "start_gps": 1476759618,
+   "length_s": 2100,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5140,
+   "start_gps": 1476761718,
+   "length_s": 1800,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-23T03:35:00+00:00",
+   "description": "Jena Friedman; Trixx; David Drake; Dave Konig."
+  },
+  {
+   "event_id": 5141,
+   "start_gps": 1476763518,
+   "length_s": 1920,
+   "title": "Comics Unleashed With Byron Allen",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-23T04:05:00+00:00",
+   "description": "Celebrity guests Ryan Davis, Maz Jobrani, Greg Romero Wilson and Nicole Burch."
+  },
+  {
+   "event_id": 5142,
+   "start_gps": 1476765438,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-23T04:37:00+00:00",
+   "description": "Jamie Kennedy; Sheryl Underwood; Adam Carolla; Byron Allen; Natasha Leggero; Jimmie Walker."
+  },
+  {
+   "event_id": 5143,
+   "start_gps": 1476767238,
+   "length_s": 1800,
+   "title": "Funny You Should Ask",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-23T05:07:00+00:00",
+   "description": "Adam Carolla; Sheryl Underwood; Jamie Kennedy; Byron Allen; Natasha Leggero; Brad Williams."
+  },
+  {
+   "event_id": 5144,
+   "start_gps": 1476769038,
+   "length_s": 1920,
+   "title": "WCCO News at 10pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T05:37:00+00:00",
+   "description": "Local and regional news."
+  },
+  {
+   "event_id": 5031,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5032,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5033,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Entertainment Tonight",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5034,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Inside Edition",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "The latest on the death of actress Hayden Panettiere."
+  },
+  {
+   "event_id": 5035,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Beauty and the Beast",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Paracelsus offers information about Vincent's parentage to manipulate him and Father."
+  },
+  {
+   "event_id": 5036,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Ghost Whisperer",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "A mud-spattered ghost transports Melinda from her home to a jungle."
+  },
+  {
+   "event_id": 5037,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Strong Medicine",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "A woman wants her daughter's fertilized egg implanted in herself."
+  },
+  {
+   "event_id": 5038,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Any Day Now",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Rene represents a child on trial for murder; Colliar makes M.E. quit her job."
+  },
+  {
+   "event_id": 5039,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Touched by an Angel",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Monica and Tess play party coordinators to help bring together an orphan boy and a wealthy family."
+  },
+  {
+   "event_id": 5040,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "A daytime television actress involves Jessica in her husband's murder."
+  },
+  {
+   "event_id": 5041,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Jessica's colleague (George Hearn) is accused of murdering his long-time enemy."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "A computer manufacturer's death may mean a malpractice suit for Seth, but Jessica suspects murder."
+  },
+  {
+   "event_id": 5043,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Charmed",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "The Charmed Ones are stuck in the Underworld; a large battle ensues."
+  },
+  {
+   "event_id": 5044,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Charmed",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Piper travels back in time to change the events leading to the deaths of Paige and Phoebe."
+  },
+  {
+   "event_id": 5045,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Charmed",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Phoebe and Piper learn they have a half-sister who may be able to complete the Power of Three."
+  },
+  {
+   "event_id": 5046,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Charmed",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Phoebe and Piper discover the existence of a half sister while grieving for Prue."
+  },
+  {
+   "event_id": 5047,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Charmed",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Paige steals the Book of Shadows to use the spells for personal gain."
+  },
+  {
+   "event_id": 5048,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "The Boston Police Department searches for Alice Sands; the team investigates a suspicious car crash."
+  },
+  {
+   "event_id": 5049,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A gang-member's body is found with Lt. Provenza's business card in his pocket."
+  },
+  {
+   "event_id": 5050,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Squad finds a body while attending the funeral of a former colleague."
+  },
+  {
+   "event_id": 5051,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "An investigation into the disappearances of young women leads to a turf battle."
+  },
+  {
+   "event_id": 5052,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Jane is preoccupied with Lt. Martinez's apparent favoritism toward his own drug unit."
+  },
+  {
+   "event_id": 5053,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Veronica Mars",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Veronica tries to clear herself after being accused of plagiarizing her paper."
+  },
+  {
+   "event_id": 5054,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Jess outbids Dean to win a picnic lunch date with Rory at the annual picnic basket auction."
+  },
+  {
+   "event_id": 5055,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Christopher's new girlfriend (Madchen Amick) plans to build a close relationship with Rory."
+  },
+  {
+   "event_id": 5056,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Rush and Valens try to connect a murder from 1977 to a serial killer."
+  },
+  {
+   "event_id": 5057,
+   "start_gps": 1476597618,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5058,
+   "start_gps": 1476599418,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5059,
+   "start_gps": 1476601218,
+   "length_s": 1800,
+   "title": "Entertainment Tonight",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5060,
+   "start_gps": 1476603018,
+   "length_s": 1800,
+   "title": "Inside Edition",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": "The latest on the death of actress Hayden Panettiere."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476604818,
+   "length_s": 3600,
+   "title": "Beauty and the Beast",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Recognizing the danger of his predatory side, Vincent retreats deeper into the tunnels."
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476608418,
+   "length_s": 3600,
+   "title": "Ghost Whisperer",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "A desperate spirit pulls Melinda into a family's bitter fight."
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476612018,
+   "length_s": 3600,
+   "title": "Strong Medicine",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "An overweight woman sues Robert for not hiring her as his secretary."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476615618,
+   "length_s": 3600,
+   "title": "Any Day Now",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Police discriminate against Rene; M.E. researches a corrupt city council."
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476619218,
+   "length_s": 3600,
+   "title": "Touched by an Angel",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Monica helps a man who's lost everything and is living on the street."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "In Mexico City a rare mask stolen from a museum turns up on a murdered man."
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "A playwright haunted by his wife's suicide loses another family member to murder."
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Seth's former Army buddy arrives in Cabot Cove and is accused of murder."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "The division suddenly uncovers a series of sexual assaults against servers from Tackles."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Sharon contends with health problems as she tries to solve a series of murders and sexual assaults."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "A surprise death in the law-enforcement community seems to be the work of an escaped serial killer."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Unable to locate Stroh in the present, the team searches for answers in his distant past."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Phillip Stroh and his young British accomplice edge closer and closer to their endgame."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "The team investigates a murder at a zombie convention; Angela decides to pursue her GED."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476655218,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "The squad searches for a young girl."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476658818,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "An old man confesses to murdering seven people; Fritz and Brenda find a home."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476662418,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "The Major Crimes Division explores Los Angeles' underground water system."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476666018,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Frankie Jr. is brought in to help with a murder case involving a youth hockey league."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476669618,
+   "length_s": 3600,
+   "title": "Veronica Mars",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Logan seeks Veronica's help in clearing Mercer of rape charges."
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476673218,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Suspicious Lorelai catches Jess in Rory's room and accuses him of stealing a bracelet."
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476676818,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Lorelai and Emily spend a weekend at a health spa; Rory has unwelcome visitors."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476680418,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "A truck containing human bones in a river links to a bootlegger."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476684018,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476685818,
+   "length_s": 1800,
+   "title": "The Drew Barrymore Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T06:30:00+00:00",
+   "description": "Drew Barrymore presents human-interest stories, celebrity guests and lifestyle segments."
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476687618,
+   "length_s": 1800,
+   "title": "Entertainment Tonight",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476689418,
+   "length_s": 1800,
+   "title": "Inside Edition",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "The latest on the death of actress Hayden Panettiere."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476691218,
+   "length_s": 3600,
+   "title": "Beauty and the Beast",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "The leader of a criminal empire kidnaps Catherine, and Vincent tries to save her."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476694818,
+   "length_s": 3600,
+   "title": "Ghost Whisperer",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Melinda discovers that a spirit is trying to prevent a birth."
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476698418,
+   "length_s": 3600,
+   "title": "Strong Medicine",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "An nurse sues the hospital when she is stuck with a contaminated needle."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476702018,
+   "length_s": 3600,
+   "title": "Any Day Now",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Rene becomes a ``Big Sister''; M.E. appears on a talk show."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476705618,
+   "length_s": 3600,
+   "title": "Touched by an Angel",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Monica assumes the role of a newspaper reporter to help a father understand his son."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476709218,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Jessica designs a murder-mystery board game for a toy company."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476712818,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "While in Italy, Jessica searches for the killer of a movie producer."
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476716418,
+   "length_s": 3600,
+   "title": "Murder, She Wrote",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "A writer is killed before he can explicate a 30-year-old murder involving Cabot Cove's elite."
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476720018,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Rush looks again at a serial killer she was unable to put away months earlier."
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476723618,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "The team unravels a girl's parentage and the death of the man assumed to be her father."
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476727218,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "Lilly reopens the case of a student who died in a frat house."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476730818,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "The reinvestigation of a ballplayer found bludgeoned to death in 1945."
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476734418,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "An elderly woman who died of natural causes was using the identity of another woman."
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476738018,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "When a mailman is killed, the team must work with a Postal Inspector; Maura continues to struggle."
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476741618,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "A possessive husband is a suspect in the death of a fitness trainer."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476745218,
+   "length_s": 3600,
+   "title": "The Closer",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Two Hispanic teens die in a racially motivated gang-shooting."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476748818,
+   "length_s": 3600,
+   "title": "Major Crimes",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "The Major Crimes unit must find the culprit when two people are attacked with a pair of scissors."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476752418,
+   "length_s": 3600,
+   "title": "Rizzoli & Isles",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "Jane and Maura are asked to present the case of a serial killer at a symposium for law enforcement."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476756018,
+   "length_s": 3600,
+   "title": "Veronica Mars",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "The wealthy granddaughter of Hearst College's founder mysteriously disappears."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476759618,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "Lorelai and Rory work at the diner while Luke arranges a funeral."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476763218,
+   "length_s": 3600,
+   "title": "Gilmore Girls",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "While helping Rory create a product for teens, Richard decides to end his retirement."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476766818,
+   "length_s": 3600,
+   "title": "Cold Case",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "The team probes the death of a woman whose dot-com company crashed."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Dee Dee fakes a serious injury to keep Mona around after an accident in self-defense class."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Dee Dee draws the wrong conclusion when Mona refuses to divulge details of a dream."
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "A widower's young son decides he wants Nikki to be his new mother."
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Nikki imagines herself a sheriff facing down an outlaw known as the Professor in a musical Western."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Succumbing to peer pressure, Breanna and Spirit decide it is time to lose their virginity."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "The station hires a sexy sidekick (Jenny McCarthy) to boost Flex's ratings."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Tamera agrees to a piano recital despite a distinct lack of talent."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Tamera takes Tia's place as a camp counselor, but grandfather Jimmy is not fooled."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Suzanne's stubborn need to argue her point gets her arrested."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "The family has a harder time than expected when they decide to go green."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Jamie enrolls in an acting class taught by an accomplished actress who takes a strong liking to him."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Jamie has a house party when his aunt and uncle leave town."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Moesha and Niecy share a room with an obnoxious classmate during a spring-break retreat; guest DMX."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "A dangerous man (Master P) makes Dorian an employment offer; Moesha admits her feelings to Hakeem."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Rochelle decides to use the food stamps Julius finds, until a friend sees her in the store."
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Chris decides to hang out at Greg's house without permission."
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Kelly and Jason share an emotional moment; Tasha finally admits to setting Jason up with Camille."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Melanie tries getting in between Derwin and his son; Kelly stars in her own reality show."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "A famous singer (Paula Abdul) finds Shawn's indifference irresistible."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Shawn questions his own goals and seeks therapy after seeing a successful old pal."
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Pam's attempts to help Gina leave both women competing for the same advertising account."
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "The basketball teams vie; Dawn Staley; Teresa Edwards; Sheryl Swoopes; Rebecca Lobo."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Overton tries to win $10,000 for making a three-point basketball shot; Max steals Regine's dress."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Max's busy supermom comes for a visit; Khadijah finds Dean Cain's wallet."
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Maya challenges Joan to empower herself, accept her single life and go out to a restaurant alone."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Joan and Maya discover that Lynn is singing for money on the street and at a karaoke bar."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Jurors Nikki and Oglevee hotly debate the guilt or innocence of a defendant."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "Nikki tries to save the professor from the clutches of a fortune hunter."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Shawn's new boss takes credit for his ideas."
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Shawn and Marlon (Shawn and Marlon Wayans) suspect Pops (John Witherspoon) is having an affair."
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Jamie joins Braxton's investment group and invests the club's money in a doughnut lounge."
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "Jamie gets a nightclub gig which stirs a desire to pursue a singing career."
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Gina and Pam join a professional women's club, followed by Sheneneh."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "A rent strike leaves Martin with no heat, power or water during a snowstorm."
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Martin and Gina dine with their ex-sweethearts to make sure there aren't any unresolved feelings."
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "Martin organizes a fund-raiser to save a neighborhood theater."
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Regine dates a handsome weatherman, then inadvertently dates his father."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Max urges Kyle to date another woman; Regine gets tickets to a Brian McKnight concert."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Maya struggles with the responsibility of owning a home and taking care of Jabari."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Aaron thinks something will go wrong on her date with a teacher."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Kelly and Jason share an emotional moment; Tasha finally admits to setting Jason up with Camille."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Melanie tries getting in between Derwin and his son; Kelly stars in her own reality show."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Tamera agrees to a piano recital despite a distinct lack of talent."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Tamera takes Tia's place as a camp counselor, but grandfather Jimmy is not fooled."
+  },
+  {
+   "event_id": 5109,
+   "start_gps": 1476597618,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5110,
+   "start_gps": 1476599418,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5111,
+   "start_gps": 1476601218,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5112,
+   "start_gps": 1476603018,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5113,
+   "start_gps": 1476604818,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "At a wedding, Spencer realizes that he has romantic feelings for Mona."
+  },
+  {
+   "event_id": 5114,
+   "start_gps": 1476606618,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "Big Dee Dee takes Dee Dee to a fancy spa, and Phyllis decides to take Mona to the same spa."
+  },
+  {
+   "event_id": 5115,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Jurors Nikki and Oglevee hotly debate the guilt or innocence of a defendant."
+  },
+  {
+   "event_id": 5116,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "Nikki tries to save the professor from the clutches of a fortune hunter."
+  },
+  {
+   "event_id": 5117,
+   "start_gps": 1476612018,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Flex falls for a sexy columnist, then realizes she is stealing stories from him."
+  },
+  {
+   "event_id": 5118,
+   "start_gps": 1476613818,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Flex rushes the divorce and lets his ex get married in his house on Christmas."
+  },
+  {
+   "event_id": 5119,
+   "start_gps": 1476615618,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Tamera enlists Tia's aid to compete with Rhonda for class president in the school election."
+  },
+  {
+   "event_id": 5120,
+   "start_gps": 1476617418,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Tamera finds her own crowd when she doesn't fit in with Tia's new intellectual college friends."
+  },
+  {
+   "event_id": 5121,
+   "start_gps": 1476619218,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Nick is disappointed when Frank crashes his Father's Day trip."
+  },
+  {
+   "event_id": 5122,
+   "start_gps": 1476621018,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Lindsey learns about stealing at the workplace when she lands her first job and gives out free food."
+  },
+  {
+   "event_id": 5123,
+   "start_gps": 1476622818,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Jamie changes his eating habits for Fancy when she becomes intrigued by a '70s health guru."
+  },
+  {
+   "event_id": 5124,
+   "start_gps": 1476624618,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T13:30:00+00:00",
+   "description": "Jamie is excited when he lands a record deal, until he reads the fine print in his contract."
+  },
+  {
+   "event_id": 5125,
+   "start_gps": 1476626418,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Moesha fears Dorian's new friend is in trouble; guests Master P, Iyanla Vanzant."
+  },
+  {
+   "event_id": 5126,
+   "start_gps": 1476628218,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "Moesha's ex-boyfriend returns with an offer she may not refuse."
+  },
+  {
+   "event_id": 5127,
+   "start_gps": 1476630018,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Rochelle and Julius must tell Chris there will be no Christmas gifts."
+  },
+  {
+   "event_id": 5128,
+   "start_gps": 1476631818,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T15:30:00+00:00",
+   "description": "After deciding to buy a leather jacket, Chris goes to work with his dad to earn money."
+  },
+  {
+   "event_id": 5129,
+   "start_gps": 1476633618,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Melanie tries getting in between Derwin and his son; Kelly stars in her own reality show."
+  },
+  {
+   "event_id": 5130,
+   "start_gps": 1476635418,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T16:30:00+00:00",
+   "description": "Melanie comes clean to Derwin about his son; Jason goes on the attack against the Sabers."
+  },
+  {
+   "event_id": 5131,
+   "start_gps": 1476637218,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Marlon and Shawn auction off boxing memorabilia Pops gave them."
+  },
+  {
+   "event_id": 5132,
+   "start_gps": 1476639018,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "Marlon invents a really hot hair-care product; with Gary Coleman, Greg Morris."
+  },
+  {
+   "event_id": 5133,
+   "start_gps": 1476640818,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Hero Martin misinterprets a grateful African prince's generosity."
+  },
+  {
+   "event_id": 5134,
+   "start_gps": 1476642618,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T18:30:00+00:00",
+   "description": "A few surprises threaten to send the gang's ski vacation downhill."
+  },
+  {
+   "event_id": 5135,
+   "start_gps": 1476644418,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Synclaire auditions for an infomercial; Overton is unfaithful to Synclaire in his dreams."
+  },
+  {
+   "event_id": 5136,
+   "start_gps": 1476646218,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Overton invites the gang to spend the holidays at his family's cabin in Canada."
+  },
+  {
+   "event_id": 5137,
+   "start_gps": 1476648018,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Maya struggles with the responsibility of owning a home and taking care of Jabari."
+  },
+  {
+   "event_id": 5138,
+   "start_gps": 1476649818,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T20:30:00+00:00",
+   "description": "Aaron thinks something will go wrong on her date with a teacher."
+  },
+  {
+   "event_id": 5139,
+   "start_gps": 1476651618,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Nikki sneaks aboard the professor's yacht and discovers that his wife is plotting to murder him."
+  },
+  {
+   "event_id": 5140,
+   "start_gps": 1476653418,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "Andell convinces Nikki that the Professor will not marry her if she continues to let him freeload."
+  },
+  {
+   "event_id": 5141,
+   "start_gps": 1476655218,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "The neighborhood bully forces Marlon (Marlon Wayans) to marry his sister."
+  },
+  {
+   "event_id": 5142,
+   "start_gps": 1476657018,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": "Dee delivers a woman's baby, and her maternal instincts surface."
+  },
+  {
+   "event_id": 5143,
+   "start_gps": 1476658818,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Jamie hires two rappers (Method Man and Redman), and each focuses only on Nicole."
+  },
+  {
+   "event_id": 5144,
+   "start_gps": 1476660618,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": "Jamie risks his job to secretly make a demo at the recording studio."
+  },
+  {
+   "event_id": 5145,
+   "start_gps": 1476662418,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Martin's anxieties come to a head when he tries to decide who should be his best man."
+  },
+  {
+   "event_id": 5146,
+   "start_gps": 1476664218,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T00:30:00+00:00",
+   "description": "An ex-convict (Gary Coleman) Martin helped imprison comes looking for him."
+  },
+  {
+   "event_id": 5147,
+   "start_gps": 1476666018,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Gina's mother hires an expensive wedding consultant, leaving Martin feeling financially strapped."
+  },
+  {
+   "event_id": 5148,
+   "start_gps": 1476667818,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T01:30:00+00:00",
+   "description": "Martin and Gina invest in a restaurant co-owned by Stan; guest Hammer."
+  },
+  {
+   "event_id": 5149,
+   "start_gps": 1476669618,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Overton's favorite uncle urges him to dump Synclaire."
+  },
+  {
+   "event_id": 5150,
+   "start_gps": 1476671418,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T02:30:00+00:00",
+   "description": "Stressed-out Khadijah consults a psychologist; Overton fears clowns."
+  },
+  {
+   "event_id": 5151,
+   "start_gps": 1476673218,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Big Boi tells Lynn that he will not be able to use her music."
+  },
+  {
+   "event_id": 5152,
+   "start_gps": 1476675018,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T03:30:00+00:00",
+   "description": "Maya fears that Jabari is growing up too fast when she sees him interact with a young girl."
+  },
+  {
+   "event_id": 5153,
+   "start_gps": 1476676818,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Melanie tries getting in between Derwin and his son; Kelly stars in her own reality show."
+  },
+  {
+   "event_id": 5154,
+   "start_gps": 1476678618,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T04:30:00+00:00",
+   "description": "Melanie comes clean to Derwin about his son; Jason goes on the attack against the Sabers."
+  },
+  {
+   "event_id": 5155,
+   "start_gps": 1476680418,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Tamera enlists Tia's aid to compete with Rhonda for class president in the school election."
+  },
+  {
+   "event_id": 5156,
+   "start_gps": 1476682218,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T05:30:00+00:00",
+   "description": "Tamera finds her own crowd when she doesn't fit in with Tia's new intellectual college friends."
+  },
+  {
+   "event_id": 5157,
+   "start_gps": 1476684018,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5158,
+   "start_gps": 1476685818,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T06:30:00+00:00",
+   "description": "Judge Judy Sheindlin hears real cases."
+  },
+  {
+   "event_id": 5159,
+   "start_gps": 1476687618,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5160,
+   "start_gps": 1476689418,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "Three judges argue the merits of a case among themselves and render a verdict."
+  },
+  {
+   "event_id": 5161,
+   "start_gps": 1476691218,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Mona and Dee Dee turn into quarrelsome neighbors until their father has a brush with death."
+  },
+  {
+   "event_id": 5162,
+   "start_gps": 1476693018,
+   "length_s": 1800,
+   "title": "Half & Half",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T08:30:00+00:00",
+   "description": "A surprise announcement undoes Dee Dee's world; Mona attempts to understand her relationship."
+  },
+  {
+   "event_id": 5163,
+   "start_gps": 1476694818,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Nikki sneaks aboard the professor's yacht and discovers that his wife is plotting to murder him."
+  },
+  {
+   "event_id": 5164,
+   "start_gps": 1476696618,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "Andell convinces Nikki that the Professor will not marry her if she continues to let him freeload."
+  },
+  {
+   "event_id": 5165,
+   "start_gps": 1476698418,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "Flex's TV job is in jeopardy after he fouls up an interview with R&B artist Anthony Hamilton."
+  },
+  {
+   "event_id": 5166,
+   "start_gps": 1476700218,
+   "length_s": 1800,
+   "title": "One on One",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "Flex's father disapproves of his relationship with a Korean-American woman."
+  },
+  {
+   "event_id": 5167,
+   "start_gps": 1476702018,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Tamera gets to sing the blues when radio personality Casey Kasem returns to his high school."
+  },
+  {
+   "event_id": 5168,
+   "start_gps": 1476703818,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "It's every woman for herself as the sisters compete for Roger's favor."
+  },
+  {
+   "event_id": 5169,
+   "start_gps": 1476705618,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Nick becomes a more influential parent, so he pushes Kevin and Lindsey hard."
+  },
+  {
+   "event_id": 5170,
+   "start_gps": 1476707418,
+   "length_s": 1800,
+   "title": "Are We There Yet?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Suzanne secretly buys herself a purse after Nick refuses to make the purchase."
+  },
+  {
+   "event_id": 5171,
+   "start_gps": 1476709218,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "When Jamie hangs out at a bank to meet women, he ends up a robbery hostage."
+  },
+  {
+   "event_id": 5172,
+   "start_gps": 1476711018,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "Jamie finds himself in court over a dispute with a hotel guest."
+  },
+  {
+   "event_id": 5173,
+   "start_gps": 1476712818,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Moesha considers Q's offer to join him on tour after she catches Hakeem kissing Niecy."
+  },
+  {
+   "event_id": 5174,
+   "start_gps": 1476714618,
+   "length_s": 1800,
+   "title": "Moesha",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T14:30:00+00:00",
+   "description": "Moesha has lingering feelings after a summer romance with Q; Dorian woos the new intern."
+  },
+  {
+   "event_id": 5175,
+   "start_gps": 1476716418,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "Chris enlists Rochelle's help as he searches for a cool outfit for his school picture."
+  },
+  {
+   "event_id": 5176,
+   "start_gps": 1476718218,
+   "length_s": 1800,
+   "title": "Everybody Hates Chris",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T15:30:00+00:00",
+   "description": "Chris develops his first crush; Drew and Tanya get a lot of attention on Valentine's Day."
+  },
+  {
+   "event_id": 5177,
+   "start_gps": 1476720018,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Malik is in trouble; Melanie hosts a charity event for young girls."
+  },
+  {
+   "event_id": 5178,
+   "start_gps": 1476721818,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-22T16:30:00+00:00",
+   "description": "Malik looks to the Sabers' owner to get out of trouble; Derwin's friendship with Malik is torn."
+  },
+  {
+   "event_id": 5179,
+   "start_gps": 1476723618,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Lisa delivers an ultimatum: either Shawn goes or she does."
+  },
+  {
+   "event_id": 5180,
+   "start_gps": 1476725418,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T17:30:00+00:00",
+   "description": "Marlon uses Shawn's poetry to woo a woman, only to have his plan backfire."
+  },
+  {
+   "event_id": 5181,
+   "start_gps": 1476727218,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "Shanise forces Cole to get his own apartment and then breaks up with him."
+  },
+  {
+   "event_id": 5182,
+   "start_gps": 1476729018,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T18:30:00+00:00",
+   "description": "The spirits of Christmases past, present and yet-to-come visit Martin; with Jackie Chan."
+  },
+  {
+   "event_id": 5183,
+   "start_gps": 1476730818,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Regine's bragging causes Synclaire to think that Regine can help her land a role."
+  },
+  {
+   "event_id": 5184,
+   "start_gps": 1476732618,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T19:30:00+00:00",
+   "description": "Khadijah hires a new writer, a bike messenger who scoops an incredible story."
+  },
+  {
+   "event_id": 5185,
+   "start_gps": 1476734418,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "Big Boi tells Lynn that he will not be able to use her music."
+  },
+  {
+   "event_id": 5186,
+   "start_gps": 1476736218,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T20:30:00+00:00",
+   "description": "Maya fears that Jabari is growing up too fast when she sees him interact with a young girl."
+  },
+  {
+   "event_id": 5187,
+   "start_gps": 1476738018,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "Nikki buys a burial plot for herself and the Professor; Stevie and T hire a new singer for the band."
+  },
+  {
+   "event_id": 5188,
+   "start_gps": 1476739818,
+   "length_s": 1800,
+   "title": "The Parkers",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T21:30:00+00:00",
+   "description": "Kim returns from Harvard and schemes with Andell to force out the new nightmare roommate."
+  },
+  {
+   "event_id": 5189,
+   "start_gps": 1476741618,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Shawn and Marlon play matchmaker for Grandma, then fear for her life."
+  },
+  {
+   "event_id": 5190,
+   "start_gps": 1476743418,
+   "length_s": 1800,
+   "title": "The Wayans Bros.",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": "The boys reminisce when All-Star Kenny Lofton visits."
+  },
+  {
+   "event_id": 5191,
+   "start_gps": 1476745218,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Jamie and Nicole head to Las Vegas for a weekend singing gig; Fancy gives Jamie an ultimatum."
+  },
+  {
+   "event_id": 5192,
+   "start_gps": 1476747018,
+   "length_s": 1800,
+   "title": "The Jamie Foxx Show",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-22T23:30:00+00:00",
+   "description": "Jamie must choose between Fancy or a promising music career."
+  },
+  {
+   "event_id": 5193,
+   "start_gps": 1476748818,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Martin dislikes Gina's long-time girlfriend who makes a pass at Tommy."
+  },
+  {
+   "event_id": 5194,
+   "start_gps": 1476750618,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T00:30:00+00:00",
+   "description": "Martin and Gina's romantic getaway doesn't turn out as planned."
+  },
+  {
+   "event_id": 5195,
+   "start_gps": 1476752418,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "Martin and Gina's bachelor parties aren't what they expected."
+  },
+  {
+   "event_id": 5196,
+   "start_gps": 1476754218,
+   "length_s": 1800,
+   "title": "Martin",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "Martin and Gina change their wedding plans; guest David Alan Grier."
+  },
+  {
+   "event_id": 5197,
+   "start_gps": 1476756018,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "A jealous Max secretly sabotages Regine's latest relationship."
+  },
+  {
+   "event_id": 5198,
+   "start_gps": 1476757818,
+   "length_s": 1800,
+   "title": "Living Single",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T02:30:00+00:00",
+   "description": "Max is shocked to learn her former college roommate is marrying a woman."
+  },
+  {
+   "event_id": 5199,
+   "start_gps": 1476759618,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "Lynn has qualms about dating a guy she met at a club when she discovers he is a Baptist minister."
+  },
+  {
+   "event_id": 5200,
+   "start_gps": 1476761418,
+   "length_s": 1800,
+   "title": "Girlfriends",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-23T03:30:00+00:00",
+   "description": "Joan discovers that her new boyfriend does not believe in celebrating Valentine's Day."
+  },
+  {
+   "event_id": 5201,
+   "start_gps": 1476763218,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "Malik is in trouble; Melanie hosts a charity event for young girls."
+  },
+  {
+   "event_id": 5202,
+   "start_gps": 1476765018,
+   "length_s": 1800,
+   "title": "The Game",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-23T04:30:00+00:00",
+   "description": "Malik looks to the Sabers' owner to get out of trouble; Derwin's friendship with Malik is torn."
+  },
+  {
+   "event_id": 5203,
+   "start_gps": 1476766818,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Tamera gets to sing the blues when radio personality Casey Kasem returns to his high school."
+  },
+  {
+   "event_id": 5204,
+   "start_gps": 1476768618,
+   "length_s": 1800,
+   "title": "Sister, Sister",
+   "rating": "TV-G",
+   "source_id": 3,
+   "start_utc": "2026-10-23T05:30:00+00:00",
+   "description": "It's every woman for herself as the sisters compete for Roger's favor."
+  },
+  {
+   "event_id": 5015,
+   "start_gps": 1476511218,
+   "length_s": 14400,
+   "title": "The Assassination of Jesse James by the Coward Rob",
+   "rating": "TV-14;D;L;S;V;R",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Robert Ford tries to join the gang led by Jesse James. However, he hatches a plan to kill him."
+  },
+  {
+   "event_id": 5016,
+   "start_gps": 1476525618,
+   "length_s": 10800,
+   "title": "A Distant Trumpet",
+   "rating": "TV-PG;D;L;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "A West Pointer faces warring Indians and rival women at an 1880s Arizona fort."
+  },
+  {
+   "event_id": 5017,
+   "start_gps": 1476536418,
+   "length_s": 16200,
+   "title": "Wyatt Earp",
+   "rating": "TV-14;L;V;PG-13",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The portrait traces him from Southern boy to Western lawman defending boomtowns with his brothers."
+  },
+  {
+   "event_id": 5018,
+   "start_gps": 1476552618,
+   "length_s": 7200,
+   "title": "The Bounty Hunter",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "The Pinkerton detective agency sends a bounty hunter to find three train robbers and their loot."
+  },
+  {
+   "event_id": 5019,
+   "start_gps": 1476559818,
+   "length_s": 12600,
+   "title": "The Wild Bunch",
+   "rating": "TV-14;D;L;V;R",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "An outlaw and a gang plot to rob a U.S. Army train."
+  },
+  {
+   "event_id": 5020,
+   "start_gps": 1476572418,
+   "length_s": 9000,
+   "title": "Tom Horn",
+   "rating": "TV-14;D;L;V;R",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Turn-of-the-century Wyoming ranchers hire the legendary bounty hunter to stop cattle rustlers."
+  },
+  {
+   "event_id": 5021,
+   "start_gps": 1476581418,
+   "length_s": 9000,
+   "title": "Drum Beat",
+   "rating": "TV-14;L;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "President Grant gives a frontiersman the power to make peace with Indians roused by a renegade."
+  },
+  {
+   "event_id": 5022,
+   "start_gps": 1476590418,
+   "length_s": 7200,
+   "title": "The Outriders",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "An escaped Confederate and his two partners lead a wagon train of Union gold into an ambush."
+  },
+  {
+   "event_id": 5023,
+   "start_gps": 1476597618,
+   "length_s": 7200,
+   "title": "The Boy From Oklahoma",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "An Old West law student turns unarmed sheriff, woos a girl and lassos bad guys."
+  },
+  {
+   "event_id": 5024,
+   "start_gps": 1476604818,
+   "length_s": 7200,
+   "title": "Devil's Doorway",
+   "rating": "TV-PG;L;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "A Shoshone Civil War hero returns to Wyoming and fights a crooked lawyer over Indian land."
+  },
+  {
+   "event_id": 5025,
+   "start_gps": 1476612018,
+   "length_s": 10800,
+   "title": "The Good Old Boys",
+   "rating": "TV-PG;D;L;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Love for a schoolmarm and for a waning lifestyle divide a West Texas cowboy circa 1906."
+  },
+  {
+   "event_id": 5026,
+   "start_gps": 1476622818,
+   "length_s": 9000,
+   "title": "Drum Beat",
+   "rating": "TV-14;L;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "President Grant gives a frontiersman the power to make peace with Indians roused by a renegade."
+  },
+  {
+   "event_id": 5027,
+   "start_gps": 1476631818,
+   "length_s": 7200,
+   "title": "Riding Shotgun",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T15:30:00+00:00",
+   "description": "An outlaw and his gang attack a stagecoach, leaving its guard to take the blame."
+  },
+  {
+   "event_id": 5028,
+   "start_gps": 1476639018,
+   "length_s": 7200,
+   "title": "The Burning Hills",
+   "rating": "TV-PG;D;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "Young man hides out with part-Mexican girl."
+  },
+  {
+   "event_id": 5029,
+   "start_gps": 1476646218,
+   "length_s": 12600,
+   "title": "Cimarron",
+   "rating": "TV-14;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Husband-and-wife homesteaders spend 25 years in Oklahoma after the great land rush of 1889."
+  },
+  {
+   "event_id": 5030,
+   "start_gps": 1476658818,
+   "length_s": 10800,
+   "title": "Westward the Women",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "A trail boss brings a wagon train of mail-order brides from Chicago to California."
+  },
+  {
+   "event_id": 5031,
+   "start_gps": 1476669618,
+   "length_s": 7200,
+   "title": "Vengeance Valley",
+   "rating": "TV-PG;L;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "A rancher's son gets his foster brother in trouble with an unwed mother's brothers."
+  },
+  {
+   "event_id": 5032,
+   "start_gps": 1476676818,
+   "length_s": 7200,
+   "title": "The Big Trees",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "A lumber tycoon wants the California redwoods, but a religious homesteader changes his mind."
+  },
+  {
+   "event_id": 5033,
+   "start_gps": 1476684018,
+   "length_s": 7200,
+   "title": "Mail Order Bride",
+   "rating": "TV-PG;D;L;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "An old lawman finds a Kansas City bride for a young and restless Montana rancher."
+  },
+  {
+   "event_id": 5034,
+   "start_gps": 1476691218,
+   "length_s": 7200,
+   "title": "The Fastest Guitar Alive",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "A Rebel spy with a shotgun guitar robs a mint with his partner, then learns Lee has surrendered."
+  },
+  {
+   "event_id": 5035,
+   "start_gps": 1476698418,
+   "length_s": 12600,
+   "title": "One-Eyed Jacks",
+   "rating": "TV-14;L;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "A bandit finds his ex-partner wearing a badge."
+  },
+  {
+   "event_id": 5036,
+   "start_gps": 1476711018,
+   "length_s": 9000,
+   "title": "Firecreek",
+   "rating": "TV-14;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "Farmer/sheriff fights outlaw and gang passing through."
+  },
+  {
+   "event_id": 5037,
+   "start_gps": 1476720018,
+   "length_s": 9000,
+   "title": "Gunfight at Comanche Creek",
+   "rating": "TV-PG;S;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "A detective from a national agency baits a jailbreak/reward gang circa 1875."
+  },
+  {
+   "event_id": 5038,
+   "start_gps": 1476729018,
+   "length_s": 7200,
+   "title": "Carson City",
+   "rating": "TV-PG;V",
+   "source_id": 4,
+   "start_utc": "2026-10-22T18:30:00+00:00",
+   "description": "Sabotage delays a civil engineer's completion of a railroad for shipping gold safely in Nevada."
+  },
+  {
+   "event_id": 5039,
+   "start_gps": 1476736218,
+   "length_s": 9000,
+   "title": "The Old Way",
+   "rating": "TV-14;L;V;R",
+   "source_id": 4,
+   "start_utc": "2026-10-22T20:30:00+00:00",
+   "description": "Retired gunslinger Colton Briggs must take up arms once more after his wife is killed."
+  },
+  {
+   "event_id": 5040,
+   "start_gps": 1476745218,
+   "length_s": 9000,
+   "title": "Cahill, United States Marshal",
+   "rating": "TV-14;L;V;PG",
+   "source_id": 4,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "A U.S. marshal neglects his two sons and finds them mixed up with an outlaw in a bank robbery."
+  },
+  {
+   "event_id": 5041,
+   "start_gps": 1476754218,
+   "length_s": 9000,
+   "title": "The Good Guys and the Bad Guys",
+   "rating": "TV-PG;D;L;S;V;PG",
+   "source_id": 4,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "An outcast marshal and an outlaw unite against a cutthroat train robber in the changing West."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476763218,
+   "length_s": 9000,
+   "title": "Hell on the Border",
+   "rating": "TV-14;D;L;V;R",
+   "source_id": 4,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "A former slave becomes the first black deputy U.S. Marshal in the late 1800s."
+  },
+  {
+   "event_id": 5036,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "More fires cause another death, heating up the competition between Kellerman and Pembleton."
+  },
+  {
+   "event_id": 5037,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "What's your injury case worth?",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Legal professionals standing by 24/7. Call now for your free case evaluation!"
+  },
+  {
+   "event_id": 5038,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5039,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5040,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Inogen Portable Oxygen - No More Tanks!",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Regain independence and enjoy greater mobility."
+  },
+  {
+   "event_id": 5041,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5043,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Amazing Facts With Doug Batchelor",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Pastor Doug Batchelor explores the Bible by getting practical guidance into Christian living."
+  },
+  {
+   "event_id": 5044,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Injured in an Auto Accident? Call Big Auto",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "After an accident, discover your options, avoid mistakes, and learn how to connect with an attorney."
+  },
+  {
+   "event_id": 5045,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5046,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5047,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5048,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5049,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Ricky must testify against his father for the murder of his mother."
+  },
+  {
+   "event_id": 5050,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Mannion and the team must find a predator who robs and kills senior citizens."
+  },
+  {
+   "event_id": 5051,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Mannion and the team bring down a drug ring that poses as a messenger service."
+  },
+  {
+   "event_id": 5052,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Forensic investigators use high-tech science to follow evidence and solve crimes in the Big Apple."
+  },
+  {
+   "event_id": 5053,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "When a murder suspect is impaled during a police pursuit, the team thinks it has a simple case."
+  },
+  {
+   "event_id": 5054,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "The team pursues a killer who takes the eyes from victims; a new adversary challenges Horatio."
+  },
+  {
+   "event_id": 5055,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Horatio must protect a Mexican police chief from the assassin who killed her husband."
+  },
+  {
+   "event_id": 5056,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "A maid's bloodless body is found in a mansion, hanging from a chandelier, with bites on her neck."
+  },
+  {
+   "event_id": 5057,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "The team is baffled when a masked assassin kills a poker player during a high-stakes game."
+  },
+  {
+   "event_id": 5058,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "The team hunts for a serial arsonist who targets community meeting places in a small town."
+  },
+  {
+   "event_id": 5059,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "The team searches for a serial killer who is targeting coeds on spring break."
+  },
+  {
+   "event_id": 5060,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The team realizes that a child abduction may not be the work of the person charged."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Goren and Eames follow the trail of a highly organized and proficient thief."
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Radiation poisoning kills a tormented scientist, and the detectives investigate his collaborator."
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "The association president of a chic condominium tower is found murdered with an electrical saw."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Goren matches wits with a murderous chess grand master when a woman is found dead in a garbage bin."
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "A videographer helps new partners Lewis and Kellerman identify a killer."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476597618,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "The squad tries to stop a man killing motorists as he travels the highway from Florida to Baltimore."
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476601218,
+   "length_s": 7200,
+   "title": "Inspiration Ministries",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "Religious programming."
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476612018,
+   "length_s": 1800,
+   "title": "Amazing Facts With Doug Batchelor",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Pastor Doug Batchelor explores the Bible by getting practical guidance into Christian living."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476613818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476615618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476617418,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476619218,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476621018,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Mannion learns the shocking truth behind ominous telephone threats."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Mannion and the team must capture a serial killer who preys on prostitutes."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "McGregor is haunted by the violent past he thought he had left behind in Northern Ireland."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "The CSI team investigates when young brides fight over a dress and one of the shoppers ends up dead."
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "A beloved wrestling coach's body parts are found buried throughout the city."
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "After discovering another corpse without eyes, Horatio suspects his nemesis is to blame."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "The team investigates the murders of convicted killers after their release from prison."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Horatio is determined to find a family that completely disappeared."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "The team investigates the murder of the mother of a very young beauty-pageant contestant."
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476655218,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "A killer sends the team a videotape detailing one of his crimes."
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476658818,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "The team suspects that a series of vehicular homicides may be the work of a serial killer."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476662418,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "The team searches for the source of a toxic substance that is released into the public."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476666018,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "A toy collector's shooting leads police to a society obsessed with death."
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476669618,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "The murder of a corrections officer leads detectives to a ring of abusive prison guards."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476673218,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "The new owner of a playboy's address book is murdered; detectives suspect U.S. senatorial candidate."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476676818,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "When a promising chef disappears and a restaurant critic is murdered, Goran and Eames investigate."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476680418,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Bayliss and Pembleton investigate a murder done by skinheads."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476684018,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Pembleton and Bayliss handle an accidental-shooting case with a brain-dead boy."
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476687618,
+   "length_s": 1800,
+   "title": "Bathroom Makeover",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Transform your bath affordably in just one day!"
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476689418,
+   "length_s": 1800,
+   "title": "2026 Silver Eagle is here & it is a once-in-a-life",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "Join your hosts, Kevin Cash and Cory Cady, to talk about America's 250th anniversary."
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476691218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476693018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T08:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476694818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476696618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476698418,
+   "length_s": 1800,
+   "title": "Amazing Facts With Doug Batchelor",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "Pastor Doug Batchelor explores the Bible by getting practical guidance into Christian living."
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476700218,
+   "length_s": 1800,
+   "title": "Injured in an Auto Accident? Call Big Auto",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "After an accident, discover your options, avoid mistakes, and learn how to connect with an attorney."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476702018,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476703818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "",
+   "source_id": 5,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476705618,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476707418,
+   "length_s": 1800,
+   "title": "National News Desk",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Providing viewers with national, regional and local news, drawing on the extensive resources."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476709218,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Mannion and the team stop a vigilante who is systematically killing child molesters."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476712818,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Mannion and Ella fight a corrupt foster care system for the safety of a child."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476716418,
+   "length_s": 3600,
+   "title": "The District",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "Mannion crusades for the safety of the city's cabdrivers; Temple's life is in danger."
+  },
+  {
+   "event_id": 5109,
+   "start_gps": 1476720018,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "The CSIs come face-to-face with the realities of human trafficking."
+  },
+  {
+   "event_id": 5110,
+   "start_gps": 1476723618,
+   "length_s": 3600,
+   "title": "CSI: NY",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "The corpse of the mayor falls from the ceiling when balloons drop at a charity fundraiser."
+  },
+  {
+   "event_id": 5111,
+   "start_gps": 1476727218,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "A killer uses an unusual, high-tech weapon to murder a genius billionaire."
+  },
+  {
+   "event_id": 5112,
+   "start_gps": 1476730818,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "The team investigates the murder of a skydiver with more than 100 children, all of them suspects."
+  },
+  {
+   "event_id": 5113,
+   "start_gps": 1476734418,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "The team steps in when multiple women are targeted during a murder spree at a Miami sorority."
+  },
+  {
+   "event_id": 5114,
+   "start_gps": 1476738018,
+   "length_s": 3600,
+   "title": "CSI: Miami",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "A murder investigation reveals the victim planning on exposing something big."
+  },
+  {
+   "event_id": 5115,
+   "start_gps": 1476741618,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "The team profiles a killer targeting an emergency room doctor; Hotch goes missing."
+  },
+  {
+   "event_id": 5116,
+   "start_gps": 1476745218,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "The team searches for a disturbed man after he kills several people at a pharmacy."
+  },
+  {
+   "event_id": 5117,
+   "start_gps": 1476748818,
+   "length_s": 3600,
+   "title": "Criminal Minds",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "A case in Rossi's hometown involves both his personal and professional lives."
+  },
+  {
+   "event_id": 5118,
+   "start_gps": 1476752418,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "When a recipient of an organ transplant is murdered, the donor is a suspect."
+  },
+  {
+   "event_id": 5119,
+   "start_gps": 1476756018,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "A woman is found murdered in a fashion that matches a series of unsolved murders 16 years ago."
+  },
+  {
+   "event_id": 5120,
+   "start_gps": 1476759618,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "Detectives suspect defendants of having a couple killed before they could give testimony."
+  },
+  {
+   "event_id": 5121,
+   "start_gps": 1476763218,
+   "length_s": 3600,
+   "title": "Law & Order: Criminal Intent",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "The wife of a dentist dies from dioxin poisoning; the detectives investigate her husband."
+  },
+  {
+   "event_id": 5122,
+   "start_gps": 1476766818,
+   "length_s": 3600,
+   "title": "Homicide: Life on the Street",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Lewis and Kellerman's interrogation of a suspect uncovers a decade-old crime."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Sketches include Keegan gets distracted while on the phone with his girlfriend; a mean boss."
+  },
+  {
+   "event_id": 5043,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Sketches include aliens invade Earth; a family comes to terms with a relative's gay wedding."
+  },
+  {
+   "event_id": 5044,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5045,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5046,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5047,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5048,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5049,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5050,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5051,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Cindy Crawford talks about the latest breakthrough",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5052,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5053,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5054,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5055,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5056,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Dogs talk; musical montage features cats; person on trampoline falls 31 times in 34 seconds."
+  },
+  {
+   "event_id": 5057,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A limousine driver needs to go back to driving school; a girl tries to mail her brother."
+  },
+  {
+   "event_id": 5058,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Two ordinary people join teams of celebrities to play hilarious party games."
+  },
+  {
+   "event_id": 5059,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Two ordinary people join teams of celebs to play hilarious party games."
+  },
+  {
+   "event_id": 5060,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Eight strangers play a high-stakes game of trivia and then vote each other off one by one."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Eight strangers play a high-stakes game of trivia and then vote each other off one by one."
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "An astrologist, a car salesman and six other strangers play fast-paced trivia to win big money."
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Animals on the attack; weddings gone wrong; a girl's hair gets caught in an electric mixer."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "A boy hides toys in his pajamas; mishaps caught on camera; angry deer."
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "People get punked with practical jokes; gymnastic mishaps; tractor tribulation."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "A girl makes funny comments while disoriented from surgery; a baby cheers while sleeping."
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The Bella twins; guest comic Jeff Davis."
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Actress Candice Patton; comic Jeff Davis."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Actor Malcolm Goodwin; guest comic Gary Anthony Williams."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "Actor Wil Wheaton; guest comic Gary Anthony Williams."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Host Amy Schumer; Kacey Musgraves performs."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "From May 19, 2018: Host Tina Fey; Nicki Minaj performs."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Host Seth Meyers; Paul Simon performs."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Rob Lowe; the Pogues."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476597618,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Sketches include a parole officer uses a puppet to bond with a parolee; a man in a neck brace."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476599418,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Sketches include two old women battle with Satan; things go awry when a man goes mattress shopping."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476601218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476603018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476604818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476606618,
+   "length_s": 1800,
+   "title": "Emma: Natural Relief for Bloating, Constipation & ",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "Uncovering digestive issues' root cause and how Emma eases bloating, constipation and fatigue."
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476608418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476610218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476612018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476613818,
+   "length_s": 5400,
+   "title": "POOF! Bye Bye Under Eye Bags!",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Plexaderm helps reduce Under Eye Bags, Dark Circles, and Wrinkles in just 10 minutes!"
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476619218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476621018,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476622818,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Tom's Home Movies; Thought Bubble Theater; a human and a bear have a standoff."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476626418,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "People pull scary practical jokes; Halloween hijinks; an insect plagues a bride."
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476630018,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Two ordinary people join teams of celebs to play hilarious party games."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476633618,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Two ordinary people join teams of celebs to play hilarious party games."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476637218,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "A teacher, principal and six other strangers play fast-paced trivia to win big money."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476640818,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "A doctor, an exotic dancer and six other strangers battle it out to take home a major cash prize."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476644418,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Eight fierce drag queens try to outlast one another in a high-drama game of trivia."
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476648018,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Dogs and cats who do not get along; guys play a trick on their roommate; pranks that backfire."
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476651618,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Dropping hundreds of ping pong balls on a co-worker; a groom is met with a big surprise."
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476655218,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "Kids say funny things; a boy's reaction to getting socks for Christmas; \"What Would Geezer Do?\""
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476658818,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "A gassy baby; kids saying funny things; a child reacts to an amusement park ride."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476662418,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Actor Kearran Giovanni; guest comic Jonathan Mangum."
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476664218,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T00:30:00+00:00",
+   "description": "Guest comic Brad Sherwood."
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476666018,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Actor Ralph Macchio; guest comic Jonathan Mangum."
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476667818,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T01:30:00+00:00",
+   "description": "Actor Tony Cavalero; guest comic Greg Proops."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476669618,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Host Jonah Hill; Maggie Rogers performs."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476673218,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Host James McAvoy; Meek Mill performs."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476676818,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Actor John Mulaney; Thomas Rhett performs."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476680418,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Host: George Wendt. Music guest: Elvis Costello."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476684018,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Sketches include a baseball player deals with his addiction; a mobster's vengeance."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476685818,
+   "length_s": 1800,
+   "title": "Key & Peele",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T06:30:00+00:00",
+   "description": "Sketches include a football player with a concussion tries to inspire; a man accuses his wife."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476687618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5109,
+   "start_gps": 1476689418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5110,
+   "start_gps": 1476691218,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5111,
+   "start_gps": 1476693018,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T08:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5112,
+   "start_gps": 1476694818,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5113,
+   "start_gps": 1476696618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5114,
+   "start_gps": 1476698418,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5115,
+   "start_gps": 1476700218,
+   "length_s": 5400,
+   "title": "Bathroom Makeover",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "Transform your bath affordably in just one day!"
+  },
+  {
+   "event_id": 5116,
+   "start_gps": 1476705618,
+   "length_s": 1800,
+   "title": "Paid Programming",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Paid programming."
+  },
+  {
+   "event_id": 5117,
+   "start_gps": 1476707418,
+   "length_s": 1800,
+   "title": "Looking for a Medicare plan? Tune in now!",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Watch and learn about Humana Medicare Advantage plans."
+  },
+  {
+   "event_id": 5118,
+   "start_gps": 1476709218,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Clips from more than a decade of embarrassing moments."
+  },
+  {
+   "event_id": 5119,
+   "start_gps": 1476712818,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Naughtiest clips from over a decade; \"Greatest Groin Clips\"; ABC actors remember favorite clips."
+  },
+  {
+   "event_id": 5120,
+   "start_gps": 1476716418,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "Two ordinary people join teams of celebs to play hilarious party games."
+  },
+  {
+   "event_id": 5121,
+   "start_gps": 1476720018,
+   "length_s": 3600,
+   "title": "Hollywood Game Night",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Two ordinary people join teams of celebs to play hilarious party games."
+  },
+  {
+   "event_id": 5122,
+   "start_gps": 1476723618,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "A tattoo artist, a rabbi and six other strangers play in a high-stakes trivia competition."
+  },
+  {
+   "event_id": 5123,
+   "start_gps": 1476727218,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "A team of professionals, academics and a fairy mystic play in a high-stakes trivia competition."
+  },
+  {
+   "event_id": 5124,
+   "start_gps": 1476730818,
+   "length_s": 3600,
+   "title": "Weakest Link",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Eight WWE Superstars look to outlast each other to win a huge prize for their favorite charity."
+  },
+  {
+   "event_id": 5125,
+   "start_gps": 1476734418,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "A 4-year-old tries kumquats for the first time; a man slaps his sleeping friend with a slipper."
+  },
+  {
+   "event_id": 5126,
+   "start_gps": 1476738018,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "The beginning of a countdown that will determine this season's winner of the $100,000 grand prize."
+  },
+  {
+   "event_id": 5127,
+   "start_gps": 1476741618,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "The winner takes home the grand prize, receiving membership in Disney Vacation Club."
+  },
+  {
+   "event_id": 5128,
+   "start_gps": 1476745218,
+   "length_s": 3600,
+   "title": "America's Funniest Home Videos",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "A boy flushes the toilet too soon during a goldfish funeral; animals make strange sounds."
+  },
+  {
+   "event_id": 5129,
+   "start_gps": 1476748818,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Personal trainer Jillian Michaels; guest comic Heather Anne Campbell."
+  },
+  {
+   "event_id": 5130,
+   "start_gps": 1476750618,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T00:30:00+00:00",
+   "description": "Actor Charles Esten; guest comic Jeff Davis."
+  },
+  {
+   "event_id": 5131,
+   "start_gps": 1476752418,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "Musician Wanya Morris; guest comic Jonathan Mangum."
+  },
+  {
+   "event_id": 5132,
+   "start_gps": 1476754218,
+   "length_s": 1800,
+   "title": "Whose Line Is It Anyway?",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "Guest Danielle Panabaker; guest comic Gary Anthony Williams."
+  },
+  {
+   "event_id": 5133,
+   "start_gps": 1476756018,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "Host Idris Elba; Khalid performs."
+  },
+  {
+   "event_id": 5134,
+   "start_gps": 1476759618,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "From April 13, 2019: Host Emma Stone; BTS performs."
+  },
+  {
+   "event_id": 5135,
+   "start_gps": 1476763218,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-14",
+   "source_id": 6,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "From May 4, 2019: Host Adam Sandler; Shawn Mendes performs."
+  },
+  {
+   "event_id": 5136,
+   "start_gps": 1476766818,
+   "length_s": 3600,
+   "title": "Saturday Night Live",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Host Michael Jordan; Public Enemy; Spike Lee, George Wendt, Rev. Jesse Jackson."
+  },
+  {
+   "event_id": 5040,
+   "start_gps": 1476509178,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T05:26:00+00:00",
+   "description": "Insecure Star likes Deandre, but he prefers her stripper cousin."
+  },
+  {
+   "event_id": 5041,
+   "start_gps": 1476511878,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:11:00+00:00",
+   "description": "Brad decides to take matters into his own hands when his wife refuses to quit stripping."
+  },
+  {
+   "event_id": 5042,
+   "start_gps": 1476514578,
+   "length_s": 2580,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:56:00+00:00",
+   "description": "Trina has a surprise for Larry; Edwin wants to end things with Sadee; Shamm and Nita."
+  },
+  {
+   "event_id": 5043,
+   "start_gps": 1476517158,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:39:00+00:00",
+   "description": "Meme wants an exclusive relationship with Te; Jenna can't decide between Savannah or Deina."
+  },
+  {
+   "event_id": 5044,
+   "start_gps": 1476519798,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:23:00+00:00",
+   "description": "Taylor wants her one-night stand with Cowboy to turn into a long-term relationship."
+  },
+  {
+   "event_id": 5045,
+   "start_gps": 1476522498,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:08:00+00:00",
+   "description": "Brandy admits to sleeping with her pregnant friend's boyfriend."
+  },
+  {
+   "event_id": 5046,
+   "start_gps": 1476525198,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:53:00+00:00",
+   "description": "Melissa's brother catches her kissing a man and tells the man's girlfriend."
+  },
+  {
+   "event_id": 5047,
+   "start_gps": 1476527898,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:38:00+00:00",
+   "description": "Hector wants to propose to his girlfriend, but must first come clean about something he did."
+  },
+  {
+   "event_id": 5048,
+   "start_gps": 1476530598,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:23:00+00:00",
+   "description": "Tyla learns she has a lot to be concerned about in her relationship with Tiger."
+  },
+  {
+   "event_id": 5049,
+   "start_gps": 1476533238,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:07:00+00:00",
+   "description": "Ashley takes vengeance on the \"friend\" who wrecked her last relationship."
+  },
+  {
+   "event_id": 5050,
+   "start_gps": 1476535938,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:52:00+00:00",
+   "description": "Aubrey wants out of his relationship with his angry, bossy girlfriend."
+  },
+  {
+   "event_id": 5051,
+   "start_gps": 1476538638,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:37:00+00:00",
+   "description": "Amber confronts Shavon; Will wants to be with his cousin Tereca."
+  },
+  {
+   "event_id": 5052,
+   "start_gps": 1476541278,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:21:00+00:00",
+   "description": "Sony wants to know if Mobetta has been unfaithful."
+  },
+  {
+   "event_id": 5053,
+   "start_gps": 1476543978,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:06:00+00:00",
+   "description": "Competitive twins fight over prom date; man admits to cheating and wants to make things right."
+  },
+  {
+   "event_id": 5054,
+   "start_gps": 1476546678,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:51:00+00:00",
+   "description": "Jessica wants to break up with her rapper boyfriend, but he proposes marriage."
+  },
+  {
+   "event_id": 5055,
+   "start_gps": 1476549378,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:36:00+00:00",
+   "description": "Sammie says he offered a woman sex instead of money when he lost a bet to her."
+  },
+  {
+   "event_id": 5056,
+   "start_gps": 1476552078,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:21:00+00:00",
+   "description": "Jay admits to cheating on his girlfriend with a woman who wants to take it to the next level."
+  },
+  {
+   "event_id": 5057,
+   "start_gps": 1476554718,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:05:00+00:00",
+   "description": "Kelsey is ready to take her relationship off life support and get together with someone else."
+  },
+  {
+   "event_id": 5058,
+   "start_gps": 1476557418,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:50:00+00:00",
+   "description": "A guest reveals a secret lover to his child's mother; a man lets a stripper practice moves on him."
+  },
+  {
+   "event_id": 5059,
+   "start_gps": 1476560058,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:34:00+00:00",
+   "description": "Strippers tell their stories including one who reveals her career to her unsuspecting husband."
+  },
+  {
+   "event_id": 5060,
+   "start_gps": 1476562818,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:20:00+00:00",
+   "description": "Niece; wife and cousin; Ku Klux Klan; wife's new lover."
+  },
+  {
+   "event_id": 5061,
+   "start_gps": 1476565638,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:07:00+00:00",
+   "description": "Lovers square off as one man attempts to win his wife back after she falls for another."
+  },
+  {
+   "event_id": 5062,
+   "start_gps": 1476568398,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:53:00+00:00",
+   "description": "A guest who confronts her boyfriend about sleeping with other women gets a surprise."
+  },
+  {
+   "event_id": 5063,
+   "start_gps": 1476571038,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:37:00+00:00",
+   "description": "Prostitute; sister's boyfriend; former girlfriend; female friend."
+  },
+  {
+   "event_id": 5064,
+   "start_gps": 1476573798,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-20T23:23:00+00:00",
+   "description": "Woman confronts mother; prostitute; wives have affair; girlfriend."
+  },
+  {
+   "event_id": 5065,
+   "start_gps": 1476576618,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:10:00+00:00",
+   "description": "Sexual fantasies fulfilled."
+  },
+  {
+   "event_id": 5066,
+   "start_gps": 1476579378,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:56:00+00:00",
+   "description": "Cheating couple; fiance's secret; husband wants to be woman; stealer."
+  },
+  {
+   "event_id": 5067,
+   "start_gps": 1476582198,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:43:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5068,
+   "start_gps": 1476584958,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T02:29:00+00:00",
+   "description": "Cheaters' clash."
+  },
+  {
+   "event_id": 5069,
+   "start_gps": 1476587718,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T03:15:00+00:00",
+   "description": "A pregnant guest wants to get revenge cousin TiTi, who hooked up with her man."
+  },
+  {
+   "event_id": 5070,
+   "start_gps": 1476590418,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Kenyatta confronts a suspected home-wrecker; Ashley wants her baby daddy's wife to go away."
+  },
+  {
+   "event_id": 5071,
+   "start_gps": 1476593058,
+   "length_s": 2520,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T04:44:00+00:00",
+   "description": "Crystal has been sending explicit photos; dream wedding; Mario wants to confess."
+  },
+  {
+   "event_id": 5072,
+   "start_gps": 1476595578,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T05:26:00+00:00",
+   "description": "Insecure Star likes Deandre, but he prefers her stripper cousin."
+  },
+  {
+   "event_id": 5073,
+   "start_gps": 1476598278,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T06:11:00+00:00",
+   "description": "Brad decides to take matters into his own hands when his wife refuses to quit stripping."
+  },
+  {
+   "event_id": 5074,
+   "start_gps": 1476600978,
+   "length_s": 2580,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T06:56:00+00:00",
+   "description": "Trina has a surprise for Larry; Edwin wants to end things with Sadee; Shamm and Nita."
+  },
+  {
+   "event_id": 5075,
+   "start_gps": 1476603558,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T07:39:00+00:00",
+   "description": "Meme wants an exclusive relationship with Te; Jenna can't decide between Savannah or Deina."
+  },
+  {
+   "event_id": 5076,
+   "start_gps": 1476606198,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T08:23:00+00:00",
+   "description": "Taylor wants her one-night stand with Cowboy to turn into a long-term relationship."
+  },
+  {
+   "event_id": 5077,
+   "start_gps": 1476608898,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T09:08:00+00:00",
+   "description": "Brandy admits to sleeping with her pregnant friend's boyfriend."
+  },
+  {
+   "event_id": 5078,
+   "start_gps": 1476611598,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T09:53:00+00:00",
+   "description": "Melissa's brother catches her kissing a man and tells the man's girlfriend."
+  },
+  {
+   "event_id": 5079,
+   "start_gps": 1476614298,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T10:38:00+00:00",
+   "description": "Hector wants to propose to his girlfriend, but must first come clean about something he did."
+  },
+  {
+   "event_id": 5080,
+   "start_gps": 1476616998,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T11:23:00+00:00",
+   "description": "Tyla learns she has a lot to be concerned about in her relationship with Tiger."
+  },
+  {
+   "event_id": 5081,
+   "start_gps": 1476619638,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T12:07:00+00:00",
+   "description": "Ashley takes vengeance on the \"friend\" who wrecked her last relationship."
+  },
+  {
+   "event_id": 5082,
+   "start_gps": 1476622338,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T12:52:00+00:00",
+   "description": "Aubrey wants out of his relationship with his angry, bossy girlfriend."
+  },
+  {
+   "event_id": 5083,
+   "start_gps": 1476625038,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T13:37:00+00:00",
+   "description": "Amber confronts Shavon; Will wants to be with his cousin Tereca."
+  },
+  {
+   "event_id": 5084,
+   "start_gps": 1476627678,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T14:21:00+00:00",
+   "description": "Sony wants to know if Mobetta has been unfaithful."
+  },
+  {
+   "event_id": 5085,
+   "start_gps": 1476630378,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T15:06:00+00:00",
+   "description": "Competitive twins fight over prom date; man admits to cheating and wants to make things right."
+  },
+  {
+   "event_id": 5086,
+   "start_gps": 1476633078,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T15:51:00+00:00",
+   "description": "Jessica wants to break up with her rapper boyfriend, but he proposes marriage."
+  },
+  {
+   "event_id": 5087,
+   "start_gps": 1476635778,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T16:36:00+00:00",
+   "description": "Sammie says he offered a woman sex instead of money when he lost a bet to her."
+  },
+  {
+   "event_id": 5088,
+   "start_gps": 1476638478,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T17:21:00+00:00",
+   "description": "Jay admits to cheating on his girlfriend with a woman who wants to take it to the next level."
+  },
+  {
+   "event_id": 5089,
+   "start_gps": 1476641118,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T18:05:00+00:00",
+   "description": "Kelsey is ready to take her relationship off life support and get together with someone else."
+  },
+  {
+   "event_id": 5090,
+   "start_gps": 1476643818,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T18:50:00+00:00",
+   "description": "A guest reveals a secret lover to his child's mother; a man lets a stripper practice moves on him."
+  },
+  {
+   "event_id": 5091,
+   "start_gps": 1476646458,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T19:34:00+00:00",
+   "description": "Strippers tell their stories including one who reveals her career to her unsuspecting husband."
+  },
+  {
+   "event_id": 5092,
+   "start_gps": 1476649218,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T20:20:00+00:00",
+   "description": "Niece; wife and cousin; Ku Klux Klan; wife's new lover."
+  },
+  {
+   "event_id": 5093,
+   "start_gps": 1476652038,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T21:07:00+00:00",
+   "description": "Lovers square off as one man attempts to win his wife back after she falls for another."
+  },
+  {
+   "event_id": 5094,
+   "start_gps": 1476654798,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T21:53:00+00:00",
+   "description": "A guest who confronts her boyfriend about sleeping with other women gets a surprise."
+  },
+  {
+   "event_id": 5095,
+   "start_gps": 1476657438,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T22:37:00+00:00",
+   "description": "Prostitute; sister's boyfriend; former girlfriend; female friend."
+  },
+  {
+   "event_id": 5096,
+   "start_gps": 1476660198,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-21T23:23:00+00:00",
+   "description": "Woman confronts mother; prostitute; wives have affair; girlfriend."
+  },
+  {
+   "event_id": 5097,
+   "start_gps": 1476663018,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T00:10:00+00:00",
+   "description": "Sexual fantasies fulfilled."
+  },
+  {
+   "event_id": 5098,
+   "start_gps": 1476665778,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T00:56:00+00:00",
+   "description": "Cheating couple; fiance's secret; husband wants to be woman; stealer."
+  },
+  {
+   "event_id": 5099,
+   "start_gps": 1476668598,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T01:43:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5100,
+   "start_gps": 1476671358,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T02:29:00+00:00",
+   "description": "Cheaters' clash."
+  },
+  {
+   "event_id": 5101,
+   "start_gps": 1476674118,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T03:15:00+00:00",
+   "description": "A pregnant guest wants to get revenge cousin TiTi, who hooked up with her man."
+  },
+  {
+   "event_id": 5102,
+   "start_gps": 1476676818,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Kenyatta confronts a suspected home-wrecker; Ashley wants her baby daddy's wife to go away."
+  },
+  {
+   "event_id": 5103,
+   "start_gps": 1476679458,
+   "length_s": 2520,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T04:44:00+00:00",
+   "description": "Crystal has been sending explicit photos; dream wedding; Mario wants to confess."
+  },
+  {
+   "event_id": 5104,
+   "start_gps": 1476681978,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T05:26:00+00:00",
+   "description": "Insecure Star likes Deandre, but he prefers her stripper cousin."
+  },
+  {
+   "event_id": 5105,
+   "start_gps": 1476684678,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T06:11:00+00:00",
+   "description": "Brad decides to take matters into his own hands when his wife refuses to quit stripping."
+  },
+  {
+   "event_id": 5106,
+   "start_gps": 1476687378,
+   "length_s": 2580,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T06:56:00+00:00",
+   "description": "Trina has a surprise for Larry; Edwin wants to end things with Sadee; Shamm and Nita."
+  },
+  {
+   "event_id": 5107,
+   "start_gps": 1476689958,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T07:39:00+00:00",
+   "description": "Meme wants an exclusive relationship with Te; Jenna can't decide between Savannah or Deina."
+  },
+  {
+   "event_id": 5108,
+   "start_gps": 1476692598,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T08:23:00+00:00",
+   "description": "Taylor wants her one-night stand with Cowboy to turn into a long-term relationship."
+  },
+  {
+   "event_id": 5109,
+   "start_gps": 1476695298,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T09:08:00+00:00",
+   "description": "Brandy admits to sleeping with her pregnant friend's boyfriend."
+  },
+  {
+   "event_id": 5110,
+   "start_gps": 1476697998,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T09:53:00+00:00",
+   "description": "Melissa's brother catches her kissing a man and tells the man's girlfriend."
+  },
+  {
+   "event_id": 5111,
+   "start_gps": 1476700698,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T10:38:00+00:00",
+   "description": "Hector wants to propose to his girlfriend, but must first come clean about something he did."
+  },
+  {
+   "event_id": 5112,
+   "start_gps": 1476703398,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T11:23:00+00:00",
+   "description": "Tyla learns she has a lot to be concerned about in her relationship with Tiger."
+  },
+  {
+   "event_id": 5113,
+   "start_gps": 1476706038,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T12:07:00+00:00",
+   "description": "Ashley takes vengeance on the \"friend\" who wrecked her last relationship."
+  },
+  {
+   "event_id": 5114,
+   "start_gps": 1476708738,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T12:52:00+00:00",
+   "description": "Aubrey wants out of his relationship with his angry, bossy girlfriend."
+  },
+  {
+   "event_id": 5115,
+   "start_gps": 1476711438,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T13:37:00+00:00",
+   "description": "Amber confronts Shavon; Will wants to be with his cousin Tereca."
+  },
+  {
+   "event_id": 5116,
+   "start_gps": 1476714078,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T14:21:00+00:00",
+   "description": "Sony wants to know if Mobetta has been unfaithful."
+  },
+  {
+   "event_id": 5117,
+   "start_gps": 1476716778,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T15:06:00+00:00",
+   "description": "Competitive twins fight over prom date; man admits to cheating and wants to make things right."
+  },
+  {
+   "event_id": 5118,
+   "start_gps": 1476719478,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T15:51:00+00:00",
+   "description": "Jessica wants to break up with her rapper boyfriend, but he proposes marriage."
+  },
+  {
+   "event_id": 5119,
+   "start_gps": 1476722178,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T16:36:00+00:00",
+   "description": "Sammie says he offered a woman sex instead of money when he lost a bet to her."
+  },
+  {
+   "event_id": 5120,
+   "start_gps": 1476724878,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T17:21:00+00:00",
+   "description": "Jay admits to cheating on his girlfriend with a woman who wants to take it to the next level."
+  },
+  {
+   "event_id": 5121,
+   "start_gps": 1476727518,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T18:05:00+00:00",
+   "description": "Kelsey is ready to take her relationship off life support and get together with someone else."
+  },
+  {
+   "event_id": 5122,
+   "start_gps": 1476730218,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T18:50:00+00:00",
+   "description": "A guest reveals a secret lover to his child's mother; a man lets a stripper practice moves on him."
+  },
+  {
+   "event_id": 5123,
+   "start_gps": 1476732858,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T19:34:00+00:00",
+   "description": "Strippers tell their stories including one who reveals her career to her unsuspecting husband."
+  },
+  {
+   "event_id": 5124,
+   "start_gps": 1476735618,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T20:20:00+00:00",
+   "description": "Niece; wife and cousin; Ku Klux Klan; wife's new lover."
+  },
+  {
+   "event_id": 5125,
+   "start_gps": 1476738438,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T21:07:00+00:00",
+   "description": "Lovers square off as one man attempts to win his wife back after she falls for another."
+  },
+  {
+   "event_id": 5126,
+   "start_gps": 1476741198,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T21:53:00+00:00",
+   "description": "A guest who confronts her boyfriend about sleeping with other women gets a surprise."
+  },
+  {
+   "event_id": 5127,
+   "start_gps": 1476743838,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T22:37:00+00:00",
+   "description": "Prostitute; sister's boyfriend; former girlfriend; female friend."
+  },
+  {
+   "event_id": 5128,
+   "start_gps": 1476746598,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-22T23:23:00+00:00",
+   "description": "Woman confronts mother; prostitute; wives have affair; girlfriend."
+  },
+  {
+   "event_id": 5129,
+   "start_gps": 1476749418,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T00:10:00+00:00",
+   "description": "Sexual fantasies fulfilled."
+  },
+  {
+   "event_id": 5130,
+   "start_gps": 1476752178,
+   "length_s": 2820,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T00:56:00+00:00",
+   "description": "Cheating couple; fiance's secret; husband wants to be woman; stealer."
+  },
+  {
+   "event_id": 5131,
+   "start_gps": 1476754998,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T01:43:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 5132,
+   "start_gps": 1476757758,
+   "length_s": 2760,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T02:29:00+00:00",
+   "description": "Cheaters' clash."
+  },
+  {
+   "event_id": 5133,
+   "start_gps": 1476760518,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T03:15:00+00:00",
+   "description": "A pregnant guest wants to get revenge cousin TiTi, who hooked up with her man."
+  },
+  {
+   "event_id": 5134,
+   "start_gps": 1476763218,
+   "length_s": 2640,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "Kenyatta confronts a suspected home-wrecker; Ashley wants her baby daddy's wife to go away."
+  },
+  {
+   "event_id": 5135,
+   "start_gps": 1476765858,
+   "length_s": 2520,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T04:44:00+00:00",
+   "description": "Crystal has been sending explicit photos; dream wedding; Mario wants to confess."
+  },
+  {
+   "event_id": 5136,
+   "start_gps": 1476768378,
+   "length_s": 2700,
+   "title": "Jerry Springer",
+   "rating": "",
+   "source_id": 7,
+   "start_utc": "2026-10-23T05:26:00+00:00",
+   "description": "Insecure Star likes Deandre, but he prefers her stripper cousin."
+  }
+ ],
+ "rf": 32,
+ "mhz": 581,
+ "signal": {
+  "SignalStrengthPercent": 100,
+  "SignalQualityPercent": 90
+ },
+ "pmt_programs": [
+  {
+   "program": 1,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 2,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

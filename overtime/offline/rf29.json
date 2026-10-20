@@ -1,0 +1,1845 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:43:21+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430,
+   7431
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686,
+   7687
+  ],
+  "mgt_entries": 17
+ },
+ "channels": [
+  {
+   "name": "FOX 9",
+   "major": 9,
+   "minor": 1,
+   "number": "9.1",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 4,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "FOX9 +",
+   "major": 9,
+   "minor": 2,
+   "number": "9.2",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 3,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Movies!",
+   "major": 9,
+   "minor": 3,
+   "number": "9.3",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 5,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "FoxWX",
+   "major": 9,
+   "minor": 7,
+   "number": "9.7",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 6,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Comet",
+   "major": 23,
+   "minor": 2,
+   "number": "23.2",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 7,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Antenna",
+   "major": 23,
+   "minor": 6,
+   "number": "23.6",
+   "modulation": 4,
+   "tsid": 1593,
+   "program": 8,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 1,
+   "start_gps": 1476509718,
+   "length_s": 3600,
+   "title": "TMZ Live",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:35:00+00:00",
+   "description": "The TMZ crew provides a detailed, behind-the-scenes look at the inside of the newsroom, as they showcase the ins and outs of how a news segment is made, answer "
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476513318,
+   "length_s": 1800,
+   "title": "The Simpsons",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:35:00+00:00",
+   "description": "An unconventional family attempts to live their day-to-day life in the small town of Springfield and deal with various shenanigans around their city."
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476515118,
+   "length_s": 3300,
+   "title": "FOX 9 at 9",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:05:00+00:00",
+   "description": "The latest in local news and weather affecting the Twin Cities and the surrounding region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "TMZ",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "The companion to popular website TMZ.com presents the latest news and gossip about celebrities' lives, including births, deaths, couplings, breakups, arrests, h"
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476520218,
+   "length_s": 3600,
+   "title": "Live NOW",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 6,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "FOX 9 Morning @ 4:30AM",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "A first look at the latest in overnight local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "FOX 9 Morning @ 5AM",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "A look at the latest in overnight local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "FOX 9 Morning @ 6AM",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "A look at the latest in overnight local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "FOX 9 Morning @ 7AM",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "A look at the latest in early morning local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "FOX 9 Morning @ 8AM",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "A look at the latest in early morning local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "FOX 9 Good Day",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 12,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "The Jason Show",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Host Jason Matheson reports from the studio on celebrity gossip and lifestyle topics such as food, fitness and fashion, and moves into the field to try differen"
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "FOX 9 All Day @ 11am",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "The news events of the day get presented by the FOX9 Morning News Team featuring local, state and national stories as well as late-breaking news stories."
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "FOX 9 All Day @ 12pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "FOX 9 All Day brings you in-depth conversations on the day's biggest stories and beyond-the-metro news headlines from Minnesota, Wisconsin & the Upper Midwest."
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "FOX 9 All Day @ 1pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "FOX 9 All Day @ 2pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "FOX 9 All Day @ 3pm",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 18,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "A woman admits she accidentally jackknifed her lover's truck; a $1,500 mobile home purchase divides two former friends."
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "A person car window was shattered; a disc jockey is accused of arriving late to a paid job while intoxicated and throwing kitty-litter at the party guests."
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "FOX 9 at 5",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A first look at the latest in local news and weather affecting the Twin Cities region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "FOX 9 at 5:30",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "The latest in local news and weather affecting the Twin Cities and the surrounding region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "FOX 9 at 6",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "The latest in local news and weather affecting the Twin Cities and the surrounding region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "FOX 9 at 6:30",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "The news events of the day get presented by the FOX9 Evening News Team featuring local, state and national stories as well as late-breaking news stories."
+  },
+  {
+   "event_id": 24,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Best Medicine",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "A brilliant surgeon leaves Boston to become a small-town doctor where he spent childhood summers. Despite his medical skills, his rude manner alienates locals a"
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Doc",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "After losing her memory in a car accident, a doctor is forced back to being an intern and struggles to rebuild her life."
+  },
+  {
+   "event_id": 26,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "FOX 9 at 9",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "The latest in local news and weather affecting the Twin Cities and the surrounding region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 27,
+   "start_gps": 1476586818,
+   "length_s": 2100,
+   "title": "FOX 9: 10 @ 10",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "The latest in local news and weather affecting the Twin Cities and the surrounding region, including in-depth investigative and personal interest stories."
+  },
+  {
+   "event_id": 28,
+   "start_gps": 1476588918,
+   "length_s": 1800,
+   "title": "The P.J. Fleck Show",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:35:00+00:00",
+   "description": "Minnesota head coach P.J. Fleck breaks down the latest news surrounding the Golden Gophers football team, going over highlights from their recent game."
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476590718,
+   "length_s": 3600,
+   "title": "The Jennifer Hudson Show",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:05:00+00:00",
+   "description": "Wilmer Valderrama talks about the new season of \"NCIS. Actor Dolph Lundgren discusses his book, \"Fights Worth Fighting: Finding Strength in Struggle,\" and more."
+  },
+  {
+   "event_id": 30,
+   "start_gps": 1476594318,
+   "length_s": 1800,
+   "title": "Battleground Midterms",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:05:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476596118,
+   "length_s": 3600,
+   "title": "TMZ Live",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:35:00+00:00",
+   "description": "The TMZ crew provides a detailed, behind-the-scenes look at the inside of the newsroom, as they showcase the ins and outs of how a news segment is made, answer "
+  },
+  {
+   "event_id": 32,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Chicago Fire",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Potential difficulties may ruin Boden's chances for a promotion; Dawson and Casey are unable to see eye-to-eye about a big decision."
+  },
+  {
+   "event_id": 33,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 34,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "The Jason Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Jason Matheson covers lifestyle topics and celebrity gossip and moves into the field to try different jobs for a day, such as being a Civil War re-enactor."
+  },
+  {
+   "event_id": 36,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "TMZ Live",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "The TMZ crew provides a detailed, behind-the-scenes look at the inside of the newsroom, as they showcase the ins and outs of how a news segment is made, answer "
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 38,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 39,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 40,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 41,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 42,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Gospel Truth with Andrew Wommack",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Andrew Wommack shares religious messages about God's Word and discusses how he believes in God's power and his profound teachings."
+  },
+  {
+   "event_id": 43,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "Divorce Court",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Craig threatens to divorce his wife Melanie over her severe drinking and public incidents unless she stops denying her addiction and agrees to get treatment."
+  },
+  {
+   "event_id": 44,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "Divorce Court",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Autumn says she caught Adam talking to multiple women on dating apps, and he stole hundreds of dollars from her to fuel his gambling and drug addictions."
+  },
+  {
+   "event_id": 45,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Three judges preside over different kinds of court cases, asking the lawyers questions that lead to debates, arguing their points against one another and then c"
+  },
+  {
+   "event_id": 46,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Three judges preside over different kinds of court cases, asking the lawyers questions that lead to debates, arguing their points against one another and then c"
+  },
+  {
+   "event_id": 47,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Three judges preside over different kinds of court cases, asking the lawyers questions that lead to debates, arguing their points against one another and then c"
+  },
+  {
+   "event_id": 48,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Hot Bench",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Three judges preside over different kinds of court cases, asking the lawyers questions that lead to debates, arguing their points against one another and then c"
+  },
+  {
+   "event_id": 49,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Equal Justice with Judge Eboni K. Williams",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Attorney and legal expert Eboni K. Williams presides over her own courtroom as litigants bring their complex conflicts to her attention in the hope that she wil"
+  },
+  {
+   "event_id": 50,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Equal Justice with Judge Eboni K. Williams",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Attorney and legal expert Eboni K. Williams presides over her own courtroom as litigants bring their complex conflicts to her attention in the hope that she wil"
+  },
+  {
+   "event_id": 51,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Divorce Court",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Craig threatens to divorce his wife Melanie over her severe drinking and public incidents unless she stops denying her addiction and agrees to get treatment."
+  },
+  {
+   "event_id": 52,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Front Office Sports Tonight",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 53,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "The Jennifer Hudson Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Wilmer Valderrama talks about the new season of \"NCIS. Actor Dolph Lundgren discusses his book, \"Fights Worth Fighting: Finding Strength in Struggle,\" and more."
+  },
+  {
+   "event_id": 54,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "The Jason Show",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Host Jason Matheson reports from the studio on celebrity gossip and lifestyle topics such as food, fitness and fashion, and moves into the field to try differen"
+  },
+  {
+   "event_id": 55,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Dateline",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "When a teacher was found murdered in her home, investigators never imagined an escort by the name of Ms. Pumpkin would help lead them to her killer."
+  },
+  {
+   "event_id": 56,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "25 Words or Less",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Host Meredith Vieira leads two teams of competitors, which are comprised of celebrities and everyday people, who attempt to solve a list of five words using les"
+  },
+  {
+   "event_id": 57,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Battleground Midterms",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 58,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A man is sued for damages after he flushed his son's freshwater pet fish down the toilet during drunken outburst."
+  },
+  {
+   "event_id": 59,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Judge Judy",
+   "rating": "TV-G",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Two women who became roommates after meeting in a sober living environment dispute rent payments, property damages and the value of a bed."
+  },
+  {
+   "event_id": 60,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "Front Office Sports Tonight",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 61,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "TMZ",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "The companion to popular website TMZ.com presents the latest news and gossip about celebrities' lives, including births, deaths, couplings, breakups, arrests, h"
+  },
+  {
+   "event_id": 62,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "FOX 9+ News at 7",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The news events of the day get presented by the FOX9 News Team features local, state and national stories as well as late-breaking news stories."
+  },
+  {
+   "event_id": 63,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "FOX 9+ News at 7:30",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "The news events of the day get presented by the FOX9+ News Team features local, state and national stories as well as late-breaking news stories."
+  },
+  {
+   "event_id": 64,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "48 Hours",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "When a Wall Street worker is murdered in the midst of tense divorce proceedings with his wife, police suspect his wife's lover is responsible for the crime."
+  },
+  {
+   "event_id": 65,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Dateline",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "When a teacher was found murdered in her home, investigators never imagined an escort by the name of Ms. Pumpkin would help lead them to her killer."
+  },
+  {
+   "event_id": 66,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "FBI: Most Wanted",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Father-son bank robbers break free of a prison transport van and attempt to flee the country; Jess uses his personal history to help the team apprehend them."
+  },
+  {
+   "event_id": 67,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "FBI: Most Wanted",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "A family of three is killed in a car crash that was caused by a hacker who makes increasingly extreme ransomware demands and is being pursued by the team."
+  },
+  {
+   "event_id": 68,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "48 Hours",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "When a Wall Street worker is murdered in the midst of tense divorce proceedings with his wife, police suspect his wife's lover is responsible for the crime."
+  },
+  {
+   "event_id": 69,
+   "start_gps": 1476508518,
+   "length_s": 7800,
+   "title": "From Beyond the Grave",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T05:15:00+00:00",
+   "description": "A collection of short stories are linked together by the tale of an eccentric antique dealer and the fate of certain customers who attempt to cheat him."
+  },
+  {
+   "event_id": 70,
+   "start_gps": 1476516318,
+   "length_s": 8700,
+   "title": "The Picture of Dorian Gray",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:25:00+00:00",
+   "description": "The handsome and morally corrupt Dorian Gray retains his youthful looks, while a portrait of his grows uglier with each transgression."
+  },
+  {
+   "event_id": 71,
+   "start_gps": 1476525018,
+   "length_s": 600,
+   "title": "Short MOVIES!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:50:00+00:00",
+   "description": "A brief film of ten minutes is screened."
+  },
+  {
+   "event_id": 72,
+   "start_gps": 1476525618,
+   "length_s": 600,
+   "title": "Short MOVIES!",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "A brief film of ten minutes is screened."
+  },
+  {
+   "event_id": 73,
+   "start_gps": 1476526218,
+   "length_s": 10500,
+   "title": "What Ever Happened to Baby Jane?",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:10:00+00:00",
+   "description": "A mentally unstable woman forces her sister to be a prisoner in her house and subjects the young woman to physical and psychological torment."
+  },
+  {
+   "event_id": 74,
+   "start_gps": 1476536718,
+   "length_s": 10200,
+   "title": "The Bad Seed",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:05:00+00:00",
+   "description": "The mother of a cherubic six-year-old girl searches for an explanation to the mounting number of mysterious deaths surrounding her adorable daughter."
+  },
+  {
+   "event_id": 75,
+   "start_gps": 1476546918,
+   "length_s": 6300,
+   "title": "Village of the Damned",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:55:00+00:00",
+   "description": "A mysterious blackout and a rash of unexplained pregnancies in a small English village result in the birth of a brood of eerie children with sinister powers."
+  },
+  {
+   "event_id": 76,
+   "start_gps": 1476553218,
+   "length_s": 6900,
+   "title": "Twins of Evil",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:40:00+00:00",
+   "description": "A teenager tries to save her identical twin from eternal damnation after she becomes involved with a wicked Satanist and gets bitten by a vampire."
+  },
+  {
+   "event_id": 77,
+   "start_gps": 1476560118,
+   "length_s": 7800,
+   "title": "The Other",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:35:00+00:00",
+   "description": "When a series of murders take place in a small town, a local farm family is torn apart as two identical eleven-year-old twins become the prime suspects."
+  },
+  {
+   "event_id": 78,
+   "start_gps": 1476567918,
+   "length_s": 8100,
+   "title": "Heathers",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:45:00+00:00",
+   "description": "A girl falls in love with the new guy in school and the two begin killing members of the snobbish clique she's in, making the deaths look like suicides."
+  },
+  {
+   "event_id": 79,
+   "start_gps": 1476576018,
+   "length_s": 7800,
+   "title": "Class of 1984",
+   "rating": "TV-MA",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "A music teacher is teaching at an inner-city high school and problem quickly ensue when he unexpectedly clashes with a troubled youth."
+  },
+  {
+   "event_id": 80,
+   "start_gps": 1476583818,
+   "length_s": 7500,
+   "title": "Trick or Treat",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:10:00+00:00",
+   "description": "After a rock star is discovered dead, a high school student seeks out his final album and he learns that the musician's spirit is attempting to return."
+  },
+  {
+   "event_id": 81,
+   "start_gps": 1476591318,
+   "length_s": 7500,
+   "title": "Willard",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:15:00+00:00",
+   "description": "A lonely, depressed and isolated young man uses his only friends, his pet rats that live in his depilated home, to exact revenge on his tormenters."
+  },
+  {
+   "event_id": 82,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 83,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 84,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 85,
+   "start_gps": 1476522018,
+   "length_s": 10800,
+   "title": "FOX Weather First",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 86,
+   "start_gps": 1476532818,
+   "length_s": 14400,
+   "title": "Weather Command",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The meteorologists of FOX Weather study the latest models and graphics to create explainable forecasts that focus on daily and financial weather impacts."
+  },
+  {
+   "event_id": 87,
+   "start_gps": 1476547218,
+   "length_s": 10800,
+   "title": "America's Weather Center",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "With the latest weather technology, meteorologists take a deep dive into the major weather events impacting the world so that families can stay prepared."
+  },
+  {
+   "event_id": 88,
+   "start_gps": 1476558018,
+   "length_s": 10800,
+   "title": "FOX Weather Now",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 89,
+   "start_gps": 1476568818,
+   "length_s": 10800,
+   "title": "Fox Weather Live",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Real-time weather conditions and footage from live cameras streaming from locales around the world are presented as the day comes to a close."
+  },
+  {
+   "event_id": 90,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 91,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 92,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 93,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 94,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "FOX Weather @ Night",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 95,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Xena: Warrior Princess",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Xena and Gabrielle come across a village that has been destroyed in a manner similar to another village when she battled with the Centaurs."
+  },
+  {
+   "event_id": 96,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Xena: Warrior Princess",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Joxer, Meg and Autolycus join forces in an effort to steal an infamous key that is needed to steal the crown of Athena, something Autolycus always desired."
+  },
+  {
+   "event_id": 97,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 98,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 99,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 100,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 101,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 102,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 103,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 104,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 105,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 106,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Tales from the Darkside",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "A mother notices a new teddy bear in her son's room and is not sure where it came from, but each night after that gigantic claw marks are found on the wall."
+  },
+  {
+   "event_id": 107,
+   "start_gps": 1476536418,
+   "length_s": 7200,
+   "title": "Gargoyles",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "An archeologist and his daughter are travelling through the Southwest in order to examine an unearthed skeleton but are assaulted by winged creatures."
+  },
+  {
+   "event_id": 108,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Stargate: SG-1",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Colonel O'Neill's anger at the Tollan's refusal to share technology prompts him to steal a device, which threatens Earth's diplomatic relations."
+  },
+  {
+   "event_id": 109,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Stargate: SG-1",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "SG-1 encounters a world split by beliefs regarding whether the inhabitants were shipped in through an ancient gateway or if a higher power created them."
+  },
+  {
+   "event_id": 110,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "The Librarians",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The team is forced to locate the Eye of Ra and uncover the mystery surrounding the Bermuda Triangle; Flynn is challenged to a series of tests that he must pass."
+  },
+  {
+   "event_id": 111,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "The Librarians",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "After a woman becomes popular due to the effects of a love potion, she tries to launch a missile that will convert the planet into her fan base."
+  },
+  {
+   "event_id": 112,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Grimm",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Monroe receives a phone call from someone in Germany that will result in Nick becoming closer to his ancestors; Black Claw is after the same artifacts."
+  },
+  {
+   "event_id": 113,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Grimm",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Nick and Monroe are guided by their recently-found artifacts to the origin of a mystery; Black Claw takes deadly action that could ruin Portland."
+  },
+  {
+   "event_id": 114,
+   "start_gps": 1476565218,
+   "length_s": 9000,
+   "title": "The Terminator",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "An unstoppable cyborg from the 21st century is sent back in time to assassinate a young woman who lives in L.A. in the 1980s to ensure a machine apocalypse."
+  },
+  {
+   "event_id": 115,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Tales from the Darkside",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "After a woman's friend drops off some unwanted paintings for her to reuse the canvases, she becomes perplexed when effects are actually preceding their causes."
+  },
+  {
+   "event_id": 116,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "The X-Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Several kidnappings of young women linked by distorted photographs lead Mulder and Scully to a man who can imprint his darkest fantasies onto undeveloped film."
+  },
+  {
+   "event_id": 117,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "The X-Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "After an FBI raid on a doomsday cult, Mulder meets a cultist who claims to have known him in a previous life during the American Civil War."
+  },
+  {
+   "event_id": 118,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "The X-Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Mulder suspects a nurse may be practicing witchcraft after a doctor loses control and kills a patient and a link to the four witches Sabbaths is found."
+  },
+  {
+   "event_id": 119,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "The X-Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Frohike pieces together and recites to Mulder and Scully what could be the possible life story of the cigarette smoking man, including his role in JFK's death."
+  },
+  {
+   "event_id": 120,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "The X-Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "When a Mars rock sample infects a security officer with the Black Cancer, Mulder links the rock to an elaborate test being performed by Russian scientists."
+  },
+  {
+   "event_id": 121,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Xena: Warrior Princess",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Xena and Gabrielle try to rescue a young girl, who happens to be the daughter of one of Xena's former men, six years after she had been kidnapped by the Horde."
+  },
+  {
+   "event_id": 122,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Mad About You",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Paul tries to take a sample of his sperm to the hospital in order to determine whether or not he is the one responsible for Jamie not being pregnant."
+  },
+  {
+   "event_id": 123,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Mad About You",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Jamie decides to go to the hospital to undergo a procedure that will determine if she is capable of becoming pregnant; Ira suddenly pretends to be Paul's agent."
+  },
+  {
+   "event_id": 124,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Designing Women",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Anthony's college graduation is approaching but he grows increasingly nervous about being a commencement speaker at the grand event."
+  },
+  {
+   "event_id": 125,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Designing Women",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Suzanne's dark side comes out when the sparse diet and rigorous exercise program at a luxury spa become too much for her to handle."
+  },
+  {
+   "event_id": 126,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "227",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Lester's very famous business partner is staying with the Jenkins, but they have to keep it a secret because he does not want anybody to know he is in town."
+  },
+  {
+   "event_id": 127,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "227",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Mary is in charge of directing the church production of \"The Whiz\"; the Jenkins are surprised when 11-year-old Alexandria comes to stay with them."
+  },
+  {
+   "event_id": 128,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Three's Company",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "After losing Jack's tuition check, Chrissy places her roommate in jeopardy by borrowing money from a loan shark; Jack and Chrissy must pretend to be married."
+  },
+  {
+   "event_id": 129,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Three's Company",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Jack becomes popular with his friends after they learn that he is allowed to invite one guest to accompany him on a cruise ship that has hired him as a cook."
+  },
+  {
+   "event_id": 130,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "The Jeffersons",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Louise learns the local playground is going to be demolished and is distraught to learn George is the businessman responsible for it."
+  },
+  {
+   "event_id": 131,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "The Jeffersons",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "George learns that Louise writes in a diary and is desperate to get a look at it and will go to great lengths to read it, but he is shocked when he does."
+  },
+  {
+   "event_id": 132,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Sanford and Son",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Lamont decides to move into his own place after an attempt to enjoy a quiet evening with his latest girlfriend fails due to Fred's interruptions."
+  },
+  {
+   "event_id": 133,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Sanford and Son",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Fred must battle a collection agency when he throws his bills in the trash and claims that they never arrived because he no longer feels like paying them."
+  },
+  {
+   "event_id": 134,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Barney Miller",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The police officers get extremely nervous when Barney is forced to do work evaluations, and Harris arrests a numerologist who refuses to reveal his real name."
+  },
+  {
+   "event_id": 135,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Barney Miller",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "A crazy man upsets his wife when he liquidates all of his assets into gold, and Wojo makes a claim that he spotted an unidentified flying object."
+  },
+  {
+   "event_id": 136,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "The Partridge Family",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The car runs out of gas when Shirley is driving a college freshman who has a crush on her to class; the family teases her mercilessly."
+  },
+  {
+   "event_id": 137,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "The Partridge Family",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "A doctor and Shirley assure Danny that a tonsil operation is simple, but Danny believes his friend when he says his tonsil removal was a harrowing experience."
+  },
+  {
+   "event_id": 138,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Hazel",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "George tries to help the Johnsons with the sources of their financial problems, which are starting to become a problem for the couple's relationship."
+  },
+  {
+   "event_id": 139,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Hazel",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Hazel decides to enter a contest to prove that she is the best housekeeper in town in order to try and win a trip for two to the World's Fair."
+  },
+  {
+   "event_id": 140,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "I Dream of Jeannie",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Tony and Jeannie plan to exchange gifts for their six-month anniversary and Tony tells her that a gift she makes rather than blinks would be special to him."
+  },
+  {
+   "event_id": 141,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "I Dream of Jeannie",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Roger and Dr. Bellows spend the night with the Nelsons because of a hurricane and he becomes concerned when he begins to see strange things happening."
+  },
+  {
+   "event_id": 142,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Bewitched",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Darrin reluctantly joins a country club at the insistence of his boss, which prompts Endora to cast a spell on him that turns him into an insufferable snob."
+  },
+  {
+   "event_id": 143,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Bewitched",
+   "rating": "TV-G",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "The Witch Council decides to take Samantha's powers away from her as a result of her refusal to part ways with her mortal husband."
+  },
+  {
+   "event_id": 144,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Maude",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Carol's ex-husband comes to town and lavishes gifts and attention on her, and Carol and Maude assume he wants to get back together with her."
+  },
+  {
+   "event_id": 145,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Maude",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Arthur goes to Canada to see Arthur Jr. even though he hasn't really forgiven him for avoiding the military draft, and he returns with his grandson Ian."
+  },
+  {
+   "event_id": 146,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Alice",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "When Vera swallows a bottle a sleeping pills, Flo discovers her suicide attempt, prompting her and Alice to try and keep her awake until paramedics arrive."
+  },
+  {
+   "event_id": 147,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Alice",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "When Alice's wealthy former boyfriend proposes marriage to her, she contemplates the idea since it would mean that she wouldn't have to worry about money."
+  },
+  {
+   "event_id": 148,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "The Facts of Life",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "As the new headmistress, Blair starts getting Eastland students into shape, and she's particularly challenged by one who appears determined to get expelled."
+  },
+  {
+   "event_id": 149,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "The Facts of Life",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Cindy chooses not to go to the Harvest Ball when Blair makes spiteful comments about Cindy being a tomboy, which makes her feel insecure."
+  },
+  {
+   "event_id": 150,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Too Close for Comfort",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Henry is excited that Jackie is dating Bill again and frequently insists that the two should consider getting married; Jackie makes an announcement."
+  },
+  {
+   "event_id": 151,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Too Close for Comfort",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Henry and Muriel cancel their plans for a romantic evening to help Herb and Marsha with their marital problems; Muriel has a plan to help the couple."
+  },
+  {
+   "event_id": 152,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Family Ties",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Nick is inspired to start an art school, but when his bank rejects his application for a loan, Mallory encourages him to ask his estranged father for the money."
+  },
+  {
+   "event_id": 153,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Family Ties",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "The family becomes anxious when Steven's surgery takes longer than they expect and join Nick as he keeps up the spirits of other waiting room visitors."
+  },
+  {
+   "event_id": 154,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Three's Company",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "After losing Jack's tuition check, Chrissy places her roommate in jeopardy by borrowing money from a loan shark; Jack and Chrissy must pretend to be married."
+  },
+  {
+   "event_id": 155,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Three's Company",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Jack becomes popular with his friends after they learn that he is allowed to invite one guest to accompany him on a cruise ship that has hired him as a cook."
+  },
+  {
+   "event_id": 156,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "Barney Miller",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "The police officers get extremely nervous when Barney is forced to do work evaluations, and Harris arrests a numerologist who refuses to reveal his real name."
+  },
+  {
+   "event_id": 157,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "Barney Miller",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "A crazy man upsets his wife when he liquidates all of his assets into gold, and Wojo makes a claim that he spotted an unidentified flying object."
+  },
+  {
+   "event_id": 158,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "One Day at a Time",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Ann's excitement over starting a new job is hampered when her ex-husband returns to announce his engagement and upcoming wedding."
+  },
+  {
+   "event_id": 159,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "One Day at a Time",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "When the girls' father returns, they are under the impression that their parents are planning to reunite, until they discover the real reason for his visit."
+  },
+  {
+   "event_id": 160,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "The Jeffersons",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Louise learns the local playground is going to be demolished and is distraught to learn George is the businessman responsible for it."
+  },
+  {
+   "event_id": 161,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "The Jeffersons",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "George learns that Louise writes in a diary and is desperate to get a look at it and will go to great lengths to read it, but he is shocked when he does."
+  },
+  {
+   "event_id": 162,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Sanford and Son",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Lamont decides to move into his own place after an attempt to enjoy a quiet evening with his latest girlfriend fails due to Fred's interruptions."
+  },
+  {
+   "event_id": 163,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Sanford and Son",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Fred must battle a collection agency when he throws his bills in the trash and claims that they never arrived because he no longer feels like paying them."
+  },
+  {
+   "event_id": 164,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Johnny Carson",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "The host welcomes actor Carl Reiner, Destiny and Mike Zella to the show."
+  },
+  {
+   "event_id": 165,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "Becker",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "When a patient dies that belongs to a vacationing colleague, John's callous comment to Linda about the death is picked up on the family's voicemail."
+  },
+  {
+   "event_id": 166,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "Becker",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Becker is annoyed when tapped for jury duty and outright angry when he can't seem to get chosen for a jury, but the jury room has soap operas on TV."
+  },
+  {
+   "event_id": 167,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "Wings",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Brian allows Fay to beat him at a tennis match in order to cheer her up but asks for a rematch in embarrassment when word of his loss spreads."
+  },
+  {
+   "event_id": 168,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "Wings",
+   "rating": "TV-PG",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Brian reports a UFO that both he and Joe saw while on a cargo flight, and he agrees to take the UFO society and a reporter up in hopes of seeing it again."
+  }
+ ],
+ "rf": 29,
+ "mhz": 563,
+ "signal": {
+  "SignalStrengthPercent": 96,
+  "SignalQualityPercent": 98
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 8,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

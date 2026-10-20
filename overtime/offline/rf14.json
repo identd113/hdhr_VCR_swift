@@ -1,0 +1,104 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": null,
+ "tables": {
+  "eit_pids": [],
+  "ett_pids": [],
+  "mgt_entries": 1
+ },
+ "channels": [
+  {
+   "name": "K14RB-D",
+   "major": 14,
+   "minor": 1,
+   "number": "14.1",
+   "modulation": 4,
+   "tsid": 1,
+   "program": 1,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "SMB ",
+   "major": 14,
+   "minor": 2,
+   "number": "14.2",
+   "modulation": 4,
+   "tsid": 1,
+   "program": 2,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "SMB",
+   "major": 14,
+   "minor": 3,
+   "number": "14.3",
+   "modulation": 4,
+   "tsid": 1,
+   "program": 3,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "SMB",
+   "major": 14,
+   "minor": 4,
+   "number": "14.4",
+   "modulation": 4,
+   "tsid": 1,
+   "program": 4,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [],
+ "rf": 14,
+ "mhz": 473,
+ "signal": {
+  "SignalStrengthPercent": 74,
+  "SignalQualityPercent": 98
+ },
+ "pmt_programs": [
+  {
+   "program": 1,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 2,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

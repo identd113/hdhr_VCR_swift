@@ -15,7 +15,7 @@ For each RF channel that has signal: capture the whole multiplex from an IDLE tu
 Uses one idle tuner at a time and waits when both are busy, so it never takes a tuner from a recording.
 What the air does not carry: SeriesID, genre tags, episode titles/numbers, images. Everything else the app's guide needs is there.
 """
-import argparse, datetime, glob, json, os, sys, time, urllib.request
+import argparse, concurrent.futures, datetime, glob, json, os, sys, threading, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -24,14 +24,30 @@ import psip                                   # noqa: E402
 import band_sweep as bs                       # noqa: E402
 
 
-def wait_for_idle_tuner(ip, patience=600):
+_reserved, _lock = set(), threading.Lock()
+
+
+def claim_idle_tuner(ip, patience=900):
+    """An idle tuner nobody (including another worker of ours) is using; marks it ours until release_tuner."""
     end = time.time() + patience
     while time.time() < end:
-        t = bs.idle_tuner(ip)
-        if t:
-            return t
-        time.sleep(20)
+        try:
+            rows = bs.get_json(f"http://{ip}/status.json")
+        except Exception:
+            rows = []
+        with _lock:
+            for row in rows:
+                t = row["Resource"]
+                if "VctNumber" not in row and "Frequency" not in row and "TargetIP" not in row and t not in _reserved:
+                    _reserved.add(t)
+                    return t
+        time.sleep(15)
     return None
+
+
+def release_tuner(t):
+    with _lock:
+        _reserved.discard(t)
 
 
 def rf_list_from_report(path):
@@ -40,12 +56,12 @@ def rf_list_from_report(path):
 
 
 def capture_and_decode(ip, rf, seconds, out):
-    tuner = wait_for_idle_tuner(ip)
+    tuner = claim_idle_tuner(ip)
     if not tuner:
         return None, "no idle tuner"
     ts = os.path.join(out, f"rf{rf}.ts")
-    total, st, err = bs.capture(ip, tuner, bs.rf_to_hz(rf), seconds, ts)
     try:
+        total, st, err = bs.capture(ip, tuner, bs.rf_to_hz(rf), seconds, ts)
         if total < 1_000_000:
             return None, err or "no signal"
         info = bs.summarize_programs(bs.probe(ts))
@@ -59,6 +75,7 @@ def capture_and_decode(ip, rf, seconds, out):
             json.dump(d, f, indent=1)
         return d, None
     finally:
+        release_tuner(tuner)
         if os.path.exists(ts):
             os.remove(ts)   # a capture is about 200 MB; only the decode is kept
 
@@ -128,6 +145,7 @@ def main():
     ap.add_argument("--rf", help="RF channels to capture, e.g. 31,32 (default: the ones with signal in the latest sweep report)")
     ap.add_argument("--seconds", type=float, default=75, help="capture per multiplex (default 75; the guide tables repeat within about a minute)")
     ap.add_argument("--out", default=os.path.join(HERE, "offline"), help="output folder (default overtime/offline)")
+    ap.add_argument("--workers", type=int, default=2, help="captures at once, one per idle tuner (default 2: both tuners of an HDTC-2US)")
     ap.add_argument("--compare", action="store_true", help="compare the result with the tuner's real lineup")
     ap.add_argument("--redo", action="store_true", help="capture again even when rf<N>.json already exists")
     a = ap.parse_args()
@@ -140,19 +158,22 @@ def main():
             sys.exit("No sweep report found: pass --rf or run tools/band_sweep.py first.")
         rfs = rf_list_from_report(reports[-1])
     print("RF channels:", rfs)
-    decodes = []
-    for rf in rfs:
+    decodes = {}
+
+    def work(rf):
         cached = os.path.join(a.out, f"rf{rf}.json")
         if os.path.exists(cached) and not a.redo:
-            decodes.append(json.load(open(cached)))
-            print(f"RF {rf}: using saved {cached}")
-            continue
+            print(f"RF {rf}: using saved {cached}", flush=True)
+            return rf, json.load(open(cached))
         d, err = capture_and_decode(a.ip, rf, a.seconds, a.out)
-        if d is None:
-            print(f"RF {rf}: skipped ({err})")
-            continue
-        decodes.append(d)
-        print(f'RF {rf}: {len(d["channels"])} channels, {len(d["events"])} events', flush=True)
+        print(f"RF {rf}: " + (f'{len(d["channels"])} channels, {len(d["events"])} events' if d else f"skipped ({err})"), flush=True)
+        return rf, d
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, a.workers)) as pool:
+        for rf, d in pool.map(work, rfs):
+            if d:
+                decodes[rf] = d
+    decodes = [decodes[rf] for rf in sorted(decodes)]
     lineup, guide = merge(decodes, a.ip)
     json.dump(lineup, open(os.path.join(a.out, "lineup.json"), "w"), indent=1)
     json.dump(guide, open(os.path.join(a.out, "guide.json"), "w"), indent=1)

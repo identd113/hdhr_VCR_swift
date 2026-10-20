@@ -1,0 +1,2847 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:29:28+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430,
+   7431
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686,
+   7687
+  ],
+  "mgt_entries": 18
+ },
+ "channels": [
+  {
+   "name": "KARE-HD",
+   "major": 11,
+   "minor": 1,
+   "number": "11.1",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 3,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Quest",
+   "major": 11,
+   "minor": 2,
+   "number": "11.2",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 4,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "Crime",
+   "major": 11,
+   "minor": 3,
+   "number": "11.3",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 5,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "SHOP LC",
+   "major": 11,
+   "minor": 4,
+   "number": "11.4",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 6,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "NEST",
+   "major": 11,
+   "minor": 5,
+   "number": "11.5",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 7,
+   "source_id": 5,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "OPEN",
+   "major": 11,
+   "minor": 7,
+   "number": "11.7",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 9,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": true,
+   "access_controlled": false,
+   "hide_guide": true
+  },
+  {
+   "name": "HSN",
+   "major": 11,
+   "minor": 8,
+   "number": "11.8",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 10,
+   "source_id": 7,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "REWIND",
+   "major": 23,
+   "minor": 5,
+   "number": "23.5",
+   "modulation": 4,
+   "tsid": 1589,
+   "program": 8,
+   "source_id": 8,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 1,
+   "start_gps": 1476509898,
+   "length_s": 2100,
+   "title": "NBC Nightly News with Tom Llamas",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T05:38:00+00:00",
+   "description": "Correspondents cover domestic and international news stories and political events along with investigative pieces and segments that spotlight Americans."
+  },
+  {
+   "event_id": 2,
+   "start_gps": 1476511998,
+   "length_s": 1800,
+   "title": "Wild Child",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:13:00+00:00",
+   "description": "Host Sheinelle Jones explores the most remarkable baby animals on earth, which includes the connection that exists between the parents and their children."
+  },
+  {
+   "event_id": 3,
+   "start_gps": 1476513798,
+   "length_s": 1740,
+   "title": "Entertainment Tonight",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:43:00+00:00",
+   "description": "Anchors and correspondents cover the top stories in the world of entertainment, ranging from exclusives in celebrity gossip to show business news."
+  },
+  {
+   "event_id": 4,
+   "start_gps": 1476515538,
+   "length_s": 2880,
+   "title": "Top Story with Tom Llamas",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:12:00+00:00",
+   "description": "Anchor Tom Llamas offers an in-depth look at breaking news and major events in real time along with impactful interviews about social issues and more."
+  },
+  {
+   "event_id": 5,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Early Today",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "A comprehensive first look at overnight news events from the nation and the world includes weather, business, entertainment and sports reports."
+  },
+  {
+   "event_id": 6,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Early Today",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "A comprehensive first look at overnight news events from the nation and the world includes weather, business, entertainment and sports reports."
+  },
+  {
+   "event_id": 7,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Early Today",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "A comprehensive first look at overnight news events from the nation and the world includes weather, business, entertainment and sports reports."
+  },
+  {
+   "event_id": 8,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "KARE11 Sunrise 4:30A",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 9,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "KARE11 Sunrise 5A",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 10,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "KARE11 Sunrise 6A",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 11,
+   "start_gps": 1476532818,
+   "length_s": 7200,
+   "title": "Today",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "A team of news anchors provide the latest information on breaking news stories in politics, entertainment, world affairs and weather while conducting various se"
+  },
+  {
+   "event_id": 12,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Today 3rd Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "News anchors feature interviews with celebrities and notable guests, inspiring stories of people who do remarkable things, cultural influencers, newsmaker exclu"
+  },
+  {
+   "event_id": 13,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Today with Jenna & Sheinelle",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Hosts Jenna Bush Hager and Sheinelle Jones discuss breaking news stories in politics, entertainment, world affairs and weather while they conduct various segmen"
+  },
+  {
+   "event_id": 14,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Live with Kelly and Mark",
+   "rating": "TV-PG",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Kelly Ripa and husband Mark Consuelos host lively discussions about popular topics dominating news headlines, welcome celebrities and musical artists to showcas"
+  },
+  {
+   "event_id": 15,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "KARE11 News at Noon",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 16,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "NBC News Daily",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Members of the NBC news team report on the latest news stories that affect viewers on a national and international level by covering a range of topics."
+  },
+  {
+   "event_id": 17,
+   "start_gps": 1476558018,
+   "length_s": 9000,
+   "title": "NBA Basketball",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Boston comes off a 12th-straight playoff appearance; Detroit won three of its four meetings with the Celtics last season, including a 104-103 win on Jan. 19."
+  },
+  {
+   "event_id": 18,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Jeopardy!",
+   "rating": "TV-G",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "A returning champion and two challengers test their buzzer skills and their knowledge in a wide range of academic and popular categories as they vie for a cash "
+  },
+  {
+   "event_id": 19,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "KARE 11 News at 5",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Details affecting local, regional and national news events of the day are provided by the KARE 11 Evening News Team as well as updates on weather and traffic."
+  },
+  {
+   "event_id": 20,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "NBA Pre-Game",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Analysts preview the upcoming game in the National Basketball Association with interviews, topical discussions and key headlines leading up to the contest."
+  },
+  {
+   "event_id": 21,
+   "start_gps": 1476572418,
+   "length_s": 9000,
+   "title": "NBA Basketball",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "New York won its last six meetings with Philadelphia after sweeping the 2026 Eastern Conference Semifinals series en route to his first NBA title since 1973."
+  },
+  {
+   "event_id": 22,
+   "start_gps": 1476581418,
+   "length_s": 9000,
+   "title": "NBA Basketball",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "San Antonio eliminated Oklahoma City in the 2026 Western Conference Finals, 4-3, behind Victor Wembanyama en route to his first NBA Finals since 2014."
+  },
+  {
+   "event_id": 23,
+   "start_gps": 1476590418,
+   "length_s": 2100,
+   "title": "KARE 11 News at 10",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "The day's major news events, business reports, local sports updates, weather information and tomorrow's forecast are presented by the KARE 11 NIghtly News Team."
+  },
+  {
+   "event_id": 24,
+   "start_gps": 1476592518,
+   "length_s": 3780,
+   "title": "The Tonight Show Starring Jimmy Fallon",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:35:00+00:00",
+   "description": "Award-winning comedian Jimmy Fallon hosts the long-running late-night talk show, featuring humorous monologues, comedic sketches and celebrity interviews."
+  },
+  {
+   "event_id": 25,
+   "start_gps": 1476596298,
+   "length_s": 3600,
+   "title": "Late Night with Seth Meyers",
+   "rating": "TV-14",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:38:00+00:00",
+   "description": "\"Saturday Night Live\" alumnus Seth Meyers brings his unique humor to late-night scene, featuring comedic sketches, celebrity interviews and musical guests."
+  },
+  {
+   "event_id": 26,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Most Daring",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "An angry customer attacks an unsuspecting convenience store attendant; an out-of-control vehicle heads straight for a mother and her child."
+  },
+  {
+   "event_id": 27,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Most Daring",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "A man takes his tank for a drive around the city, destroying things in his wake; a motorcycle has a mind of its own as it flips over a barricade."
+  },
+  {
+   "event_id": 28,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "The Liquidator",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Jeff becomes overwhelmed, as does his team, when he gambles on a few 'too good to be true' deals including appliances and hockey jerseys."
+  },
+  {
+   "event_id": 29,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "The Liquidator",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Jeff learns that his sworn enemy Jose may be losing his business, so he decides to help his frenemy; Jose realizes he may owe Jeff in the future."
+  },
+  {
+   "event_id": 30,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Fishing for History",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Two commercial fishermen set out across North America to engage in magnet fishing, and as they search for interesting places to dunk their magnets, they meet fa"
+  },
+  {
+   "event_id": 31,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Salvage Hunters",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Drew hits the road to restock and finds a Devon salvage yard stuffed with funky pieces before heading to Battle to view an offbeat inventor's collection."
+  },
+  {
+   "event_id": 32,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Speeders",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "A motorist entertains a cop with pick-up lines; a traffic violator was making soup in the car; a driver reveals plans to begin an Internet dating operation."
+  },
+  {
+   "event_id": 33,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Speeders",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "A motorist places a body part outside the window, forcing a traffic stop, and a traffic violator in North Carolina is furious over being pulled over by cops."
+  },
+  {
+   "event_id": 34,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Fishing for History",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Two commercial fishermen set out across North America to engage in magnet fishing, and as they search for interesting places to dunk their magnets, they meet fa"
+  },
+  {
+   "event_id": 35,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Wicked Tuna",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Prices reach a new low after the bluefin tuna market reopens, so the fleet of fishing boats struggle to recover from the unexpected blow."
+  },
+  {
+   "event_id": 36,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "American Pickers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "In Michigan, Frank has difficulty making profitable selections; a Wisconsin property owner has a reconstituted vintage town; the van has engine trouble."
+  },
+  {
+   "event_id": 37,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "American Pickers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Danielle is jealous, when Mike invites his 12-year-old nephew to help him and Frank find classic valuables at a man's property and an over-crowded, large house."
+  },
+  {
+   "event_id": 38,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "After several break-ins have occurred, the Goulds plan on capturing the vandal who has been assailing their business; a customer states that he is Satan."
+  },
+  {
+   "event_id": 39,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Les believes a customer's opinion in regards to the financial worth of an object and decides to offer a large amount of money for it."
+  },
+  {
+   "event_id": 40,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Seth attempts to vitalize the Internet department, however when one of the employees makes an error, Les requires the man lose his job."
+  },
+  {
+   "event_id": 41,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "When Les notices that damaged goods are present within the store, he reveals that the next employee to cause an error will lose their job."
+  },
+  {
+   "event_id": 42,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Les is on a mission to terminate the employment of the next staff member who does something completely wrong, however when Rich errs, he may be at risk."
+  },
+  {
+   "event_id": 43,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Rich comes back to challenge Les, and he believes that he knows the location of stolen property; Seth advances in his quest to takeover the store."
+  },
+  {
+   "event_id": 44,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "Shipping Wars",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Roy returns to Austin, Texas to haul a large, odd sculpture; Jarrett brings his uncle along on the job to help move a flight simulator."
+  },
+  {
+   "event_id": 45,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "Shipping Wars",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Jennifer isn't happy about taking a load of live bugs cross-country; Marc's daughter works as his new apprentice, and they work out their familial issues."
+  },
+  {
+   "event_id": 46,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Storage Hunters",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Brandon and Lori journey to Boston, where the pair must face off against an old friend during an auction; a former serviceman attempts to purchase a unit."
+  },
+  {
+   "event_id": 47,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Storage Hunters",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Brandon and Lori discover some surprising items when a locker appears to contain objects from an old retail store; a bidder locates a whale tusk."
+  },
+  {
+   "event_id": 48,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "The Liquidator",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Jeff Schwarz of Direct Liquidation continues his quest to become the country's sole liquidating king, which includes tasks of haggling at flea markets, trading "
+  },
+  {
+   "event_id": 49,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "The Liquidator",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "After receiving a load of rotten furniture, Jeff goes all the way to Indonesia in a bid to get his money back, and confront the shady manufacturer."
+  },
+  {
+   "event_id": 50,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Speeders",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A former prison inmate & a boy scout may be ticketed; two people are caught in an awkward situation in a truck; a stopped medical student educates the cop."
+  },
+  {
+   "event_id": 51,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Speeders",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "An officer is convinced to call the boss of someone they pulled over to convince them why she is late."
+  },
+  {
+   "event_id": 52,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "American Pickers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Two men travel the country seeking antiques to sell for profit, as they sift through junk, abandoned buildings and neglected garages for valuable memorabilia."
+  },
+  {
+   "event_id": 53,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "American Pickers",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Two men travel the country seeking antiques to sell for profit, as they sift through junk, abandoned buildings and neglected garages for valuable memorabilia."
+  },
+  {
+   "event_id": 54,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Karen and Seth feel the \"power of the force\" when a customer brings a pair of high-end light sabers in to the shop, and a customer claims Ashley injured her."
+  },
+  {
+   "event_id": 55,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "Hardcore Pawn",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "After Seth leaves his office unlocked one time too many, Ashley locks him out, but he gets his revenge with a pair of radio-controlled toy tarantulas."
+  },
+  {
+   "event_id": 56,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Shipping Wars",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "As Marc transports four million angry bees on a run, the trip turns into a battle of wits; the Bodens end up in a mess while hauling a truck full of dollhouses."
+  },
+  {
+   "event_id": 57,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Shipping Wars",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Jarrett is in a battle of biblical proportions while hauling a pedal pub and a side load of sod; Jenn books a large arcade load with her underwhelming trailer."
+  },
+  {
+   "event_id": 58,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Fast N' Loud",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Two restoration experts seek out classic cars they can repair, and while most see vehicle that are beyond salvation, they see potential and profit."
+  },
+  {
+   "event_id": 59,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Wicked Tuna",
+   "rating": "TV-14",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "With only four weeks left in tuna season, all the Gloucester fishermen are anxious to make their seasons pay off, and old grudges are renewed."
+  },
+  {
+   "event_id": 60,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Most Daring",
+   "rating": "TV-PG",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "A firefighter mistakenly ignites an explosion; a cyclist causes a devastating pileup when he clips a fellow rider; an underage driver flees from police."
+  },
+  {
+   "event_id": 61,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Killer Cases",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Information is shared about the murder of a mother and her two sons to reveal how the detectives investigated if the killings were tied to a religious ritual."
+  },
+  {
+   "event_id": 62,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Killer Cases",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "The authorities focus on the victim's boyfriend after a woman is found shot to death in a Wisconsin farm field, but they soon widen their suspect list."
+  },
+  {
+   "event_id": 63,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "The New Detectives: Case Studies in Forensic Science",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Forensic experts employ new techniques to re-examine several unsolved crimes that have remained a mystery despite the many advancements in technology."
+  },
+  {
+   "event_id": 64,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "The New Detectives: Case Studies in Forensic Science",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "A look at the Texas Rangers, who went from protecting settlers during Indian raids in the 1800s, to being involved in sophisticated forensic lab work."
+  },
+  {
+   "event_id": 65,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "The New Detectives: Case Studies in Forensic Science",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Experts reveal the violent and deadly world of drug trafficking, and the challenges that investigators face."
+  },
+  {
+   "event_id": 66,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Finally Caught",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "An 18-year-old college student vanishes during a holiday jog in a quiet Washington town. Days later, her body is found in a river, leaving a community shaken."
+  },
+  {
+   "event_id": 67,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "F2: Forensic Factor",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "The world's best crime scene investigators use the most recent tools to determine who the probable culprit is in a crime, and rule out other possibilities."
+  },
+  {
+   "event_id": 68,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Most Outrageous Crimes",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Police encounter people using odd methods of transportation."
+  },
+  {
+   "event_id": 69,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Heartland Homicide",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "On the Rocky Mountains, near the small town of Gunnison, Colo., Jake Millison has gone missing but his family isn't too concerned with his whereabouts."
+  },
+  {
+   "event_id": 70,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Crime Stories",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Police arrest a nurse for making bomb threats and while she is incarcerated, they compile evidence that links her to the deaths of multiple hospital patients."
+  },
+  {
+   "event_id": 71,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "The New Detectives: Case Studies in Forensic Science",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "A close look is taken at how forensic scientists have solved some of the most difficult cases by gathering important clues from the most unusual sources."
+  },
+  {
+   "event_id": 72,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "The FBI Files",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Authorities offer a plea bargain to a member of the El Rukn gang to gain information about the dangerous and violent Chicago organization."
+  },
+  {
+   "event_id": 73,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "How NOT to Hire a Hitman",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "A young couple about to be first-time parents; a trio of houseguests who have long overstayed their welcome; a hitman who maybe stole a car or maybe didn't."
+  },
+  {
+   "event_id": 74,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Dr. G: Medical Examiner",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "When the bodies of two young males, one from drowning and one from being hit by a train, arrive in the morgue, Dr. G finds that their deaths may be connected."
+  },
+  {
+   "event_id": 75,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Killer Cases",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "The authorities search for a killer after a schoolteacher's body is found lying in her neighbor's yard, and they soon spot a wounded man on the run."
+  },
+  {
+   "event_id": 76,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "F2: Forensic Factor",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "The world's best crime scene investigators use the most recent tools to determine who the probable culprit is in a crime, and rule out other possibilities."
+  },
+  {
+   "event_id": 77,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "I Knew My Murderer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 78,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "I Knew My Murderer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 79,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Murder USA",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 80,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Heartland Homicide",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "The police get involved after a man disappears in a small West Virginian town, and they soon suspect that a dangerous killer is on the loose."
+  },
+  {
+   "event_id": 81,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Killer Cases",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "After a police officer calls 911 claiming that his wife shot herself, the authorities arrive at his home and start an investigation."
+  },
+  {
+   "event_id": 82,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Crime Stories",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "A profile of notorious and infamous criminals of the past explores several instances of unlawful activity around the world, including cases of abduction, seemin"
+  },
+  {
+   "event_id": 83,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "The FBI Files",
+   "rating": "TV-PG",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Agents worked tirelessly to find a mother and her son who were abducted by vicious members of a drug cartel."
+  },
+  {
+   "event_id": 84,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Obsession: Dark Desires",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "A maternal senior psychiatric nurse that fired a junior nurse and heroin addict causes a two-day hostage situation that resulted in the death of a person."
+  },
+  {
+   "event_id": 85,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Murder Comes to Town",
+   "rating": "TV-14",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Although family is supposed to mean everything to those who live in the mountains of Townsend, Tennessee, a member of the large Griffin clan is discovered dead."
+  },
+  {
+   "event_id": 86,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 87,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 88,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 89,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 90,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 91,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 92,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 93,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 94,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 95,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 96,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 97,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 98,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 99,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 100,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 101,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 102,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 103,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Fall Lifestyle Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 104,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 105,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 106,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 107,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 108,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 109,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Fall Clearance",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 110,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Cold Case Files",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "A fetish for women's lingerie turns deadly; DNA evidence is uncovered that may lead to closure for the family of a slain 87-year-old woman."
+  },
+  {
+   "event_id": 111,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "American Justice",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Woman accuses her ex-husband of murdering their baby.  Is it just a tale of a woman scorned or a reality?"
+  },
+  {
+   "event_id": 112,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "American Justice",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Suspicion falls on a gentle wife when the charred remains of a wealthy Las Vegas real estate developer are discovered."
+  },
+  {
+   "event_id": 113,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 114,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 115,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 116,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 117,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 118,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 119,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 120,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 121,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Hoarders",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "An obsessive collector's house is stacked floor to ceiling with dolls; a woman crawls over piles of garbage to reach the only open space in her home."
+  },
+  {
+   "event_id": 122,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Hoarders",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A man's vast toy collection keeps him from moving around his house; a Beverly Hills woman's hoarded mess could cause her to lose custody of her granddaughter."
+  },
+  {
+   "event_id": 123,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Cajun Pawn Stars",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "In Alexandria, La., the DeRamus family views a rare album by country, rock legend Jerry Lee Lewis, a Civil War-era Colt Dragoon revolver, and a pygmy goat."
+  },
+  {
+   "event_id": 124,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 5,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 125,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Cajun Pawn Stars",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "After negotiations for a 1990 Ferrari 348, the guys listen to dairy farmer's business proposal and view a rare 1800s French gun-knife-brass knuckles weapon."
+  },
+  {
+   "event_id": 126,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Cajun Pawn Stars",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Staff determines the authenticities and values of a rare 1921 Tommy gun, a land grant signed by President A. Jackson and a pristine 1929 gold coin."
+  },
+  {
+   "event_id": 127,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "Cajun Pawn Stars",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The men determine the authenticities and values of a 1975 Mac Fire Truck, Sherman Necktie railroad track from the Civil War and a classic 1950s popcorn machine."
+  },
+  {
+   "event_id": 128,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "Cajun Pawn Stars",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Sellers present a WWII 50-caliber gun, original NASA photos of Apollo 13's landing in the Pacific Ocean and a 1880s railroad lockbox stolen by a feared outlaw."
+  },
+  {
+   "event_id": 129,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Ice Road Truckers",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Steph Custance takes on her first mission; Alex Deborgorski deals with the rising temperatures; Art Burke tries delivering to an isolated community."
+  },
+  {
+   "event_id": 130,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Ice Road Truckers",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Darrell Ward comes to a trail considered to be an obstacle course; Todd Dewey faces a melting ice bridge; Alex Debogorski is carrying an oversized fuel tank."
+  },
+  {
+   "event_id": 131,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Ice Road Truckers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Steph Custance goes on her first trip alone; Ward attempts to do three deliveries in a day; Lisa Kelly has to stop when her engine catches fire."
+  },
+  {
+   "event_id": 132,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Ice Road Truckers",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Todd Dewey is stuck unless he can fix his truck; Alex Debogorski deals with a creek formed on the road; Art Burke is given bad news."
+  },
+  {
+   "event_id": 133,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Hoarders",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Hoarded clothes and a large debt lead a husband to consider leaving; after moving in with her son, a box collector quickly continued her compulsive behavior."
+  },
+  {
+   "event_id": 134,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Hoarders",
+   "rating": "TV-14",
+   "source_id": 5,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "A man suffering from memory loss collects items he feels may trigger his memories; a woman keeps deceased family members' belongings and shops for more."
+  },
+  {
+   "event_id": 135,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Dog the Bounty Hunter",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Dog hunts down a repeat offender whose family wants her back in jail before tracking a fugitive with a hunch he hopes will lead to a capture."
+  },
+  {
+   "event_id": 136,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Dog the Bounty Hunter",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Award night at the state capitol inspires Dog and his team to begin searching for an alleged ice addict and identity thief with the help of informants."
+  },
+  {
+   "event_id": 137,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Head chef Paul and younger brother Donnie try to convince their baby brother to agree on a second location; matriarch Alma wants Paul to hire an assistant."
+  },
+  {
+   "event_id": 138,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "After having his girlfriend Jenny McCarthy over for dinner, Donnie hatches a plan to have his mother and brother, Paul, compete in a \"sauce-off.\""
+  },
+  {
+   "event_id": 139,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Paul drops his duties to fly to Canada after his brother Mark calls to tell him he's found the perfect site for their next location."
+  },
+  {
+   "event_id": 140,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "While Mark and Paul are out playing a round of golf and talking business, Alma's in charge of the second restaurant, and makes changes without Paul in the way."
+  },
+  {
+   "event_id": 141,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Mark solicits help to get his brother Paul in shape; Alma, Kari and Mackenzie find some of Mark and Donnie's memorabilia while cleaning out the garage."
+  },
+  {
+   "event_id": 142,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Alma collects her kids' favorite recipes and decides to share them with the public; Mark challenges old friend Nacho Extreme to eat a strange burger."
+  },
+  {
+   "event_id": 143,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "Wahlburgers",
+   "rating": "TV-PG",
+   "source_id": 5,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Donnie and Mark play a practical joke on Paul by letting him believe they're writing a Wahlburgers jingle, even recruiting songwriter friends to be in on it."
+  },
+  {
+   "event_id": 144,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Cold Case Files",
+   "rating": "TV-MA",
+   "source_id": 5,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "A woman names her mother as the criminal responsible for an unsolved murder case involving two of the suspect's murdered daughters."
+  },
+  {
+   "event_id": 145,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 146,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 147,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 148,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 149,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 150,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 151,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 152,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 153,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 154,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 155,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 156,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 157,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 158,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 159,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 160,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 161,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 162,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 163,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 164,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 165,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 166,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 167,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 168,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 169,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 170,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 171,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 172,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 173,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 174,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 175,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 176,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 177,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 178,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 179,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 180,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 181,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 182,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 183,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 184,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 185,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 186,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 187,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 188,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 189,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 190,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 191,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 192,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "OPEN Programming",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "OPEN Programming"
+  },
+  {
+   "event_id": 193,
+   "start_gps": 1476511218,
+   "length_s": 3600,
+   "title": "Great Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Discover a variety of great gifts and something for everyone on your gift list this holiday season."
+  },
+  {
+   "event_id": 194,
+   "start_gps": 1476514818,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 195,
+   "start_gps": 1476518418,
+   "length_s": 3600,
+   "title": "Come On In! with Callie - Perfect Presents",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Callie is filling the house with perfect presents to help you check off your list with everythng merry!"
+  },
+  {
+   "event_id": 196,
+   "start_gps": 1476522018,
+   "length_s": 3600,
+   "title": "Great Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Discover a variety of great gifts and something for everyone on your gift list this holiday season."
+  },
+  {
+   "event_id": 197,
+   "start_gps": 1476525618,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 198,
+   "start_gps": 1476529218,
+   "length_s": 3600,
+   "title": "Rise & Shine Savings - Joy of Savings! - Up to 50% Off",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Save big on innovative everything from Joy Mangano!"
+  },
+  {
+   "event_id": 199,
+   "start_gps": 1476532818,
+   "length_s": 3600,
+   "title": "Wake-Up! with Clarke",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Wake-up to a BIG morning boost with a fast-paced peek the days best values with Clarke!"
+  },
+  {
+   "event_id": 200,
+   "start_gps": 1476536418,
+   "length_s": 3600,
+   "title": "Wake-Up! with Clarke",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Wake-up to a BIG morning boost with a fast-paced peek the days best values with Clarke!"
+  },
+  {
+   "event_id": 201,
+   "start_gps": 1476540018,
+   "length_s": 3600,
+   "title": "Beekman 1802 Bath & Body Gifts - All On Free Shipping",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Discover the farm-to-skin difference of products made with pure goat milk - all on FREE shipping."
+  },
+  {
+   "event_id": 202,
+   "start_gps": 1476543618,
+   "length_s": 3600,
+   "title": "Beekman 1802 Bath & Body Gifts - All On Free Shipping",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Discover the farm-to-skin difference of products made with pure goat milk - all on FREE shipping."
+  },
+  {
+   "event_id": 203,
+   "start_gps": 1476547218,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 204,
+   "start_gps": 1476550818,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 205,
+   "start_gps": 1476554418,
+   "length_s": 3600,
+   "title": "Everyday Wellness featuring Homedics",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Gift & give perfect presents that make every day amazing."
+  },
+  {
+   "event_id": 206,
+   "start_gps": 1476558018,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 207,
+   "start_gps": 1476561618,
+   "length_s": 3600,
+   "title": "Joy of Savings! - Up to 40% Off",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 208,
+   "start_gps": 1476565218,
+   "length_s": 3600,
+   "title": "Now That's Creative Holiday Cooking! with Suzanne",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Make holiday meals memorable with Suzanne!"
+  },
+  {
+   "event_id": 209,
+   "start_gps": 1476568818,
+   "length_s": 3600,
+   "title": "Holiday Every Way! with Suzanne Premiere",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Suzanne Runyan is serving up the best gifts of the season."
+  },
+  {
+   "event_id": 210,
+   "start_gps": 1476572418,
+   "length_s": 3600,
+   "title": "Warm & Cozy Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Everything you need to be warm and cozy on a chilly night"
+  },
+  {
+   "event_id": 211,
+   "start_gps": 1476576018,
+   "length_s": 3600,
+   "title": "Beekman 1802 Bath & Body Gifts - All On Free Shipping",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Discover the farm-to-skin difference of products made with pure goat milk - all on FREE shipping."
+  },
+  {
+   "event_id": 212,
+   "start_gps": 1476579618,
+   "length_s": 3600,
+   "title": "Tuesday Night Gift Exchange with Tina & Ty",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Join your fave personal elves Tina & Ty as they pack the house with all kinds of hand-picked holiday happiness!"
+  },
+  {
+   "event_id": 213,
+   "start_gps": 1476583218,
+   "length_s": 3600,
+   "title": "Tuesday Night Gift Exchange with Tina & Ty",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Join your fave personal elves Tina & Ty as they pack the house with all kinds of hand-picked holiday happiness!"
+  },
+  {
+   "event_id": 214,
+   "start_gps": 1476586818,
+   "length_s": 3600,
+   "title": "Beekman 1802 Bath & Body Gifts - All On Free Shipping",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Discover the farm-to-skin difference of products made with pure goat milk - all on FREE shipping."
+  },
+  {
+   "event_id": 215,
+   "start_gps": 1476590418,
+   "length_s": 3600,
+   "title": "Benefit Cosmetics Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Look gorgeous from head to toe, and have fun doing it, with creative beauty from Benefit Cosmetics. Entertaining and innovative concepts create beauty that deli"
+  },
+  {
+   "event_id": 216,
+   "start_gps": 1476594018,
+   "length_s": 3600,
+   "title": "Benefit Cosmetics Gifts",
+   "rating": "TV-G",
+   "source_id": 7,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Look gorgeous from head to toe, and have fun doing it, with creative beauty from Benefit Cosmetics. Entertaining and innovative concepts create beauty that deli"
+  },
+  {
+   "event_id": 217,
+   "start_gps": 1476511218,
+   "length_s": 1800,
+   "title": "Caroline in the City",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Caroline decides to try and become the understudy of one of her idols in her latest performance on Broadway; Richard learns that he has to have minor surgery."
+  },
+  {
+   "event_id": 218,
+   "start_gps": 1476513018,
+   "length_s": 1800,
+   "title": "Caroline in the City",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Caroline attempts to reunite Richard with his estranged father after she learns that he was quite the successful comedian in his hay day."
+  },
+  {
+   "event_id": 219,
+   "start_gps": 1476514818,
+   "length_s": 1800,
+   "title": "Suddenly Susan",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Susan's boyfriend pampers her too much.  Jack and Todd try to cheer up Luis, who misses him mother."
+  },
+  {
+   "event_id": 220,
+   "start_gps": 1476516618,
+   "length_s": 1800,
+   "title": "Suddenly Susan",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Susan agonizes over whether or not to ruin the career of a philandering politician.  Vicki's wedding plans go awry."
+  },
+  {
+   "event_id": 221,
+   "start_gps": 1476518418,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 222,
+   "start_gps": 1476520218,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 223,
+   "start_gps": 1476522018,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 224,
+   "start_gps": 1476523818,
+   "length_s": 1800,
+   "title": "Paid Program",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Sponsored television programming."
+  },
+  {
+   "event_id": 225,
+   "start_gps": 1476525618,
+   "length_s": 1800,
+   "title": "Archie Bunker's Place",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "When Murray feels he no longer has an equal say in the decision-making regarding the restaurant, he wishes to dissolve his partnership with Archie."
+  },
+  {
+   "event_id": 226,
+   "start_gps": 1476527418,
+   "length_s": 1800,
+   "title": "Archie Bunker's Place",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Archie and Murray head out of town for a convention, where Murray finds himself in trouble after inviting an alluring woman to his room."
+  },
+  {
+   "event_id": 227,
+   "start_gps": 1476529218,
+   "length_s": 1800,
+   "title": "Benson",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Benson works to be able to help the telethon by getting Gladys Knight and the Pips to do a performance for the telethon."
+  },
+  {
+   "event_id": 228,
+   "start_gps": 1476531018,
+   "length_s": 1800,
+   "title": "Benson",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Winston is a school friend of Katie's who decides Benson would be perfect as his next father and as a husband for his widowed mother and begins matchmaking."
+  },
+  {
+   "event_id": 229,
+   "start_gps": 1476532818,
+   "length_s": 1800,
+   "title": "Mork & Mindy",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Mork tells Father Denny that he is seeking a new job, but a mix-up has Mork wearing a black jacket with a white collar and dispensing religious advice."
+  },
+  {
+   "event_id": 230,
+   "start_gps": 1476534618,
+   "length_s": 1800,
+   "title": "Mork & Mindy",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Na\u00efve Mork is introduced to the ways of advertising, purchasing everything he sees advertised and dreaming about popular commercials."
+  },
+  {
+   "event_id": 231,
+   "start_gps": 1476536418,
+   "length_s": 1800,
+   "title": "Sabrina, the Teenage Witch",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Sabrina is frustrated when her annoying cousin comes for a visit and ends up hoping to pilfer one of Sabrina's friends; Hilda and Zelda trapped in bottle."
+  },
+  {
+   "event_id": 232,
+   "start_gps": 1476538218,
+   "length_s": 1800,
+   "title": "Sabrina, the Teenage Witch",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Sabrina ends up breaking into four pieces when she can't decide what college to go to and everyone is giving her their own opinion."
+  },
+  {
+   "event_id": 233,
+   "start_gps": 1476540018,
+   "length_s": 1800,
+   "title": "Head of the Class",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Charlie teaches the class about grief when Sarah's grandmother and Arvid's dog die."
+  },
+  {
+   "event_id": 234,
+   "start_gps": 1476541818,
+   "length_s": 1800,
+   "title": "Head of the Class",
+   "rating": "",
+   "source_id": 8,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Arvid considers having his nose surgically repaired to stop his snoring and to look better."
+  },
+  {
+   "event_id": 235,
+   "start_gps": 1476543618,
+   "length_s": 1800,
+   "title": "Family Ties",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Nick is inspired to start an art school, but when his bank rejects his application for a loan, Mallory encourages him to ask his estranged father for the money."
+  },
+  {
+   "event_id": 236,
+   "start_gps": 1476545418,
+   "length_s": 1800,
+   "title": "Family Ties",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "The family becomes anxious when Steven's surgery takes longer than they expect and join Nick as he keeps up the spirits of other waiting room visitors."
+  },
+  {
+   "event_id": 237,
+   "start_gps": 1476547218,
+   "length_s": 1800,
+   "title": "Who's the Boss?",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Samantha is having trouble becoming friends with the popular girls as she begins junior high school, so she tells the wealthy girls that Tony is in advertising."
+  },
+  {
+   "event_id": 238,
+   "start_gps": 1476549018,
+   "length_s": 1800,
+   "title": "Who's the Boss?",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "A recently deceased stranger leaves Mona a sizeable amount of money in his will, but Mona soon realizes who the man and does now want the money."
+  },
+  {
+   "event_id": 239,
+   "start_gps": 1476550818,
+   "length_s": 1800,
+   "title": "The Hogan Family",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "A snowstorm forces Sandy's visiting parents to stay a little longer."
+  },
+  {
+   "event_id": 240,
+   "start_gps": 1476552618,
+   "length_s": 1800,
+   "title": "The Hogan Family",
+   "rating": "TV-G",
+   "source_id": 8,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Mark is threatened by the school bully ghostwrite his paper or else."
+  },
+  {
+   "event_id": 241,
+   "start_gps": 1476554418,
+   "length_s": 1800,
+   "title": "Dear John",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Ralph meets a married woman at his job as a toll taker and wants to get to know her."
+  },
+  {
+   "event_id": 242,
+   "start_gps": 1476556218,
+   "length_s": 1800,
+   "title": "Dear John",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "John meets an attractive periodontist, while Jackie has an encounter with a suave South American and Kirk meets his match."
+  },
+  {
+   "event_id": 243,
+   "start_gps": 1476558018,
+   "length_s": 1800,
+   "title": "The John Larroquette Show",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 244,
+   "start_gps": 1476559818,
+   "length_s": 1800,
+   "title": "The John Larroquette Show",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Los Angeles Angels of Anaheim vs Oakland Athletics"
+  },
+  {
+   "event_id": 245,
+   "start_gps": 1476561618,
+   "length_s": 1800,
+   "title": "Becker",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "When a patient dies that belongs to a vacationing colleague, John's callous comment to Linda about the death is picked up on the family's voicemail."
+  },
+  {
+   "event_id": 246,
+   "start_gps": 1476563418,
+   "length_s": 1800,
+   "title": "Becker",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Becker is annoyed when tapped for jury duty and outright angry when he can't seem to get chosen for a jury, but the jury room has soap operas on TV."
+  },
+  {
+   "event_id": 247,
+   "start_gps": 1476565218,
+   "length_s": 1800,
+   "title": "Wings",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Brian allows Fay to beat him at a tennis match in order to cheer her up but asks for a rematch in embarrassment when word of his loss spreads."
+  },
+  {
+   "event_id": 248,
+   "start_gps": 1476567018,
+   "length_s": 1800,
+   "title": "Wings",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "Brian reports a UFO that both he and Joe saw while on a cargo flight, and he agrees to take the UFO society and a reporter up in hopes of seeing it again."
+  },
+  {
+   "event_id": 249,
+   "start_gps": 1476568818,
+   "length_s": 1800,
+   "title": "Mad About You",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Paul refuses to go with Jamie on a weekend vacation in Pennsylvania until he has managed to perfect a documentary film about a weed."
+  },
+  {
+   "event_id": 250,
+   "start_gps": 1476570618,
+   "length_s": 1800,
+   "title": "Mad About You",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Nominated once again for a prestigious filmmaking award, Paul hopes to use the occasion to look for work and get a leg up on his competitors."
+  },
+  {
+   "event_id": 251,
+   "start_gps": 1476572418,
+   "length_s": 1800,
+   "title": "227",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "When Sandra is appointed PR director of the Miss Teen Washington Pageant, she suggests that Mary enter Brenda, but Mary disapproves of the Bikini segment."
+  },
+  {
+   "event_id": 252,
+   "start_gps": 1476574218,
+   "length_s": 1800,
+   "title": "227",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "When Sandra's cousin visits to evade an arranged marriage, her fianc\u00e9e follows her and they argue over whether or not they want to marry each other."
+  },
+  {
+   "event_id": 253,
+   "start_gps": 1476576018,
+   "length_s": 1800,
+   "title": "Designing Women",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "A look back is taken of when Julia stood up for Suzanne and defended Bernice, Mary Jo discussed the mystery of bra sizes, and Charlene worried about bees."
+  },
+  {
+   "event_id": 254,
+   "start_gps": 1476577818,
+   "length_s": 1800,
+   "title": "Designing Women",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "A series of clips from the show's first four seasons, including: Julia's defense of Suzanne at a beauty pageant and Suzanne's struggles with weight."
+  },
+  {
+   "event_id": 255,
+   "start_gps": 1476579618,
+   "length_s": 1800,
+   "title": "NewsRadio",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Dave is determined that the WNYX station will overcome its supposed curse and finally win the local broadcasting awards competition."
+  },
+  {
+   "event_id": 256,
+   "start_gps": 1476581418,
+   "length_s": 1800,
+   "title": "NewsRadio",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "When the thermostat breaks at WNYX, everyone finds relief from the heat by daydreaming, including Beth, who dreams that Matthew is stalking her."
+  },
+  {
+   "event_id": 257,
+   "start_gps": 1476583218,
+   "length_s": 1800,
+   "title": "Just Shoot Me",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "The staff believes Jack spontaneously hired a woman in order to seduce her; Finch is determined to offer his help to a female coworker."
+  },
+  {
+   "event_id": 258,
+   "start_gps": 1476585018,
+   "length_s": 1800,
+   "title": "Just Shoot Me",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "Finch tries to make Vicki look bad when Jack seems to take a liking to her, but he realizes that Vicki will one day want to get her revenge."
+  },
+  {
+   "event_id": 259,
+   "start_gps": 1476586818,
+   "length_s": 1800,
+   "title": "The Drew Carey Show",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Drew hires a teenager to help improve his technical know-how; Steve moves in with Lewis and Oswald and drives them crazy with his constant crying."
+  },
+  {
+   "event_id": 260,
+   "start_gps": 1476588618,
+   "length_s": 1800,
+   "title": "The Drew Carey Show",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Drew takes salsa lessons in the hopes of learning to dance for his wedding; Kellie and Drew both realize they have feelings for eachother but won't admit it."
+  },
+  {
+   "event_id": 261,
+   "start_gps": 1476590418,
+   "length_s": 1800,
+   "title": "Rules of Engagement",
+   "rating": "TV-14",
+   "source_id": 8,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Jeff tries to lose 10 pounds so he can be classified as an \"optimal male\" on his life insurance physical exam; Jennifer gets jealous of Adam's old girlfriend."
+  },
+  {
+   "event_id": 262,
+   "start_gps": 1476592218,
+   "length_s": 1800,
+   "title": "Rules of Engagement",
+   "rating": "TV-14",
+   "source_id": 8,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Adam worries that Russell will be upset when he learns that his father asked him to pose as his son in a promotional video for his company."
+  },
+  {
+   "event_id": 263,
+   "start_gps": 1476594018,
+   "length_s": 1800,
+   "title": "Murphy Brown",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Jealousy reigns when McGovern is asked to be on the cover of Rolling Stone Magazine."
+  },
+  {
+   "event_id": 264,
+   "start_gps": 1476595818,
+   "length_s": 1800,
+   "title": "Murphy Brown",
+   "rating": "TV-PG",
+   "source_id": 8,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Murphy is stunned to find out that the network president's annoying nephew is actually the perfect secretary."
+  }
+ ],
+ "rf": 31,
+ "mhz": 575,
+ "signal": {
+  "SignalStrengthPercent": 100,
+  "SignalQualityPercent": 100
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 8,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 9,
+   "name": "",
+   "video": "mpeg2video 0x0",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 10,
+   "name": "",
+   "video": "mpeg2video 720x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

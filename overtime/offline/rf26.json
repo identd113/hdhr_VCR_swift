@@ -1,0 +1,93 @@
+{
+ "gps_utc_offset": 18,
+ "broadcast_time_utc": "2026-10-20T07:42:07+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683
+  ],
+  "mgt_entries": 10
+ },
+ "channels": [
+  {
+   "name": "WDMI-LD",
+   "major": 62,
+   "minor": 1,
+   "number": "62.1",
+   "modulation": 4,
+   "tsid": 5067,
+   "program": 1,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WDMI-ES",
+   "major": 62,
+   "minor": 2,
+   "number": "62.2",
+   "modulation": 4,
+   "tsid": 5067,
+   "program": 2,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "WDMI-SD",
+   "major": 62,
+   "minor": 3,
+   "number": "62.3",
+   "modulation": 4,
+   "tsid": 5067,
+   "program": 3,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [],
+ "rf": 26,
+ "mhz": 545,
+ "signal": {
+  "SignalStrengthPercent": 56,
+  "SignalQualityPercent": 68
+ },
+ "pmt_programs": [
+  {
+   "program": 1,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 2,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}

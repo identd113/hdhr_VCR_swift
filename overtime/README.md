@@ -109,3 +109,33 @@ tools/band_sweep.py --ip 10.0.2.101 --analyze             # re-capture 30 s, ffm
 2. PSIP decoder (pure Python, offline): VCT first, then EIT/ETT from the PIDs the MGT names; test on RF 32 and RF 31.
 3. Compare the decoded guide with the cloud guide for the same hours to see how much is missing.
 4. Decide whether offline mode is a second guide source in `GuideStore` or a separate mode, and write the plan in `docs/`.
+
+## Update 2026-10-20 (later): lineup and guide built from the air
+
+New tools (both pure Python, in this folder):
+- `psip.py`: decodes the ATSC tables in a captured multiplex. Tested on WCCO (RF 32), 90 s capture: 7 channels, 634 events, about
+  three days ahead, 604 with a description, 460 with a rating.
+- `build_offline.py`: for each RF channel with signal, captures the multiplex from an idle tuner (75 s; two at a time, one per tuner),
+  decodes it, and writes `offline/lineup.json` (tuner lineup shape, plus RF, frequency and program number), `offline/guide.json`
+  (the cloud guide's shape: channel -> entries with epoch StartTime/EndTime, Title, Synopsis, Rating) and `offline/rf<N>.json`.
+  Captures are deleted after decoding. `--compare` checks the result against the tuner's real lineup.
+
+Result for the Twin Cities (16 multiplexes, about 10 minutes with both tuners):
+
+| | |
+|---|---|
+| Channels found on the air | 105 (TV and audio services) |
+| Also in the tuner's lineup | 98 |
+| On the air, **not** in the lineup | 19.1–19.7: KKTW-LD, RTV, Hasbro, Revival, GLTV… (RF 19, a low-power multiplex, signal about 60%) |
+| In the lineup, not decoded from the air | 17.4, 25.1–25.6, 49.1–49.7 (RF 25 and RF 36: the capture had no usable PSIP; not yet explained) |
+| Channels with a guide | 81 of 105; 3,629 events, 2,885 with a description, 1,812 with a rating; median 22 hours ahead (WCCO and some others about 3 days) |
+| Channels with no guide at all | RF 14 (K14RB-D, 4 channels) and RF 21 (WUMN, 16 channels) send no EIT tables; RF 26 (WDMI) lists EIT PIDs but sent no events in 75 s; 33.8 has none |
+| Names that differ from the cloud lineup | Station rebrands, e.g. 2.x is "TPT 2 / TPTMN…" in the cloud and "MNPBS / MNCH…" on the air |
+
+What is missing compared with the cloud guide: **SeriesID**, genre tags (`Filter`), episode titles and numbers, and images. Series
+recording would have to rely on the title-based matching the app already has as a fallback; the SeriesID rules cannot work offline.
+The air also gives ratings, which the cloud guide does not carry in the app's model.
+
+Next: explain RF 25 / RF 36 (lineup channels with no decodable PSIP: weak signal, a different PSIP layout, or the tuner re-mapping
+program numbers); decide how the app would read `guide.json` (a new source beside the cloud and XMLTV ones); schedule the
+sweep (a nightly capture of each multiplex, 75 s each, only when a tuner is idle).

@@ -1,0 +1,4946 @@
+{
+ "gps_utc_offset": 16,
+ "broadcast_time_utc": "2026-10-20T07:44:58+00:00",
+ "tables": {
+  "eit_pids": [
+   7424,
+   7425,
+   7426,
+   7427,
+   7428,
+   7429,
+   7430,
+   7431,
+   7432,
+   7433,
+   7434,
+   7435,
+   7436,
+   7437,
+   7438,
+   7439,
+   7440,
+   7441,
+   7442,
+   7443,
+   7444,
+   7445,
+   7446,
+   7447
+  ],
+  "ett_pids": [
+   7680,
+   7681,
+   7682,
+   7683,
+   7684,
+   7685,
+   7686,
+   7687,
+   7688,
+   7689,
+   7690,
+   7691,
+   7692,
+   7693,
+   7694,
+   7695,
+   7696,
+   7697,
+   7698,
+   7699,
+   7700,
+   7701,
+   7702,
+   7703
+  ],
+  "mgt_entries": 50
+ },
+ "channels": [
+  {
+   "name": "MNPBS",
+   "major": 2,
+   "minor": 1,
+   "number": "2.1",
+   "modulation": 4,
+   "tsid": 1605,
+   "program": 3,
+   "source_id": 1,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "MNCH",
+   "major": 2,
+   "minor": 2,
+   "number": "2.2",
+   "modulation": 4,
+   "tsid": 1605,
+   "program": 7,
+   "source_id": 6,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "MNLIFE",
+   "major": 2,
+   "minor": 3,
+   "number": "2.3",
+   "modulation": 4,
+   "tsid": 1605,
+   "program": 5,
+   "source_id": 3,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "MNKIDS",
+   "major": 2,
+   "minor": 4,
+   "number": "2.4",
+   "modulation": 4,
+   "tsid": 1605,
+   "program": 4,
+   "source_id": 2,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  },
+  {
+   "name": "MNREADY",
+   "major": 2,
+   "minor": 5,
+   "number": "2.5",
+   "modulation": 4,
+   "tsid": 1605,
+   "program": 6,
+   "source_id": 4,
+   "service_type": 2,
+   "hidden": false,
+   "access_controlled": false,
+   "hide_guide": false
+  }
+ ],
+ "events": [
+  {
+   "event_id": 4149,
+   "start_gps": 1476511216,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Vintage First Finds, Hour 5: Discover today's values for ROADSHOW's first finds, including one with a whopping update!"
+  },
+  {
+   "event_id": 4426,
+   "start_gps": 1476514816,
+   "length_s": 1800,
+   "title": "Pursuit of Happiness",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "The Meaning We Make: Across generations, we inherit ideas about what makes life meaningful, but how, exactly, do we take those insights and reshape them for the future? A refugee transforms from a selective mute to a voice of her people, a daughter carries forward her father's legacy in Black theater, and a Native farmer restores bison to ancestral lands. Their stories explore how community, culture, and purpose inform happiness for the future."
+  },
+  {
+   "event_id": 4110,
+   "start_gps": 1476516616,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Vintage Philadelphia: Phenomenal Philadelphia finds from 2006 include an asscher-cut yellow diamond ring from around 1930."
+  },
+  {
+   "event_id": 4108,
+   "start_gps": 1476520216,
+   "length_s": 3600,
+   "title": "Rick Steves Best of Rome",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Rick Steves conquers Rome's biggest travel destinations, including St. Peter's Basilica."
+  },
+  {
+   "event_id": 4106,
+   "start_gps": 1476523816,
+   "length_s": 2725,
+   "title": "Michael Palin In North Korea",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Michael Palin heads to North Korea and starts his journey by visiting Pyongyang."
+  },
+  {
+   "event_id": 4107,
+   "start_gps": 1476526541,
+   "length_s": 2675,
+   "title": "Michael Palin In North Korea",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T10:15:25+00:00",
+   "description": "Michael heads to Kaesong, Wonsan, and the Revolutionary Museum on Mount Paektu."
+  },
+  {
+   "event_id": 4150,
+   "start_gps": 1476529216,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Butterflies and Bunny Babies/Every Meow and Again: Molly and Trini figure out how to protect some baby hares until their mama comes back."
+  },
+  {
+   "event_id": 4071,
+   "start_gps": 1476531016,
+   "length_s": 3600,
+   "title": "Wild Kratts: Creepy Creatures",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "The Wild Kratts must defeat Zach and other villains who have come up with a plan to ruin Halloween."
+  },
+  {
+   "event_id": 4151,
+   "start_gps": 1476534616,
+   "length_s": 1800,
+   "title": "Skillsville",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Cryptologist / Landscape Designer: Dev creates a plan to make a yard both beautiful and functional."
+  },
+  {
+   "event_id": 4152,
+   "start_gps": 1476536416,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "The Weathercast: Lily, Corky, and Benny attempt to film their own weather broadcast."
+  },
+  {
+   "event_id": 4467,
+   "start_gps": 1476538216,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Sesame Street and the Great Elephant Adventure: Join Elmo and the Sesame Street gang on a once-in-a-lifetime African safari."
+  },
+  {
+   "event_id": 3636,
+   "start_gps": 1476541816,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "More Syllables, More Problems! / Oops, I Shrunk the Super Readers! / Floral Frenzy!: When Alpha Pig shows Wonder Red his new Shrink Ray, it accidentally shrinks THEM!"
+  },
+  {
+   "event_id": 3637,
+   "start_gps": 1476543616,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "Flipping Out/The Barbershop: Phoebe learns what privacy signs are and how to use them to help communicate."
+  },
+  {
+   "event_id": 3638,
+   "start_gps": 1476545416,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Grover's Play: Grover has the perfect plan for his play while Tamir and Cookie Monster fix his suitycase."
+  },
+  {
+   "event_id": 3639,
+   "start_gps": 1476547216,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Malik Gets Muddy/Balloonasaur Delivery: With the help of special sneakers, Malik tries to get JunJun's favorite ball back."
+  },
+  {
+   "event_id": 3640,
+   "start_gps": 1476549016,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "The Try Scouts/Wiz-Kazizz-Kazaam: Donkey and Panda become Try Scouts./Bob Dog is excited to play a new board game."
+  },
+  {
+   "event_id": 3641,
+   "start_gps": 1476550816,
+   "length_s": 1800,
+   "title": "Rosie's Rules",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "The Great Cupcake Search/Iggy's Egg Hunt: Rosie's Rules is an 11-minute preschool family sitcom about a little girl just beginning to learn about the fascinating, baffling, thrilling world beyond her family walls. In her resilient quest to make sense of the world's most mystifying concepts, she often plows her way into comic chaos. It's \"learning-by-doing\" and she usually does it a little bit wrong before she gets it right."
+  },
+  {
+   "event_id": 3642,
+   "start_gps": 1476552616,
+   "length_s": 1800,
+   "title": "Elinor Wonders Why",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "Butterfly Party/More Than One Right Way: Olive wants to organize a special garden party with REAL butterflies for her mom's birthday."
+  },
+  {
+   "event_id": 4153,
+   "start_gps": 1476554416,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Vintage Chattanooga Hour 1: Check out updated Chattanooga appraisals from 2009, including one $250,000 find!"
+  },
+  {
+   "event_id": 4154,
+   "start_gps": 1476558016,
+   "length_s": 3600,
+   "title": "Nova",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Evolution: Brain Power: The story of the dolphin reveals how intelligence evolved, step by step, over billions of years."
+  },
+  {
+   "event_id": 4155,
+   "start_gps": 1476561616,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Africa's Golden City: Archaeologists uncover new secrets of Great Zimbabwe, a lost ancient city."
+  },
+  {
+   "event_id": 4114,
+   "start_gps": 1476565216,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Egypt's Darkest Hour: Archaeologists examine a rare mass grave dating to the collapse of ancient Egypt's Old Kingdom."
+  },
+  {
+   "event_id": 4156,
+   "start_gps": 1476568816,
+   "length_s": 1800,
+   "title": "BBC World News America",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Presented by Sumi Somaskanda and Caitriona Perry, BBC World News America gives audiences a detailed look into news stories from around the world from the BBC news desk in Washington, DC."
+  },
+  {
+   "event_id": 4157,
+   "start_gps": 1476570616,
+   "length_s": 1800,
+   "title": "DW News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "DW News - a daily newscast from the heart of Europe. As one of the world's largest international broadcasters, Deutsche Welle provides public television viewers the unique opportunity to see our world from another perspective."
+  },
+  {
+   "event_id": 4158,
+   "start_gps": 1476572416,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 3723,
+   "start_gps": 1476576016,
+   "length_s": 3600,
+   "title": "Finding Your Roots",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "War Stories: Patricia Arquette, Julianne Moore and John McCain explore the military service of their families."
+  },
+  {
+   "event_id": 4093,
+   "start_gps": 1476579616,
+   "length_s": 3600,
+   "title": "Annie Oakley: American Experience",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "The story of a five-foot-tall sharpshooter who became a world renowned symbol of the Wild West."
+  },
+  {
+   "event_id": 14110,
+   "start_gps": 1476583216,
+   "length_s": 3600,
+   "title": "Frontline",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Haiti Deportation Crisis: The U.S. ends protections for Haitians, driving deportation fears back to a violent homeland."
+  },
+  {
+   "event_id": 14112,
+   "start_gps": 1476586816,
+   "length_s": 3600,
+   "title": "Frontline",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Caught in the Crackdown: Examine the tactics, legal cases, and impact of federal immigration sweeps in major cities."
+  },
+  {
+   "event_id": 14114,
+   "start_gps": 1476590416,
+   "length_s": 3600,
+   "title": "If I Could Stay/ Si Pudiera Quedarme",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Explore this moving call to action about the strength of community for two undocumented mothers."
+  },
+  {
+   "event_id": 4159,
+   "start_gps": 1476594016,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 4160,
+   "start_gps": 1476597616,
+   "length_s": 3600,
+   "title": "Finding Your Roots",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "War Stories: Patricia Arquette, Julianne Moore and John McCain explore the military service of their families."
+  },
+  {
+   "event_id": 4161,
+   "start_gps": 1476601216,
+   "length_s": 3600,
+   "title": "Annie Oakley: American Experience",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "The story of a five-foot-tall sharpshooter who became a world renowned symbol of the Wild West."
+  },
+  {
+   "event_id": 14111,
+   "start_gps": 1476604816,
+   "length_s": 3600,
+   "title": "Frontline",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Haiti Deportation Crisis: The U.S. ends protections for Haitians, driving deportation fears back to a violent homeland."
+  },
+  {
+   "event_id": 14113,
+   "start_gps": 1476608416,
+   "length_s": 3600,
+   "title": "Frontline",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Caught in the Crackdown: Examine the tactics, legal cases, and impact of federal immigration sweeps in major cities."
+  },
+  {
+   "event_id": 14115,
+   "start_gps": 1476612016,
+   "length_s": 3600,
+   "title": "If I Could Stay/ Si Pudiera Quedarme",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Explore this moving call to action about the strength of community for two undocumented mothers."
+  },
+  {
+   "event_id": 4164,
+   "start_gps": 1476615616,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Special Salmon/Love Your Locks: Randall is growing out his hair to use on a traditional Tlingit mask."
+  },
+  {
+   "event_id": 4165,
+   "start_gps": 1476617416,
+   "length_s": 1800,
+   "title": "Arthur",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Binky Barnes, Art Expert/Arthur's Lucky Pencil: Arthur has to work with Binky on an art project and finds a pencil that brings good luck."
+  },
+  {
+   "event_id": 4166,
+   "start_gps": 1476619216,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Elephant Brains!: The Wild Kratts are on a mission to figure out the differences between African and Asian elephants."
+  },
+  {
+   "event_id": 4167,
+   "start_gps": 1476621016,
+   "length_s": 1800,
+   "title": "Skillsville",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Nutritionist / Judge: Rae helps the players choose foods that give them the best \"power-up.\""
+  },
+  {
+   "event_id": 4168,
+   "start_gps": 1476622816,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Mother's Day Rainbow: The kids learn what colors make up a rainbow just in time for a Mother's Day surprise."
+  },
+  {
+   "event_id": 3643,
+   "start_gps": 1476624616,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T13:30:00+00:00",
+   "description": "A Fuzzytown Halloween: A spooky rumor dampens everyone's excitement for trick-or-treating."
+  },
+  {
+   "event_id": 3644,
+   "start_gps": 1476626416,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Circle Time Squabble/It's Not Okay to Hurt Someone: Daniel  remembers the importance of self-control when he gets mad at Miss Elaina at school."
+  },
+  {
+   "event_id": 3645,
+   "start_gps": 1476628216,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "Many More Mr. Mores! / Talent Trouble! / The Letter f Fun Fair!: Mr. More takes letter m's from all over town and uses them to make many more Mr. Mores!"
+  },
+  {
+   "event_id": 3646,
+   "start_gps": 1476630016,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Paint on the Mail/The Last Box: Phoebe and Jay accidentally get paint on the mail and have to decode addresses."
+  },
+  {
+   "event_id": 3647,
+   "start_gps": 1476631816,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T15:30:00+00:00",
+   "description": "Rudy's Doctor Dilemma: Nina and Abby play pretend with Rudy so he can feel less scared about going to the doctor."
+  },
+  {
+   "event_id": 4466,
+   "start_gps": 1476633616,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Sesame Street and the Great Elephant Adventure: Join Elmo and the Sesame Street gang on a once-in-a-lifetime African safari."
+  },
+  {
+   "event_id": 3648,
+   "start_gps": 1476637216,
+   "length_s": 1800,
+   "title": "Rosie's Rules",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "The Legend of Captain Spooky Beard/Crystal's Haunted House: Rosie and Javi try to avoid a pirate ghost who may be haunting their cul-de-sac."
+  },
+  {
+   "event_id": 3649,
+   "start_gps": 1476639016,
+   "length_s": 1800,
+   "title": "Elinor Wonders Why",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "Tasty Rainbow/Olive Gets The Big Picture: The kids join a wildlife photographer and learn how to snap the perfect picture of a puffin."
+  },
+  {
+   "event_id": 4169,
+   "start_gps": 1476640816,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Vintage Chattanooga Hour 2: Travel back to 2009 for terrific Tennessee treasures, like a $25,000 to $35,000 find!"
+  },
+  {
+   "event_id": 4170,
+   "start_gps": 1476644416,
+   "length_s": 3600,
+   "title": "Finding Your Roots",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "War Stories: Patricia Arquette, Julianne Moore and John McCain explore the military service of their families."
+  },
+  {
+   "event_id": 4171,
+   "start_gps": 1476648016,
+   "length_s": 3600,
+   "title": "Annie Oakley: American Experience",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "The story of a five-foot-tall sharpshooter who became a world renowned symbol of the Wild West."
+  },
+  {
+   "event_id": 3908,
+   "start_gps": 1476651616,
+   "length_s": 1800,
+   "title": "Roadtrip Nation: Wealth of Opportunity",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Community & Connections: Madeline meets an entrepreneurial investor while Grace finds a developer in Philadelphia."
+  },
+  {
+   "event_id": 4456,
+   "start_gps": 1476653416,
+   "length_s": 1800,
+   "title": "Pursuit of Happiness",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "The Meaning We Make: Across generations, we inherit ideas about what makes life meaningful, but how, exactly, do we take those insights and reshape them for the future? A refugee transforms from a selective mute to a voice of her people, a daughter carries forward her father's legacy in Black theater, and a Native farmer restores bison to ancestral lands. Their stories explore how community, culture, and purpose inform happiness for the future."
+  },
+  {
+   "event_id": 4172,
+   "start_gps": 1476655216,
+   "length_s": 1800,
+   "title": "BBC World News America",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "Presented by Sumi Somaskanda and Caitriona Perry, BBC World News America gives audiences a detailed look into news stories from around the world from the BBC news desk in Washington, DC."
+  },
+  {
+   "event_id": 4173,
+   "start_gps": 1476657016,
+   "length_s": 1800,
+   "title": "DW News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": "DW News - a daily newscast from the heart of Europe. As one of the world's largest international broadcasters, Deutsche Welle provides public television viewers the unique opportunity to see our world from another perspective."
+  },
+  {
+   "event_id": 4174,
+   "start_gps": 1476658816,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 3915,
+   "start_gps": 1476662416,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Tiger Island, Part I: Experts film two tiger moms protecting cubs from a male in Nepal."
+  },
+  {
+   "event_id": 3727,
+   "start_gps": 1476666016,
+   "length_s": 3600,
+   "title": "Nova",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Evolution: Need to Feed: Discover the untold story - full of surprising evolutionary leaps - behind every bite we take."
+  },
+  {
+   "event_id": 4099,
+   "start_gps": 1476669616,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Raising Lady Liberty: Learn how the unique partnership between the United States and France made the monument possible."
+  },
+  {
+   "event_id": 4100,
+   "start_gps": 1476673216,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Eiffel's Race to the Top: Discover the untold story of Paris' most famous landmark and the race to top 1,000 feet."
+  },
+  {
+   "event_id": 4175,
+   "start_gps": 1476676816,
+   "length_s": 3600,
+   "title": "Finding Your Roots",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "War Stories: Patricia Arquette, Julianne Moore and John McCain explore the military service of their families."
+  },
+  {
+   "event_id": 4176,
+   "start_gps": 1476680416,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 4177,
+   "start_gps": 1476684016,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Tiger Island, Part I: Experts film two tiger moms protecting cubs from a male in Nepal."
+  },
+  {
+   "event_id": 4178,
+   "start_gps": 1476687616,
+   "length_s": 3600,
+   "title": "Nova",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Evolution: Need to Feed: Discover the untold story - full of surprising evolutionary leaps - behind every bite we take."
+  },
+  {
+   "event_id": 4179,
+   "start_gps": 1476691216,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Raising Lady Liberty: Learn how the unique partnership between the United States and France made the monument possible."
+  },
+  {
+   "event_id": 4180,
+   "start_gps": 1476694816,
+   "length_s": 3600,
+   "title": "Secrets of the Dead",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Eiffel's Race to the Top: Discover the untold story of Paris' most famous landmark and the race to top 1,000 feet."
+  },
+  {
+   "event_id": 4181,
+   "start_gps": 1476698416,
+   "length_s": 3600,
+   "title": "Finding Your Roots",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "War Stories: Patricia Arquette, Julianne Moore and John McCain explore the military service of their families."
+  },
+  {
+   "event_id": 4182,
+   "start_gps": 1476702016,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Operation Sleepover/Beneath The Surface: A friendly competition to see who can catch the most fish turns south when Molly loses her bracelet."
+  },
+  {
+   "event_id": 4072,
+   "start_gps": 1476703816,
+   "length_s": 3600,
+   "title": "Arthur and the Haunted Tree House",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "Arthur, Buster and Ladonna have a treehouse sleepover that seems to be haunted! But by what?"
+  },
+  {
+   "event_id": 4183,
+   "start_gps": 1476707416,
+   "length_s": 1800,
+   "title": "Skillsville",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Demolition Expert / Florist: Dev needs to find a way to take down a crumbling cookie factory safely."
+  },
+  {
+   "event_id": 4184,
+   "start_gps": 1476709216,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Foggy Trick Or Treat: A foggy Halloween almost derails Corky and Lily's trick-or-treating."
+  },
+  {
+   "event_id": 3650,
+   "start_gps": 1476711016,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "The Sticker Collection/The Baby Stuff Collection: Carl realizes his favorite scratch-n-sniff sticker lost its smell and he wants to get it back."
+  },
+  {
+   "event_id": 3651,
+   "start_gps": 1476712816,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Katerina's Costume/Dress Up Day: Katerina is having a hard time deciding on just the right costume or Dress Up Day."
+  },
+  {
+   "event_id": 3652,
+   "start_gps": 1476714616,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T14:30:00+00:00",
+   "description": "Things that go OO in the Night! / Tricks and Treats! / Costume Catastrophe!: The Eraser gets greedy while trick or treating and takes Wonder Red's Wonder Basket!"
+  },
+  {
+   "event_id": 3653,
+   "start_gps": 1476716416,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "The Recipe/The Campout: Phoebe and Jay create a family recipe and save their courtyard campout from a bug invasion."
+  },
+  {
+   "event_id": 3654,
+   "start_gps": 1476718216,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T15:30:00+00:00",
+   "description": "Abby's Magical Beasties: Abby tries to find a magical beastie while her friends help care for her other beasties."
+  },
+  {
+   "event_id": 3655,
+   "start_gps": 1476720016,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Summerween/Make It Snow: The Wombats build a giant snow globe so Zeke can play in the snow in summer."
+  },
+  {
+   "event_id": 3656,
+   "start_gps": 1476721816,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T16:30:00+00:00",
+   "description": "A Donkey Hodie Halloween: Donkey Hodie and pals help Purple Panda celebrate his first Halloween in Someplace Else."
+  },
+  {
+   "event_id": 3657,
+   "start_gps": 1476723616,
+   "length_s": 1800,
+   "title": "Rosie's Rules",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Rosie The Mayor/All Eyes On Rosie: A fallen branch tests Rosie when she becomes Mayor Rosie."
+  },
+  {
+   "event_id": 3658,
+   "start_gps": 1476725416,
+   "length_s": 1800,
+   "title": "Elinor Wonders Why",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T17:30:00+00:00",
+   "description": "Follow Your Nose/Leaf Charms: After some investigating, the kids figure out that smelling is good for lots of reasons."
+  },
+  {
+   "event_id": 4185,
+   "start_gps": 1476727216,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "Vintage Dallas Hour 1: Everything is bigger in Texas, including an updated $150,000 top find!"
+  },
+  {
+   "event_id": 4186,
+   "start_gps": 1476730816,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Tiger Island, Part I: Experts film two tiger moms protecting cubs from a male in Nepal."
+  },
+  {
+   "event_id": 4082,
+   "start_gps": 1476734416,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "Parenthood: Grasslands: Wild dogs must control their teen pups for survival, while an expecting langur babysits."
+  },
+  {
+   "event_id": 4083,
+   "start_gps": 1476738016,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "Parenthood: Freshwater: An elephant mother must choose between the safety of her baby and the quest for water."
+  },
+  {
+   "event_id": 4187,
+   "start_gps": 1476741616,
+   "length_s": 1800,
+   "title": "BBC World News America",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Presented by Sumi Somaskanda and Caitriona Perry, BBC World News America gives audiences a detailed look into news stories from around the world from the BBC news desk in Washington, DC."
+  },
+  {
+   "event_id": 4188,
+   "start_gps": 1476743416,
+   "length_s": 1800,
+   "title": "DW News",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": "DW News - a daily newscast from the heart of Europe. As one of the world's largest international broadcasters, Deutsche Welle provides public television viewers the unique opportunity to see our world from another perspective."
+  },
+  {
+   "event_id": 4189,
+   "start_gps": 1476745216,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 4445,
+   "start_gps": 1476748816,
+   "length_s": 3600,
+   "title": "Under The Vines",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Daisy gets her hands dirty, while Louis gets more insight."
+  },
+  {
+   "event_id": 4248,
+   "start_gps": 1476752416,
+   "length_s": 5400,
+   "title": "Inspector George Gently",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": ""
+  },
+  {
+   "event_id": 4250,
+   "start_gps": 1476757816,
+   "length_s": 3600,
+   "title": "Shakespeare & Hathaway-Private Investigators",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T02:30:00+00:00",
+   "description": "In My Memory Lock'd: Frank and Lu set out to discover the identity of a wounded man who has no clue who he is."
+  },
+  {
+   "event_id": 4233,
+   "start_gps": 1476761416,
+   "length_s": 3600,
+   "title": "Bergerac",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T03:30:00+00:00",
+   "description": "A family's patriarch keeps his cards close to his chest after a family member is murdered."
+  },
+  {
+   "event_id": 4234,
+   "start_gps": 1476765016,
+   "length_s": 1800,
+   "title": "Made with Love",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T04:30:00+00:00",
+   "description": "Italy Made with Love: Bologna Generations: Travel the world to meet gifted artisans who pour passion and skill into timeless products made with love. From Ireland to Italy, the series showcases the landscapes and rich culture of each country and introduces the people who stay true to the artistry that shaped their lives, proudly passing their craft to the next generation."
+  },
+  {
+   "event_id": 4193,
+   "start_gps": 1476766816,
+   "length_s": 3600,
+   "title": "PBS News Hour",
+   "rating": "",
+   "source_id": 1,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "PBS NewsHour provides in-depth analysis of current events with a news summary, live studio interviews and discussions of domestic and international issues. Amna Nawaz and Geoff Bennett co-anchor."
+  },
+  {
+   "event_id": 6855,
+   "start_gps": 1476511216,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Masked Bandits: As the team prepare for a creature costume party, Jimmy is sure there's a ghost or monster present."
+  },
+  {
+   "event_id": 6856,
+   "start_gps": 1476513016,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "A Dark and Stormy Night: The Hunters need to get creative when the power goes out during a thunderstorm."
+  },
+  {
+   "event_id": 6857,
+   "start_gps": 1476514816,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "How to Hamster/A Bad Case of the Beeps: It is Luke's turn with the hamsters and he's planning the best weekend ever."
+  },
+  {
+   "event_id": 6858,
+   "start_gps": 1476516616,
+   "length_s": 1800,
+   "title": "Arthur",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T07:30:00+00:00",
+   "description": "Hic Or Treat/Mr. Alwaysright: D.W. gets a case of the hiccups that won't go away. Buster can't wait for Brain to make a mistake."
+  },
+  {
+   "event_id": 6859,
+   "start_gps": 1476518416,
+   "length_s": 1800,
+   "title": "Nature Cat",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "Rock Clues/Sweet Scent: NATURE CAT follows Fred, a house cat who dreams of exploring the great outdoors. In each episode, once his family leaves for the day, Fred transforms into Nature Cat, \"backyard explorer extraordinaire.\" Nature Cat can't wait to get outside for a day of backyard nature excursions and bravery, but there's one problem: He's still a house cat with no instincts for nature. Like many of today's kids, Nature Cat is eager and enthusiastic about outside activities, but is at times intimidated by them. With the help of his animal friends, Nature Cat embarks on action-packed adventures that include exciting missions full of nature investigation, \"aha\" discovery moments and humor, all while inspiring children to go outside and \"play the show.\""
+  },
+  {
+   "event_id": 6860,
+   "start_gps": 1476520216,
+   "length_s": 3600,
+   "title": "Arthur and the Haunted Tree House",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T08:30:00+00:00",
+   "description": "Arthur, Buster and Ladonna have a treehouse sleepover that seems to be haunted! But by what?"
+  },
+  {
+   "event_id": 6861,
+   "start_gps": 1476523816,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "The Lake Mistake/Plant Problem: The young heroes must find a way to restore a frozen lake back to its original, liquid state."
+  },
+  {
+   "event_id": 6862,
+   "start_gps": 1476525616,
+   "length_s": 1800,
+   "title": "Clifford The Big Red Dog",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Things That Go Bump/Sherlock Bones: Emily Elizabeth and Clifford host a backyard campout and get spooked by weird noises and shadows!"
+  },
+  {
+   "event_id": 6863,
+   "start_gps": 1476527416,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "A Snuffy Sized Sandwich: Everyone surprises Snuffy with his very own sandwich, the Snuffwich."
+  },
+  {
+   "event_id": 6864,
+   "start_gps": 1476529216,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "More Syllables, More Problems! / Oops, I Shrunk the Super Readers! / Floral Frenzy!: When Alpha Pig shows Wonder Red his new Shrink Ray, it accidentally shrinks THEM!"
+  },
+  {
+   "event_id": 6865,
+   "start_gps": 1476531016,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Super Duper Sleepover/Mountain Climb Time: A monster appears when the lights go out./Donkey and Panda follow in Grampy's hoof steps."
+  },
+  {
+   "event_id": 6866,
+   "start_gps": 1476532816,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Abby's Magical Beasties: Abby tries to find a magical beastie while her friends help care for her other beasties."
+  },
+  {
+   "event_id": 6867,
+   "start_gps": 1476534616,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Flipping Out/The Barbershop: Phoebe learns what privacy signs are and how to use them to help communicate."
+  },
+  {
+   "event_id": 6868,
+   "start_gps": 1476536416,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Zadie's Horrible Haircut/A Day Out with Babby: Zadie needs to face her fear of getting a haircut."
+  },
+  {
+   "event_id": 6869,
+   "start_gps": 1476538216,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Summerween/Make It Snow: The Wombats build a giant snow globe so Zeke can play in the snow in summer."
+  },
+  {
+   "event_id": 6870,
+   "start_gps": 1476540016,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Katerina's Costume/Dress Up Day: Katerina is having a hard time deciding on just the right costume or Dress Up Day."
+  },
+  {
+   "event_id": 6871,
+   "start_gps": 1476541816,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Find What Makes Your Family Special/Family Day: It's Family Day at the Neighborhood Library! Daniel learns that each family is different and special."
+  },
+  {
+   "event_id": 6872,
+   "start_gps": 1476543616,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "More Syllables, More Problems! / Oops, I Shrunk the Super Readers! / Floral Frenzy!: When Alpha Pig shows Wonder Red his new Shrink Ray, it accidentally shrinks THEM!"
+  },
+  {
+   "event_id": 6873,
+   "start_gps": 1476545416,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "A Wiggle Waggle Worries/The Pine Cone Collection: Sheldon can't wait for Carl to play his favorite beach game. / Lotta lost her blanket."
+  },
+  {
+   "event_id": 6874,
+   "start_gps": 1476547216,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "A Forrest of Plans/The Marble Collection: Forrest makes too many plans on the same day. / Carl and Arugula build an epic marble run."
+  },
+  {
+   "event_id": 6875,
+   "start_gps": 1476549016,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Donkey's Bad Day/Yodel Bird Egg: Donkey's fun day with Panda keeps going badly./Donkey and Panda protect a yodel bird egg."
+  },
+  {
+   "event_id": 6876,
+   "start_gps": 1476550816,
+   "length_s": 1800,
+   "title": "Elinor Wonders Why",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Junior Ranger Elinor/Big Brother: Junior Ranger Elinor and Ranger Rabbit learn their favorite spot has been ruined by fire."
+  },
+  {
+   "event_id": 6877,
+   "start_gps": 1476552616,
+   "length_s": 1800,
+   "title": "Rosie's Rules",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "An Anniversary Tradition/Chiles En Nogada Day: Rosie plays detective to try to find the recipe for Papa's Chiles en Nogada."
+  },
+  {
+   "event_id": 6878,
+   "start_gps": 1476554416,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Flipping Out/The Barbershop: Phoebe learns what privacy signs are and how to use them to help communicate."
+  },
+  {
+   "event_id": 6879,
+   "start_gps": 1476556216,
+   "length_s": 1800,
+   "title": "Xavier Riddle and the Secret Museum",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "I Am Nikola Tesla/I Am Nellie Bly: Inspired by the best-selling kids book series, Ordinary People Change the World, by New York Times bestselling author Brad Meltzer and illustrator Christopher Eliopoulos, XAVIER RIDDLE AND THE SECRET MUSEUM follows the adventures of Xavier, Yadina and Brad as they tackle everyday problems by doing something extraordinary: traveling back in time to learn from real-life inspirational figures like Marie Curie, Harriet Tubman and Jackie Robinson when they were kids. Each adventure will help young viewers make the connection between the skills that made these historical figures heroes and those same qualities within themselves, helping them discover that they, too, can change the world."
+  },
+  {
+   "event_id": 6880,
+   "start_gps": 1476558016,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Halloween Party Panic/The Spruce Sleuths: Molly and Trini try to save the spruce when the trees are infested with beetles."
+  },
+  {
+   "event_id": 6881,
+   "start_gps": 1476559816,
+   "length_s": 1800,
+   "title": "Pinkalicious & Peterrific",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Pink Or Treat/Berry Scary: Halloween may be cancelled due to a storm, unless Pink-a-girl and Pirate Peter can save the holiday!"
+  },
+  {
+   "event_id": 6882,
+   "start_gps": 1476561616,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Alma's Movie Night/Papi The Hero: When movie night in the park is a spooky feature, can Alma help Andre get over his fear?"
+  },
+  {
+   "event_id": 6883,
+   "start_gps": 1476563416,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Piece of Cake/Kibbles and Coins: Lyla and Luke need to get things back on track before her sister's birthday is ruined."
+  },
+  {
+   "event_id": 6884,
+   "start_gps": 1476565216,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "Voyage of the Melting Snow: The Hunters' day of sledding quickly turns into an urgent rescue mission to save a toy."
+  },
+  {
+   "event_id": 6885,
+   "start_gps": 1476567016,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "Ten Against One/Old Squad: Ozzie goes on a mission along the canal. / Two adults are determined to help Odd Squad."
+  },
+  {
+   "event_id": 6886,
+   "start_gps": 1476568816,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Mystery of the Squirmy Wormy: Aviva miniaturizes Chris and Martin for a dangerous underground mission with earthworms."
+  },
+  {
+   "event_id": 6887,
+   "start_gps": 1476570616,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "Foggy Trick Or Treat: A foggy Halloween almost derails Corky and Lily's trick-or-treating."
+  },
+  {
+   "event_id": 6888,
+   "start_gps": 1476572416,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Carnival for Luke/Rap Report: Lyla and her sisters make a carnival while Louisa creates a presentation."
+  },
+  {
+   "event_id": 6889,
+   "start_gps": 1476574216,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "Sesame Street and the Great Elephant Adventure: Join Elmo and the Sesame Street gang on a once-in-a-lifetime African safari."
+  },
+  {
+   "event_id": 6890,
+   "start_gps": 1476577816,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Secrets of the Spider's Web: After taking a nasty tumble, Matt and Chris set off on a mission to find and recreate Spider silk."
+  },
+  {
+   "event_id": 6891,
+   "start_gps": 1476579616,
+   "length_s": 1800,
+   "title": "Cyberchase",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Lost My Marbles: The team learns to use a map as a mathematical tool when Hacker kidnaps Dr. Marbles."
+  },
+  {
+   "event_id": 6892,
+   "start_gps": 1476581416,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T01:30:00+00:00",
+   "description": "When Fur Flies / Pumpkin Palooza: The heroes come to the rescue when a girl's decorated pumpkin is ruined the day of Pumpkin Palooza."
+  },
+  {
+   "event_id": 6893,
+   "start_gps": 1476583216,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "Flipping Out/The Barbershop: Phoebe learns what privacy signs are and how to use them to help communicate."
+  },
+  {
+   "event_id": 6894,
+   "start_gps": 1476585016,
+   "length_s": 1800,
+   "title": "Xavier Riddle and the Secret Museum",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "I Am Nikola Tesla/I Am Nellie Bly: Inspired by the best-selling kids book series, Ordinary People Change the World, by New York Times bestselling author Brad Meltzer and illustrator Christopher Eliopoulos, XAVIER RIDDLE AND THE SECRET MUSEUM follows the adventures of Xavier, Yadina and Brad as they tackle everyday problems by doing something extraordinary: traveling back in time to learn from real-life inspirational figures like Marie Curie, Harriet Tubman and Jackie Robinson when they were kids. Each adventure will help young viewers make the connection between the skills that made these historical figures heroes and those same qualities within themselves, helping them discover that they, too, can change the world."
+  },
+  {
+   "event_id": 6895,
+   "start_gps": 1476586816,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "Halloween Party Panic/The Spruce Sleuths: Molly and Trini try to save the spruce when the trees are infested with beetles."
+  },
+  {
+   "event_id": 6896,
+   "start_gps": 1476588616,
+   "length_s": 1800,
+   "title": "Pinkalicious & Peterrific",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Pink Or Treat/Berry Scary: Halloween may be cancelled due to a storm, unless Pink-a-girl and Pirate Peter can save the holiday!"
+  },
+  {
+   "event_id": 6897,
+   "start_gps": 1476590416,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Alma's Movie Night/Papi The Hero: When movie night in the park is a spooky feature, can Alma help Andre get over his fear?"
+  },
+  {
+   "event_id": 6898,
+   "start_gps": 1476592216,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "Piece of Cake/Kibbles and Coins: Lyla and Luke need to get things back on track before her sister's birthday is ruined."
+  },
+  {
+   "event_id": 6899,
+   "start_gps": 1476594016,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Voyage of the Melting Snow: The Hunters' day of sledding quickly turns into an urgent rescue mission to save a toy."
+  },
+  {
+   "event_id": 6900,
+   "start_gps": 1476595816,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Ten Against One/Old Squad: Ozzie goes on a mission along the canal. / Two adults are determined to help Odd Squad."
+  },
+  {
+   "event_id": 6901,
+   "start_gps": 1476597616,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Mystery of the Squirmy Wormy: Aviva miniaturizes Chris and Martin for a dangerous underground mission with earthworms."
+  },
+  {
+   "event_id": 6902,
+   "start_gps": 1476599416,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Foggy Trick Or Treat: A foggy Halloween almost derails Corky and Lily's trick-or-treating."
+  },
+  {
+   "event_id": 6903,
+   "start_gps": 1476601216,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "Carnival for Luke/Rap Report: Lyla and her sisters make a carnival while Louisa creates a presentation."
+  },
+  {
+   "event_id": 6904,
+   "start_gps": 1476603016,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": "Sesame Street and the Great Elephant Adventure: Join Elmo and the Sesame Street gang on a once-in-a-lifetime African safari."
+  },
+  {
+   "event_id": 6905,
+   "start_gps": 1476606616,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "Secrets of the Spider's Web: After taking a nasty tumble, Matt and Chris set off on a mission to find and recreate Spider silk."
+  },
+  {
+   "event_id": 6906,
+   "start_gps": 1476608416,
+   "length_s": 1800,
+   "title": "Cyberchase",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Lost My Marbles: The team learns to use a map as a mathematical tool when Hacker kidnaps Dr. Marbles."
+  },
+  {
+   "event_id": 6907,
+   "start_gps": 1476610216,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "When Fur Flies / Pumpkin Palooza: The heroes come to the rescue when a girl's decorated pumpkin is ruined the day of Pumpkin Palooza."
+  },
+  {
+   "event_id": 6908,
+   "start_gps": 1476612016,
+   "length_s": 1800,
+   "title": "Clifford The Big Red Dog",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "The Wild Wolf Pack/Putt-Ing It Together: Based on the popular Scholastic book series by Norman Bridwell about the lovable oversized canine with his head in the clouds but four paws planted firmly on the ground, Clifford presents a larger-than-life view of the world. With his loving human, Emily Elizabeth, and dog pals, Cleo and T-Bone, Clifford inhabits a colorful island community, inviting viewers on a fun-filled journey through childhood, navigating the dips and curves along the way. CLIFFORD THE BIG RED DOG emphasizes good citizenship and the importance of community. Each episode concludes with a component of Clifford's Big Ideas - 10 different attributes children learn to embrace - which leaves them with something to think about and practice in their lives."
+  },
+  {
+   "event_id": 6909,
+   "start_gps": 1476613816,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Abby's Magical Beasties: Abby tries to find a magical beastie while her friends help care for her other beasties."
+  },
+  {
+   "event_id": 6910,
+   "start_gps": 1476615616,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Many More Mr. Mores! / Talent Trouble! / The Letter f Fun Fair!: Mr. More takes letter m's from all over town and uses them to make many more Mr. Mores!"
+  },
+  {
+   "event_id": 6911,
+   "start_gps": 1476617416,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Spooky Shadow Swamp/Hidden Orchestra: Donkey and Panda rescue Bob Dog's favorite ball./Donkey joins the neighborhood orchestra."
+  },
+  {
+   "event_id": 6912,
+   "start_gps": 1476619216,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Self-Portraits: Elmo, Tamir, Charlie, Julia, and Cookie Monster make self-portraits."
+  },
+  {
+   "event_id": 6913,
+   "start_gps": 1476621016,
+   "length_s": 3600,
+   "title": "Nature",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Sesame Street and the Great Elephant Adventure: Join Elmo and the Sesame Street gang on a once-in-a-lifetime African safari."
+  },
+  {
+   "event_id": 6914,
+   "start_gps": 1476624616,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T13:30:00+00:00",
+   "description": "Bex Splash Fest/Mural Mayhem: Meet Bex, a new Treeborhood friend who is hard of hearing./The Wombats paint a mural."
+  },
+  {
+   "event_id": 6915,
+   "start_gps": 1476626416,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Daniel Learns to Ask First/Friends Ask First: Dad Tiger teaches Daniel that he needs to ask first before taking something away from someone else."
+  },
+  {
+   "event_id": 6916,
+   "start_gps": 1476628216,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "Daniels Grr-Ific Grandpere/Making Mozies with Nana: Daniel Tiger spends the whole day with his grandpa, riding on a boat and relaxing on the shore."
+  },
+  {
+   "event_id": 6917,
+   "start_gps": 1476630016,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Many More Mr. Mores! / Talent Trouble! / The Letter f Fun Fair!: Mr. More takes letter m's from all over town and uses them to make many more Mr. Mores!"
+  },
+  {
+   "event_id": 6918,
+   "start_gps": 1476631816,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T15:30:00+00:00",
+   "description": "The Artifact Collection/Mothership Day: Arugula and Carl go on an archaeologist adventure! / Carl spots a UFO on Mother's Day!"
+  },
+  {
+   "event_id": 6919,
+   "start_gps": 1476633616,
+   "length_s": 1800,
+   "title": "Carl The Collector",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "A Fuzzytown Halloween: A spooky rumor dampens everyone's excitement for trick-or-treating."
+  },
+  {
+   "event_id": 6920,
+   "start_gps": 1476635416,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T16:30:00+00:00",
+   "description": "A Donkey Hodie Halloween: Donkey Hodie and pals help Purple Panda celebrate his first Halloween in Someplace Else."
+  },
+  {
+   "event_id": 6921,
+   "start_gps": 1476637216,
+   "length_s": 1800,
+   "title": "Elinor Wonders Why",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "The Fright Stuff/Doug The Mold: When his sandwich grows mold, Ari decides to learn everything about it."
+  },
+  {
+   "event_id": 6922,
+   "start_gps": 1476639016,
+   "length_s": 1800,
+   "title": "Rosie's Rules",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "The Legend of Captain Spooky Beard/Crystal's Haunted House: Rosie and Javi try to avoid a pirate ghost who may be haunting their cul-de-sac."
+  },
+  {
+   "event_id": 6923,
+   "start_gps": 1476640816,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Fire Drill/Fruit Juice Frenzy: Phoebe, Jay, and Lupe get to practice their fire safety plan when the Fire Inspector visits."
+  },
+  {
+   "event_id": 6924,
+   "start_gps": 1476642616,
+   "length_s": 1800,
+   "title": "Xavier Riddle and the Secret Museum",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T18:30:00+00:00",
+   "description": "I Am Mary Shelley/I Am Harry Houdini: Xavier goes back in time to meet spooky storyteller Mary Shelley before a Nature Troop campout."
+  },
+  {
+   "event_id": 6925,
+   "start_gps": 1476644416,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Mouse in the Treehouse/Leader of the Pack: Tooey's cat causes some changes in Molly and Tooey's perfect treehouse."
+  },
+  {
+   "event_id": 6926,
+   "start_gps": 1476646216,
+   "length_s": 1800,
+   "title": "Pinkalicious & Peterrific",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Don't Wake Norman/Pinkasaurus: Pinkalicious and Peter work on acting like gnomes so they can guard the garden as Norman sleeps."
+  },
+  {
+   "event_id": 6927,
+   "start_gps": 1476648016,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Library Run/The Library of.....Things!: Alma and her friends race to the library to try read the new Carlotta Clues book first."
+  },
+  {
+   "event_id": 6928,
+   "start_gps": 1476649816,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T20:30:00+00:00",
+   "description": "Un-Make A Mess/Hide and Go Stu: It's a mess in their room and Lyla and Luke need to clean it up even with Stu's \"help\"."
+  },
+  {
+   "event_id": 6929,
+   "start_gps": 1476651616,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "No Snow Snow Day: The Hunters head to a nearby mountain to learn about snow."
+  },
+  {
+   "event_id": 6930,
+   "start_gps": 1476653416,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "The Other Orly/Train of Fools: Orli is partnered with someone unexpected. / A villain has taken over a steam train."
+  },
+  {
+   "event_id": 6931,
+   "start_gps": 1476655216,
+   "length_s": 3600,
+   "title": "Wild Kratts: Creepy Creatures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "The Wild Kratts must defeat Zach and other villains who have come up with a plan to ruin Halloween."
+  },
+  {
+   "event_id": 6932,
+   "start_gps": 1476658816,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Happy New Year, Lyla!/Everett's Summer Sale: Lyla and Everett can't agree on the best way to make a fun video."
+  },
+  {
+   "event_id": 6933,
+   "start_gps": 1476660616,
+   "length_s": 1800,
+   "title": "Arthur",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": "George Scraps His Sculpture/Arthur's Big Meltdown: George learns how to use found objects for his art project."
+  },
+  {
+   "event_id": 6934,
+   "start_gps": 1476662416,
+   "length_s": 1800,
+   "title": "Nature Cat",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Dr. Pumpkinstein/Nature Catfish: Monstrous pumpkins haunt Hugo the goose's farm. / Nature Cat learns all about catfish."
+  },
+  {
+   "event_id": 6935,
+   "start_gps": 1476664216,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T00:30:00+00:00",
+   "description": "Aardvark Town: Chris searches for a young aardvark's burrow after it becomes a stowaway in his backpack."
+  },
+  {
+   "event_id": 6936,
+   "start_gps": 1476666016,
+   "length_s": 1800,
+   "title": "Cyberchase",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "Leave The Leaves: The CyberSquad use time travel help Hacker learn why his pet smirble loves a healthy park."
+  },
+  {
+   "event_id": 6937,
+   "start_gps": 1476667816,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T01:30:00+00:00",
+   "description": "Fair Weather / Home Sweet Home: When a tree falls in the schoolyard, the young heroes try to find a new home for a chipmunk."
+  },
+  {
+   "event_id": 6938,
+   "start_gps": 1476669616,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Fire Drill/Fruit Juice Frenzy: Phoebe, Jay, and Lupe get to practice their fire safety plan when the Fire Inspector visits."
+  },
+  {
+   "event_id": 6939,
+   "start_gps": 1476671416,
+   "length_s": 1800,
+   "title": "Xavier Riddle and the Secret Museum",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T02:30:00+00:00",
+   "description": "I Am Mary Shelley/I Am Harry Houdini: Xavier goes back in time to meet spooky storyteller Mary Shelley before a Nature Troop campout."
+  },
+  {
+   "event_id": 6940,
+   "start_gps": 1476673216,
+   "length_s": 1800,
+   "title": "Molly of Denali",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Mouse in the Treehouse/Leader of the Pack: Tooey's cat causes some changes in Molly and Tooey's perfect treehouse."
+  },
+  {
+   "event_id": 6941,
+   "start_gps": 1476675016,
+   "length_s": 1800,
+   "title": "Pinkalicious & Peterrific",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T03:30:00+00:00",
+   "description": "Don't Wake Norman/Pinkasaurus: Pinkalicious and Peter work on acting like gnomes so they can guard the garden as Norman sleeps."
+  },
+  {
+   "event_id": 6942,
+   "start_gps": 1476676816,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Library Run/The Library of.....Things!: Alma and her friends race to the library to try read the new Carlotta Clues book first."
+  },
+  {
+   "event_id": 6943,
+   "start_gps": 1476678616,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T04:30:00+00:00",
+   "description": "Un-Make A Mess/Hide and Go Stu: It's a mess in their room and Lyla and Luke need to clean it up even with Stu's \"help\"."
+  },
+  {
+   "event_id": 6944,
+   "start_gps": 1476680416,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "No Snow Snow Day: The Hunters head to a nearby mountain to learn about snow."
+  },
+  {
+   "event_id": 6945,
+   "start_gps": 1476682216,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T05:30:00+00:00",
+   "description": "The Other Orly/Train of Fools: Orli is partnered with someone unexpected. / A villain has taken over a steam train."
+  },
+  {
+   "event_id": 6946,
+   "start_gps": 1476684016,
+   "length_s": 3600,
+   "title": "Wild Kratts: Creepy Creatures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "The Wild Kratts must defeat Zach and other villains who have come up with a plan to ruin Halloween."
+  },
+  {
+   "event_id": 6947,
+   "start_gps": 1476687616,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Happy New Year, Lyla!/Everett's Summer Sale: Lyla and Everett can't agree on the best way to make a fun video."
+  },
+  {
+   "event_id": 6948,
+   "start_gps": 1476689416,
+   "length_s": 1800,
+   "title": "Arthur",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "George Scraps His Sculpture/Arthur's Big Meltdown: George learns how to use found objects for his art project."
+  },
+  {
+   "event_id": 6949,
+   "start_gps": 1476691216,
+   "length_s": 1800,
+   "title": "Nature Cat",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Dr. Pumpkinstein/Nature Catfish: Monstrous pumpkins haunt Hugo the goose's farm. / Nature Cat learns all about catfish."
+  },
+  {
+   "event_id": 6950,
+   "start_gps": 1476693016,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T08:30:00+00:00",
+   "description": "Aardvark Town: Chris searches for a young aardvark's burrow after it becomes a stowaway in his backpack."
+  },
+  {
+   "event_id": 6951,
+   "start_gps": 1476694816,
+   "length_s": 1800,
+   "title": "Cyberchase",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "Leave The Leaves: The CyberSquad use time travel help Hacker learn why his pet smirble loves a healthy park."
+  },
+  {
+   "event_id": 6952,
+   "start_gps": 1476696616,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "Fair Weather / Home Sweet Home: When a tree falls in the schoolyard, the young heroes try to find a new home for a chipmunk."
+  },
+  {
+   "event_id": 6953,
+   "start_gps": 1476698416,
+   "length_s": 1800,
+   "title": "Clifford The Big Red Dog",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "The Halloween Costume Crisis/Clifford's Howl-o-ween!: Based on the popular Scholastic book series by Norman Bridwell about the lovable oversized canine with his head in the clouds but four paws planted firmly on the ground, Clifford presents a larger-than-life view of the world. With his loving human, Emily Elizabeth, and dog pals, Cleo and T-Bone, Clifford inhabits a colorful island community, inviting viewers on a fun-filled journey through childhood, navigating the dips and curves along the way. CLIFFORD THE BIG RED DOG emphasizes good citizenship and the importance of community. Each episode concludes with a component of Clifford's Big Ideas - 10 different attributes children learn to embrace - which leaves them with something to think about and practice in their lives."
+  },
+  {
+   "event_id": 6954,
+   "start_gps": 1476700216,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "Beachball Bop: When Elmo hits a ball that accidentally knocks over his block tower, he takes it out on Rosita."
+  },
+  {
+   "event_id": 6955,
+   "start_gps": 1476702016,
+   "length_s": 1800,
+   "title": "Super Why's Comic Book Adventures",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Things that go OO in the Night! / Tricks and Treats! / Costume Catastrophe!: The Eraser gets greedy while trick or treating and takes Wonder Red's Wonder Basket!"
+  },
+  {
+   "event_id": 6956,
+   "start_gps": 1476703816,
+   "length_s": 1800,
+   "title": "Donkey Hodie",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "The Tree Swing/Book Club: Hodie and Donkey must find a way to play together and Duck Duck'd starts a book club."
+  },
+  {
+   "event_id": 6957,
+   "start_gps": 1476705616,
+   "length_s": 1800,
+   "title": "Sesame Street",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Tamir Learns Tagalog: TJ gets to meet his favorite comic book artist and Tamir learns Tagalog."
+  },
+  {
+   "event_id": 6958,
+   "start_gps": 1476707416,
+   "length_s": 1800,
+   "title": "Phoebe & Jay",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "I Know That's Right!/Vote Vote Vote!: Jay and Phoebe bring back a favorite game and host a building-wide vote."
+  },
+  {
+   "event_id": 6959,
+   "start_gps": 1476709216,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "The Friendship Day Dance/The Friendship Day Light Show: Mr. E learns a dance for Friendship Day. / The power's out for the Friendship Day Light Show."
+  },
+  {
+   "event_id": 6960,
+   "start_gps": 1476711016,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "Summerween/Make It Snow: The Wombats build a giant snow globe so Zeke can play in the snow in summer."
+  },
+  {
+   "event_id": 6961,
+   "start_gps": 1476712816,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Daniel Does Gymnastics/The Big Slide: Daniel feels nervous to join in with his friends when he goes to gymnastics for the first time."
+  },
+  {
+   "event_id": 6962,
+   "start_gps": 1476714616,
+   "length_s": 1800,
+   "title": "Daniel Tiger's Neighborhood",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T14:30:00+00:00",
+   "description": "Katerina's Costume/Dress Up Day: Katerina is having a hard time deciding on just the right costume or Dress Up Day."
+  },
+  {
+   "event_id": 6963,
+   "start_gps": 1476716416,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "The Treeborhood Photo Album/Runway Recycling: To trace the growth of their beloved tree, Zadie creates a Treeborhood photo album."
+  },
+  {
+   "event_id": 6964,
+   "start_gps": 1476718216,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T15:30:00+00:00",
+   "description": "Sticker Monster Storytime/Count to 10!: The Wombats work on a new ending for a favorite story. Plus, Zeke learns to count to ten."
+  },
+  {
+   "event_id": 6965,
+   "start_gps": 1476720016,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Bex & Sammy's New Groove/Sticker Monster Dance Game: Bex and Sammy are excited for their sleepover at Yolanda's house."
+  },
+  {
+   "event_id": 6966,
+   "start_gps": 1476721816,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T16:30:00+00:00",
+   "description": "Sticker Monster Storytime/Count to 10!: The Wombats work on a new ending for a favorite story. Plus, Zeke learns to count to ten."
+  },
+  {
+   "event_id": 6967,
+   "start_gps": 1476723616,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Zadie's Horrible Haircut/A Day Out with Babby: Zadie needs to face her fear of getting a haircut."
+  },
+  {
+   "event_id": 6968,
+   "start_gps": 1476725416,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T17:30:00+00:00",
+   "description": "Backwards Day/Patternpalooza: Super creates \"Backward Day\" so everyone can try something different."
+  },
+  {
+   "event_id": 6969,
+   "start_gps": 1476727216,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "Cake Day Surprise/A Treeborhood Vacation!: The Wombats use a 3D printer to save Cake Day. / The Wombats create a vacation for Buckley."
+  },
+  {
+   "event_id": 6970,
+   "start_gps": 1476729016,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T18:30:00+00:00",
+   "description": "Welcome to the Treeborhood/Ice Cream Bike: Devonte J. Squirrel and his maman and papa move to the Treeborhood."
+  },
+  {
+   "event_id": 6971,
+   "start_gps": 1476730816,
+   "length_s": 1800,
+   "title": "Let's Go Luna!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Didgeridoo and Carmen Too/Not Home on the Range: Leo wants to ride with his favorite cowboy uncle in Sydney, but first must overcome a fear of horses."
+  },
+  {
+   "event_id": 6972,
+   "start_gps": 1476732616,
+   "length_s": 1800,
+   "title": "Let's Go Luna!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T19:30:00+00:00",
+   "description": "Boomin' Boomerang/House Music: Carmen loses her confidence, but gets it back during an Australian boomerang competition in Sydney."
+  },
+  {
+   "event_id": 6973,
+   "start_gps": 1476734416,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "Alma's Showstopper/Ultimate Helper: After her good deeds go wrong, Alma has to think about what it means to help others."
+  },
+  {
+   "event_id": 6974,
+   "start_gps": 1476736216,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T20:30:00+00:00",
+   "description": "Lemonade Champs/Double Dutch Dilemma: Lyla and Everett learn Double Dutch to become part of the neighborhood crew."
+  },
+  {
+   "event_id": 6975,
+   "start_gps": 1476738016,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "Foggy Trick Or Treat: A foggy Halloween almost derails Corky and Lily's trick-or-treating."
+  },
+  {
+   "event_id": 6976,
+   "start_gps": 1476739816,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T21:30:00+00:00",
+   "description": "Haunt Squad/Safe House in the Woods: Odd Squad is haunted by a ghost. Owen and new recruit wait out a storm while transporting a creature."
+  },
+  {
+   "event_id": 6977,
+   "start_gps": 1476741616,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Voyage of the Butterflier Xt: Aviva miniaturizes the Kratt Brothers who embark on the Monarch butterfly's 2,000 mile migration."
+  },
+  {
+   "event_id": 6978,
+   "start_gps": 1476743416,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": "The Word on the Bird: The kids spring into action when an injured bird lands in the backyard."
+  },
+  {
+   "event_id": 6979,
+   "start_gps": 1476745216,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Too Many Pumpkins/The Maybe-Sitters: The Loops create new ways to use pumpkins. / Liana and Louisa train to be babysitters."
+  },
+  {
+   "event_id": 6980,
+   "start_gps": 1476747016,
+   "length_s": 1800,
+   "title": "Arthur",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-22T23:30:00+00:00",
+   "description": "Fright Night/Citizen Cheikh: ARTHUR is based on the best-selling children's books by Marc Brown. The series revolves around an eight year-old aardvark, his four year-old sister DW, and their family and friends. ARTHUR is a show about being a kid, exploring the world, and finding your place in it. It's about kids finding inner strengths, learning to make choices for themselves, taking responsibility for them and of course, having fun. In each episode, Arthur and his gang guide us through stories that deal with real \"kid issues\" -- timeless difficulties and joys that all kids experience. The series also models the joys and rewards of literacy by presenting the many ways kids and adults incorporate reading and writing into their lives. Above all, ARTHUR is a comedy that tells its stories from a kids' point of view, never moralizing or talking down to them."
+  },
+  {
+   "event_id": 6981,
+   "start_gps": 1476748816,
+   "length_s": 1800,
+   "title": "Nature Cat",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "The Nature Nap Dilemma/Captain Nature Cat's Wild River Adventure: NATURE CAT follows Fred, a house cat who dreams of exploring the great outdoors. In each episode, once his family leaves for the day, Fred transforms into Nature Cat, \"backyard explorer extraordinaire.\" Nature Cat can't wait to get outside for a day of backyard nature excursions and bravery, but there's one problem: He's still a house cat with no instincts for nature. Like many of today's kids, Nature Cat is eager and enthusiastic about outside activities, but is at times intimidated by them. With the help of his animal friends, Nature Cat embarks on action-packed adventures that include exciting missions full of nature investigation, \"aha\" discovery moments and humor, all while inspiring children to go outside and \"play the show.\""
+  },
+  {
+   "event_id": 6982,
+   "start_gps": 1476750616,
+   "length_s": 1800,
+   "title": "Wild Kratts",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T00:30:00+00:00",
+   "description": "A Bat in the Brownies: The entire crew must come to the rescue when a bat colony's roost is destroyed by a lightning bolt."
+  },
+  {
+   "event_id": 6983,
+   "start_gps": 1476752416,
+   "length_s": 1800,
+   "title": "Cyberchase",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "Castleblanca: The kids must collect and organize data to find which castle Hacker is hiding Dr. Marbles in."
+  },
+  {
+   "event_id": 6984,
+   "start_gps": 1476754216,
+   "length_s": 1800,
+   "title": "Hero Elementary",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "Saved from the Bell/The Right Stuff: The heroes conduct an investigation when the bell on top of the school's Leaping Tower keeps ringing."
+  },
+  {
+   "event_id": 6985,
+   "start_gps": 1476756016,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "Cake Day Surprise/A Treeborhood Vacation!: The Wombats use a 3D printer to save Cake Day. / The Wombats create a vacation for Buckley."
+  },
+  {
+   "event_id": 6986,
+   "start_gps": 1476757816,
+   "length_s": 1800,
+   "title": "Work It Out Wombats!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T02:30:00+00:00",
+   "description": "Welcome to the Treeborhood/Ice Cream Bike: Devonte J. Squirrel and his maman and papa move to the Treeborhood."
+  },
+  {
+   "event_id": 6987,
+   "start_gps": 1476759616,
+   "length_s": 1800,
+   "title": "Let's Go Luna!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "Didgeridoo and Carmen Too/Not Home on the Range: Leo wants to ride with his favorite cowboy uncle in Sydney, but first must overcome a fear of horses."
+  },
+  {
+   "event_id": 6988,
+   "start_gps": 1476761416,
+   "length_s": 1800,
+   "title": "Let's Go Luna!",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T03:30:00+00:00",
+   "description": "Boomin' Boomerang/House Music: Carmen loses her confidence, but gets it back during an Australian boomerang competition in Sydney."
+  },
+  {
+   "event_id": 6989,
+   "start_gps": 1476763216,
+   "length_s": 1800,
+   "title": "Alma's Way",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "Alma's Showstopper/Ultimate Helper: After her good deeds go wrong, Alma has to think about what it means to help others."
+  },
+  {
+   "event_id": 6990,
+   "start_gps": 1476765016,
+   "length_s": 1800,
+   "title": "Lyla in the Loop",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T04:30:00+00:00",
+   "description": "Lemonade Champs/Double Dutch Dilemma: Lyla and Everett learn Double Dutch to become part of the neighborhood crew."
+  },
+  {
+   "event_id": 6991,
+   "start_gps": 1476766816,
+   "length_s": 1800,
+   "title": "Weather Hunters",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Foggy Trick Or Treat: A foggy Halloween almost derails Corky and Lily's trick-or-treating."
+  },
+  {
+   "event_id": 6992,
+   "start_gps": 1476768616,
+   "length_s": 1800,
+   "title": "Odd Squad",
+   "rating": "",
+   "source_id": 2,
+   "start_utc": "2026-10-23T05:30:00+00:00",
+   "description": "Haunt Squad/Safe House in the Woods: Odd Squad is haunted by a ghost. Owen and new recruit wait out a storm while transporting a creature."
+  },
+  {
+   "event_id": 8582,
+   "start_gps": 1476511216,
+   "length_s": 10800,
+   "title": "60s and 70s Soul Celebration (My Music Presents)",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Legends of 60's and '70s soul music perform their biggest hits."
+  },
+  {
+   "event_id": 7491,
+   "start_gps": 1476522016,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 7891,
+   "start_gps": 1476523816,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T09:30:00+00:00",
+   "description": "Episode 13: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7906,
+   "start_gps": 1476527416,
+   "length_s": 1800,
+   "title": "Firing Line with Margaret Hoover",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "Dr. Adam Grant, author of \"Vibe,\" explores loneliness, political loyalty, and AI."
+  },
+  {
+   "event_id": 7947,
+   "start_gps": 1476529216,
+   "length_s": 1800,
+   "title": "Classical Stretch: By Essentrics",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Back Pain Relief: Moving the spine in all directions, the way it was designed to move, can help reduce back pain."
+  },
+  {
+   "event_id": 7962,
+   "start_gps": 1476531016,
+   "length_s": 1800,
+   "title": "Gardenfit",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "Plants and All That Jazz: Explore the gardens of Leslie Martin, an accomplished jazz musician from New Orleans."
+  },
+  {
+   "event_id": 7990,
+   "start_gps": 1476532816,
+   "length_s": 1800,
+   "title": "Sit and Be Fit",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Facial Exercises: Facial exercises increase sensory awareness in mouth and encourage facial expression."
+  },
+  {
+   "event_id": 8005,
+   "start_gps": 1476534616,
+   "length_s": 1800,
+   "title": "Best of Sewing with Nancy",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Travel Gear Made Easy, Part 2: Designer Mary Mulari teams up with Nancy to make travel gear perfect for gifts or yourself."
+  },
+  {
+   "event_id": 8473,
+   "start_gps": 1476536416,
+   "length_s": 1800,
+   "title": "Fons & Porter's Love of Quilting",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Blueberry Jam: Learn how to piece pinwheels, strip sets, and sashing while playing with different shades of blue."
+  },
+  {
+   "event_id": 8035,
+   "start_gps": 1476538216,
+   "length_s": 1800,
+   "title": "Growing A Greener World",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T13:30:00+00:00",
+   "description": "Locavores and Yard-Sharing: A cottage industry made up of young urbanites is changing the way we grow and eat."
+  },
+  {
+   "event_id": 8047,
+   "start_gps": 1476540016,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "Chicken Favorites: Christopher Kimball sets out to develop his ultimate recipe for Roasted Chicken."
+  },
+  {
+   "event_id": 8072,
+   "start_gps": 1476541816,
+   "length_s": 1800,
+   "title": "Food. Curated.",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T14:30:00+00:00",
+   "description": "Pride on the Plate: Liza deGuia celebrates the LGBTQ+ food makers rewriting the rules with fearless flavors."
+  },
+  {
+   "event_id": 8386,
+   "start_gps": 1476543616,
+   "length_s": 1800,
+   "title": "Sara's Weeknight Meals",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "The Humble Bean of Guernsey: Sara travels to Guernsey to explore the island, while back at home, she answers questions."
+  },
+  {
+   "event_id": 8094,
+   "start_gps": 1476545416,
+   "length_s": 1800,
+   "title": "Joanne Weir's Plates and Places",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T15:30:00+00:00",
+   "description": "Spaghetti: Joanne prepares Spaghetti and Meatballs Topped with Ricotta and Homemade Spaghetti."
+  },
+  {
+   "event_id": 8478,
+   "start_gps": 1476547216,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "A Taste of Crete: Braised Beef with Dried Figs and Quick-Pickled Cabbage, and Shrimp, Orzo and Zucchini are served."
+  },
+  {
+   "event_id": 8479,
+   "start_gps": 1476549016,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "Schnitzel and Mashed!: German Pork Schnitzel, Croatian Mashed Potatoes and German Cucumber-Dill Salad are prepared."
+  },
+  {
+   "event_id": 8130,
+   "start_gps": 1476550816,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Episode 13: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7513,
+   "start_gps": 1476554416,
+   "length_s": 1800,
+   "title": "Newsroom Tokyo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "NEWSROOM TOKYO, launched in 2015, serves as the flagship program of NHK World. The 27-minute broadcast reflects on the day-to-day events in Japan and Asia, with segments covering business news and market trends throughout the Asian Peninsula, as well as news from Asia and Oceania. Featuring in-depth commentary and live reports by experts, NEWSROOM TOKYO offers a different perspective to Western media that shows the latest developments from a Japanese and Asian standpoint."
+  },
+  {
+   "event_id": 8148,
+   "start_gps": 1476556216,
+   "length_s": 1800,
+   "title": "Focus On Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Finland: Mining Vs. Arctic Conservation: Mineral deposits lie within a nature reserve in Finland. Plans to mine them are drawing opposition."
+  },
+  {
+   "event_id": 8167,
+   "start_gps": 1476558016,
+   "length_s": 1800,
+   "title": "Ask This Old House",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Hot Water, Diresta Leather Tote: Richard troubleshoots a shower with no hot water; Jimmy DiResta makes a leather tote bag."
+  },
+  {
+   "event_id": 8182,
+   "start_gps": 1476559816,
+   "length_s": 1800,
+   "title": "American Woodshop",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T19:30:00+00:00",
+   "description": "Easy Inlay Turned Boxes: Discover how new materials and techniques of inlaying can elevate the look of turned boxes."
+  },
+  {
+   "event_id": 8219,
+   "start_gps": 1476561616,
+   "length_s": 1800,
+   "title": "Seeing Canada",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "Nunavut & Yukon: Canadian journalist Brandy Yanchyk explores Nunavut on Adventure Canada's expedition cruise ship."
+  },
+  {
+   "event_id": 8220,
+   "start_gps": 1476563416,
+   "length_s": 1800,
+   "title": "Seeing Canada",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T20:30:00+00:00",
+   "description": "Pei, New Brunswick, Nova Scotia & Quebec: Prince Edward Island, New Brunswick, Nova Scotia and a trip to Quebec City are highlighted."
+  },
+  {
+   "event_id": 7535,
+   "start_gps": 1476565216,
+   "length_s": 1800,
+   "title": "BBC News The World Today",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "With a global focus, BBC News The World Today focuses on big, breaking international news stories with in-depth reporting, interviews and analysis. Maryam Moshiri presents from the studio and the field."
+  },
+  {
+   "event_id": 8236,
+   "start_gps": 1476567016,
+   "length_s": 1800,
+   "title": "DW The Day",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T21:30:00+00:00",
+   "description": "The Day provides viewers with the background and analysis they need to understand the top stories of the last 24 hours. Join our Chief News Anchor Brent Goff as he puts the day's events into context and discusses them with experts and correspondents in the field."
+  },
+  {
+   "event_id": 8252,
+   "start_gps": 1476568816,
+   "length_s": 1800,
+   "title": "Burt Wolf: Travels & Traditions",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "A Kinder World, Part 1: Burt introduces the Kindland Movement of Cleveland, Ohio, which brings communities together."
+  },
+  {
+   "event_id": 8272,
+   "start_gps": 1476570616,
+   "length_s": 1800,
+   "title": "Rick Steves' Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "London: A Royal Tour: Take a royal tour of London that starts with the red-coat pageantry of Buckingham Palace."
+  },
+  {
+   "event_id": 7746,
+   "start_gps": 1476572416,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Vintage Chattanooga Hour 1: Check out updated Chattanooga appraisals from 2009, including one $250,000 find!"
+  },
+  {
+   "event_id": 8290,
+   "start_gps": 1476576016,
+   "length_s": 3600,
+   "title": "Miss Fisher's Murder Mysteries",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Murder and Mozzarella: An Italian woman dies and the ownership of a secret book of recipes becomes the suspected motive."
+  },
+  {
+   "event_id": 8515,
+   "start_gps": 1476579616,
+   "length_s": 5400,
+   "title": "Midsomer Murders",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "The Devil's Work, Parts 1 & 2: Long-buried resentments resurface when the eldest son does something to reignite trouble."
+  },
+  {
+   "event_id": 8598,
+   "start_gps": 1476585016,
+   "length_s": 1800,
+   "title": "Rick Steves' Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T02:30:00+00:00",
+   "description": "London: A Royal Tour: Take a royal tour of London that starts with the red-coat pageantry of Buckingham Palace."
+  },
+  {
+   "event_id": 7813,
+   "start_gps": 1476586816,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 8327,
+   "start_gps": 1476588616,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T03:30:00+00:00",
+   "description": "Episode 14: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7557,
+   "start_gps": 1476592216,
+   "length_s": 1800,
+   "title": "NHK Newsline",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "NEWSLINE is produced by NHK, Japan's news leading public broadcaster, featuring global news and current affairs, business, sports, science and technology trends plus global weather forecasts from over 30 news bureaus throughout the world."
+  },
+  {
+   "event_id": 8256,
+   "start_gps": 1476594016,
+   "length_s": 1800,
+   "title": "Burt Wolf: Travels & Traditions",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "A Kinder World, Part 1: Burt introduces the Kindland Movement of Cleveland, Ohio, which brings communities together."
+  },
+  {
+   "event_id": 8592,
+   "start_gps": 1476595816,
+   "length_s": 1800,
+   "title": "Rick Steves' Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "London: A Royal Tour: Take a royal tour of London that starts with the red-coat pageantry of Buckingham Palace."
+  },
+  {
+   "event_id": 7858,
+   "start_gps": 1476597616,
+   "length_s": 3600,
+   "title": "Miss Fisher's Murder Mysteries",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Murder and Mozzarella: An Italian woman dies and the ownership of a secret book of recipes becomes the suspected motive."
+  },
+  {
+   "event_id": 8438,
+   "start_gps": 1476601216,
+   "length_s": 5400,
+   "title": "Midsomer Murders",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "The Devil's Work, Parts 1 & 2: Long-buried resentments resurface when the eldest son does something to reignite trouble."
+  },
+  {
+   "event_id": 8600,
+   "start_gps": 1476606616,
+   "length_s": 1800,
+   "title": "Rick Steves' Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "London: A Royal Tour: Take a royal tour of London that starts with the red-coat pageantry of Buckingham Palace."
+  },
+  {
+   "event_id": 7492,
+   "start_gps": 1476608416,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 7892,
+   "start_gps": 1476610216,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T09:30:00+00:00",
+   "description": "Episode 14: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7910,
+   "start_gps": 1476613816,
+   "length_s": 1800,
+   "title": "Focus On Europe",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T10:30:00+00:00",
+   "description": "Finland: Mining Vs. Arctic Conservation: Mineral deposits lie within a nature reserve in Finland. Plans to mine them are drawing opposition."
+  },
+  {
+   "event_id": 7948,
+   "start_gps": 1476615616,
+   "length_s": 1800,
+   "title": "Classical Stretch: By Essentrics",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Calf & Knee: Through gentle and controlled movements your body including your knees and calves will be stretched."
+  },
+  {
+   "event_id": 7966,
+   "start_gps": 1476617416,
+   "length_s": 1800,
+   "title": "Yoga In Practice",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "How to Get Going: Making change requires motivation. This episode challenges us while practicing chair yoga."
+  },
+  {
+   "event_id": 7991,
+   "start_gps": 1476619216,
+   "length_s": 1800,
+   "title": "Sit and Be Fit",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "We've Gone Country: Country music sets the tone and pace for this fun full body workout."
+  },
+  {
+   "event_id": 8009,
+   "start_gps": 1476621016,
+   "length_s": 1800,
+   "title": "Joy of Painting with Nicholas Hankins: Bob Ross' Unfinished Season",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Moonlit Serenade: Nicholas Hankins paints a moonlit gnarled old tree adorned with Spanish moss."
+  },
+  {
+   "event_id": 8026,
+   "start_gps": 1476622816,
+   "length_s": 1800,
+   "title": "Fit 2 Stitch",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "Sewing with Curved Lines: Peggy and her guest show how to work with concave and convex lines on the sewing machine."
+  },
+  {
+   "event_id": 8039,
+   "start_gps": 1476624616,
+   "length_s": 1800,
+   "title": "J Schwanke's Life In Bloom",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T13:30:00+00:00",
+   "description": "Autumn Harvest: Host J Schwanke welcomes Autumn with flowers accented by the bounty of the season."
+  },
+  {
+   "event_id": 8051,
+   "start_gps": 1476626416,
+   "length_s": 1800,
+   "title": "Lidia's Kitchen",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Respect The Ingredients: Lidia cooks a Broccoli Cannellini Salad and Skillet Tuna with Puttanesca Sauce."
+  },
+  {
+   "event_id": 8076,
+   "start_gps": 1476628216,
+   "length_s": 1800,
+   "title": "Dining with the Chef",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "DINING WITH THE CHEF introduces Americans to the techniques, ingredients and harmony of Japanese cuisine. Hosted by Yu Hayami who cooks alongside master chef Tatsuo Saito, and co-host Patrick Harlan who cooks with chef Rika Yukimasa, with occasional appearances by other guest chefs, the series presents delicious Japanese dishes that can be made at home. Chef Tatsuo Saito, a prominent master of Japanese culinary arts, has served as head chef at the Japanese embassies in Paris and Washington and was an instructor in Japanese cuisine at a Swiss hotel school. He has also prepared tastings for the National Cherry Blossom Festival in Washington, D.C. In Tokyo he operates a cooking school and is a prolific author, often appearing on television, in magazines and on the lecture circuit. In DINING WITH THE CHEF, Chef Saito takes us to the heart of Japanese cuisine by demonstrating culinary techniques, explaining ingredients, and showing how to arrange food to bring out its distinctive characteristics. Host Yu Hayami is an international singer and actress who was born in Japan and raised in Guam and Hawaii. Aside from her career and being a mother of two, she is also involved in charity work. Yu is a lover of good food, as well as a fine wine enthusiast."
+  },
+  {
+   "event_id": 8086,
+   "start_gps": 1476630016,
+   "length_s": 1800,
+   "title": "My Greek Table with Diane Kochilas",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Hercules Table: Spinach Cooked with Oranges and Garlic, Hoirino Me Mapa and Melomakarona are prepared."
+  },
+  {
+   "event_id": 12686,
+   "start_gps": 1476631816,
+   "length_s": 1800,
+   "title": "In Julia's Kitchen with Master Chefs",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T15:30:00+00:00",
+   "description": "Carol Field: The author, teacher and baker prepares grissini (bread sticks) rustic country bread and bruschetta."
+  },
+  {
+   "event_id": 8480,
+   "start_gps": 1476633616,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Cooking of Ukraine: Borsch with Duck and Prunes and Slow Roasted Pork with Sauerkraut, Apples are served."
+  },
+  {
+   "event_id": 8481,
+   "start_gps": 1476635416,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T16:30:00+00:00",
+   "description": "La Cocina De Puerto Vallarta: Colima-Style Shredded Braised Pork is accentuated by smooth and subtly sweet coconut vinegar."
+  },
+  {
+   "event_id": 8131,
+   "start_gps": 1476637216,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Episode 14: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7514,
+   "start_gps": 1476640816,
+   "length_s": 1800,
+   "title": "Newsroom Tokyo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "NEWSROOM TOKYO, launched in 2015, serves as the flagship program of NHK World. The 27-minute broadcast reflects on the day-to-day events in Japan and Asia, with segments covering business news and market trends throughout the Asian Peninsula, as well as news from Asia and Oceania. Featuring in-depth commentary and live reports by experts, NEWSROOM TOKYO offers a different perspective to Western media that shows the latest developments from a Japanese and Asian standpoint."
+  },
+  {
+   "event_id": 8152,
+   "start_gps": 1476642616,
+   "length_s": 1800,
+   "title": "Gzero World with Ian Bremmer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T18:30:00+00:00",
+   "description": "Is A Blue Wave Coming?: Democrats eyeing control of Congress, can Republicans avoid a midterm defeat?"
+  },
+  {
+   "event_id": 8168,
+   "start_gps": 1476644416,
+   "length_s": 1800,
+   "title": "Ask This Old House",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "Lathe Turned Segmented Bow: Heath labels a circuit breaker; Tom shares his hobby of lathe turning and turns a bowl."
+  },
+  {
+   "event_id": 8186,
+   "start_gps": 1476646216,
+   "length_s": 1800,
+   "title": "Garage with Steve Butler",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "Cigar Box Guitar: Just like the early blues legends did, Steve builds a guitar out of a humble cigar box."
+  },
+  {
+   "event_id": 8204,
+   "start_gps": 1476648016,
+   "length_s": 3600,
+   "title": "History Detectives",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Jackie Robinson All-Stars, Modoc Basket, Special Agent Five: The facts are tallied on a 1940s baseball scorecard and a radio drama endorsed by J. Edgar Hoover."
+  },
+  {
+   "event_id": 7536,
+   "start_gps": 1476651616,
+   "length_s": 1800,
+   "title": "BBC News The World Today",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "With a global focus, BBC News The World Today focuses on big, breaking international news stories with in-depth reporting, interviews and analysis. Maryam Moshiri presents from the studio and the field."
+  },
+  {
+   "event_id": 8237,
+   "start_gps": 1476653416,
+   "length_s": 1800,
+   "title": "DW The Day",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T21:30:00+00:00",
+   "description": "The Day provides viewers with the background and analysis they need to understand the top stories of the last 24 hours. Join our Chief News Anchor Brent Goff as he puts the day's events into context and discusses them with experts and correspondents in the field."
+  },
+  {
+   "event_id": 8260,
+   "start_gps": 1476655216,
+   "length_s": 1800,
+   "title": "Joseph Rosendo's Steppin' Out",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "A Topanga, California Thanksgiving: Joseph hikes Topanga Canyon State Park and revels in the mountain community's rural setting."
+  },
+  {
+   "event_id": 8276,
+   "start_gps": 1476657016,
+   "length_s": 1800,
+   "title": "People of the North",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T22:30:00+00:00",
+   "description": "Helgelandskysten: Archipelago Adventures: Discover the stunning Helgeland coast, where local chocolatiers and brewers thrive on island life."
+  },
+  {
+   "event_id": 7747,
+   "start_gps": 1476658816,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Vintage Chattanooga Hour 2: Travel back to 2009 for terrific Tennessee treasures, like a $25,000 to $35,000 find!"
+  },
+  {
+   "event_id": 8606,
+   "start_gps": 1476662416,
+   "length_s": 3600,
+   "title": "Professor T (UK)",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Natural Causes: Jasper and Helena test their new romance while Dan wonders if he can love again."
+  },
+  {
+   "event_id": 8517,
+   "start_gps": 1476666016,
+   "length_s": 3600,
+   "title": "Maigret On Masterpiece",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "The Hanged Man, Part One: Maigret investigates a young woman's death, crossing paths with those hiding the truth."
+  },
+  {
+   "event_id": 15767,
+   "start_gps": 1476669616,
+   "length_s": 3600,
+   "title": "The Gold On Masterpiece",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Episode 1: Where is the missing half of the Brink's-Mat gold?"
+  },
+  {
+   "event_id": 7814,
+   "start_gps": 1476673216,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 8328,
+   "start_gps": 1476675016,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T03:30:00+00:00",
+   "description": "Episode 15: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7558,
+   "start_gps": 1476678616,
+   "length_s": 1800,
+   "title": "NHK Newsline",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T04:30:00+00:00",
+   "description": "NEWSLINE is produced by NHK, Japan's news leading public broadcaster, featuring global news and current affairs, business, sports, science and technology trends plus global weather forecasts from over 30 news bureaus throughout the world."
+  },
+  {
+   "event_id": 7423,
+   "start_gps": 1476680416,
+   "length_s": 1800,
+   "title": "Joseph Rosendo's Steppin' Out",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "A Topanga, California Thanksgiving: Joseph hikes Topanga Canyon State Park and revels in the mountain community's rural setting."
+  },
+  {
+   "event_id": 8596,
+   "start_gps": 1476682216,
+   "length_s": 1800,
+   "title": "People of the North",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T05:30:00+00:00",
+   "description": "Helgelandskysten: Archipelago Adventures: Discover the stunning Helgeland coast, where local chocolatiers and brewers thrive on island life."
+  },
+  {
+   "event_id": 8608,
+   "start_gps": 1476684016,
+   "length_s": 3600,
+   "title": "Professor T (UK)",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Natural Causes: Jasper and Helena test their new romance while Dan wonders if he can love again."
+  },
+  {
+   "event_id": 8440,
+   "start_gps": 1476687616,
+   "length_s": 3600,
+   "title": "Maigret On Masterpiece",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "The Hanged Man, Part One: Maigret investigates a young woman's death, crossing paths with those hiding the truth."
+  },
+  {
+   "event_id": 15768,
+   "start_gps": 1476691216,
+   "length_s": 3600,
+   "title": "The Gold On Masterpiece",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Episode 1: Where is the missing half of the Brink's-Mat gold?"
+  },
+  {
+   "event_id": 7493,
+   "start_gps": 1476694816,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 7893,
+   "start_gps": 1476696616,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T09:30:00+00:00",
+   "description": "Episode 15: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7914,
+   "start_gps": 1476700216,
+   "length_s": 1800,
+   "title": "Gzero World with Ian Bremmer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "Is A Blue Wave Coming?: Democrats eyeing control of Congress, can Republicans avoid a midterm defeat?"
+  },
+  {
+   "event_id": 7949,
+   "start_gps": 1476702016,
+   "length_s": 1800,
+   "title": "Classical Stretch: By Essentrics",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Spine Strengthening: Strengthening the spine reduces stress on the spinal discs and joints and protects against injury."
+  },
+  {
+   "event_id": 7595,
+   "start_gps": 1476703816,
+   "length_s": 1800,
+   "title": "Happy Yoga with Sarah Starr",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "Glowing Sunflower Sunset: Revel in Mother Nature's beauty of a magnificent sunflower sunset and enjoy a modified yoga practice."
+  },
+  {
+   "event_id": 7992,
+   "start_gps": 1476705616,
+   "length_s": 1800,
+   "title": "Sit and Be Fit",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Don't Forget Your Fingers: Paying special attention to the finger joints is important to keeping our hands functioning well."
+  },
+  {
+   "event_id": 8013,
+   "start_gps": 1476707416,
+   "length_s": 1800,
+   "title": "Painting and Travel with Roger & Sarah Bansemer",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Giraffe Ranch: Roger uses layered acrylics and dry brush techniques in this episode."
+  },
+  {
+   "event_id": 8030,
+   "start_gps": 1476709216,
+   "length_s": 1800,
+   "title": "Quilting Arts",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Re-Thinking Patchwork: Using standard square of quilting fabric shows you how it can bloom your creativity."
+  },
+  {
+   "event_id": 7610,
+   "start_gps": 1476711016,
+   "length_s": 1800,
+   "title": "Garden SMART",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "A Wonderful Garden with 200 Years of History: GardenSMART visits a garden that has amazed guests and visitors for centuries."
+  },
+  {
+   "event_id": 7619,
+   "start_gps": 1476712816,
+   "length_s": 1800,
+   "title": "America's Test Kitchen",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Soup and Bread, The Italian Way: Becky makes Our Zuppa Toscana for Bridget while Bridget makes a light focaccia."
+  },
+  {
+   "event_id": 8080,
+   "start_gps": 1476714616,
+   "length_s": 1800,
+   "title": "Outdoor Eats",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T14:30:00+00:00",
+   "description": "Outdoor Eats In St. Pete Clearwater, Florida: Chef Corso explores St. Pete Clearwater for a delicious seafood catch-and-cook experience."
+  },
+  {
+   "event_id": 7634,
+   "start_gps": 1476716416,
+   "length_s": 1800,
+   "title": "New Scandinavian Cooking",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "Burning Sweet Desire: Niklas enjoys sweet buns and coffee and investigates coffee and food traditions in South America."
+  },
+  {
+   "event_id": 7644,
+   "start_gps": 1476718216,
+   "length_s": 1800,
+   "title": "Pati's Mexican Table",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T15:30:00+00:00",
+   "description": "Coahuila Refuge: Pati stops in the pueblo magico, Muzquiz and finds delicious tacos de olla."
+  },
+  {
+   "event_id": 8482,
+   "start_gps": 1476720016,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "The Art of Japanese Cooking: Japanese-Style Chicken and Vegetable Curry, Japanese Milk Bread.and Daikon-Carrot Salad are served."
+  },
+  {
+   "event_id": 8109,
+   "start_gps": 1476721816,
+   "length_s": 1800,
+   "title": "Christopher Kimball's Milk Street Television",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T16:30:00+00:00",
+   "description": "Chicken Favorites: Christopher Kimball sets out to develop his ultimate recipe for Roasted Chicken."
+  },
+  {
+   "event_id": 8132,
+   "start_gps": 1476723616,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Episode 15: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7515,
+   "start_gps": 1476727216,
+   "length_s": 1800,
+   "title": "Newsroom Tokyo",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "NEWSROOM TOKYO, launched in 2015, serves as the flagship program of NHK World. The 27-minute broadcast reflects on the day-to-day events in Japan and Asia, with segments covering business news and market trends throughout the Asian Peninsula, as well as news from Asia and Oceania. Featuring in-depth commentary and live reports by experts, NEWSROOM TOKYO offers a different perspective to Western media that shows the latest developments from a Japanese and Asian standpoint."
+  },
+  {
+   "event_id": 7661,
+   "start_gps": 1476729016,
+   "length_s": 1800,
+   "title": "The Chavis Chronicles",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T18:30:00+00:00",
+   "description": "John Pasmore - CEO, Latimore Ai: John Pasmore discusses AI innovation and banking solutions with Dr. Chavis."
+  },
+  {
+   "event_id": 8169,
+   "start_gps": 1476730816,
+   "length_s": 1800,
+   "title": "Ask This Old House",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Paint Wood Paneling, Play Kitchen: Mauro paints wood paneling; Lee shears shrubs; Nathan builds a daycare mud kitchen."
+  },
+  {
+   "event_id": 8657,
+   "start_gps": 1476732616,
+   "length_s": 1800,
+   "title": "Les Stroud's Survivorman",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T19:30:00+00:00",
+   "description": "Behind The Scenes Part 1: Go behind the scenes for a look at the Survivorman series."
+  },
+  {
+   "event_id": 7694,
+   "start_gps": 1476734416,
+   "length_s": 1800,
+   "title": "In The Americas with David Yetman",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "Oaxaca's Indigenous Guardians of the High Forests: In Oaxaca's wild mountains, indigenous towns guard their forests and win at sustainable logging."
+  },
+  {
+   "event_id": 7705,
+   "start_gps": 1476736216,
+   "length_s": 1800,
+   "title": "Live From The LBJ Library with Mark Updegrove",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T20:30:00+00:00",
+   "description": "Noah Hawley: Noah Hawley talks about his unusual path to filmmaking and approach to storytelling."
+  },
+  {
+   "event_id": 7537,
+   "start_gps": 1476738016,
+   "length_s": 1800,
+   "title": "BBC News The World Today",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "With a global focus, BBC News The World Today focuses on big, breaking international news stories with in-depth reporting, interviews and analysis. Maryam Moshiri presents from the studio and the field."
+  },
+  {
+   "event_id": 8238,
+   "start_gps": 1476739816,
+   "length_s": 1800,
+   "title": "DW The Day",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T21:30:00+00:00",
+   "description": "The Day provides viewers with the background and analysis they need to understand the top stories of the last 24 hours. Join our Chief News Anchor Brent Goff as he puts the day's events into context and discusses them with experts and correspondents in the field."
+  },
+  {
+   "event_id": 8264,
+   "start_gps": 1476741616,
+   "length_s": 1800,
+   "title": "View Finders",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Great Smoky Mountains National Park: Head to the heart of Appalachia to Great Smoky Mountains National Park."
+  },
+  {
+   "event_id": 7732,
+   "start_gps": 1476743416,
+   "length_s": 1800,
+   "title": "Outside: Beyond The Lens",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": "Grasslands: In southeastern Colorado, National Grasslands protect a part of America's heartland frozen in time."
+  },
+  {
+   "event_id": 7748,
+   "start_gps": 1476745216,
+   "length_s": 3600,
+   "title": "Antiques Roadshow",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Vintage Dallas Hour 1: Everything is bigger in Texas, including an updated $150,000 top find!"
+  },
+  {
+   "event_id": 7767,
+   "start_gps": 1476748816,
+   "length_s": 1800,
+   "title": "This Old House",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Essex County Colonial | Making Connections: Richard and Kordian Rak head to the kitchen to install an old-fashioned cast-iron pipe."
+  },
+  {
+   "event_id": 7772,
+   "start_gps": 1476750616,
+   "length_s": 1800,
+   "title": "Ask This Old House",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T00:30:00+00:00",
+   "description": "Sticking Front Door; Insulation: Look back at clips to see how thermostats have evolved over the past 25 years."
+  },
+  {
+   "event_id": 9032,
+   "start_gps": 1476752416,
+   "length_s": 1800,
+   "title": "Pursuit of Happiness",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "A Richer Life: Does being from one of the richest families in America make you happy? How about earning a second chance from a judge and going to law school? Can happiness be found by stepping out of the American consumer culture? And how did the Founding Fathers views of wealth, power, and living a \"virtuous\" life, contribute to how we view happiness today? The answers may surprise you."
+  },
+  {
+   "event_id": 9033,
+   "start_gps": 1476754216,
+   "length_s": 1800,
+   "title": "Pursuit of Happiness",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "At The Edge: A trauma expert rediscovers joy as a circus aerialist, two sisters working as doulas support families through birth and death, and a young immigrant comedian breaks down stereotypes through laughter. From the resilience of America's founders to the challenges of modern life, this episode explores how play, humor, autonomy, and the power of human connection can create the conditions for happiness to emerge."
+  },
+  {
+   "event_id": 9034,
+   "start_gps": 1476756016,
+   "length_s": 1800,
+   "title": "Pursuit of Happiness",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "The Meaning We Make: Across generations, we inherit ideas about what makes life meaningful, but how, exactly, do we take those insights and reshape them for the future? A refugee transforms from a selective mute to a voice of her people, a daughter carries forward her father's legacy in Black theater, and a Native farmer restores bison to ancestral lands. Their stories explore how community, culture, and purpose inform happiness for the future."
+  },
+  {
+   "event_id": 9035,
+   "start_gps": 1476757816,
+   "length_s": 1800,
+   "title": "Flight 823: Homage to Heroes",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T02:30:00+00:00",
+   "description": "Discover the story of two heroic pilots who sacrificed their lives landing on I-75 to save others."
+  },
+  {
+   "event_id": 7815,
+   "start_gps": 1476759616,
+   "length_s": 1800,
+   "title": "BBC News",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "BBC NEWS gives audiences a detailed look into news stories from around the world. Targeted to an audience looking for more depth to their daily coverage, it features field reporting with breakdowns from regional correspondents and expert guests covering a broad range of topics from breaking news to the latest in sport."
+  },
+  {
+   "event_id": 8329,
+   "start_gps": 1476761416,
+   "length_s": 3600,
+   "title": "Amanpour and Company",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T03:30:00+00:00",
+   "description": "Episode 16: Examine the global issues, domestic news and trends impacting the world. Christiane Amanpour leads conversations with thought leaders and influencers."
+  },
+  {
+   "event_id": 7559,
+   "start_gps": 1476765016,
+   "length_s": 1800,
+   "title": "NHK Newsline",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T04:30:00+00:00",
+   "description": "NEWSLINE is produced by NHK, Japan's news leading public broadcaster, featuring global news and current affairs, business, sports, science and technology trends plus global weather forecasts from over 30 news bureaus throughout the world."
+  },
+  {
+   "event_id": 7428,
+   "start_gps": 1476766816,
+   "length_s": 1800,
+   "title": "View Finders",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Great Smoky Mountains National Park: Head to the heart of Appalachia to Great Smoky Mountains National Park."
+  },
+  {
+   "event_id": 7438,
+   "start_gps": 1476768616,
+   "length_s": 1800,
+   "title": "Outside: Beyond The Lens",
+   "rating": "",
+   "source_id": 3,
+   "start_utc": "2026-10-23T05:30:00+00:00",
+   "description": "Grasslands: In southeastern Colorado, National Grasslands protect a part of America's heartland frozen in time."
+  },
+  {
+   "event_id": 8837,
+   "start_gps": 1476507616,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T05:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8959,
+   "start_gps": 1476550816,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8838,
+   "start_gps": 1476594016,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8960,
+   "start_gps": 1476637216,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8839,
+   "start_gps": 1476680416,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8961,
+   "start_gps": 1476723616,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 8840,
+   "start_gps": 1476766816,
+   "length_s": 43200,
+   "title": "MNPBS READY",
+   "rating": "",
+   "source_id": 4,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Real-time weather forecasts and alerts plus health, safety, and emergency updates in English, Spanish, Hmong, and Somali languages."
+  },
+  {
+   "event_id": 2919,
+   "start_gps": 1476511216,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:00:00+00:00",
+   "description": "Teresa Peterson, Fred Livesay, Ebony Evers: Teresa Peterson writes a children's book inspired by her heritage called Grasshopper Girl. Fred Livesay demonstrates Scandinavian crafts, and Ebony Evers has learned to design and sew intricate garments"
+  },
+  {
+   "event_id": 2920,
+   "start_gps": 1476513016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T06:30:00+00:00",
+   "description": "Making of \"The Claw\": Find out how Minnesota filmmakers created a pro-wrestling documentary at the famous First Avenue."
+  },
+  {
+   "event_id": 2921,
+   "start_gps": 1476514816,
+   "length_s": 3600,
+   "title": "Stage",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T07:00:00+00:00",
+   "description": "Kiss The Tiger / Diane: Kiss the Tiger's magnetic rock and roll and powerful performances electrify their audience."
+  },
+  {
+   "event_id": 2922,
+   "start_gps": 1476518416,
+   "length_s": 3600,
+   "title": "Indigenize The Plate",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T08:00:00+00:00",
+   "description": "A Dine woman travels from the Navajo region to Peru to learn about the issues in their community."
+  },
+  {
+   "event_id": 14116,
+   "start_gps": 1476522016,
+   "length_s": 3600,
+   "title": "Horse Relative",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T09:00:00+00:00",
+   "description": "The art of horse regalia and how the tradition is being revived by Dakota communities are explored."
+  },
+  {
+   "event_id": 2924,
+   "start_gps": 1476525616,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:00:00+00:00",
+   "description": "Tedx Bemidji 2018; Part 2: Samantha Nienow, Tammy Schotzko and many others take us along as they bring the live-learning talks, made famous by the TED Talks web series, to downtown Bemidji. This independent production brings local experts in their areas, to a live audience, lending their insights and experience to a vast variety of topics. Follow the dedicated team's process from the required TED research, to their call for presenter auditions, all the way to performance day at the Historic Chief Theater in downtown Bemidji, 2018."
+  },
+  {
+   "event_id": 2925,
+   "start_gps": 1476527416,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T10:30:00+00:00",
+   "description": "The Jerome Foundation and Val Jenkins: The Jerome Foundation supports the creation, development and production of new works by emerging and established artists in Minnesota and NYC. In her abstract paintings, Valerie Jenkins uses color and shape to challenge what is real and what is an illusion. And the SpotLight Musical Theatre Program serves more than 60 Minnesota high schools through workshops and an annual award program."
+  },
+  {
+   "event_id": 2926,
+   "start_gps": 1476529216,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:00:00+00:00",
+   "description": "Squash Blossom Farm, SE MN Food Rescue: In this episode, we visit the new meadery room at Squash Blossom Farm. Lisa Schutz tells us about the S.E. MN Food Rescue and Redistribution Program. And we learn how to deal with missed areas of herbicide application in our Best Practices segment."
+  },
+  {
+   "event_id": 2927,
+   "start_gps": 1476531016,
+   "length_s": 1800,
+   "title": "Prairie Mosaic",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T11:30:00+00:00",
+   "description": "The bison of Rolling R Ranch in Otter Tail, MN; Chef Sara Watson prepares a bison steak; Concordia Language Villages in Bemidji, MN; and music by the Dan Brekke Band."
+  },
+  {
+   "event_id": 2928,
+   "start_gps": 1476532816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:00:00+00:00",
+   "description": "Teresa Peterson, Fred Livesay, Ebony Evers: Teresa Peterson writes a children's book inspired by her heritage called Grasshopper Girl. Fred Livesay demonstrates Scandinavian crafts, and Ebony Evers has learned to design and sew intricate garments"
+  },
+  {
+   "event_id": 2929,
+   "start_gps": 1476534616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T12:30:00+00:00",
+   "description": "Making of \"The Claw\": Find out how Minnesota filmmakers created a pro-wrestling documentary at the famous First Avenue."
+  },
+  {
+   "event_id": 2930,
+   "start_gps": 1476536416,
+   "length_s": 3600,
+   "title": "Stage",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T13:00:00+00:00",
+   "description": "Kiss The Tiger / Diane: Kiss the Tiger's magnetic rock and roll and powerful performances electrify their audience."
+  },
+  {
+   "event_id": 2931,
+   "start_gps": 1476540016,
+   "length_s": 3600,
+   "title": "Indigenize The Plate",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T14:00:00+00:00",
+   "description": "A Dine woman travels from the Navajo region to Peru to learn about the issues in their community."
+  },
+  {
+   "event_id": 14117,
+   "start_gps": 1476543616,
+   "length_s": 3600,
+   "title": "Horse Relative",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T15:00:00+00:00",
+   "description": "The art of horse regalia and how the tradition is being revived by Dakota communities are explored."
+  },
+  {
+   "event_id": 2933,
+   "start_gps": 1476547216,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:00:00+00:00",
+   "description": "Tedx Bemidji 2018; Part 2: Samantha Nienow, Tammy Schotzko and many others take us along as they bring the live-learning talks, made famous by the TED Talks web series, to downtown Bemidji. This independent production brings local experts in their areas, to a live audience, lending their insights and experience to a vast variety of topics. Follow the dedicated team's process from the required TED research, to their call for presenter auditions, all the way to performance day at the Historic Chief Theater in downtown Bemidji, 2018."
+  },
+  {
+   "event_id": 2934,
+   "start_gps": 1476549016,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T16:30:00+00:00",
+   "description": "The Jerome Foundation and Val Jenkins: The Jerome Foundation supports the creation, development and production of new works by emerging and established artists in Minnesota and NYC. In her abstract paintings, Valerie Jenkins uses color and shape to challenge what is real and what is an illusion. And the SpotLight Musical Theatre Program serves more than 60 Minnesota high schools through workshops and an annual award program."
+  },
+  {
+   "event_id": 2935,
+   "start_gps": 1476550816,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:00:00+00:00",
+   "description": "Squash Blossom Farm, SE MN Food Rescue: In this episode, we visit the new meadery room at Squash Blossom Farm. Lisa Schutz tells us about the S.E. MN Food Rescue and Redistribution Program. And we learn how to deal with missed areas of herbicide application in our Best Practices segment."
+  },
+  {
+   "event_id": 2936,
+   "start_gps": 1476552616,
+   "length_s": 1800,
+   "title": "Prairie Mosaic",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T17:30:00+00:00",
+   "description": "The bison of Rolling R Ranch in Otter Tail, MN; Chef Sara Watson prepares a bison steak; Concordia Language Villages in Bemidji, MN; and music by the Dan Brekke Band."
+  },
+  {
+   "event_id": 2937,
+   "start_gps": 1476554416,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:00:00+00:00",
+   "description": "Teresa Peterson, Fred Livesay, Ebony Evers: Teresa Peterson writes a children's book inspired by her heritage called Grasshopper Girl. Fred Livesay demonstrates Scandinavian crafts, and Ebony Evers has learned to design and sew intricate garments"
+  },
+  {
+   "event_id": 2938,
+   "start_gps": 1476556216,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T18:30:00+00:00",
+   "description": "Making of \"The Claw\": Find out how Minnesota filmmakers created a pro-wrestling documentary at the famous First Avenue."
+  },
+  {
+   "event_id": 2939,
+   "start_gps": 1476558016,
+   "length_s": 3600,
+   "title": "Stage",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T19:00:00+00:00",
+   "description": "Kiss The Tiger / Diane: Kiss the Tiger's magnetic rock and roll and powerful performances electrify their audience."
+  },
+  {
+   "event_id": 2940,
+   "start_gps": 1476561616,
+   "length_s": 3600,
+   "title": "Indigenize The Plate",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T20:00:00+00:00",
+   "description": "A Dine woman travels from the Navajo region to Peru to learn about the issues in their community."
+  },
+  {
+   "event_id": 14118,
+   "start_gps": 1476565216,
+   "length_s": 3600,
+   "title": "Horse Relative",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T21:00:00+00:00",
+   "description": "The art of horse regalia and how the tradition is being revived by Dakota communities are explored."
+  },
+  {
+   "event_id": 2942,
+   "start_gps": 1476568816,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:00:00+00:00",
+   "description": "Tedx Bemidji 2018; Part 2: Samantha Nienow, Tammy Schotzko and many others take us along as they bring the live-learning talks, made famous by the TED Talks web series, to downtown Bemidji. This independent production brings local experts in their areas, to a live audience, lending their insights and experience to a vast variety of topics. Follow the dedicated team's process from the required TED research, to their call for presenter auditions, all the way to performance day at the Historic Chief Theater in downtown Bemidji, 2018."
+  },
+  {
+   "event_id": 2943,
+   "start_gps": 1476570616,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T22:30:00+00:00",
+   "description": "The Jerome Foundation and Val Jenkins: The Jerome Foundation supports the creation, development and production of new works by emerging and established artists in Minnesota and NYC. In her abstract paintings, Valerie Jenkins uses color and shape to challenge what is real and what is an illusion. And the SpotLight Musical Theatre Program serves more than 60 Minnesota high schools through workshops and an annual award program."
+  },
+  {
+   "event_id": 2195,
+   "start_gps": 1476572416,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:00:00+00:00",
+   "description": "Squash Blossom Farm, SE MN Food Rescue: In this episode, we visit the new meadery room at Squash Blossom Farm. Lisa Schutz tells us about the S.E. MN Food Rescue and Redistribution Program. And we learn how to deal with missed areas of herbicide application in our Best Practices segment."
+  },
+  {
+   "event_id": 2243,
+   "start_gps": 1476574216,
+   "length_s": 1800,
+   "title": "Prairie Mosaic",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-20T23:30:00+00:00",
+   "description": "The bison of Rolling R Ranch in Otter Tail, MN; Chef Sara Watson prepares a bison steak; Concordia Language Villages in Bemidji, MN; and music by the Dan Brekke Band."
+  },
+  {
+   "event_id": 2259,
+   "start_gps": 1476576016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:00:00+00:00",
+   "description": "Teresa Peterson, Fred Livesay, Ebony Evers: Teresa Peterson writes a children's book inspired by her heritage called Grasshopper Girl. Fred Livesay demonstrates Scandinavian crafts, and Ebony Evers has learned to design and sew intricate garments"
+  },
+  {
+   "event_id": 2290,
+   "start_gps": 1476577816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T00:30:00+00:00",
+   "description": "Making of \"The Claw\": Find out how Minnesota filmmakers created a pro-wrestling documentary at the famous First Avenue."
+  },
+  {
+   "event_id": 13410,
+   "start_gps": 1476579616,
+   "length_s": 3600,
+   "title": "Stage",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T01:00:00+00:00",
+   "description": "Kiss The Tiger / Diane: Kiss the Tiger's magnetic rock and roll and powerful performances electrify their audience."
+  },
+  {
+   "event_id": 2477,
+   "start_gps": 1476583216,
+   "length_s": 3600,
+   "title": "Indigenize The Plate",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T02:00:00+00:00",
+   "description": "A Dine woman travels from the Navajo region to Peru to learn about the issues in their community."
+  },
+  {
+   "event_id": 14119,
+   "start_gps": 1476586816,
+   "length_s": 3600,
+   "title": "Horse Relative",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T03:00:00+00:00",
+   "description": "The art of horse regalia and how the tradition is being revived by Dakota communities are explored."
+  },
+  {
+   "event_id": 2405,
+   "start_gps": 1476590416,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:00:00+00:00",
+   "description": "Tedx Bemidji 2018; Part 2: Samantha Nienow, Tammy Schotzko and many others take us along as they bring the live-learning talks, made famous by the TED Talks web series, to downtown Bemidji. This independent production brings local experts in their areas, to a live audience, lending their insights and experience to a vast variety of topics. Follow the dedicated team's process from the required TED research, to their call for presenter auditions, all the way to performance day at the Historic Chief Theater in downtown Bemidji, 2018."
+  },
+  {
+   "event_id": 2426,
+   "start_gps": 1476592216,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T04:30:00+00:00",
+   "description": "The Jerome Foundation and Val Jenkins: The Jerome Foundation supports the creation, development and production of new works by emerging and established artists in Minnesota and NYC. In her abstract paintings, Valerie Jenkins uses color and shape to challenge what is real and what is an illusion. And the SpotLight Musical Theatre Program serves more than 60 Minnesota high schools through workshops and an annual award program."
+  },
+  {
+   "event_id": 3028,
+   "start_gps": 1476594016,
+   "length_s": 1800,
+   "title": "Prairie Sportsman",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:00:00+00:00",
+   "description": "Rainy River Sturgeon: Host Bret Amundson joins Kevin Hinrichs of the Royal Dutchman Resort to battle monster sturgeon on the Rainy River and researchers work to better understand the range and population of this unique prehistoric fish."
+  },
+  {
+   "event_id": 3029,
+   "start_gps": 1476595816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T05:30:00+00:00",
+   "description": "Wanda Bahmet and Clay Fulton and the Lost 40: Wanda Bahmet shares her story of surviving a WWII Nazi work camp, and her life in the United States after the war. In Rochester, roots rock band Clay Fulton and the Lost 40 host a music celebration at the Historic Chateau Theatre."
+  },
+  {
+   "event_id": 3030,
+   "start_gps": 1476597616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T06:00:00+00:00",
+   "description": "Willmar Area Symphonic Orchestra: Willmar Area Symphonic Orchestra demonstrates a variety of instruments."
+  },
+  {
+   "event_id": 3031,
+   "start_gps": 1476599416,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T06:30:00+00:00",
+   "description": "Ryan Rumpca and \"A Line in the Snow\": Learn about the outdoor filmmaking process from Duluth explorer and thrill-seeker, Ryan Rumpca."
+  },
+  {
+   "event_id": 3032,
+   "start_gps": 1476601216,
+   "length_s": 1800,
+   "title": "The Women of Alba Bales House",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T07:00:00+00:00",
+   "description": "The Alba Bales House at NDSU in Fargo once trained students in Home Economics careers"
+  },
+  {
+   "event_id": 3033,
+   "start_gps": 1476603016,
+   "length_s": 1800,
+   "title": "Dedicated to Care: LTC Hortense McKay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T07:30:00+00:00",
+   "description": "An intimate and compelling documentary that delves into the extraordinary life of Brainerd hero, Lieutenant Colonel Hortense McKay, a dedicated nurse whose courage and commitment shaped her legacy and paved the way for women in the military. Through the heartfelt narratives of her niece, Patricia McKay Broback, and Hillary Swanson, the Executive Director of the Crow Wing County Historical Society, viewers are invited to explore the many facets of Hortense's life, from her inspired beginnings to her remarkable service in the U.S. Army Nurse Corps during World War II. The story concludes with the honoring of her extraordinary contributions at her Congressional Gold Medal ceremony on March 25th, 2023, in Brainerd, MN."
+  },
+  {
+   "event_id": 3034,
+   "start_gps": 1476604816,
+   "length_s": 1800,
+   "title": "Beneath The Surface: The Secrets of St. Louis Bay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T08:00:00+00:00",
+   "description": "Explore the fascinating, sometimes tragic, and little-known history of St. Louis Bay, located on Minnesota's Lake Minnetonka. Local filmmaker Robert Nye, with two noted Lake Minnetonka historians and an underwater explorer present the story of this portion of the lake. Images from below the lake's surface provide evidence of a bygone era which included the first large resort hotel on Minnetonka."
+  },
+  {
+   "event_id": 3035,
+   "start_gps": 1476606616,
+   "length_s": 1800,
+   "title": "James J. Hill: Empire Builder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T08:30:00+00:00",
+   "description": "A brief history of the life and times of James J. Hill."
+  },
+  {
+   "event_id": 3036,
+   "start_gps": 1476608416,
+   "length_s": 1803,
+   "title": "Cass Gilbert: Standing The Test of Time",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T09:00:00+00:00",
+   "description": "Cass Gilbert: Standing the Test of Time%%The story of one of Minnesota's most gifted architects -- the creator of our Minnesota State Capitol. (A tpt production)"
+  },
+  {
+   "event_id": 3037,
+   "start_gps": 1476610219,
+   "length_s": 1797,
+   "title": "Connections to Cass",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T09:30:03+00:00",
+   "description": "With the State Capitol closed for a once-in-lifetime extensive renovation, Mary Lahammer heads out into the community to show you more of Minnesota architect Cass Gilbert's work.  We'll tour private homes and spectacular churches designed by the Capitol architect who went on to become one of America's masters of style."
+  },
+  {
+   "event_id": 3038,
+   "start_gps": 1476612016,
+   "length_s": 1799,
+   "title": "Native Report",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T10:00:00+00:00",
+   "description": "Building and Honoring Legacy: Discover how some Minnesota Indigenous communities are building a legacy."
+  },
+  {
+   "event_id": 3039,
+   "start_gps": 1476613815,
+   "length_s": 1801,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T10:29:59+00:00",
+   "description": "Jan Elftmann and Tall Paul: Jan Elftmann's penchant for collecting objects shines through in her playful, sculptural work and eye-catching art cars. Up-and-coming musicians perform at 318 Cafe's Open Mic in Excelsior. Chuck U's childhood dream of illustrating comic books morphed into a successful career as a painter and drawer. Born and raised in inner-city Minneapolis, Tall Paul connects to his Ojibwe heritage in his clever and poignant rap music."
+  },
+  {
+   "event_id": 3040,
+   "start_gps": 1476615616,
+   "length_s": 1800,
+   "title": "Prairie Sportsman",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T11:00:00+00:00",
+   "description": "Rainy River Sturgeon: Host Bret Amundson joins Kevin Hinrichs of the Royal Dutchman Resort to battle monster sturgeon on the Rainy River and researchers work to better understand the range and population of this unique prehistoric fish."
+  },
+  {
+   "event_id": 3041,
+   "start_gps": 1476617416,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T11:30:00+00:00",
+   "description": "Wanda Bahmet and Clay Fulton and the Lost 40: Wanda Bahmet shares her story of surviving a WWII Nazi work camp, and her life in the United States after the war. In Rochester, roots rock band Clay Fulton and the Lost 40 host a music celebration at the Historic Chateau Theatre."
+  },
+  {
+   "event_id": 3042,
+   "start_gps": 1476619216,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T12:00:00+00:00",
+   "description": "Willmar Area Symphonic Orchestra: Willmar Area Symphonic Orchestra demonstrates a variety of instruments."
+  },
+  {
+   "event_id": 3043,
+   "start_gps": 1476621016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T12:30:00+00:00",
+   "description": "Ryan Rumpca and \"A Line in the Snow\": Learn about the outdoor filmmaking process from Duluth explorer and thrill-seeker, Ryan Rumpca."
+  },
+  {
+   "event_id": 3044,
+   "start_gps": 1476622816,
+   "length_s": 1800,
+   "title": "The Women of Alba Bales House",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T13:00:00+00:00",
+   "description": "The Alba Bales House at NDSU in Fargo once trained students in Home Economics careers"
+  },
+  {
+   "event_id": 3045,
+   "start_gps": 1476624616,
+   "length_s": 1800,
+   "title": "Dedicated to Care: LTC Hortense McKay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T13:30:00+00:00",
+   "description": "An intimate and compelling documentary that delves into the extraordinary life of Brainerd hero, Lieutenant Colonel Hortense McKay, a dedicated nurse whose courage and commitment shaped her legacy and paved the way for women in the military. Through the heartfelt narratives of her niece, Patricia McKay Broback, and Hillary Swanson, the Executive Director of the Crow Wing County Historical Society, viewers are invited to explore the many facets of Hortense's life, from her inspired beginnings to her remarkable service in the U.S. Army Nurse Corps during World War II. The story concludes with the honoring of her extraordinary contributions at her Congressional Gold Medal ceremony on March 25th, 2023, in Brainerd, MN."
+  },
+  {
+   "event_id": 3046,
+   "start_gps": 1476626416,
+   "length_s": 1800,
+   "title": "Beneath The Surface: The Secrets of St. Louis Bay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T14:00:00+00:00",
+   "description": "Explore the fascinating, sometimes tragic, and little-known history of St. Louis Bay, located on Minnesota's Lake Minnetonka. Local filmmaker Robert Nye, with two noted Lake Minnetonka historians and an underwater explorer present the story of this portion of the lake. Images from below the lake's surface provide evidence of a bygone era which included the first large resort hotel on Minnetonka."
+  },
+  {
+   "event_id": 3047,
+   "start_gps": 1476628216,
+   "length_s": 1800,
+   "title": "James J. Hill: Empire Builder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T14:30:00+00:00",
+   "description": "A brief history of the life and times of James J. Hill."
+  },
+  {
+   "event_id": 3048,
+   "start_gps": 1476630016,
+   "length_s": 1803,
+   "title": "Cass Gilbert: Standing The Test of Time",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T15:00:00+00:00",
+   "description": "Cass Gilbert: Standing the Test of Time%%The story of one of Minnesota's most gifted architects -- the creator of our Minnesota State Capitol. (A tpt production)"
+  },
+  {
+   "event_id": 3049,
+   "start_gps": 1476631819,
+   "length_s": 1797,
+   "title": "Connections to Cass",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T15:30:03+00:00",
+   "description": "With the State Capitol closed for a once-in-lifetime extensive renovation, Mary Lahammer heads out into the community to show you more of Minnesota architect Cass Gilbert's work.  We'll tour private homes and spectacular churches designed by the Capitol architect who went on to become one of America's masters of style."
+  },
+  {
+   "event_id": 3050,
+   "start_gps": 1476633616,
+   "length_s": 1799,
+   "title": "Native Report",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T16:00:00+00:00",
+   "description": "Building and Honoring Legacy: Discover how some Minnesota Indigenous communities are building a legacy."
+  },
+  {
+   "event_id": 3051,
+   "start_gps": 1476635415,
+   "length_s": 1801,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T16:29:59+00:00",
+   "description": "Jan Elftmann and Tall Paul: Jan Elftmann's penchant for collecting objects shines through in her playful, sculptural work and eye-catching art cars. Up-and-coming musicians perform at 318 Cafe's Open Mic in Excelsior. Chuck U's childhood dream of illustrating comic books morphed into a successful career as a painter and drawer. Born and raised in inner-city Minneapolis, Tall Paul connects to his Ojibwe heritage in his clever and poignant rap music."
+  },
+  {
+   "event_id": 3052,
+   "start_gps": 1476637216,
+   "length_s": 1800,
+   "title": "Prairie Sportsman",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T17:00:00+00:00",
+   "description": "Rainy River Sturgeon: Host Bret Amundson joins Kevin Hinrichs of the Royal Dutchman Resort to battle monster sturgeon on the Rainy River and researchers work to better understand the range and population of this unique prehistoric fish."
+  },
+  {
+   "event_id": 3053,
+   "start_gps": 1476639016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T17:30:00+00:00",
+   "description": "Wanda Bahmet and Clay Fulton and the Lost 40: Wanda Bahmet shares her story of surviving a WWII Nazi work camp, and her life in the United States after the war. In Rochester, roots rock band Clay Fulton and the Lost 40 host a music celebration at the Historic Chateau Theatre."
+  },
+  {
+   "event_id": 3054,
+   "start_gps": 1476640816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T18:00:00+00:00",
+   "description": "Willmar Area Symphonic Orchestra: Willmar Area Symphonic Orchestra demonstrates a variety of instruments."
+  },
+  {
+   "event_id": 3055,
+   "start_gps": 1476642616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T18:30:00+00:00",
+   "description": "Ryan Rumpca and \"A Line in the Snow\": Learn about the outdoor filmmaking process from Duluth explorer and thrill-seeker, Ryan Rumpca."
+  },
+  {
+   "event_id": 3056,
+   "start_gps": 1476644416,
+   "length_s": 1800,
+   "title": "The Women of Alba Bales House",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T19:00:00+00:00",
+   "description": "The Alba Bales House at NDSU in Fargo once trained students in Home Economics careers"
+  },
+  {
+   "event_id": 3057,
+   "start_gps": 1476646216,
+   "length_s": 1800,
+   "title": "Dedicated to Care: LTC Hortense McKay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T19:30:00+00:00",
+   "description": "An intimate and compelling documentary that delves into the extraordinary life of Brainerd hero, Lieutenant Colonel Hortense McKay, a dedicated nurse whose courage and commitment shaped her legacy and paved the way for women in the military. Through the heartfelt narratives of her niece, Patricia McKay Broback, and Hillary Swanson, the Executive Director of the Crow Wing County Historical Society, viewers are invited to explore the many facets of Hortense's life, from her inspired beginnings to her remarkable service in the U.S. Army Nurse Corps during World War II. The story concludes with the honoring of her extraordinary contributions at her Congressional Gold Medal ceremony on March 25th, 2023, in Brainerd, MN."
+  },
+  {
+   "event_id": 3058,
+   "start_gps": 1476648016,
+   "length_s": 1800,
+   "title": "Beneath The Surface: The Secrets of St. Louis Bay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T20:00:00+00:00",
+   "description": "Explore the fascinating, sometimes tragic, and little-known history of St. Louis Bay, located on Minnesota's Lake Minnetonka. Local filmmaker Robert Nye, with two noted Lake Minnetonka historians and an underwater explorer present the story of this portion of the lake. Images from below the lake's surface provide evidence of a bygone era which included the first large resort hotel on Minnetonka."
+  },
+  {
+   "event_id": 3059,
+   "start_gps": 1476649816,
+   "length_s": 1800,
+   "title": "James J. Hill: Empire Builder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T20:30:00+00:00",
+   "description": "A brief history of the life and times of James J. Hill."
+  },
+  {
+   "event_id": 3060,
+   "start_gps": 1476651616,
+   "length_s": 1803,
+   "title": "Cass Gilbert: Standing The Test of Time",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T21:00:00+00:00",
+   "description": "Cass Gilbert: Standing the Test of Time%%The story of one of Minnesota's most gifted architects -- the creator of our Minnesota State Capitol. (A tpt production)"
+  },
+  {
+   "event_id": 3061,
+   "start_gps": 1476653419,
+   "length_s": 1797,
+   "title": "Connections to Cass",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T21:30:03+00:00",
+   "description": "With the State Capitol closed for a once-in-lifetime extensive renovation, Mary Lahammer heads out into the community to show you more of Minnesota architect Cass Gilbert's work.  We'll tour private homes and spectacular churches designed by the Capitol architect who went on to become one of America's masters of style."
+  },
+  {
+   "event_id": 3062,
+   "start_gps": 1476655216,
+   "length_s": 1799,
+   "title": "Native Report",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T22:00:00+00:00",
+   "description": "Building and Honoring Legacy: Discover how some Minnesota Indigenous communities are building a legacy."
+  },
+  {
+   "event_id": 3063,
+   "start_gps": 1476657015,
+   "length_s": 1801,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T22:29:59+00:00",
+   "description": "Jan Elftmann and Tall Paul: Jan Elftmann's penchant for collecting objects shines through in her playful, sculptural work and eye-catching art cars. Up-and-coming musicians perform at 318 Cafe's Open Mic in Excelsior. Chuck U's childhood dream of illustrating comic books morphed into a successful career as a painter and drawer. Born and raised in inner-city Minneapolis, Tall Paul connects to his Ojibwe heritage in his clever and poignant rap music."
+  },
+  {
+   "event_id": 2213,
+   "start_gps": 1476658816,
+   "length_s": 1800,
+   "title": "Prairie Sportsman",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T23:00:00+00:00",
+   "description": "Rainy River Sturgeon: Host Bret Amundson joins Kevin Hinrichs of the Royal Dutchman Resort to battle monster sturgeon on the Rainy River and researchers work to better understand the range and population of this unique prehistoric fish."
+  },
+  {
+   "event_id": 9705,
+   "start_gps": 1476660616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-21T23:30:00+00:00",
+   "description": "Wanda Bahmet and Clay Fulton and the Lost 40: Wanda Bahmet shares her story of surviving a WWII Nazi work camp, and her life in the United States after the war. In Rochester, roots rock band Clay Fulton and the Lost 40 host a music celebration at the Historic Chateau Theatre."
+  },
+  {
+   "event_id": 2260,
+   "start_gps": 1476662416,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T00:00:00+00:00",
+   "description": "Willmar Area Symphonic Orchestra: Willmar Area Symphonic Orchestra demonstrates a variety of instruments."
+  },
+  {
+   "event_id": 2291,
+   "start_gps": 1476664216,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T00:30:00+00:00",
+   "description": "Ryan Rumpca and \"A Line in the Snow\": Learn about the outdoor filmmaking process from Duluth explorer and thrill-seeker, Ryan Rumpca."
+  },
+  {
+   "event_id": 2494,
+   "start_gps": 1476666016,
+   "length_s": 1800,
+   "title": "The Women of Alba Bales House",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T01:00:00+00:00",
+   "description": "The Alba Bales House at NDSU in Fargo once trained students in Home Economics careers"
+  },
+  {
+   "event_id": 2495,
+   "start_gps": 1476667816,
+   "length_s": 1800,
+   "title": "Dedicated to Care: LTC Hortense McKay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T01:30:00+00:00",
+   "description": "An intimate and compelling documentary that delves into the extraordinary life of Brainerd hero, Lieutenant Colonel Hortense McKay, a dedicated nurse whose courage and commitment shaped her legacy and paved the way for women in the military. Through the heartfelt narratives of her niece, Patricia McKay Broback, and Hillary Swanson, the Executive Director of the Crow Wing County Historical Society, viewers are invited to explore the many facets of Hortense's life, from her inspired beginnings to her remarkable service in the U.S. Army Nurse Corps during World War II. The story concludes with the honoring of her extraordinary contributions at her Congressional Gold Medal ceremony on March 25th, 2023, in Brainerd, MN."
+  },
+  {
+   "event_id": 2496,
+   "start_gps": 1476669616,
+   "length_s": 1800,
+   "title": "Beneath The Surface: The Secrets of St. Louis Bay",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T02:00:00+00:00",
+   "description": "Explore the fascinating, sometimes tragic, and little-known history of St. Louis Bay, located on Minnesota's Lake Minnetonka. Local filmmaker Robert Nye, with two noted Lake Minnetonka historians and an underwater explorer present the story of this portion of the lake. Images from below the lake's surface provide evidence of a bygone era which included the first large resort hotel on Minnetonka."
+  },
+  {
+   "event_id": 2497,
+   "start_gps": 1476671416,
+   "length_s": 1800,
+   "title": "James J. Hill: Empire Builder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T02:30:00+00:00",
+   "description": "A brief history of the life and times of James J. Hill."
+  },
+  {
+   "event_id": 2498,
+   "start_gps": 1476673216,
+   "length_s": 1803,
+   "title": "Cass Gilbert: Standing The Test of Time",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T03:00:00+00:00",
+   "description": "Cass Gilbert: Standing the Test of Time%%The story of one of Minnesota's most gifted architects -- the creator of our Minnesota State Capitol. (A tpt production)"
+  },
+  {
+   "event_id": 2499,
+   "start_gps": 1476675019,
+   "length_s": 1797,
+   "title": "Connections to Cass",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T03:30:03+00:00",
+   "description": "With the State Capitol closed for a once-in-lifetime extensive renovation, Mary Lahammer heads out into the community to show you more of Minnesota architect Cass Gilbert's work.  We'll tour private homes and spectacular churches designed by the Capitol architect who went on to become one of America's masters of style."
+  },
+  {
+   "event_id": 13469,
+   "start_gps": 1476676816,
+   "length_s": 1799,
+   "title": "Native Report",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T04:00:00+00:00",
+   "description": "Building and Honoring Legacy: Discover how some Minnesota Indigenous communities are building a legacy."
+  },
+  {
+   "event_id": 2427,
+   "start_gps": 1476678615,
+   "length_s": 1801,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T04:29:59+00:00",
+   "description": "Jan Elftmann and Tall Paul: Jan Elftmann's penchant for collecting objects shines through in her playful, sculptural work and eye-catching art cars. Up-and-coming musicians perform at 318 Cafe's Open Mic in Excelsior. Chuck U's childhood dream of illustrating comic books morphed into a successful career as a painter and drawer. Born and raised in inner-city Minneapolis, Tall Paul connects to his Ojibwe heritage in his clever and poignant rap music."
+  },
+  {
+   "event_id": 3157,
+   "start_gps": 1476680416,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T05:00:00+00:00",
+   "description": "Dan Miller, Bailey Tangen: On this episode of Farm Connections, we visited with Dan Miller from Valley Angus to learn about his family farm and agritourism. We also spoke with Bailey Tangen from the University of Minnesota Extension about water and soil conservation. A KSMQ Production."
+  },
+  {
+   "event_id": 3158,
+   "start_gps": 1476682216,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T05:30:00+00:00",
+   "description": "Nisswa Culinary Artist Kate Stumvoll: Kate Stumvoll shares her process making a customer favorite, chocolate agate caramels in her confectionery at Nisswa's Wildflower Chocolate. She shares not only the art but how her creations require an exact science."
+  },
+  {
+   "event_id": 3159,
+   "start_gps": 1476684016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T06:00:00+00:00",
+   "description": "Daniel Rieppel & Bill Holm Documentary: Daniel Rieppel & Bill Holm documentary filmed in Iceland, Minneota, and Marshall at SMSU."
+  },
+  {
+   "event_id": 3160,
+   "start_gps": 1476685816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T06:30:00+00:00",
+   "description": "Del Thielke WWII Veteran: Del Thielke recalls his dramatic time in the service as a veteran of WWII."
+  },
+  {
+   "event_id": 3161,
+   "start_gps": 1476687616,
+   "length_s": 1800,
+   "title": "Great Lakes Now Series",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T07:00:00+00:00",
+   "description": "Old Boats and New Adventures: In this episode of Great Lakes Now, sail Lake Huron in a work boat designed centuries ago, bring a historic passenger ship back to its former glory, and news from around the Lakes."
+  },
+  {
+   "event_id": 3162,
+   "start_gps": 1476689416,
+   "length_s": 1800,
+   "title": "River & Trail",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T07:30:00+00:00",
+   "description": "Blue Earth River: On this episode of River & Trail, we check out the Blue Earth River, where we discover some of the interesting facts of the waterway and hear about some of the recreational opportunities it provides. We also explore the surrounding bike trails, such as the Red Jacket Trail and the Mount Kato mountain bike trail."
+  },
+  {
+   "event_id": 3163,
+   "start_gps": 1476691216,
+   "length_s": 3600,
+   "title": "Estuaries in the Balance: Freshwater Nurseries of Lake Superior",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T08:00:00+00:00",
+   "description": "Ecologically vital estuaries are among the most endangered environments on the planet. The film documents two iconic Great Lakes estuaries. One, celebrated internationally as pristine, has been sustained by the Bad River Band of Ojibwe. The other, recovering from decades of industrial pollution, is the heart of the Fond du Lac Band of Ojibwe's traditional homeland. Both face an uncertain future."
+  },
+  {
+   "event_id": 3164,
+   "start_gps": 1476694816,
+   "length_s": 3600,
+   "title": "An Invitation to Wonder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T09:00:00+00:00",
+   "description": "A young filmmaker journeys through the mysterious wetland in his grandparents' backyard."
+  },
+  {
+   "event_id": 3165,
+   "start_gps": 1476698416,
+   "length_s": 1800,
+   "title": "Off 90",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T10:00:00+00:00",
+   "description": "Humane Society, Brad Zellar, Harmony Park: Mower County Humane Society, writer Brad Zellar, and Harmony Park outdoor event venue."
+  },
+  {
+   "event_id": 3166,
+   "start_gps": 1476700216,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T10:30:00+00:00",
+   "description": "Jeffrey Hatcher and David Bowman: Playwright and screenwriter Jeffrey Hatcher discusses the art and craft of writing for the stage and screen. Adam Levy's orchestral pop band, And The Professors, performs \"Turn of the Century Recycling Blues.\" Multidisciplinary artist Alexa Horochowski creates work that speaks to globalization and environmental decline. In a search for the headwaters of Lake Superior, award-winning photographer David Bowman further connects with his family roots."
+  },
+  {
+   "event_id": 3167,
+   "start_gps": 1476702016,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T11:00:00+00:00",
+   "description": "Dan Miller, Bailey Tangen: On this episode of Farm Connections, we visited with Dan Miller from Valley Angus to learn about his family farm and agritourism. We also spoke with Bailey Tangen from the University of Minnesota Extension about water and soil conservation. A KSMQ Production."
+  },
+  {
+   "event_id": 3168,
+   "start_gps": 1476703816,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T11:30:00+00:00",
+   "description": "Nisswa Culinary Artist Kate Stumvoll: Kate Stumvoll shares her process making a customer favorite, chocolate agate caramels in her confectionery at Nisswa's Wildflower Chocolate. She shares not only the art but how her creations require an exact science."
+  },
+  {
+   "event_id": 3169,
+   "start_gps": 1476705616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T12:00:00+00:00",
+   "description": "Daniel Rieppel & Bill Holm Documentary: Daniel Rieppel & Bill Holm documentary filmed in Iceland, Minneota, and Marshall at SMSU."
+  },
+  {
+   "event_id": 3170,
+   "start_gps": 1476707416,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T12:30:00+00:00",
+   "description": "Del Thielke WWII Veteran: Del Thielke recalls his dramatic time in the service as a veteran of WWII."
+  },
+  {
+   "event_id": 3171,
+   "start_gps": 1476709216,
+   "length_s": 1800,
+   "title": "Great Lakes Now Series",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T13:00:00+00:00",
+   "description": "Old Boats and New Adventures: In this episode of Great Lakes Now, sail Lake Huron in a work boat designed centuries ago, bring a historic passenger ship back to its former glory, and news from around the Lakes."
+  },
+  {
+   "event_id": 3172,
+   "start_gps": 1476711016,
+   "length_s": 1800,
+   "title": "River & Trail",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T13:30:00+00:00",
+   "description": "Blue Earth River: On this episode of River & Trail, we check out the Blue Earth River, where we discover some of the interesting facts of the waterway and hear about some of the recreational opportunities it provides. We also explore the surrounding bike trails, such as the Red Jacket Trail and the Mount Kato mountain bike trail."
+  },
+  {
+   "event_id": 3173,
+   "start_gps": 1476712816,
+   "length_s": 3600,
+   "title": "Estuaries in the Balance: Freshwater Nurseries of Lake Superior",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T14:00:00+00:00",
+   "description": "Ecologically vital estuaries are among the most endangered environments on the planet. The film documents two iconic Great Lakes estuaries. One, celebrated internationally as pristine, has been sustained by the Bad River Band of Ojibwe. The other, recovering from decades of industrial pollution, is the heart of the Fond du Lac Band of Ojibwe's traditional homeland. Both face an uncertain future."
+  },
+  {
+   "event_id": 3174,
+   "start_gps": 1476716416,
+   "length_s": 3600,
+   "title": "An Invitation to Wonder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T15:00:00+00:00",
+   "description": "A young filmmaker journeys through the mysterious wetland in his grandparents' backyard."
+  },
+  {
+   "event_id": 3175,
+   "start_gps": 1476720016,
+   "length_s": 1800,
+   "title": "Off 90",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T16:00:00+00:00",
+   "description": "Humane Society, Brad Zellar, Harmony Park: Mower County Humane Society, writer Brad Zellar, and Harmony Park outdoor event venue."
+  },
+  {
+   "event_id": 3176,
+   "start_gps": 1476721816,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T16:30:00+00:00",
+   "description": "Jeffrey Hatcher and David Bowman: Playwright and screenwriter Jeffrey Hatcher discusses the art and craft of writing for the stage and screen. Adam Levy's orchestral pop band, And The Professors, performs \"Turn of the Century Recycling Blues.\" Multidisciplinary artist Alexa Horochowski creates work that speaks to globalization and environmental decline. In a search for the headwaters of Lake Superior, award-winning photographer David Bowman further connects with his family roots."
+  },
+  {
+   "event_id": 3177,
+   "start_gps": 1476723616,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T17:00:00+00:00",
+   "description": "Dan Miller, Bailey Tangen: On this episode of Farm Connections, we visited with Dan Miller from Valley Angus to learn about his family farm and agritourism. We also spoke with Bailey Tangen from the University of Minnesota Extension about water and soil conservation. A KSMQ Production."
+  },
+  {
+   "event_id": 3178,
+   "start_gps": 1476725416,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T17:30:00+00:00",
+   "description": "Nisswa Culinary Artist Kate Stumvoll: Kate Stumvoll shares her process making a customer favorite, chocolate agate caramels in her confectionery at Nisswa's Wildflower Chocolate. She shares not only the art but how her creations require an exact science."
+  },
+  {
+   "event_id": 3179,
+   "start_gps": 1476727216,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T18:00:00+00:00",
+   "description": "Daniel Rieppel & Bill Holm Documentary: Daniel Rieppel & Bill Holm documentary filmed in Iceland, Minneota, and Marshall at SMSU."
+  },
+  {
+   "event_id": 3180,
+   "start_gps": 1476729016,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T18:30:00+00:00",
+   "description": "Del Thielke WWII Veteran: Del Thielke recalls his dramatic time in the service as a veteran of WWII."
+  },
+  {
+   "event_id": 3181,
+   "start_gps": 1476730816,
+   "length_s": 1800,
+   "title": "Great Lakes Now Series",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T19:00:00+00:00",
+   "description": "Old Boats and New Adventures: In this episode of Great Lakes Now, sail Lake Huron in a work boat designed centuries ago, bring a historic passenger ship back to its former glory, and news from around the Lakes."
+  },
+  {
+   "event_id": 3182,
+   "start_gps": 1476732616,
+   "length_s": 1800,
+   "title": "River & Trail",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T19:30:00+00:00",
+   "description": "Blue Earth River: On this episode of River & Trail, we check out the Blue Earth River, where we discover some of the interesting facts of the waterway and hear about some of the recreational opportunities it provides. We also explore the surrounding bike trails, such as the Red Jacket Trail and the Mount Kato mountain bike trail."
+  },
+  {
+   "event_id": 3183,
+   "start_gps": 1476734416,
+   "length_s": 3600,
+   "title": "Estuaries in the Balance: Freshwater Nurseries of Lake Superior",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T20:00:00+00:00",
+   "description": "Ecologically vital estuaries are among the most endangered environments on the planet. The film documents two iconic Great Lakes estuaries. One, celebrated internationally as pristine, has been sustained by the Bad River Band of Ojibwe. The other, recovering from decades of industrial pollution, is the heart of the Fond du Lac Band of Ojibwe's traditional homeland. Both face an uncertain future."
+  },
+  {
+   "event_id": 3184,
+   "start_gps": 1476738016,
+   "length_s": 3600,
+   "title": "An Invitation to Wonder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T21:00:00+00:00",
+   "description": "A young filmmaker journeys through the mysterious wetland in his grandparents' backyard."
+  },
+  {
+   "event_id": 3185,
+   "start_gps": 1476741616,
+   "length_s": 1800,
+   "title": "Off 90",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T22:00:00+00:00",
+   "description": "Humane Society, Brad Zellar, Harmony Park: Mower County Humane Society, writer Brad Zellar, and Harmony Park outdoor event venue."
+  },
+  {
+   "event_id": 3186,
+   "start_gps": 1476743416,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T22:30:00+00:00",
+   "description": "Jeffrey Hatcher and David Bowman: Playwright and screenwriter Jeffrey Hatcher discusses the art and craft of writing for the stage and screen. Adam Levy's orchestral pop band, And The Professors, performs \"Turn of the Century Recycling Blues.\" Multidisciplinary artist Alexa Horochowski creates work that speaks to globalization and environmental decline. In a search for the headwaters of Lake Superior, award-winning photographer David Bowman further connects with his family roots."
+  },
+  {
+   "event_id": 2204,
+   "start_gps": 1476745216,
+   "length_s": 1800,
+   "title": "Farm Connections",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T23:00:00+00:00",
+   "description": "Dan Miller, Bailey Tangen: On this episode of Farm Connections, we visited with Dan Miller from Valley Angus to learn about his family farm and agritourism. We also spoke with Bailey Tangen from the University of Minnesota Extension about water and soil conservation. A KSMQ Production."
+  },
+  {
+   "event_id": 13328,
+   "start_gps": 1476747016,
+   "length_s": 1800,
+   "title": "Common Ground",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-22T23:30:00+00:00",
+   "description": "Nisswa Culinary Artist Kate Stumvoll: Kate Stumvoll shares her process making a customer favorite, chocolate agate caramels in her confectionery at Nisswa's Wildflower Chocolate. She shares not only the art but how her creations require an exact science."
+  },
+  {
+   "event_id": 2261,
+   "start_gps": 1476748816,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T00:00:00+00:00",
+   "description": "Daniel Rieppel & Bill Holm Documentary: Daniel Rieppel & Bill Holm documentary filmed in Iceland, Minneota, and Marshall at SMSU."
+  },
+  {
+   "event_id": 2292,
+   "start_gps": 1476750616,
+   "length_s": 1800,
+   "title": "Postcards",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T00:30:00+00:00",
+   "description": "Del Thielke WWII Veteran: Del Thielke recalls his dramatic time in the service as a veteran of WWII."
+  },
+  {
+   "event_id": 13434,
+   "start_gps": 1476752416,
+   "length_s": 1800,
+   "title": "Great Lakes Now Series",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T01:00:00+00:00",
+   "description": "Old Boats and New Adventures: In this episode of Great Lakes Now, sail Lake Huron in a work boat designed centuries ago, bring a historic passenger ship back to its former glory, and news from around the Lakes."
+  },
+  {
+   "event_id": 2376,
+   "start_gps": 1476754216,
+   "length_s": 1800,
+   "title": "River & Trail",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T01:30:00+00:00",
+   "description": "Blue Earth River: On this episode of River & Trail, we check out the Blue Earth River, where we discover some of the interesting facts of the waterway and hear about some of the recreational opportunities it provides. We also explore the surrounding bike trails, such as the Red Jacket Trail and the Mount Kato mountain bike trail."
+  },
+  {
+   "event_id": 2202,
+   "start_gps": 1476756016,
+   "length_s": 3600,
+   "title": "Estuaries in the Balance: Freshwater Nurseries of Lake Superior",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T02:00:00+00:00",
+   "description": "Ecologically vital estuaries are among the most endangered environments on the planet. The film documents two iconic Great Lakes estuaries. One, celebrated internationally as pristine, has been sustained by the Bad River Band of Ojibwe. The other, recovering from decades of industrial pollution, is the heart of the Fond du Lac Band of Ojibwe's traditional homeland. Both face an uncertain future."
+  },
+  {
+   "event_id": 2511,
+   "start_gps": 1476759616,
+   "length_s": 3600,
+   "title": "An Invitation to Wonder",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T03:00:00+00:00",
+   "description": "A young filmmaker journeys through the mysterious wetland in his grandparents' backyard."
+  },
+  {
+   "event_id": 2394,
+   "start_gps": 1476763216,
+   "length_s": 1800,
+   "title": "Off 90",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T04:00:00+00:00",
+   "description": "Humane Society, Brad Zellar, Harmony Park: Mower County Humane Society, writer Brad Zellar, and Harmony Park outdoor event venue."
+  },
+  {
+   "event_id": 2428,
+   "start_gps": 1476765016,
+   "length_s": 1800,
+   "title": "Minnesota Original",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T04:30:00+00:00",
+   "description": "Jeffrey Hatcher and David Bowman: Playwright and screenwriter Jeffrey Hatcher discusses the art and craft of writing for the stage and screen. Adam Levy's orchestral pop band, And The Professors, performs \"Turn of the Century Recycling Blues.\" Multidisciplinary artist Alexa Horochowski creates work that speaks to globalization and environmental decline. In a search for the headwaters of Lake Superior, award-winning photographer David Bowman further connects with his family roots."
+  },
+  {
+   "event_id": 3271,
+   "start_gps": 1476766816,
+   "length_s": 1800,
+   "title": "Prairie Sportsman",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T05:00:00+00:00",
+   "description": "Alclair Outdoors and Robotic Weed Control: The story behind Alclair Outdoors and researchers test a weed terminator in a cornfield."
+  },
+  {
+   "event_id": 3272,
+   "start_gps": 1476768616,
+   "length_s": 1800,
+   "title": "Native Report",
+   "rating": "",
+   "source_id": 6,
+   "start_utc": "2026-10-23T05:30:00+00:00",
+   "description": "Spreading Awareness for Inter-Generational Trauma: Learn the sad history of American Indian Boarding Schools and its long-term effects."
+  }
+ ],
+ "rf": 34,
+ "mhz": 593,
+ "signal": {
+  "SignalStrengthPercent": 81,
+  "SignalQualityPercent": 85
+ },
+ "pmt_programs": [
+  {
+   "program": 3,
+   "name": "",
+   "video": "mpeg2video 1920x1080",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 7,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 5,
+   "name": "",
+   "video": "mpeg2video 704x480",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 4,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  },
+  {
+   "program": 6,
+   "name": "",
+   "video": "mpeg2video 1280x720",
+   "audio": "ac3",
+   "audio_only": false
+  }
+ ]
+}
