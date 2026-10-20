@@ -135,6 +135,8 @@ Chrome on the laptop played streams served by the Mini (the laptop's Chrome firs
 - **Watch Now! (web guide)** now exists for a recording in progress: button in the summary panel, player modal, `/api/hls-status`. The show editor (tuner dropdown → a show recording now) has the same button, reusing the row's `data-recording`. Watch Now! is for shows airing right now only; a finished recording is not offered. Still to do: a quality choice, the status bar and Record menu of the native player, live TV from a tuner.
 - **Late joiners start 2 minutes behind live** and cannot seek earlier; a finished recording is only reachable once converted (about 11× real time).
 - **Not tested**: audible audio, Safari/Firefox/Edge/phones on this build, macOS 15, a recording that ends while watched on the rolling-window build, two different shows at once under load.
+- **Audio-only streaming (radio / audio-only channels):** not built. The converter requires a video track (`HLSConverterError.noVideoTrack`), so an audio-only source fails. Needs an audio-only HLS path (AAC in fMP4 or ADTS segments, no video input) and a player that shows no picture.
+- **Edge: audio and video out of sync (reported 2026-10-20, not reproduced):** the served segments are in sync (37 segments checked, audio/video within 0.11 s, no gaps or drift), so the cause is likely Edge's handling of the audio start offset. Still needed: whether audio is early or late, constant or growing, and cold start or joining an existing session.
 
 ## Decision
 
