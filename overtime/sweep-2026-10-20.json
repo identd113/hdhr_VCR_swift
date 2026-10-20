@@ -1,0 +1,1336 @@
+[
+ {
+  "rf": 2,
+  "mhz": 57,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 3,
+  "mhz": 63,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 4,
+  "mhz": 69,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 5,
+  "mhz": 79,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 6,
+  "mhz": 85,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 7,
+  "mhz": 177,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 8,
+  "mhz": 183,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 9,
+  "mhz": 189,
+  "known": "KMSP-TV 9.x (Fox, VHF)",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 77,
+   "SignalQualityPercent": 59,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": []
+ },
+ {
+  "rf": 10,
+  "mhz": 195,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 11,
+  "mhz": 201,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 12,
+  "mhz": 207,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 13,
+  "mhz": 213,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 14,
+  "mhz": 473,
+  "known": "lineup 14",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 75,
+   "SignalQualityPercent": 90,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 2,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "14"
+  ]
+ },
+ {
+  "rf": 15,
+  "mhz": 479,
+  "known": "lineup 15",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 55,
+   "SignalQualityPercent": 60,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1001,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1002,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1003,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1004,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1005,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1006,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1007,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "15"
+  ]
+ },
+ {
+  "rf": 16,
+  "mhz": 485,
+  "known": "KPXM 41.x (Ion)",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 56,
+   "SignalQualityPercent": 66,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 9,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 10,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "41"
+  ]
+ },
+ {
+  "rf": 17,
+  "mhz": 491,
+  "known": "lineup 17",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 48,
+   "SignalQualityPercent": 51,
+   "SymbolQualityPercent": 0
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "17"
+  ]
+ },
+ {
+  "rf": 18,
+  "mhz": 497,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 19,
+  "mhz": 503,
+  "known": "",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 57,
+   "SignalQualityPercent": 67,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 2,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 10,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 12,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 14,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": []
+ },
+ {
+  "rf": 20,
+  "mhz": 509,
+  "known": "lineup 43",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 77,
+   "SignalQualityPercent": 78,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1001,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1002,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1003,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1004,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1005,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1006,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1007,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "43"
+  ]
+ },
+ {
+  "rf": 21,
+  "mhz": 515,
+  "known": "lineup 21",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 74,
+   "SignalQualityPercent": 85,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 9,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 11,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 18,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 20,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 22,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 24,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 26,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 28,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 30,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 32,
+    "name": "",
+    "video": "h264 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "21"
+  ]
+ },
+ {
+  "rf": 22,
+  "mhz": 521,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 23,
+  "mhz": 527,
+  "known": "KTCI-TV 2.x",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 24,
+  "mhz": 533,
+  "known": "",
+  "bytes": 458752,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 24,
+   "SignalQualityPercent": 0,
+   "SymbolQualityPercent": 0
+  },
+  "programs": [],
+  "mbps": 0.6,
+  "lineup": []
+ },
+ {
+  "rf": 25,
+  "mhz": 539,
+  "known": "lineup 25",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 81,
+   "SignalQualityPercent": 90,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [],
+  "mbps": 19.5,
+  "lineup": [
+   "25"
+  ]
+ },
+ {
+  "rf": 26,
+  "mhz": 545,
+  "known": "lineup 62",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 55,
+   "SignalQualityPercent": 65,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 2,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "62"
+  ]
+ },
+ {
+  "rf": 27,
+  "mhz": 551,
+  "known": "",
+  "bytes": 10354688,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 25,
+   "SignalQualityPercent": 43,
+   "SymbolQualityPercent": 0
+  },
+  "programs": [],
+  "mbps": 13.8,
+  "lineup": []
+ },
+ {
+  "rf": 28,
+  "mhz": 557,
+  "known": "",
+  "bytes": 131072,
+  "error": null,
+  "state": "no signal"
+ },
+ {
+  "rf": 29,
+  "mhz": 563,
+  "known": "WFTC 9.x (+ WUCW Comet/Antenna)",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 96,
+   "SignalQualityPercent": 98,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "9"
+  ]
+ },
+ {
+  "rf": 30,
+  "mhz": 569,
+  "known": "KSTC-TV 5.x (45TV, MeTV, getTV)",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 100,
+   "SignalQualityPercent": 100,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": []
+ },
+ {
+  "rf": 31,
+  "mhz": 575,
+  "known": "KARE 11.x (NBC, + WUCW Rewind)",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 100,
+   "SignalQualityPercent": 100,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 8,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 9,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 10,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "11"
+  ]
+ },
+ {
+  "rf": 32,
+  "mhz": 581,
+  "known": "WCCO-TV 4.x (CBS, + WUCW Charge)",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 100,
+   "SignalQualityPercent": 90,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 2,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "4"
+  ]
+ },
+ {
+  "rf": 33,
+  "mhz": 587,
+  "known": "lineup 33",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 76,
+   "SignalQualityPercent": 76,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 1001,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1002,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1003,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1004,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1005,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1006,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1007,
+    "name": "",
+    "video": "mpeg2video 720x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 1008,
+    "name": "",
+    "video": "mpeg2video 0x0",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "33"
+  ]
+ },
+ {
+  "rf": 34,
+  "mhz": 593,
+  "known": "KTCA-TV 2.x (PBS)",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 81,
+   "SignalQualityPercent": 81,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 7,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 5,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 4,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 6,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.4,
+  "lineup": [
+   "2"
+  ]
+ },
+ {
+  "rf": 35,
+  "mhz": 599,
+  "known": "KSTP-TV 5.x (ABC, + WUCW CW)",
+  "bytes": 14614528,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 95,
+   "SignalQualityPercent": 98,
+   "SymbolQualityPercent": 100
+  },
+  "programs": [
+   {
+    "program": 3,
+    "name": "",
+    "video": "mpeg2video 1280x720",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 9,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 10,
+    "name": "",
+    "video": "mpeg2video 704x480",
+    "audio": "ac3",
+    "audio_only": false
+   },
+   {
+    "program": 12,
+    "name": "",
+    "video": "mpeg2video 1920x1080",
+    "audio": "ac3",
+    "audio_only": false
+   }
+  ],
+  "mbps": 19.5,
+  "lineup": [
+   "5",
+   "23"
+  ]
+ },
+ {
+  "rf": 36,
+  "mhz": 605,
+  "known": "lineup 49",
+  "bytes": 14548992,
+  "error": null,
+  "state": "signal",
+  "signal": {
+   "SignalStrengthPercent": 56,
+   "SignalQualityPercent": 42,
+   "SymbolQualityPercent": 0
+  },
+  "programs": [],
+  "mbps": 19.4,
+  "lineup": [
+   "49"
+  ]
+ },
+ {
+  "rf": 38,
+  "mhz": 617,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 39,
+  "mhz": 623,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 40,
+  "mhz": 629,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 41,
+  "mhz": 635,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 42,
+  "mhz": 641,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 43,
+  "mhz": 647,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 44,
+  "mhz": 653,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 45,
+  "mhz": 659,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 46,
+  "mhz": 665,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 47,
+  "mhz": 671,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 48,
+  "mhz": 677,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 49,
+  "mhz": 683,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 50,
+  "mhz": 689,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ },
+ {
+  "rf": 51,
+  "mhz": 695,
+  "known": "",
+  "bytes": 0,
+  "error": "HTTP 503",
+  "state": "no signal"
+ }
+]
