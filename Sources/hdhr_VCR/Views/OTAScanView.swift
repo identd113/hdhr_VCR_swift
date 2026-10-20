@@ -10,10 +10,14 @@ struct OTAScanView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             ProgressView(value: Double(progress.finished), total: Double(max(progress.total, 1)))
+                .accessibilityLabel("Scan progress")
+                .accessibilityValue("\(progress.finished) of \(progress.total) RF channels")
+                .accessibilityIdentifier("ota-scan-progress")
             HStack {
                 Text("\(progress.finished) of \(progress.total) RF channels").font(.caption.monospacedDigit())
+                    .accessibilityIdentifier("ota-scan-count")
                 Spacer()
-                Text(timeLine).font(.caption).foregroundStyle(.secondary)
+                Text(timeLine).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("ota-scan-time-left")
             }
             HStack {
                 Text("Tuners")
@@ -21,9 +25,11 @@ struct OTAScanView: View {
                     ForEach(1...max(1, state.otaTunerMax), id: \.self) { Text("\($0)").tag($0) }
                 }
                 .labelsHidden().frame(width: 60)
+                .accessibilityLabel("Tuners to use")
                 .accessibilityIdentifier("ota-scan-tuners")
                 Spacer()
                 Text(progress.running ? statusLine : state.otaScanStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .accessibilityIdentifier("ota-scan-status")
             }
             Divider()
             ScrollView {
@@ -41,28 +47,33 @@ struct OTAScanView: View {
                 }
                 Spacer()
                 if progress.running { Button("Cancel Scan") { state.cancelOTAScan() }.accessibilityIdentifier("ota-scan-cancel") }
-                else { Button("Close") { NSApp.keyWindow?.close() } }
+                else { Button("Close") { NSApp.keyWindow?.close() }.accessibilityIdentifier("ota-scan-close") }
             }
         }
         .padding(16)
         .frame(width: 380, height: 460)
+        .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
 
     private var header: some View {
         HStack(spacing: 18) {
-            stat(progress.rows.count, "multiplexes")
-            stat(progress.channelCount, "channels")
-            if !progress.lineupOnly { stat(progress.listingCount, "listings") }
+            stat(progress.rows.count, "multiplexes", id: "ota-scan-multiplexes")
+            stat(progress.channelCount, "channels", id: "ota-scan-channels")
+            if !progress.lineupOnly { stat(progress.listingCount, "listings", id: "ota-scan-listings") }
             Spacer()
         }
     }
 
-    private func stat(_ n: Int, _ label: String) -> some View {
+    private func stat(_ n: Int, _ label: String, id: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("\(n)").font(.title2.monospacedDigit().bold())
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(n)")
+        .accessibilityIdentifier(id)
     }
 
     private var statusLine: String {
@@ -74,6 +85,10 @@ struct OTAScanView: View {
         guard progress.running else { return "" }
         guard let s = progress.estimatedSecondsRemaining() else { return "estimating…" }
         return s < 90 ? "about 1 min left" : "about \(Int((s / 60).rounded())) min left"
+    }
+
+    private func stateWord(_ s: OTAMultiplexRow.State) -> String {
+        switch s { case .scanning: return "scanning"; case .done: return "done"; case .noGuide(let why): return "no guide: \(why)" }
     }
 
     @ViewBuilder private func multiplexView(_ row: OTAMultiplexRow) -> some View {
@@ -94,9 +109,14 @@ struct OTAScanView: View {
                         if !progress.lineupOnly, sub.listings > 0 { Text("\(sub.listings)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
                     }
                     .padding(.leading, 22)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
+        .accessibilityIdentifier("ota-scan-mux-\(row.rf)")
     }
 
     @ViewBuilder private func marker(_ s: OTAMultiplexRow.State) -> some View {

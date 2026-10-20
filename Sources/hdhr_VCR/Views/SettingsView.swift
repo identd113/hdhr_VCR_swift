@@ -704,6 +704,7 @@ struct SettingsView: View {
                     } label: {
                         HStack { Text("Rescan automatically"); InfoButton("Rescans the full guide once a day from this hour on, using only idle tuners. It waits for a free tuner and gives it up the moment a recording or the player needs it.") }
                     }
+                    .accessibilityIdentifier("settings-ota-schedule")
                     Text("Tunes every TV channel in turn and reads the guide listings stations broadcast with their signal, then saves them as a guide that works with no internet. Takes about 10 minutes and uses idle tuners only; it stops for a recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -2590,12 +2590,16 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
-            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75} (both optional) or {"cancel":true}
+            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true} (all optional), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
+                if let n = params["tuners"] as? Int, state.otaScanTask != nil {
+                    state.otaTunerLimit = min(max(1, n), state.otaTunerMax)
+                    return jsonResponse(["status": state.otaScanStatus, "tuners": state.otaTunerLimit])
+                }
                 let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
                 let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
-                return jsonResponse(["status": state.startOTAScan(rfChannels: rf, seconds: seconds)])
+                return jsonResponse(["status": state.startOTAScan(rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false)])
             }
             if path == "/api/signal-scan"  {
                 let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
@@ -2643,7 +2647,11 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ota-status":
-            return jsonResponse(["status": state.otaScanStatus, "running": state.otaScanTask != nil])
+            let p = state.otaProgress
+            return jsonResponse(["status": state.otaScanStatus, "running": state.otaScanTask != nil,
+                                 "finished": p.finished, "total": p.total, "multiplexes": p.rows.count, "channels": p.channelCount,
+                                 "listings": p.listingCount, "tuners": state.otaTunerLimit, "tunersMax": state.otaTunerMax,
+                                 "secondsLeft": p.estimatedSecondsRemaining().map { Int($0) } ?? -1])
 
         case "/api/ping":
             // "version" (the build stamp) is load-bearing — guide.js's checkFreshness() compares

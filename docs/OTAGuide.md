@@ -29,8 +29,8 @@ tuner. The scan uses `recordableDevices` only (never the virtual relay), and is 
 ## Where to run it
 - Settings → General → Guide: **Use the guide from the air (beta)** (`Guide_use_ota`).
 - Settings → Advanced → **Over-the-Air Guide**: *Scan the Air Now* / *Cancel Scan*, with the status line.
-- Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":90}` (both optional) or `{"cancel":true}`;
-  `GET /api/ota-status` → `{"status":"…","running":true|false}`.
+- Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":90,"lineupOnly":true}` (all optional), `{"tuners":1}` (sets the running scan's tuner allowance) or `{"cancel":true}`;
+  `GET /api/ota-status` → `{"status","running","finished","total","multiplexes","channels","listings","tuners","tunersMax","secondsLeft"}` (`secondsLeft` -1 = unknown).
 
 ## Known gaps
 No series IDs (series recording falls back on titles), no genre tags (genre dimming and the sports Bonus Time default have nothing to

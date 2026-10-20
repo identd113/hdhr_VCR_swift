@@ -13,3 +13,9 @@ the web server and recording start/stop (the "No blocking dialogs" invariant); a
   Sub-channels of one multiplex are read together from one stream, so they finish together.
 - **Footer:** count of RF channels with no signal; Cancel Scan while running, Close when done.
 - **Progress bar:** RF channels finished of total, with a rough "about N min left" (average time per channel so far × channels to go; shown after 3 channels).
+
+## Automation
+Accessibility identifiers: `ota-scan-window`, `ota-scan-progress` (value "N of M RF channels"), `ota-scan-count`, `ota-scan-time-left`, `ota-scan-status`,
+`ota-scan-tuners` (the pulldown), `ota-scan-cancel`, `ota-scan-close`, `ota-scan-multiplexes` / `-channels` / `-listings` (label + value), per-row
+`ota-scan-mux-<RF>` (label "RF 32, 7 channels, scanning|done|no guide: …") and `ota-scan-sub-<major.minor>`. Settings: `settings-ota-scan`,
+`settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-schedule`. Without the UI: `POST /api/ota-scan` / `GET /api/ota-status` (docs/OTAGuide.md).
