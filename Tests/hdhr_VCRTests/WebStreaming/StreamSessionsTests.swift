@@ -47,6 +47,16 @@ struct StreamSessionsTests {
         return nil
     }
 
+    @Test func isEnabledFollowsTheSettingWithoutARestart() async {
+        let answers = Answers(enabled: false, path: nil)
+        let sessions = make(answers, root: root())
+        #expect(await sessions.isEnabled() == false)
+        answers.setEnabled(true)
+        #expect(await sessions.isEnabled() == true)
+        answers.setEnabled(false)
+        #expect(await sessions.isEnabled() == false)
+    }
+
     @Test func idsWithPathCharactersAreRejected() {
         #expect(StreamSessions.isValidShowId("1A2B-3c_4"))
         for bad in ["", "../x", "a/b", "a b", "a.b", "é", String(repeating: "a", count: 65)] { #expect(!StreamSessions.isValidShowId(bad)) }

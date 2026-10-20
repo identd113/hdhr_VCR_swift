@@ -229,6 +229,8 @@ final class WebServer: @unchecked Sendable {
     // toggle-free, so it's inert whenever the viewport is actually landscape.
     private lazy var cachedGuideVerticalCSS: String? = Self.loadTemplate("guide-vertical", "css")
     private lazy var cachedGuideJS: String?        = Self.loadTemplate("guide", "js")
+    // hls.js (Apache-2.0, pinned 1.5.17) for browsers without native HLS; fetched only when Watch Now! is used.
+    private lazy var cachedHLSJS: Data? = Self.templateURL("hls.min", "js").flatMap { try? Data(contentsOf: $0) }
     private lazy var cachedGuideShellHTML: String? = Self.loadTemplate("guide-shell", "html")
 
     private static func loadTemplate(_ name: String, _ ext: String) -> String? {
@@ -2349,6 +2351,15 @@ final class WebServer: @unchecked Sendable {
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
             }
+            if cleanPath == "/api/hls-status" && method == "GET" {
+                // Is web streaming on? Lets the guide show or hide "Watch Now!" without a reload. Answered off the main thread.
+                guard let streams = self.streams else { self.send(.ok(contentType: "application/json", body: Data("{\"enabled\":false}".utf8)), on: conn); return }
+                Task { [weak self] in
+                    let on = await streams.isEnabled()
+                    self?.queue.async { self?.send(.okNoStore(contentType: "application/json", body: Data("{\"enabled\":\(on)}".utf8)), on: conn) }
+                }
+                return
+            }
             if cleanPath.hasPrefix("/api/hls/") && method == "GET" {
                 let parts = cleanPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)   // api, hls, <show>, <file>
                 guard parts.count == 4 else { self.send(.notFound("not found"), on: conn); return }
@@ -2670,6 +2681,10 @@ final class WebServer: @unchecked Sendable {
             for (key, bucket) in ChannelSignalStore.shared.buckets { out[key] = bucket.rawValue }
             let data = (try? JSONSerialization.data(withJSONObject: out)) ?? Data("{}".utf8)
             return .ok(contentType: "application/json", body: data)
+
+        case "/hls.min.js":
+            if let js = cachedHLSJS { return .ok(contentType: "application/javascript", body: js) }
+            return .notFound("hls.js not found")
 
         case "/favicon.ico":
             if let data = cachedFaviconICO {

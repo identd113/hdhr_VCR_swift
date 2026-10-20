@@ -79,6 +79,12 @@ actor StreamSessions {
         try? FileManager.default.removeItem(at: root)
     }
 
+    /// Is web streaming switched on right now? Asked of the app (with the usual timeout); on no answer, the last known value.
+    func isEnabled() async -> Bool {
+        if let snap = await lookup([]) { enabledKnown = snap.enabled }
+        return enabledKnown
+    }
+
     var activeCount: Int { sessions.count }
     func isActive(_ showId: String) -> Bool { sessions[showId] != nil }
 

@@ -57,6 +57,7 @@
       <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;line-height:1.35"></div>
       <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
         <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
+        <button id="sum-watch" onclick="watchNowFromSummary()" title="Watch this recording in your browser" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#2f7de1;color:#fff">&#9654; Watch Now!</button>
         <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
         <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
         <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
@@ -143,6 +144,22 @@
       <button onclick="cancelDeleteConfirm()" class="mac-btn mac-btn-plain">Cancel</button>
       <button id="dc-confirm-btn" onclick="confirmDeleteConfirm()" class="mac-btn mac-btn-destructive">Delete</button>
     </div>
+  </div>
+</div>
+<div id="wn-modal" onclick="if(event.target===this)closeWatchNow()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:203;align-items:center;justify-content:center;padding:20px">
+  <div class="mac-sheet wn-sheet" role="dialog" aria-modal="true" aria-labelledby="wn-title">
+    <div class="wn-head">
+      <div class="wn-titles"><div id="wn-title" class="wn-title"></div><div id="wn-sub" class="wn-sub"></div></div>
+      <button onclick="closeWatchNow()" class="mac-btn mac-btn-plain" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="wn-stage"><video id="wn-video" playsinline controls></video><div id="wn-msg" class="wn-msg"></div></div>
+    <div class="wn-bar">
+      <span id="wn-state" class="wn-state"></span>
+      <span class="wn-grow"></span>
+      <button id="wn-live" onclick="watchNowGoLive()" class="mac-btn mac-btn-plain" title="Jump to the newest picture (L)">Live Edge</button>
+      <button onclick="watchNowFullscreen()" class="mac-btn mac-btn-plain" title="Fullscreen (F)">Fullscreen</button>
+    </div>
+    <div class="wn-keys">Space play/pause &middot; &larr; &rarr; skip 10 s &middot; L live edge &middot; M mute &middot; F fullscreen &middot; Esc close</div>
   </div>
 </div>
 <div class="gw-outer"><div id="pull-refresh" class="pull-refresh"><div class="pull-spin"></div></div><div class="gw"><div class="gi">
