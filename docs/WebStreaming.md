@@ -132,7 +132,7 @@ Chrome on the laptop played streams served by the Mini (the laptop's Chrome firs
 ### Open / not built
 - **Live TV from a tuner** is not wired into the app: only tested by spooling to a file and following it (rows 7–8).
 - **Hardware-transcode input is re-encoded**: the tuner already gives H.264, so the cheapest path is copying that video and converting only AC-3 to AAC. The AVAssetWriter route always encodes video.
-- **Watch Now! (web guide)** now exists for a recording in progress: button in the summary panel, player modal, `/api/hls-status`. Still to do: Watch Now! for a finished recording from the guide or the show editor, a quality choice, the status bar and Record menu of the native player, live TV from a tuner.
+- **Watch Now! (web guide)** now exists for a recording in progress: button in the summary panel, player modal, `/api/hls-status`. The show editor (tuner dropdown → a show recording now) has the same button, reusing the row's `data-recording`. Watch Now! is for shows airing right now only; a finished recording is not offered. Still to do: a quality choice, the status bar and Record menu of the native player, live TV from a tuner.
 - **Late joiners start 2 minutes behind live** and cannot seek earlier; a finished recording is only reachable once converted (about 11× real time).
 - **Not tested**: audible audio, Safari/Firefox/Edge/phones on this build, macOS 15, a recording that ends while watched on the rolling-window build, two different shows at once under load.
 
