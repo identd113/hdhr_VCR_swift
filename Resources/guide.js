@@ -1535,6 +1535,7 @@ function openWatchNow(id,title,sub){
   wnState('Starting\u2026',false);wnMsg('Preparing the stream\u2026 this can take a few seconds.');
   var v=wnVideo();
   var url='/api/hls/'+encodeURIComponent(id)+'/index.m3u8';
+  _wn.url=url;wnListenUI(false);document.getElementById('wn-listen').style.display=wnVideo().canPlayType('application/vnd.apple.mpegurl')?'inline-block':'none';
   v.muted=false;
   if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=url;
@@ -1559,8 +1560,8 @@ function openWatchNow(id,title,sub){
   // Lock-screen / Control Center info and buttons (iOS pauses the video when the screen locks; Play there resumes the sound).
   try{if('mediaSession' in navigator){
     navigator.mediaSession.metadata=new MediaMetadata({title:title,artist:sub||'hdhrVCRplus'});
-    navigator.mediaSession.setActionHandler('play',function(){v.play().catch(function(){});});
-    navigator.mediaSession.setActionHandler('pause',function(){v.pause();});
+    navigator.mediaSession.setActionHandler('play',function(){wnActive().play().catch(function(){});});
+    navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
   }}catch(e){}
   v.onplaying=function(){if(gen===_wn.gen)wnMsg('');};
   v.onwaiting=function(){if(gen===_wn.gen&&!_wn.ended)wnState('Buffering\u2026',false);};
@@ -1609,6 +1610,22 @@ function watchNowFullscreen(){
   var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;
   if(f)try{f.call(v);}catch(e){}
 }
+// Listen: the same stream through an <audio> element, which iOS keeps playing with the screen locked (it pauses a <video>).
+var _wnAudio=null;
+function wnActive(){return _wn.listening&&_wnAudio?_wnAudio:wnVideo();}
+function wnListenUI(on){_wn.listening=on;var b=document.getElementById('wn-listen');b.textContent=on?'Watch video':'Listen';}
+function watchNowListen(){
+  var v=wnVideo();
+  if(!_wnAudio){_wnAudio=new Audio();_wnAudio.preload='auto';}
+  if(!_wn.listening){
+    _wnAudio.muted=v.muted;_wnAudio.src=_wn.url;
+    _wnAudio.play().catch(function(){});
+    v.pause();wnListenUI(true);wnMsg('Listening \u2014 sound only. You can lock the screen.');
+  }else{
+    wnStopAudio();wnListenUI(false);wnMsg('');v.play().catch(function(){});
+  }
+}
+function wnStopAudio(){if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
 function closeWatchNow(){
   if(!_wn.open&&!_wn.hls)return;
   _wn.open=false;_wn.gen++;
@@ -1617,6 +1634,7 @@ function closeWatchNow(){
   var v=wnVideo();
   v.onerror=v.onplaying=v.onwaiting=null;
   try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
+  wnStopAudio();wnListenUI(false);
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
   if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
   document.getElementById('wn-modal').style.display='none';
