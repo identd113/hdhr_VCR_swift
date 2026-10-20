@@ -101,6 +101,39 @@ Stalls found by this test (neither shows up with the 6 s synthetic file, both wi
 
 Also found: a writer that has failed never becomes ready again, so every pass would wait for nothing; the follower now checks the writer's status and reports the error. Latency is ~15–18 s behind the recording (hold-back + 3 s pass interval + 4 s segments + encoder buffering); tuning is still to do.
 
+## Test log (2026-10-19/20, Mini M2 + laptop M4, Chrome on the laptop, real tuner recordings)
+
+Chrome on the laptop played streams served by the Mini (the laptop's Chrome first needed the macOS Local Network permission; until then only a proxy on the laptop could reach the Mini).
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | HLS of a recording in progress, Chrome (hls.js) | Plays 1280×720, 0.4–0.6% dropped frames over minutes, playlist keeps growing, seek to live edge works |
+| 2 | Same show, two viewers at once | One session ("started" logged once), both play with 0 dropped frames, same segment count |
+| 3 | Raw recording bytes (`/api/watch-recording`) | Valid TS (sync byte every 188 B), MPEG-2 (0x02) + AC-3 (0x81); Chrome `canPlayType('video/mp2t')` is empty: **raw cannot play in a browser** |
+| 4 | Raw FEED (`/auto/v5.1`) | Same: valid TS, MPEG-2 + AC-3, not playable in a browser |
+| 5 | FEED H.264 (`/auto/v5.1?transcode=mobile`, software x264 in VLC) | Valid TS, stream type 0x1b (H.264) + AC-3 as private data; first bytes in 1.8 s. Still a TS, so not browser-playable; the browser path reads the recording file instead |
+| 6 | Bad requests | `..%2F`, short/long/unknown names, wrong extension, NUL, 11-digit segment, unknown/traversal show ids: all 404; POST: 403 |
+| 7 | Live OTA spooled to a file, raw (software path), 40 s at live speed | 13 segments, finished 3.1 s after the last byte; output H.264 1920×1080 + AAC, decodes with no ffmpeg errors |
+| 8 | Live OTA with the EXTEND's hardware transcode (`?transcode=mobile`), spooled | AVFoundation reads it (H.264 1280×540 + AC-3); 13 segments, finished 1.5 s after the last byte; H.264 + AAC out, no decode errors. Video is still re-encoded (see open items) |
+| 9 | Finished recording (Star Trek, 704×480) | Streams as a complete video from the start, converted at about 11× real time |
+| 10 | Recording in progress joined late (NFL, 45 min in) | Joins about 2 minutes behind its end instead of converting the whole backlog |
+
+### Bugs found and fixed
+1. **Playlist timeout on a long recording**: `index.m3u8` was written only when a pass ended; the first pass over a 40-minute recording (520 MB, 268 segments) took longer than the browser's 15 s wait. Now the playlist is published as each segment lands (`SegmentSink.startPublishing`).
+2. **Whole backlog converted for a late joiner** (and stored): a viewer joining a long recording now starts 2 minutes behind its end (`startBehindLive`, `StreamSessions.joinBehindLive`).
+3. **Unbounded disk use**: segments were never deleted, so a 3-hour game would have written about 3 GB to Caches. A rolling window keeps the last 450 segments (30 minutes); the playlist's media sequence follows, and a playlist that has dropped its start is no longer EVENT/VOD.
+4. **Finished recordings returned 404**: only shows with `show_recording` true streamed. Now the last recording file streams, converted whole from the start (no window).
+5. **Log noise**: a stop was logged as "read pass failed (CancellationError)"; now silent.
+6. Earlier (see "Live test on the Mini"): writer deadlock, audio-ends-first stall, failed-writer detection.
+
+### Open / not built
+- **Live TV from a tuner** is not wired into the app: only tested by spooling to a file and following it (rows 7–8).
+- **Hardware-transcode input is re-encoded**: the tuner already gives H.264, so the cheapest path is copying that video and converting only AC-3 to AAC. The AVAssetWriter route always encodes video.
+- **Bitrate is fixed at 4 Mb/s**, even for 480p sources (Star Trek's 704×480 conversion is about as large as 720p). Scale by resolution.
+- **No Watch button or player yet in the web guide.** hls.js is loaded from a CDN only in these tests.
+- **Late joiners start 2 minutes behind live** and cannot seek earlier; a finished recording is only reachable once converted (about 11× real time).
+- **Not tested**: audible audio, Safari/Firefox/Edge/phones on this build, macOS 15, a recording that ends while watched on the rolling-window build, two different shows at once under load.
+
 ## Decision
 
 Build the web stream on **AVFoundation (AVAssetReader → hardware H.264 + AAC → HLS segments)**, reading from a local growing file (a recording, or a rolling temp spool of a live tuner stream). VLC x264 stays as the fallback for sources AVFoundation cannot read, and for macOS versions where it cannot (macOS 15 unverified). Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) remains a possible live-TV shortcut, but the spool-and-convert path works for every tuner, so it is not required.
