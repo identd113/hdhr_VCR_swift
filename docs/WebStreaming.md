@@ -129,6 +129,9 @@ Chrome on the laptop played streams served by the Mini (the laptop's Chrome firs
 
 8. **Chrome's built-in HLS player rejected the first live playlist** (found through the real Watch Now! button; intermittent, about 3 of 5 cold starts): a live playlist with fewer than 3 segments gives `DEMUXER_ERROR_COULD_NOT_PARSE` after about 30 ms. Segment bytes were complete and decodable, and every offline variant (7 join points of a 1080i capture, 6 of 720p60 football) played. The cause was found by serving hand-made playlists with 1, 2 and 3 segments (1 and 2 fail, 3 plays; `EXT-X-START` does not help). A live playlist is now withheld until it lists 3 segments (`HLSPlaylist.minLiveSegments`); three cold starts since: 8.7 s, 4.1 s and 3.5 s to first picture, no errors. Chrome 149 reports `maybe` for native HLS on desktop, so the Watch Now! player uses the native path there.
 
+### Scope (decided 2026-10-20)
+Watch Now! is for **shows recording right now**. Finished recordings, live TV from a tuner, a quality picker, the status bar and a Record menu are out of scope for this branch (the finished-recording stream itself still works at `/api/hls/<show>/index.m3u8`).
+
 ### Open / not built
 - **Live TV from a tuner** is not wired into the app: only tested by spooling to a file and following it (rows 7–8).
 - **Hardware-transcode input is re-encoded**: the tuner already gives H.264, so the cheapest path is copying that video and converting only AC-3 to AAC. The AVAssetWriter route always encodes video.
