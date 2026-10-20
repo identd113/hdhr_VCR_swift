@@ -33,7 +33,7 @@ guide into the same `[GuideChannel]` and then indexes it; a third source only ha
 - Guide depth varies: WCCO about 3 days, others about 12-24 hours.
 
 ## Order of work
-1. Swift `PSIPParser` + fixtures + tests (no app wiring).
+1. **Done (2026-10-20):** Swift `PSIPDecoder` (streaming: feed it bytes in any chunk size) and `OTAGuideConverter` (to `[GuideChannel]`) in `Sources/hdhr_VCR/OTAGuide/`, with a 742 KB fixture and 7 passing tests (`Tests/hdhr_VCRTests/OTAGuide/`); output cross-checked against `overtime/psip.py`. Not wired into the app.
 2. Scanner actor + a developer-only Settings button ("Scan the air now").
 3. `GuideStore` source and the setting; fallback when the cloud fails.
 4. Lineup comparison view.
