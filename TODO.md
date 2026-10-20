@@ -441,6 +441,6 @@ Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (spor
 
 ---
 
-## Web streaming: audio-only streams
+## Web streaming: audio-only sources
 
-Watch Now! cannot play an audio-only source (radio or audio-only channels): the HLS converter needs a video track. Add an audio-only HLS path and a picture-less player. See `docs/WebStreaming.md` "Open / not built".
+Watch Now! cannot play a source with no video (radio or audio-only channels): the HLS converter needs a video track. The audio-only twin of a normal stream exists (`audio.m3u8`); a source with no picture still needs a writer that starts without the video. See `docs/WebStreaming.md` "Open / not built".
