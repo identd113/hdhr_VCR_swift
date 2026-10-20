@@ -27,6 +27,11 @@ final class GuideStore {
     private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
+    /// True when this device's loaded guide carries no SeriesIDs at all (the over-the-air guide never does), so a SeriesID recording
+    /// could never match anything. False while no guide is loaded: unknown is not "none".
+    func guideHasNoSeriesIDs(deviceId: String) -> Bool {
+        !(channelsByDevice[deviceId] ?? []).isEmpty && (seriesIDsByDevice[deviceId] ?? []).isEmpty
+    }
     private var seriesIDsByDevice: [String: Set<String>] = [:]     // deviceId → seriesIDs it contributed to seriesIndex (so a reload prunes only those)
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]

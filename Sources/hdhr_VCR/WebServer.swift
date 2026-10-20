@@ -787,7 +787,8 @@ final class WebServer: @unchecked Sendable {
             // device the client only learns about via this SSE path (not yet in its local `tuners`
             // cache) renders the Record/Edit modal's no-transcode warning as permanently off for
             // that device until the next full page reload rebuilds `tuners` from scratch.
-            counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0, "nt": device.supportsTranscode ? 0 : 1]
+            counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0, "nt": device.supportsTranscode ? 0 : 1,
+                                         "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: device.DeviceID) ? 1 : 0]
         }
         guard !counts.isEmpty else { return }
         broadcastEvent(["type": "tuner_update", "counts": counts])
@@ -2928,6 +2929,9 @@ final class WebServer: @unchecked Sendable {
         else { return json(["ok": false, "error": "Guide entry not found"]) }
 
         let showType = showStateFromString(obj["showType"] as? String ?? "")
+        if showType.isSeries, state.guideStore.guideHasNoSeriesIDs(deviceId: deviceId) {
+            return json(["ok": false, "error": "This guide has no SeriesIDs, so a SeriesID recording could never match. Pick Single or DateTime."])
+        }
         let activeTuners = state.deviceTunerOccupancy[deviceId]?.filter({ $0.VctNumber != nil }).count ?? 0
         let total        = device.TunerCount ?? 0
         // tunersFull() counts both active recordings and the in-app VLC stream; raw
@@ -3912,7 +3916,9 @@ final class WebServer: @unchecked Sendable {
                 // statusURL (not a manual "http://\(LocalIP)/status.json") — includes the device's
                 // actual port, which a plain LocalIP-only URL silently drops.
                 dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": d.statusURL,
-                                     "nt": d.supportsTranscode ? 0 : 1]
+                                     "nt": d.supportsTranscode ? 0 : 1,
+                                     // "ns": the guide has no SeriesIDs (over-the-air), so the Type row dims its SeriesID option
+                                     "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: d.DeviceID) ? 1 : 0]
             }
             guard let data = try? JSONSerialization.data(withJSONObject: dict),
                   let str  = String(data: data, encoding: .utf8) else { return "var tuners={};" }

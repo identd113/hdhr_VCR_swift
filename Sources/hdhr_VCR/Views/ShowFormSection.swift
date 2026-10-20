@@ -86,6 +86,11 @@ struct ShowFormSection: View {
         return state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
     }
 
+    /// The over-the-air guide has no SeriesIDs, so a SeriesID recording could never match: the SeriesID segment is dimmed for that tuner.
+    private var seriesIDUnavailable: Bool {
+        !show.hdhr_record.isEmpty && state.guideStore.guideHasNoSeriesIDs(deviceId: show.hdhr_record)
+    }
+
     var body: some View {
         Group {
             LabeledContent("Title") {
@@ -104,7 +109,10 @@ struct ShowFormSection: View {
 
             LabeledContent("Type") {
                 Picker("", selection: topType) {
-                    ForEach(TopType.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(TopType.allCases, id: \.self) { type in
+                        Text(type.rawValue).tag(type)
+                            .disabled(type == .seriesID && seriesIDUnavailable && !seriesType.isSeries)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. SeriesID: records new episodes automatically via SeriesID matching — pick Channel or All scope below.")

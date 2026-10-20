@@ -85,6 +85,7 @@ function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12
 function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
 function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
 function noTranscode(devId){var t=tuners[devId];return !!(t&&t.nt);}
+function noSeriesIDs(devId){var t=tuners[devId];return !!(t&&t.ns);}
 // Escapes a value for use inside a quoted attribute selector ([data-x="…"]). Channel numbers / DeviceIDs / guide
 // names come from the network (a spoofed LAN HDHomeRun can advertise a `"` or `\`), and an unescaped one makes
 // querySelector THROW — mid-applyGuidePayload that aborted the rest of the refresh after the DOM swap.
@@ -240,7 +241,7 @@ function topOptFor(type){ return (type==='seriesChannel'||type==='seriesAll')?'s
 function resolveSeriesTypePick(v,current){
   return (v==='seriesID')?((current==='seriesChannel'||current==='seriesAll')?current:'seriesChannel'):v;
 }
-function renderTypeRow(containerId,descId,selected,onSelect){
+function renderTypeRow(containerId,descId,selected,onSelect,devId){
   var container=document.getElementById(containerId);
   var descEl=document.getElementById(descId);
   container.innerHTML='';
@@ -250,6 +251,8 @@ function renderTypeRow(containerId,descId,selected,onSelect){
     btn.type='button';
     btn.className='rm-type-btn'+(o.v===selTop?' sel':'');
     btn.textContent=o.t;
+    // The over-the-air guide carries no SeriesIDs, so a SeriesID recording could never match: dim it (a show already of that type stays selected).
+    if(o.v==='seriesID'&&noSeriesIDs(devId)){btn.disabled=true;btn.classList.add('dis');btn.title='This tuner\'s guide has no SeriesIDs (guide from the air)';}
     btn.onclick=function(){
       Array.from(container.querySelectorAll('.rm-type-btn')).forEach(function(b){b.classList.remove('sel');});
       btn.classList.add('sel');
@@ -409,7 +412,7 @@ function doRecord(){
     document.getElementById('rm-new-row').style.display=(_rmType==='single')?'none':'flex';
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
-  });
+  },_d);
   document.getElementById('rec-modal').style.display='flex';
 }
 var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0,_rmType='single';
@@ -965,7 +968,7 @@ function openEditShow(el){
   renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
     _editType=resolveSeriesTypePick(v,_editType);
     updateDaysVisibility();updateDupVisibility();updateNewOnlyVisibility();updateScopeUI();
-  });
+  },_editDev);
   updateScopeUI();
   var selDays=(d.airdays||'').split(',').filter(Boolean);
   var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
@@ -1968,7 +1971,7 @@ setInterval(updateNowLine,60000);
           var c=d.counts[dev],a=c.a,t=c.t;
           // Refresh "nt" on an existing entry too (not just the fresh-entry fallback) — cheap, and
           // keeps it from ever silently going stale relative to what the server just sent.
-          if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt};}
+          if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;tuners[dev].ns=c.ns;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt,ns:c.ns};}
           var tb=document.getElementById('tun-'+dev);
           if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
         });

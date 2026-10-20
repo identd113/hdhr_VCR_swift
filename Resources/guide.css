@@ -264,6 +264,7 @@ html.lm #sum-poster{background:#ccc}
 .rm-type-btn{background:var(--s4);border:none;border-right:1px solid var(--b3);color:var(--t2);padding:6px 12px;font-size:.8rem;font-weight:500;cursor:pointer;transition:background .12s,color .12s;white-space:nowrap}
 .rm-type-btn:last-child{border-right:none}
 .rm-type-btn:hover:not(.sel){background:rgba(127,127,127,.10)}
+.rm-type-btn:disabled,.rm-type-btn.dis{opacity:.35;cursor:not-allowed}
 .rm-type-btn.sel{background:var(--ac);color:#fff}
 .rm-type-desc{font-size:.72rem;color:var(--t4);margin-top:5px;line-height:1.3}
 html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
