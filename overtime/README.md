@@ -144,3 +144,19 @@ The channels that did not decode, explained (raw captures of 25 s and PID counts
 - **17.4:** the lineup has it, the air did not (only 17.1-17.3 on the multiplex now): a sub-channel that is not currently carried.
 
 Next: the app plan is in `APP_PLAN.md`.
+
+## Parked: one tuner, many channels (multiplex splitting)
+
+Idea: tune one RF channel once, split its programs in the app, and serve each as its own stream (FEED / the virtual-tuner relay),
+so several viewers of different sub-channels of the same station use **one** tuner; the recorder could also capture a multiplex once
+and cut several shows out of it. A tuner serves one stream, so today two sub-channels of the same RF channel need two tuners.
+
+Proven 2026-10-20 with `split_program.py` (pure Python, no re-encoding): from a 25 s capture of RF 32, program 1 (CBS, 1080i, two AC-3
+tracks) and program 2 (Start TV, 480i) each came out as a standalone transport stream that ffprobe and ffmpeg read and decode
+(`split-sample-frame.jpg` is a frame from program 2). The first seconds drop frames until the first keyframe, same as the raw stream.
+
+What it would take (not started; a big feature): a Swift transport-stream splitter (PAT/PMT parse, PID filter, rewritten PAT/PMT, continuity
+counters); a multiplex session that holds the one tuner and fans out to per-program viewers; hooking the output into FEED and the
+virtual-tuner relay as separate channels; tuner-occupancy accounting (`tunersFull`/`activeTunerCount`) that counts one tuner for all
+viewers of one multiplex; multiplex-aware recording; limits: same RF channel only, protected channels cannot be copied, the Mac
+receives the whole 19 Mb/s.
