@@ -1529,7 +1529,7 @@ function loadHlsJs(cb){
 }
 function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
   closeWatchNow();
-  _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;
+  _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;_wn.failed=false;
   var gen=_wn.gen;
   document.getElementById('wn-title').textContent=title;
   document.getElementById('wn-sub').textContent=sub||'';
@@ -1548,6 +1548,7 @@ function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
       if(!ok){wnMsg('This browser cannot play the stream (no HLS support).');wnState('Unavailable',false);return;}
       var h=new Hls({liveSyncDurationCount:3,maxBufferLength:30,manifestLoadingTimeOut:20000,manifestLoadingMaxRetry:2});
       _wn.hls=h;
+      h.on(Hls.Events.FRAG_LOADED,function(){_wn.retries=0;});
       h.on(Hls.Events.ERROR,function(e,d){
         if(gen!==_wn.gen||!d.fatal)return;
         if(d.type===Hls.ErrorTypes.MEDIA_ERROR&&_wn.retries<3){_wn.retries++;h.recoverMediaError();}
@@ -1573,18 +1574,21 @@ function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
     navigator.mediaSession.setActionHandler('play',function(){wnRemotePlay();});
     navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
   }}catch(e){}
-  v.onplaying=function(){if(gen===_wn.gen)wnMsg('');};
+  v.onplaying=function(){if(gen===_wn.gen){wnMsg('');wnPosition();}};
+  v.onpause=function(){if(gen===_wn.gen)wnPosition();};
   v.onwaiting=function(){if(gen===_wn.gen&&!_wn.ended)wnState('Buffering\u2026',false);};
   clearInterval(_wn.timer);
   _wn.timer=setInterval(function(){if(gen===_wn.gen)wnTick();},1000);
 }
 function wnFailed(){
+  var g=_wn.gen;_wn.failed=true;_streamOn=null;
+  if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
   streamingEnabled(function(on){
+    if(g!==_wn.gen)return;   // the player was closed or reopened while we asked
     wnState('Unavailable',false);
     wnMsg(on?'The stream could not be started. The recording may have no file yet, or the app is busy. Close this window and try again.'
             :'Web streaming is turned off. Turn it on in hdhr_VCR Settings \u2192 Web Streaming.');
   });
-  _streamOn=null;
 }
 function wnState(text,live){
   var el=document.getElementById('wn-state');
@@ -1607,26 +1611,30 @@ function wnPosition(){
   try{
     if(!('mediaSession' in navigator)||!navigator.mediaSession.setPositionState||!_wn.endEpoch||_wn.endEpoch<=_wn.startEpoch)return;
     var dur=_wn.endEpoch-_wn.startEpoch,pos=Math.min(dur,Math.max(0,Date.now()/1000-_wn.startEpoch));
-    navigator.mediaSession.setPositionState({duration:dur,position:pos,playbackRate:1});
+    navigator.mediaSession.setPositionState({duration:dur,position:pos,playbackRate:wnActive().paused?0:1});
   }catch(e){}
 }
 // Poster -> square 512 px JPEG data URL, through the app (/api/art) so the browser's cross-site image rules do not apply.
+var _artCache={};
 function wnArtwork(src,cb){
   if(!src){cb('');return;}
+  if(_artCache[src]){cb(_artCache[src]);return;}
   var img=new Image();
   img.onload=function(){
     try{
+      if(!img.naturalWidth||!img.naturalHeight){cb('');return;}
       var c=document.createElement('canvas');c.width=c.height=512;var x=c.getContext('2d');
       x.fillStyle='#111';x.fillRect(0,0,512,512);
       var k=Math.min(512/img.naturalWidth,512/img.naturalHeight),w=img.naturalWidth*k,h=img.naturalHeight*k;
       x.drawImage(img,(512-w)/2,(512-h)/2,w,h);
-      cb(c.toDataURL('image/jpeg',0.85));
+      _artCache[src]=c.toDataURL('image/jpeg',0.85);cb(_artCache[src]);
     }catch(e){cb('');}
   };
   img.onerror=function(){cb('');};
   img.src='/api/art?u='+encodeURIComponent(src);
 }
 function wnTick(){
+  if(_wn.failed)return;
   if(++_wn.posTick%5===0)wnPosition();
   var v=wnVideo();
   if(!v.currentTime&&v.paused&&!v.readyState)return;
@@ -1657,11 +1665,14 @@ function wnRemotePlay(){
 function wnStopAudio(){_wn.audio=false;if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
 document.addEventListener('visibilitychange',function(){
   if(!_wn.open)return;
-  if(document.hidden){wnPosition();   // warm up the sound-only stream so Play on the lock screen starts at once
+  if(document.hidden){wnPosition();   // warm up the sound-only stream so Play on the lock screen starts at once (native HLS only: iPhone/iPad/Safari)
+    if(_wn.audio||!wnVideo().canPlayType('application/vnd.apple.mpegurl'))return;
     if(!_wnAudio)_wnAudio=new Audio();
-    _wnAudio.preload='auto';_wnAudio.src=_wn.audioUrl;
-  }else if(_wn.audio){   // back in the page: return to the picture at the live edge
-    wnStopAudio();wnVideo().play().catch(function(){});
+    _wnAudio.preload='auto';
+    if(_wnAudio.getAttribute('src')!==_wn.audioUrl)_wnAudio.src=_wn.audioUrl;
+  }else{   // back in the page: drop the warmed-up stream, and if the sound-only stream was playing return to the picture
+    var was=_wn.audio;wnStopAudio();
+    if(was)wnVideo().play().catch(function(){});
   }
 });
 function closeWatchNow(){
@@ -1670,7 +1681,7 @@ function closeWatchNow(){
   clearInterval(_wn.timer);_wn.timer=null;
   if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
   var v=wnVideo();
-  v.onerror=v.onplaying=v.onwaiting=null;
+  v.onerror=v.onplaying=v.onwaiting=v.onpause=null;
   try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
   wnStopAudio();
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
@@ -1683,6 +1694,8 @@ document.addEventListener('keydown',function(e){
   if(!_wn.open)return;
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   var v=wnVideo(),k=e.key;
+  // A focused button keeps Space/Enter, and Tab / function keys keep working: only keys the player uses are taken.
+  if((k===' '||k==='Enter')&&e.target&&e.target.tagName==='BUTTON')return;
   if(k==='Escape'){if(!document.fullscreenElement)closeWatchNow();}
   else if(k===' '||k==='k'){if(v.paused)v.play().catch(function(){});else v.pause();}
   else if(k==='ArrowLeft'){v.currentTime=Math.max(0,v.currentTime-10);}
@@ -1690,6 +1703,7 @@ document.addEventListener('keydown',function(e){
   else if(k==='l'||k==='L'){watchNowGoLive();}
   else if(k==='m'||k==='M'){v.muted=!v.muted;}
   else if(k==='f'||k==='F'){watchNowFullscreen();}
+  else{if(k.length===1)e.stopPropagation();return;}   // other printable keys must not reach the guide's search; everything else is left alone
   e.preventDefault();e.stopPropagation();
 },true);
 function anyGuideModalOpen(){

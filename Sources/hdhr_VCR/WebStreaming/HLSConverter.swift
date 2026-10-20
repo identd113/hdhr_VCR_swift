@@ -22,6 +22,37 @@ extension HLSConversionOptions {
     }
 }
 
+extension HLSConverter {
+    /// One place for the encoder/decoder settings, so the whole-file converter, the live follower and the audio-only twin cannot drift apart.
+    static func videoInputSettings(width: Int, height: Int, options: HLSConversionOptions) -> [String: Any] {
+        [AVVideoCodecKey: AVVideoCodecType.h264,
+         AVVideoWidthKey: width, AVVideoHeightKey: height,
+         AVVideoCompressionPropertiesKey: [
+            AVVideoAverageBitRateKey: options.videoKbps(width: width, height: height) * 1000,
+            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+            AVVideoMaxKeyFrameIntervalDurationKey: 2,   // a keyframe at least every 2 s so every segment starts on one
+            AVVideoAllowFrameReorderingKey: true]]
+    }
+    static func aacInputSettings(options: HLSConversionOptions) -> [String: Any] {
+        [AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000,
+         AVEncoderBitRateKey: options.audioKbps * 1000]
+    }
+    static let nv12ReaderSettings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+    static let pcmReaderSettings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
+        AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
+        AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2]   // 5.1 is mixed down to stereo here
+    /// A fragmented-MP4 HLS writer that hands its segments to `sink`.
+    static func makeHLSWriter(start: CMTime, options: HLSConversionOptions, sink: SegmentSink) -> AVAssetWriter {
+        let writer = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
+        writer.outputFileTypeProfile = .mpeg4AppleHLS
+        writer.preferredOutputSegmentInterval = CMTime(seconds: options.segmentSeconds, preferredTimescale: 1)
+        writer.initialSegmentStartTime = start
+        writer.delegate = sink
+        return writer
+    }
+}
+
 struct HLSConversionResult {
     let segments: [HLSSegment]
     let duration: Double
@@ -50,41 +81,24 @@ enum HLSConverter {
 
         let reader = try AVAssetReader(asset: asset)
         reader.timeRange = CMTimeRange(start: start, duration: CMTime(seconds: length, preferredTimescale: 90000))
-        let videoOut = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+        let videoOut = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nv12ReaderSettings)
         reader.add(videoOut)
         var audioOut: AVAssetReaderTrackOutput?
         if let audioTrack {
-            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
-                AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2])
+            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: pcmReaderSettings)
             reader.add(out)
             audioOut = out
         }
 
-        let writer = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
-        writer.outputFileTypeProfile = .mpeg4AppleHLS
-        writer.preferredOutputSegmentInterval = CMTime(seconds: options.segmentSeconds, preferredTimescale: 1)
-        writer.initialSegmentStartTime = start
         let sink = SegmentSink(directory: outputDir)
-        writer.delegate = sink
+        let writer = makeHLSWriter(start: start, options: options, sink: sink)
 
-        let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: options.videoKbps(width: Int(size.width), height: Int(size.height)) * 1000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoMaxKeyFrameIntervalDurationKey: 2,   // a keyframe at least every 2 s so every segment starts on one
-                AVVideoAllowFrameReorderingKey: true]])
+        let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoInputSettings(width: Int(size.width), height: Int(size.height), options: options))
         videoIn.expectsMediaDataInRealTime = false
         writer.add(videoIn)
         var audioIn: AVAssetWriterInput?
         if audioOut != nil {
-            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000,
-                AVEncoderBitRateKey: options.audioKbps * 1000])
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: aacInputSettings(options: options))
             input.expectsMediaDataInRealTime = false
             writer.add(input)
             audioIn = input
@@ -159,7 +173,8 @@ enum HLSConverter {
             case .separable:
                 lock.lock(); count += 1; let name = prefix + String(format: "seg-%05d.m4s", count); lock.unlock()
                 try? segmentData.write(to: directory.appendingPathComponent(name))
-                let seconds = segmentReport?.trackReports.first(where: { $0.mediaType == .video })?.duration.seconds ?? 4
+                let reports = segmentReport?.trackReports ?? []
+                let seconds = (reports.first(where: { $0.mediaType == .video }) ?? reports.first)?.duration.seconds ?? 4
                 lock.lock(); items.append(HLSSegment(name: name, duration: seconds))
                 var dropped: [HLSSegment] = []
                 if let keep, items.count > keep { dropped = Array(items.prefix(items.count - keep)); items.removeFirst(dropped.count) }

@@ -845,7 +845,13 @@ final class WebServer: @unchecked Sendable {
     // GET /api/art?u=<https://img.hdhomerun.com/...> — a show poster fetched by the app and handed to the browser from the same
     // address as the page, so the web player can build lock-screen artwork without cross-site image rules. Only that one image host is
     // allowed (no general proxy). A few recent posters are kept in memory.
-    private static let artCache = NSCache<NSString, NSData>()
+    private static let artCache: NSCache<NSString, NSData> = { let c = NSCache<NSString, NSData>(); c.countLimit = 32; return c }()
+    /// A session that refuses redirects: the host check above would mean nothing if img.hdhomerun.com could bounce us elsewhere.
+    private final class NoRedirect: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+    }
+    private static let artSession = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
     private func handleArt(urlString: String, conn: NWConnection) {
         guard let url = URL(string: urlString), url.scheme == "https", url.host == "img.hdhomerun.com" else {
             send(.notFound("not available"), on: conn); return
@@ -855,7 +861,8 @@ final class WebServer: @unchecked Sendable {
         }
         Task { [weak self] in
             var req = URLRequest(url: url); req.timeoutInterval = 6
-            let data = try? await URLSession.shared.data(for: req).0
+            let fetched = try? await Self.artSession.data(for: req)
+            let data = (fetched?.1 as? HTTPURLResponse)?.statusCode == 200 ? fetched?.0 : nil
             guard let self else { return }
             self.queue.async {
                 guard let data, !data.isEmpty, data.count < 2_000_000 else { self.send(.notFound("not available"), on: conn); return }

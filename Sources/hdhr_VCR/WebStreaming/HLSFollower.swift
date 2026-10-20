@@ -128,7 +128,6 @@ final class HLSFollower: @unchecked Sendable {
                     }
                 }
             }
-            if writer != nil, sink.segments.count >= HLSPlaylist.minLiveSegments || finalPass { try writePlaylist(sink: sink, finished: false) }
             if finalPass { break }
             try await Task.sleep(nanoseconds: UInt64(options.passInterval * 1_000_000_000))
         }
@@ -161,14 +160,8 @@ final class HLSFollower: @unchecked Sendable {
     /// A second, audio-only HLS writer fed with the same audio as the main one (for listening with the screen locked, at a
     /// fraction of the bandwidth). Optional: if it cannot be set up, the stream simply has no audio-only twin.
     private func makeAudioOnlyWriter(sink: HLSConverter.SegmentSink, start: CMTime) {
-        let w = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
-        w.outputFileTypeProfile = .mpeg4AppleHLS
-        w.preferredOutputSegmentInterval = CMTime(seconds: options.convert.segmentSeconds, preferredTimescale: 1)
-        w.initialSegmentStartTime = start
-        w.delegate = sink
-        let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000,
-            AVEncoderBitRateKey: options.convert.audioKbps * 1000])
+        let w = HLSConverter.makeHLSWriter(start: start, options: options.convert, sink: sink)
+        let a = AVAssetWriterInput(mediaType: .audio, outputSettings: HLSConverter.aacInputSettings(options: options.convert))
         a.expectsMediaDataInRealTime = false
         guard w.canAdd(a) else { return }
         w.add(a)
@@ -184,7 +177,7 @@ final class HLSFollower: @unchecked Sendable {
         if w.status == .failed { audioOnlyWriter = nil; audioOnlyIn = nil; return }
         var waited = 0.0
         while !a.isReadyForMoreMediaData, waited < Self.feedPatience {
-            try? await Task.sleep(nanoseconds: 3_000_000); waited += 0.003
+            try? await Task.sleep(nanoseconds: 15_000_000); waited += 0.015
         }
         if a.isReadyForMoreMediaData { a.append(sample) }
     }
@@ -194,26 +187,13 @@ final class HLSFollower: @unchecked Sendable {
         let size = try await video.load(.naturalSize)
         let trackStart = try await video.load(.timeRange).start
         let start = startOffset.map { CMTimeAdd(trackStart, CMTime(seconds: $0, preferredTimescale: 90000)) } ?? trackStart
-        let writer = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
-        writer.outputFileTypeProfile = .mpeg4AppleHLS
-        writer.preferredOutputSegmentInterval = CMTime(seconds: options.convert.segmentSeconds, preferredTimescale: 1)
-        writer.initialSegmentStartTime = start
-        writer.delegate = sink
-        let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: options.convert.videoKbps(width: Int(size.width), height: Int(size.height)) * 1000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoMaxKeyFrameIntervalDurationKey: 2,
-                AVVideoAllowFrameReorderingKey: true]])
+        let writer = HLSConverter.makeHLSWriter(start: start, options: options.convert, sink: sink)
+        let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: HLSConverter.videoInputSettings(width: Int(size.width), height: Int(size.height), options: options.convert))
         videoIn.expectsMediaDataInRealTime = false
         writer.add(videoIn)
         var audioIn: AVAssetWriterInput?
         if hasAudio {
-            let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 2, AVSampleRateKey: 48000,
-                AVEncoderBitRateKey: options.convert.audioKbps * 1000])
+            let a = AVAssetWriterInput(mediaType: .audio, outputSettings: HLSConverter.aacInputSettings(options: options.convert))
             a.expectsMediaDataInRealTime = false
             writer.add(a)
             audioIn = a
@@ -233,8 +213,7 @@ final class HLSFollower: @unchecked Sendable {
         if end > videoCursor {
             let r = try AVAssetReader(asset: asset)
             r.timeRange = CMTimeRange(start: CMTime(seconds: max(videoCursor, streamStart), preferredTimescale: 90000), end: CMTime(seconds: end, preferredTimescale: 90000))
-            let o = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+            let o = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: HLSConverter.nv12ReaderSettings)
             r.add(o)
             guard r.startReading() else { throw HLSConverterError.cannotRead(r.error?.localizedDescription ?? "unknown") }
             video = Stream(reader: r, output: o, input: videoIn, skipUpTo: videoCursor + frameDuration / 2)
@@ -242,10 +221,7 @@ final class HLSFollower: @unchecked Sendable {
         if includeAudio, let audioTrack, let audioIn, end > audioCursor {
             let r = try AVAssetReader(asset: asset)
             r.timeRange = CMTimeRange(start: CMTime(seconds: max(audioCursor, streamStart), preferredTimescale: 90000), end: CMTime(seconds: end, preferredTimescale: 90000))
-            let o = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
-                AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2])
+            let o = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: HLSConverter.pcmReaderSettings)
             r.add(o)
             guard r.startReading() else { throw HLSConverterError.cannotRead(r.error?.localizedDescription ?? "unknown") }
             audio = Stream(reader: r, output: o, input: audioIn, skipUpTo: audioCursor + 0.05)
@@ -298,8 +274,8 @@ final class HLSFollower: @unchecked Sendable {
                 // Neither input will take a sample right now. Give up the rest of this pass after a while: the unsent
                 // samples stay put and the next pass (with fresher data) resumes from the cursors.
                 if waited >= Self.feedPatience { return }
-                try await Task.sleep(nanoseconds: 3_000_000)
-                waited += 0.003
+                try await Task.sleep(nanoseconds: 15_000_000)
+                waited += 0.015
                 continue
             }
             waited = 0
