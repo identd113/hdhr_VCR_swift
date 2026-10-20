@@ -101,6 +101,7 @@ final class HLSFollower: @unchecked Sendable {
                             throw HLSConverterError.cannotWrite(w.error.map { "\($0)" } ?? "writer failed")
                         }
                     } catch {
+                        if error is CancellationError || Task.isCancelled { throw CancellationError() }   // a stop, not a failed pass
                         failedPasses += 1
                         if failedPasses == 1 || failedPasses % 10 == 0 {
                             glog("[Stream] \(input.lastPathComponent): read pass failed (\(failedPasses) in a row): \(error.localizedDescription)", level: .warning)
