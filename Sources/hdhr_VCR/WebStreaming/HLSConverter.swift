@@ -133,6 +133,12 @@ enum HLSConverter {
 
         var segments: [HLSSegment] { lock.lock(); defer { lock.unlock() }; return items }
 
+        /// Called (on the writer's queue) after each media segment is saved, with all segments so far. Lets a live
+        /// playlist appear while a long backlog is still being converted. Cleared with `stopPublishing()`.
+        private var publish: (([HLSSegment]) -> Void)?
+        func startPublishing(_ handler: @escaping ([HLSSegment]) -> Void) { lock.lock(); publish = handler; lock.unlock() }
+        func stopPublishing() { lock.lock(); publish = nil; lock.unlock() }
+
         func assetWriter(_ writer: AVAssetWriter, didOutputSegmentData segmentData: Data, segmentType: AVAssetSegmentType, segmentReport: AVAssetSegmentReport?) {
             switch segmentType {
             case .initialization:
@@ -141,7 +147,8 @@ enum HLSConverter {
                 lock.lock(); count += 1; let name = String(format: "seg-%05d.m4s", count); lock.unlock()
                 try? segmentData.write(to: directory.appendingPathComponent(name))
                 let seconds = segmentReport?.trackReports.first(where: { $0.mediaType == .video })?.duration.seconds ?? 4
-                lock.lock(); items.append(HLSSegment(name: name, duration: seconds)); lock.unlock()
+                lock.lock(); items.append(HLSSegment(name: name, duration: seconds)); let all = items, handler = publish; lock.unlock()
+                handler?(all)
             @unknown default:
                 break
             }

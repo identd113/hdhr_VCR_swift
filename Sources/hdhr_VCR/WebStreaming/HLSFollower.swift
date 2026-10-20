@@ -46,6 +46,12 @@ final class HLSFollower: @unchecked Sendable {
     func run() async throws -> HLSConversionResult {
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
         let sink = HLSConverter.SegmentSink(directory: outputDir)
+        // Publish the live playlist as segments land, not only at the end of a pass: the first pass over an
+        // already-long recording can take longer than a browser is willing to wait for index.m3u8.
+        let playlistURL = outputDir.appendingPathComponent("index.m3u8")
+        sink.startPublishing { segments in
+            try? HLSPlaylist.render(segments: segments, finished: false).write(to: playlistURL, atomically: true, encoding: .utf8)
+        }
         var writer: AVAssetWriter?
         var videoIn: AVAssetWriterInput?
         var audioIn: AVAssetWriterInput?
@@ -112,6 +118,7 @@ final class HLSFollower: @unchecked Sendable {
         videoIn?.markAsFinished()
         if !audioFinished { audioIn?.markAsFinished() }
         await writer.finishWriting()
+        sink.stopPublishing()   // the final VOD playlist below must not be overwritten by a late live one
         guard writer.status == .completed else { throw HLSConverterError.cannotWrite(writer.error?.localizedDescription ?? "status \(writer.status.rawValue)") }
         let segments = sink.segments
         let url = try writePlaylist(sink: sink, finished: true)
