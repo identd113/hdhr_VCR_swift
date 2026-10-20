@@ -136,6 +136,11 @@ What is missing compared with the cloud guide: **SeriesID**, genre tags (`Filter
 recording would have to rely on the title-based matching the app already has as a fallback; the SeriesID rules cannot work offline.
 The air also gives ratings, which the cloud guide does not carry in the app's model.
 
-Next: explain RF 25 / RF 36 (lineup channels with no decodable PSIP: weak signal, a different PSIP layout, or the tuner re-mapping
-program numbers); decide how the app would read `guide.json` (a new source beside the cloud and XMLTV ones); schedule the
-sweep (a nightly capture of each multiplex, 75 s each, only when a tuner is idle).
+The channels that did not decode, explained (raw captures of 25 s and PID counts):
+- **RF 25 (lineup 25.x):** locked at 81% signal but every packet is a null packet (PID 0x1FFF). The station is transmitting nothing right now (off air or testing).
+- **RF 36 (lineup 49.x):** real video/audio PIDs (0x31, 0x41, 0x51…) but **no PSIP at all**: no names, no guide. Such a station can only be tuned by program number.
+- **RF 26 (62.x, WDMI-LD):** the Master Guide Table lists four EIT PIDs (0x1D00-0x1D03) but nothing is ever sent on them: a guide announced and never delivered.
+- **RF 14 and RF 21:** the Master Guide Table lists no EIT at all (K14RB-D, WUMN): channel names but no guide.
+- **17.4:** the lineup has it, the air did not (only 17.1-17.3 on the multiplex now): a sub-channel that is not currently carried.
+
+Next: the app plan is in `APP_PLAN.md`.
