@@ -125,7 +125,10 @@
     <div id="em-dev-warn" style="display:none;font-size:.74rem;border:1px solid #8a6a20;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span><span id="em-dev-warn-txt"></span></div>
     <div id="em-rec-warn" style="display:none;font-size:.74rem;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
-      <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
+      <div style="display:flex;gap:8px">
+        <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
+        <button id="em-watch" onclick="watchNowFromEdit()" class="mac-btn mac-btn-plain" title="Watch this show's recording in your browser" style="display:none">&#9654; Watch Now!</button>
+      </div>
       <div style="display:flex;gap:8px">
         <button id="em-pause" onclick="doEditPause()" class="mac-btn mac-btn-plain" style="display:none"></button>
         <button onclick="closeEditShow()" class="mac-btn mac-btn-plain">Cancel</button>
