@@ -53,6 +53,7 @@ AppIcon.swift              Pre-baked menu-bar/About bitmaps (idle, recording, up
 CompatibilityHelpers.swift CRC-32 shared by HDHRManager's UDP discovery trailer and WebServer's gzip trailer
 UpdateChecker.swift        GitHub-release update check (Sparkle is a parked dead end — SPM resolve hangs)
 XmltvParser.swift          XMLTV → [GuideChannel], same output shape as the guide.php JSON decoder (`Guide_use_xml`)
+OTAGuide/                  Over-the-air guide (beta): PSIPDecoder (ATSC tables → channels/events), OTAGuideConverter (→ [GuideChannel]), OTAScanner (actor: sweeps RF channels on idle tuners), OTAStore, AppState+OTA — docs/OTAGuide.md, research in overtime/
 TunerSharing.swift         Menu-header note for tuners in use by something other than this instance (hw vs app count)
 Version.swift              `appVersion` build stamp — rewritten by deploy.sh, never commit it
 Views/
@@ -87,7 +88,7 @@ Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) 
 
 Reference: [Invariants](docs/Invariants.md) (full text of every invariant) · [Tools](docs/Tools.md) (full tool descriptions) · [Logging](docs/Logging.md) (log files, rotation, redaction)
 
-Systems: [ApplicationFlow](docs/ApplicationFlow.md) (mermaid map: discovery → scheduling → recording → push) · [WebServerPerfFindings](docs/WebServerPerfFindings.md) (guide-load measurements) · [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [VirtualTunerService](docs/VirtualTunerService.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior) · [LiveUITests](docs/LiveUITests.md) (opt-in Accessibility-driven tests) · [WKWebView_guide_analysis](docs/WKWebView_guide_analysis.md) (historical)
+Systems: [ApplicationFlow](docs/ApplicationFlow.md) (mermaid map: discovery → scheduling → recording → push) · [WebServerPerfFindings](docs/WebServerPerfFindings.md) (guide-load measurements) · [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [VirtualTunerService](docs/VirtualTunerService.md) · [OTAGuide](docs/OTAGuide.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior) · [LiveUITests](docs/LiveUITests.md) (opt-in Accessibility-driven tests) · [WKWebView_guide_analysis](docs/WKWebView_guide_analysis.md) (historical)
 
 ---
 

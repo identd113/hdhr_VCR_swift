@@ -211,11 +211,13 @@ struct SettingsView: View {
             glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
         }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
+        if draft.Guide_use_ota       != old.Guide_use_ota       { glog("[Settings] GuideUseOta: \(old.Guide_use_ota) → \(draft.Guide_use_ota)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
+                             || draft.Guide_use_ota       != old.Guide_use_ota
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         // WebServer.buildGuideJSON caches its skip-already-recorded on-disk scan
         // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
@@ -338,6 +340,14 @@ struct SettingsView: View {
                     CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
                                  systemImage: "exclamationmark.triangle")
                         .accessibilityIdentifier("settings-guide-xmltv-warning")
+                }
+                Toggle(isOn: $draft.Guide_use_ota) {
+                    HStack { Text("Use the guide from the air (beta)"); InfoButton("Builds the guide from the listings stations broadcast with their TV signal instead of the SiliconDust guide service: it works with no internet. It needs a scan first (Advanced → Over-the-Air Guide). With it off, the saved scan is still used as a fallback when the guide service can't be reached.") }
+                }
+                if draft.Guide_use_ota {
+                    CaveatBanner(text: "The air carries no series IDs, genre tags, episode titles or images, and some stations send no guide at all. Series recording falls back on matching titles.",
+                                 systemImage: "exclamationmark.triangle")
+                        .accessibilityIdentifier("settings-guide-ota-warning")
                 }
             }
         }
@@ -684,6 +694,25 @@ struct SettingsView: View {
                         // force=true: manual scan always re-measures, even channels with fresh data
                         Button("Measure Signal") { state.startSignalScan(force: true, deviceId: scanTarget.isEmpty ? nil : scanTarget) }
                             .disabled(state.recordableDevices.isEmpty)
+                    }
+                }
+                Section("Over-the-Air Guide") {
+                    Text("Tunes every TV channel in turn and reads the guide listings stations broadcast with their signal, then saves them as a guide that works with no internet. Takes about 10 minutes and uses idle tuners only; it stops for a recording.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if state.otaScanTask != nil {
+                        Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
+                            .font(.caption)
+                        Button("Cancel Scan") { state.cancelOTAScan() }
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("settings-ota-cancel")
+                    } else {
+                        if !state.otaScanStatus.isEmpty {
+                            Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button("Scan the Air Now") { state.startOTAScan() }
+                            .disabled(state.recordableDevices.isEmpty)
+                            .accessibilityIdentifier("settings-ota-scan")
                     }
                 }
             }

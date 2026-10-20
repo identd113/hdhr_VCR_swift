@@ -556,6 +556,7 @@ struct AppConfig: Equatable {
     // Guide
     var GuideHours: Int          = 24       // hours ahead to fetch
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
+    var Guide_use_ota: Bool      = false    // prefer the guide built from the air (OTAGuide/, a saved scan) over the cloud guide; the cloud guide is used when no scan exists
     // How often the background auto-refresh re-fetches lineup+guide (AppState.idleLoop), expressed as
     // a fraction of GuideHours rather than an absolute duration — e.g. GuideHours=24 + divisor=8 means
     // refresh every 3h. Ties the two settings together deliberately: a wider fetch-ahead window can
@@ -737,6 +738,7 @@ extension AppConfig: Codable {
         // app on every page render (and at startup during prebuildPageHTML), not just a bad UI value.
         GuideHours            = max(1, min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24))
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
+        Guide_use_ota         = (try? c.decode(Bool.self,   forKey: .Guide_use_ota))         ?? false
         // Only 2/4/8 are ever offered in the UI — a corrupt/hand-edited value outside that set falls
         // back to the default (8) rather than being clamped into it, since there's no sensible
         // "nearest valid divisor" for e.g. 5 or -1.

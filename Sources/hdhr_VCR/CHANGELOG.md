@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Added* — **A guide that works with no internet (beta).** Settings → Advanced → Over-the-Air Guide scans every TV channel and reads the listings stations broadcast with their signal (names, titles, times, ratings, descriptions, usually 12 hours to 3 days ahead), then saves them as a guide. Turn on Settings → General → "Use the guide from the air" to use it, or leave it off and it is used automatically when the SiliconDust guide service can't be reached. The air carries no series IDs, genres or images, so series recording matches by title, and some stations send no guide. The scan uses idle tuners only and stops for a recording.
+
 - *Updated* — **Times show when a show ends, not a countdown.** The player status bar, Watch Now and the Discord card no longer say "37 min left" or "12m elapsed · 25m remaining"; they show the time range ("NOW · 6:00 – 7:00 AM"), which stays the same for the whole show. The Discord card is now edited only when a recording stops, is skipped or ends; the old "progress updates every 5 minutes" setting is gone. The status bar's progress line now refreshes every minute instead of every 15 seconds.
 
 ### Terminal guide (`hdhr_guide`)

@@ -30,6 +30,8 @@ final class GuideStore {
     private var seriesIDsByDevice: [String: Set<String>] = [:]     // deviceId → seriesIDs it contributed to seriesIndex (so a reload prunes only those)
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
+    /// `Guide_use_ota`: try the saved over-the-air guide before the cloud one (set by AppState when the config changes).
+    var preferOTA = false
     /// Bumped by invalidateAll() — lets fetchAndIndex detect that an in-flight fetch it started
     /// before the invalidation was requested is now stale, and should not resurrect old data after
     /// the fact. See invalidateAll()'s own doc comment.
@@ -114,6 +116,7 @@ final class GuideStore {
 
     @discardableResult
     private func loadNow(for device: HDHRDevice, hours: Int, useXML: Bool, maxCacheAge: TimeInterval?) async -> Bool {
+        if preferOTA, await loadOTA(deviceId: device.DeviceID) { return true }   // no saved scan (or too old): fall through to the cloud guide
         // XMLTV is cloud-only; devices without DeviceAuth fall through to JSON path
         if useXML, device.DeviceAuth != nil {
             return await loadXMLTV(for: device, hours: hours, maxCacheAge: maxCacheAge)
@@ -156,6 +159,27 @@ final class GuideStore {
             }
             return channels
         }
+    }
+
+    /// Loads the guide a scan saved for this device (`OTAStore`: a `[GuideChannel]` JSON file) and indexes it like any other guide.
+    /// False when there is no saved scan, it is older than `maxAge`, or it is empty. The load timestamp is the file's own, so a
+    /// stale scan never counts as fresh and the usual refresh/recovery cadence keeps retrying the cloud guide.
+    @discardableResult
+    func loadOTA(deviceId id: String, maxAge: TimeInterval = GuideStore.staleFallbackMaxAge) async -> Bool {
+        let file = OTAStore.guideFile(deviceId: id)
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date,
+              Date().timeIntervalSince(modified) <= maxAge else { return false }
+        let epochAtStart = invalidationEpoch
+        guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
+            guard let data = try? Data(contentsOf: file),
+                  let channels = try? JSONDecoder().decode([GuideChannel].self, from: data), !channels.isEmpty else { return nil }
+            return Self.prepareIndex(deviceId: id, channels: channels)
+        }).value else { return false }
+        guard invalidationEpoch == epochAtStart else { return false }
+        applyIndex(prepared)
+        loadTimestamps[id] = modified
+        glog("[\(id)] loaded the over-the-air guide saved \(Int(Date().timeIntervalSince(modified) / 60)) min ago")
+        return true
     }
 
     /// Fetch XMLTV guide for one device. No-op if already loading.
@@ -231,7 +255,9 @@ final class GuideStore {
         // older disk copy.
         func failed(_ why: LoadFailure) async -> Bool {
             lastFailure[id] = why
-            if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
+            if (channelsByDevice[id] ?? []).isEmpty, !preferOTA, await loadOTA(deviceId: id) {
+                glog("[\(id)] guide refresh failed — using the saved over-the-air guide until it succeeds", level: .warning)
+            } else if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
                let modified = await applyDiskCache(id: id, file: cacheFile, maxAge: Self.staleFallbackMaxAge,
                                                    epochAtStart: epochAtStart, parse: parse) {
                 glog("[\(id)] guide refresh failed — using the on-disk copy from \(Int(Date().timeIntervalSince(modified) / 60)) min ago until it succeeds", level: .warning)

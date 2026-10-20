@@ -129,7 +129,7 @@ final class AppState: ObservableObject {
     private var sigtermSource: DispatchSourceSignal?
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
-    @Published var config = AppConfig()
+    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.Guide_use_ota } }
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
@@ -237,6 +237,9 @@ final class AppState: ObservableObject {
     @Published var signalScanProgress: String? = nil
 
     private var signalScanTask:     Task<Void, Never>? = nil
+    // Over-the-air guide scan (OTAGuide/, overtime/APP_PLAN.md). Status line also read by /api/ota-status (a few writes per scan, like signalScanProgress).
+    var otaScanTask: Task<Void, Never>? = nil
+    @Published var otaScanStatus: String = ""
 
     // Tracks optimistically-toggled favorite state: [deviceId: [GuideNumber: expectedBool]]
     // Cleared per-device after the next lineup reload; mismatches are logged as warnings.
