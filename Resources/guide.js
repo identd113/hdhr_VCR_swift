@@ -1010,9 +1010,9 @@ function openEditShow(el){
   // a dead slot.
   pb.textContent=_editPaused?'Resume':'Pause';pb.style.display=(_editRec||devMissing)?'none':'inline-block';
   document.getElementById('em-del').textContent=_editRec?'Stop & Delete':'Delete';
-  // Watch Now! for a show that has a recording file (in progress or finished) — only when web streaming is on.
+  // Watch Now! only for a show airing right now (data-recording, already on the row) — and only when web streaming is on.
   var ew=document.getElementById('em-watch');ew.style.display='none';
-  if(d.hasfile==='1')streamingEnabled(function(on){if(on&&_editId===d.id)ew.style.display='inline-block';});
+  if(_editRec)streamingEnabled(function(on){if(on&&_editId===d.id)ew.style.display='inline-block';});
   document.getElementById('edit-modal').style.display='flex';
 }
 function closeEditShow(){document.getElementById('edit-modal').style.display='none';var ebstar=document.getElementById('em-bonus-star');ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
@@ -1516,7 +1516,7 @@ function watchNowFromSummary(){
 function watchNowFromEdit(){
   var t=document.getElementById('em-title-in').value,id=_editId;
   closeEditShow();
-  openWatchNow(id,t,_editRec?'Recording now':'Last recording');
+  openWatchNow(id,t,'Recording now');
 }
 function loadHlsJs(cb){
   if(window.Hls){cb(true);return;}
