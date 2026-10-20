@@ -55,6 +55,7 @@ final class HLSFollower: @unchecked Sendable {
         // already-long recording can take longer than a browser is willing to wait for index.m3u8.
         let playlistURL = outputDir.appendingPathComponent("index.m3u8")
         sink.startPublishing { segments in
+            guard segments.count >= HLSPlaylist.minLiveSegments else { return }
             try? HLSPlaylist.render(segments: segments, finished: false).write(to: playlistURL, atomically: true, encoding: .utf8)
         }
         var writer: AVAssetWriter?
@@ -116,7 +117,7 @@ final class HLSFollower: @unchecked Sendable {
                     }
                 }
             }
-            if writer != nil { try writePlaylist(sink: sink, finished: false) }
+            if writer != nil, sink.segments.count >= HLSPlaylist.minLiveSegments || finalPass { try writePlaylist(sink: sink, finished: false) }
             if finalPass { break }
             try await Task.sleep(nanoseconds: UInt64(options.passInterval * 1_000_000_000))
         }

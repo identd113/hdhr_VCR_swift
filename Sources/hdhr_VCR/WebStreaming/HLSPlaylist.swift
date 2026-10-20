@@ -9,6 +9,11 @@ struct HLSSegment: Equatable {
 }
 
 enum HLSPlaylist {
+    /// A live (not yet ended) playlist is not published until it lists this many segments: Chrome's built-in HLS player
+    /// keeps three segments back from the live edge and fails with a demuxer parse error on a shorter one (found in
+    /// the live test, docs/WebStreaming.md). A finished playlist is fine at any length.
+    static let minLiveSegments = 3
+
     /// A fragmented-MP4 HLS media playlist (version 7: `#EXT-X-MAP` points at the init segment).
     /// `finished` adds `#EXT-X-ENDLIST` and marks it VOD; an unfinished one is an EVENT playlist that keeps growing.
     static func render(segments: [HLSSegment], initName: String = "init.mp4", finished: Bool) -> String {

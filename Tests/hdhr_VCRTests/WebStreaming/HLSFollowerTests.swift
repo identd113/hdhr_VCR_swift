@@ -33,6 +33,25 @@ struct HLSFollowerTests {
         }
     }
 
+    /// Opt-in experiment: HLS_JOIN_SOURCE=/path/file.ts HLS_JOIN_OFFSETS=10,13.3,17 HLS_JOIN_OUT=/dir converts the file once per
+    /// start-behind-live offset (as if it were a growing recording joined late) into /dir/j<offset>/.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HLS_JOIN_SOURCE"] != nil))
+    func joinVariantsForBrowserChecks() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let input = URL(fileURLWithPath: env["HLS_JOIN_SOURCE"]!)
+        let out = URL(fileURLWithPath: env["HLS_JOIN_OUT"] ?? "/tmp/join-variants")
+        for off in (env["HLS_JOIN_OFFSETS"] ?? "10").split(separator: ",").compactMap({ Double($0) }) {
+            let flag = Flag()
+            var opts = HLSFollower.Options(startBehindLive: off)
+            opts.passInterval = 0.4
+            let dir = out.appendingPathComponent("j\(off)")
+            try? FileManager.default.removeItem(at: dir)
+            Task { try? await Task.sleep(nanoseconds: 1_500_000_000); flag.off() }
+            let result = try await HLSFollower(input: input, outputDir: dir, options: opts, isGrowing: { flag.isOn }).run()
+            print("JOIN \(off): \(result.segments.count) segments, \(result.duration)s")
+        }
+    }
+
     @Test func joiningAGrowingFileStartsBehindLiveInsteadOfAtTheBeginning() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-join-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -50,6 +69,33 @@ struct HLSFollowerTests {
         let result = try await follower.run()
         #expect(result.duration > 1.5)
         #expect(result.duration < 5.0, "joined \(result.duration)s of a 6 s recording; expected only the last couple of seconds")
+    }
+
+    @Test func aLivePlaylistIsNeverPublishedWithFewerThanThreeSegments() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-min-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let growing = dir.appendingPathComponent("growing.ts")
+        let flag = Flag()
+        writeGrowing(try Data(contentsOf: fixture), to: growing, chunks: 12, gap: 0.3, flag: flag)
+        var opts = HLSFollower.Options()
+        opts.convert.videoKbps = 800
+        opts.convert.segmentSeconds = 1
+        opts.passInterval = 0.2
+        opts.holdBack = 0.5
+        let out = dir.appendingPathComponent("out")
+        let follower = HLSFollower(input: growing, outputDir: out, options: opts, isGrowing: { flag.isOn })
+        let shortLive = LiveWatch()
+        let watcher = Task {
+            while !Task.isCancelled {
+                if let text = try? String(contentsOf: out.appendingPathComponent("index.m3u8"), encoding: .utf8),
+                   !text.contains("#EXT-X-ENDLIST"), text.components(separatedBy: "#EXTINF").count - 1 < HLSPlaylist.minLiveSegments { shortLive.set() }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+        }
+        _ = try await follower.run()
+        watcher.cancel()
+        #expect(!shortLive.value, "a live playlist with fewer than 3 segments was visible")
     }
 
     @Test func onlyTheMostRecentSegmentsStayOnDisk() async throws {

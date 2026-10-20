@@ -845,7 +845,7 @@ final class WebServer: @unchecked Sendable {
     private func handleHLS(showId: String, name: String, conn: NWConnection) {
         guard let streams else { send(.notFound("streaming unavailable"), on: conn); return }
         Task { [weak self] in
-            let deadline = Date().addingTimeInterval(name == "index.m3u8" ? 15 : 0)
+            let deadline = Date().addingTimeInterval(name == "index.m3u8" ? 25 : 0)   // a new recording needs ~12 s of picture before the first playlist
             var url = await streams.file(showId: showId, name: name)
             while url == nil, Date() < deadline, HLSPlaylist.isServableName(name), await streams.isActive(showId) {
                 try? await Task.sleep(nanoseconds: 250_000_000)
