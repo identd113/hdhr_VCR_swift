@@ -52,7 +52,7 @@ actor OTAScanner {
     private var total = 0
 
     /// Scans `rfChannels` (default: the whole band), up to `env.tunerCount` at a time. `progress` gets short status lines.
-    func scan(env: OTAScanEnvironment, rfChannels: [Int] = OTAScanner.allRFChannels, secondsPerChannel: TimeInterval = 75,
+    func scan(env: OTAScanEnvironment, rfChannels: [Int] = OTAScanner.allRFChannels, secondsPerChannel: TimeInterval = 90,
               progress: @escaping @Sendable (String) -> Void) async -> OTAScanOutcome {
         queue = rfChannels.filter { Self.frequencyHz(rf: $0) != nil }
         outcome = OTAScanOutcome()

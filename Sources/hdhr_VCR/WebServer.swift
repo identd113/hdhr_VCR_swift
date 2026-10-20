@@ -2594,7 +2594,7 @@ final class WebServer: @unchecked Sendable {
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
                 let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
-                let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 75))
+                let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
                 return jsonResponse(["status": state.startOTAScan(rfChannels: rf, seconds: seconds)])
             }
             if path == "/api/signal-scan"  {

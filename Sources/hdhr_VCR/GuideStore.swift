@@ -116,7 +116,10 @@ final class GuideStore {
 
     @discardableResult
     private func loadNow(for device: HDHRDevice, hours: Int, useXML: Bool, maxCacheAge: TimeInterval?) async -> Bool {
-        if preferOTA, await loadOTA(deviceId: device.DeviceID) { return true }   // no saved scan (or too old): fall through to the cloud guide
+        if preferOTA {
+            if await loadOTA(deviceId: device.DeviceID) { return true }
+            glog("[\(device.DeviceID)] over-the-air guide preferred but no usable saved scan — using the cloud guide")
+        }
         // XMLTV is cloud-only; devices without DeviceAuth fall through to JSON path
         if useXML, device.DeviceAuth != nil {
             return await loadXMLTV(for: device, hours: hours, maxCacheAge: maxCacheAge)
@@ -165,8 +168,8 @@ final class GuideStore {
     /// False when there is no saved scan, it is older than `maxAge`, or it is empty. The load timestamp is the file's own, so a
     /// stale scan never counts as fresh and the usual refresh/recovery cadence keeps retrying the cloud guide.
     @discardableResult
-    func loadOTA(deviceId id: String, maxAge: TimeInterval = GuideStore.staleFallbackMaxAge) async -> Bool {
-        let file = OTAStore.guideFile(deviceId: id)
+    func loadOTA(deviceId id: String, maxAge: TimeInterval = GuideStore.staleFallbackMaxAge, root: URL = OTAStore.root) async -> Bool {
+        let file = OTAStore.guideFile(deviceId: id, root: root)
         guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date,
               Date().timeIntervalSince(modified) <= maxAge else { return false }
         let epochAtStart = invalidationEpoch

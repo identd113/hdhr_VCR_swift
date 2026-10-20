@@ -12,7 +12,7 @@ SiliconDust guide service and no internet. Research and findings: `overtime/` (R
   channels. The air carries no `SeriesID`, genre `Filter`, episode titles/numbers or images: those stay nil.
 - **`OTAScanner`** (actor, off the main thread): raw-tunes `http://<tuner>:5004/tunerN/ch<Hz>` for each ATSC RF channel (2–36, 38–51),
   feeding the decoder as bytes arrive (nothing is stored). Up to `TunerCount` channels at a time. Ends a channel early on no signal
-  (under 100 KB after 3 s), no guide tables after 12 s, or a station that announces no guide (15 s); otherwise 75 s.
+  (under 100 KB after 3 s), no guide tables after 12 s, or a station that announces no guide (15 s); otherwise 90 s (a longer capture means a deeper guide: the tables repeat, and the later ones arrive last).
 - **`OTAStore`**: saves `ota/<DeviceID>/guide.json`, `lineup.json` and `scan.json` under Application Support/hdhrVCRplus, atomically.
   A scan that finds nothing never replaces an earlier one.
 - **`AppState.startOTAScan` / `cancelOTAScan`** (`AppState+OTA.swift`): the app side; `otaScanStatus` is the status line.
@@ -29,7 +29,7 @@ tuner. The scan uses `recordableDevices` only (never the virtual relay), and is 
 ## Where to run it
 - Settings → General → Guide: **Use the guide from the air (beta)** (`Guide_use_ota`).
 - Settings → Advanced → **Over-the-Air Guide**: *Scan the Air Now* / *Cancel Scan*, with the status line.
-- Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":75}` (both optional) or `{"cancel":true}`;
+- Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":90}` (both optional) or `{"cancel":true}`;
   `GET /api/ota-status` → `{"status":"…","running":true|false}`.
 
 ## Known gaps

@@ -7,7 +7,7 @@ import Foundation
 extension AppState {
     /// Starts a scan of one device (default: the first real tuner). Returns a one-line status for the caller.
     @discardableResult
-    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 75) -> String {
+    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90) -> String {
         if otaScanTask != nil { return "A scan is already running: \(otaScanStatus)" }
         guard let device = recordableDevices.first(where: { deviceId == nil || $0.DeviceID == deviceId }), device.isAvailable else {
             return "No tuner available to scan."
