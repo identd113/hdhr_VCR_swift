@@ -114,6 +114,7 @@ function showInfo(el){
   // Reset all action elements first
   var edit=document.getElementById('sum-edit');
   btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
+  var watch=document.getElementById('sum-watch');watch.style.display='none';
   del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
   var bstar=document.getElementById('sum-bonus-star');
   bstar.style.display='none';bstar.classList.remove('sb-anim');
@@ -126,6 +127,8 @@ function showInfo(el){
       bstar.textContent='+'+_bonusMins+'m';bstar.style.display='inline-flex';triggerSb('sum-bonus-star');
     }
     del.textContent='Stop & Delete';del.classList.add('danger');del.style.display='inline-block';
+    // Watch Now! — only when web streaming is switched on in Settings (asked of the app each time, so no restart is needed).
+    if(d.showId)streamingEnabled(function(on){if(on&&document.querySelector('.g-prog.g-sel')===el)watch.style.display='inline-block';});
   } else if(+d.managed){
     note.textContent='★ Scheduled';note.style.color='var(--t2)';note.style.display='inline';
     del.textContent='Remove';del.style.display='inline-block';
@@ -909,7 +912,7 @@ document.addEventListener('click',function(e){
   if(!sBar){closeSearchDrop();closeSearchHelp();}
 });
 // ── Edit show modal ──
-var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='',_editDev='';
+var _editRow=null,_editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='',_editDev='';
 var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
 function updateDaysVisibility(){
@@ -954,7 +957,7 @@ function updateScopeUI(){
 }
 function openEditShow(el){
   var d=el.dataset;
-  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';_editDev=d.dev||'';
+  _editRow=d;_editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';_editDev=d.dev||'';
   document.getElementById('em-title-in').value=d.title||'';
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
@@ -1007,6 +1010,9 @@ function openEditShow(el){
   // a dead slot.
   pb.textContent=_editPaused?'Resume':'Pause';pb.style.display=(_editRec||devMissing)?'none':'inline-block';
   document.getElementById('em-del').textContent=_editRec?'Stop & Delete':'Delete';
+  // Watch Now! only for a show airing right now (data-recording, already on the row) — and only when web streaming is on.
+  var ew=document.getElementById('em-watch');ew.style.display='none';
+  if(_editRec)streamingEnabled(function(on){if(on&&_editId===d.id)ew.style.display='inline-block';});
   document.getElementById('edit-modal').style.display='flex';
 }
 function closeEditShow(){document.getElementById('edit-modal').style.display='none';var ebstar=document.getElementById('em-bonus-star');ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
@@ -1491,8 +1497,203 @@ function cycleSearchEpisode(delta){
 // is genuinely inside an editable text field (a Record/Edit modal's title input) so it can't
 // steal caret-movement keys from those — #search-in itself is readOnly in chip mode, so it's
 // exempted from that check rather than blocking its own bubbled keydown.
+// ---- Watch Now! (web streaming; docs/WebStreaming.md) ----
+// Plays a recording that is being written (or a finished one) in the browser: the app converts it to H.264/AAC HLS
+// on demand (/api/hls/<show>/index.m3u8). Safari plays HLS natively; other browsers use the bundled hls.js.
+var _streamOn=null,_streamOnAt=0;
+function streamingEnabled(cb){
+  if(_streamOn!==null&&Date.now()-_streamOnAt<10000){cb(_streamOn);return;}
+  fetch('/api/hls-status').then(function(r){return r.json();}).then(function(j){_streamOn=!!j.enabled;_streamOnAt=Date.now();cb(_streamOn);}).catch(function(){cb(false);});
+}
+var _wn={posTick:0,startEpoch:0,endEpoch:0,open:false,id:'',gen:0,hls:null,timer:null,retries:0,ended:false,hlsLoading:false};
+function wnVideo(){return document.getElementById('wn-video');}
+function wnMsg(t){var m=document.getElementById('wn-msg');m.textContent=t||'';m.style.display=t?'flex':'none';}
+function watchNowFromSummary(){
+  var el=document.querySelector('.g-prog.g-sel');
+  if(!el||!el.dataset.showId)return;
+  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'',_s,_e);
+}
+function watchNowFromEdit(){
+  var t=document.getElementById('em-title-in').value,id=_editId;
+  closeEditShow();
+  var sx=+(_editRow&&_editRow.next)||0,len=(+(_editRow&&_editRow.length)||0)*60;
+  if(!sx||sx>Date.now()/1000||Date.now()/1000-sx>len*1.5)sx=0;   // show_next is only the start while the show is airing
+  openWatchNow(id,t,'Recording now','',_editPoster||'',sx,sx?sx+len:0);
+}
+function loadHlsJs(cb){
+  if(window.Hls){cb(true);return;}
+  var s=document.createElement('script');s.src='/hls.min.js';
+  s.onload=function(){cb(!!window.Hls&&Hls.isSupported());};
+  s.onerror=function(){cb(false);};
+  document.head.appendChild(s);
+}
+function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
+  closeWatchNow();
+  _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;
+  var gen=_wn.gen;
+  document.getElementById('wn-title').textContent=title;
+  document.getElementById('wn-sub').textContent=sub||'';
+  document.getElementById('wn-modal').style.display='flex';
+  wnState('Starting\u2026',false);wnMsg('Preparing the stream\u2026 this can take a few seconds.');
+  var v=wnVideo();
+  var url='/api/hls/'+encodeURIComponent(id)+'/index.m3u8';
+  v.muted=false;
+  if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=url;
+    v.onerror=function(){if(gen===_wn.gen)wnFailed();};
+    v.play().catch(function(){});
+  }else{
+    loadHlsJs(function(ok){
+      if(gen!==_wn.gen)return;
+      if(!ok){wnMsg('This browser cannot play the stream (no HLS support).');wnState('Unavailable',false);return;}
+      var h=new Hls({liveSyncDurationCount:3,maxBufferLength:30,manifestLoadingTimeOut:20000,manifestLoadingMaxRetry:2});
+      _wn.hls=h;
+      h.on(Hls.Events.ERROR,function(e,d){
+        if(gen!==_wn.gen||!d.fatal)return;
+        if(d.type===Hls.ErrorTypes.MEDIA_ERROR&&_wn.retries<3){_wn.retries++;h.recoverMediaError();}
+        else if(d.type===Hls.ErrorTypes.NETWORK_ERROR&&_wn.retries<3){_wn.retries++;setTimeout(function(){if(gen===_wn.gen)h.startLoad();},2000);}
+        else wnFailed();
+      });
+      h.loadSource(url);h.attachMedia(v);
+      v.play().catch(function(){});
+    });
+  }
+  // Lock screen / Control Center: show name, episode and art. iOS pauses the video when the screen locks; pressing Play there
+  // starts the audio-only stream instead (no button needed), and coming back to the page returns to the picture.
+  _wn.audioUrl='/api/hls/'+encodeURIComponent(id)+'/'+'audio.m3u8';
+  try{if('mediaSession' in navigator){
+    var info={title:title,artist:episode||sub||'hdhrVCRplus',album:episode?(sub||''):'hdhrVCRplus'};
+    navigator.mediaSession.metadata=new MediaMetadata(info);
+    wnArtwork(art,function(dataUrl){   // square 512 px image made here: iOS shows it without fetching anything itself
+      if(gen!==_wn.gen||!dataUrl)return;
+      info.artwork=[{src:dataUrl,sizes:'512x512',type:'image/jpeg'}];
+      try{navigator.mediaSession.metadata=new MediaMetadata(info);}catch(e){}
+    });
+    _wn.startEpoch=startEpoch||0;_wn.endEpoch=endEpoch||0;wnPosition();
+    navigator.mediaSession.setActionHandler('play',function(){wnRemotePlay();});
+    navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
+  }}catch(e){}
+  v.onplaying=function(){if(gen===_wn.gen)wnMsg('');};
+  v.onwaiting=function(){if(gen===_wn.gen&&!_wn.ended)wnState('Buffering\u2026',false);};
+  clearInterval(_wn.timer);
+  _wn.timer=setInterval(function(){if(gen===_wn.gen)wnTick();},1000);
+}
+function wnFailed(){
+  streamingEnabled(function(on){
+    wnState('Unavailable',false);
+    wnMsg(on?'The stream could not be started. The recording may have no file yet, or the app is busy. Close this window and try again.'
+            :'Web streaming is turned off. Turn it on in hdhr_VCR Settings \u2192 Web Streaming.');
+  });
+  _streamOn=null;
+}
+function wnState(text,live){
+  var el=document.getElementById('wn-state');
+  el.className='wn-state'+(live?' wn-live':'');
+  el.innerHTML='<span class="wn-dot"></span>'+hej(text);
+}
+// Newest playable position: hls.js knows it from the playlist; native HLS reports it as the end of the seekable range.
+function wnLiveEdge(){
+  var v=wnVideo();
+  if(_wn.hls&&_wn.hls.liveSyncPosition)return _wn.hls.liveSyncPosition;
+  if(v.seekable&&v.seekable.length)return v.seekable.end(v.seekable.length-1);
+  return NaN;
+}
+function wnIsLive(){
+  if(_wn.hls){var l=_wn.hls.levels&&_wn.hls.levels[_wn.hls.currentLevel>=0?_wn.hls.currentLevel:0];return !!(l&&l.details&&l.details.live);}
+  return wnVideo().duration===Infinity;
+}
+// Control Center timeline: how far into the show we are (the show's own start and end), not the length of the stream.
+function wnPosition(){
+  try{
+    if(!('mediaSession' in navigator)||!navigator.mediaSession.setPositionState||!_wn.endEpoch||_wn.endEpoch<=_wn.startEpoch)return;
+    var dur=_wn.endEpoch-_wn.startEpoch,pos=Math.min(dur,Math.max(0,Date.now()/1000-_wn.startEpoch));
+    navigator.mediaSession.setPositionState({duration:dur,position:pos,playbackRate:1});
+  }catch(e){}
+}
+// Poster -> square 512 px JPEG data URL, through the app (/api/art) so the browser's cross-site image rules do not apply.
+function wnArtwork(src,cb){
+  if(!src){cb('');return;}
+  var img=new Image();
+  img.onload=function(){
+    try{
+      var c=document.createElement('canvas');c.width=c.height=512;var x=c.getContext('2d');
+      x.fillStyle='#111';x.fillRect(0,0,512,512);
+      var k=Math.min(512/img.naturalWidth,512/img.naturalHeight),w=img.naturalWidth*k,h=img.naturalHeight*k;
+      x.drawImage(img,(512-w)/2,(512-h)/2,w,h);
+      cb(c.toDataURL('image/jpeg',0.85));
+    }catch(e){cb('');}
+  };
+  img.onerror=function(){cb('');};
+  img.src='/api/art?u='+encodeURIComponent(src);
+}
+function wnTick(){
+  if(++_wn.posTick%5===0)wnPosition();
+  var v=wnVideo();
+  if(!v.currentTime&&v.paused&&!v.readyState)return;
+  var live=wnIsLive();
+  if(!live&&v.readyState>0&&_wn.hls&&_wn.hls.levels&&_wn.hls.levels.length&&_wn.hls.levels[0].details){_wn.ended=true;}
+  var edge=wnLiveEdge(),behind=isNaN(edge)?0:Math.max(0,edge-v.currentTime);
+  var lb=document.getElementById('wn-live');
+  lb.style.display=live?'':'none';
+  if(live)wnState(behind<12?'LIVE':Math.round(behind)+' s behind live',behind<12);
+  else wnState(Math.floor(v.currentTime/60)+':'+('0'+Math.floor(v.currentTime%60)).slice(-2)+' \u00b7 recording ended',false);
+}
+function watchNowGoLive(){var e=wnLiveEdge(),v=wnVideo();if(!isNaN(e)){v.currentTime=e;v.play().catch(function(){});}}
+function watchNowFullscreen(){
+  var v=wnVideo();
+  if(document.fullscreenElement){document.exitFullscreen();return;}
+  var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;
+  if(f)try{f.call(v);}catch(e){}
+}
+var _wnAudio=null;
+function wnActive(){return _wn.audio&&_wnAudio?_wnAudio:wnVideo();}
+// Play pressed in Control Center / on the lock screen: while the page is hidden, play the sound-only stream.
+function wnRemotePlay(){
+  if(!document.hidden&&!_wn.audio){wnVideo().play().catch(function(){});return;}
+  if(!_wnAudio)_wnAudio=new Audio();
+  if(!_wn.audio){_wnAudio.src=_wn.audioUrl;_wn.audio=true;}
+  _wnAudio.play().catch(function(){});
+}
+function wnStopAudio(){_wn.audio=false;if(_wnAudio){_wnAudio.pause();_wnAudio.removeAttribute('src');try{_wnAudio.load();}catch(e){}}}
+document.addEventListener('visibilitychange',function(){
+  if(!_wn.open)return;
+  if(document.hidden){wnPosition();   // warm up the sound-only stream so Play on the lock screen starts at once
+    if(!_wnAudio)_wnAudio=new Audio();
+    _wnAudio.preload='auto';_wnAudio.src=_wn.audioUrl;
+  }else if(_wn.audio){   // back in the page: return to the picture at the live edge
+    wnStopAudio();wnVideo().play().catch(function(){});
+  }
+});
+function closeWatchNow(){
+  if(!_wn.open&&!_wn.hls)return;
+  _wn.open=false;_wn.gen++;
+  clearInterval(_wn.timer);_wn.timer=null;
+  if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
+  var v=wnVideo();
+  v.onerror=v.onplaying=v.onwaiting=null;
+  try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
+  wnStopAudio();
+  v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
+  if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
+  document.getElementById('wn-modal').style.display='none';
+}
+window.addEventListener('pagehide',closeWatchNow);
+// While the player is open it owns the keyboard: nothing reaches the guide's search/shortcut handlers underneath.
+document.addEventListener('keydown',function(e){
+  if(!_wn.open)return;
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  var v=wnVideo(),k=e.key;
+  if(k==='Escape'){if(!document.fullscreenElement)closeWatchNow();}
+  else if(k===' '||k==='k'){if(v.paused)v.play().catch(function(){});else v.pause();}
+  else if(k==='ArrowLeft'){v.currentTime=Math.max(0,v.currentTime-10);}
+  else if(k==='ArrowRight'){var edge=wnLiveEdge();v.currentTime=isNaN(edge)?v.currentTime+10:Math.min(edge,v.currentTime+10);}
+  else if(k==='l'||k==='L'){watchNowGoLive();}
+  else if(k==='m'||k==='M'){v.muted=!v.muted;}
+  else if(k==='f'||k==='F'){watchNowFullscreen();}
+  e.preventDefault();e.stopPropagation();
+},true);
 function anyGuideModalOpen(){
-  return ['rec-modal','edit-modal','del-confirm-modal'].some(function(id){
+  return ['rec-modal','edit-modal','del-confirm-modal','wn-modal'].some(function(id){
     var el=document.getElementById(id);
     return el&&el.style.display!=='none';
   });

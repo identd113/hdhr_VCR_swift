@@ -438,3 +438,9 @@ Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (spor
 **Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateIdleLoopStaleIndexTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateSeriesSchedulingTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---
+
+---
+
+## Web streaming: audio-only sources
+
+Watch Now! cannot play a source with no video (radio or audio-only channels): the HLS converter needs a video track. The audio-only twin of a normal stream exists (`audio.m3u8`); a source with no picture still needs a writer that starts without the video. See `docs/WebStreaming.md` "Open / not built".
