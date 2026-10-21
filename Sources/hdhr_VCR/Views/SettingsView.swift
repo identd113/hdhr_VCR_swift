@@ -33,6 +33,8 @@ struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
+    /// Bumped to scroll Advanced to its Over-the-Air Guide section (after turning the air guide on with no scan saved).
+    @State private var scrollToOTA = 0
     @State private var signalScanDeviceID: String = ""      // Signal Strength Scan picker; "" = all tuners
     @State private var draft: AppConfig = AppConfig()
     // Snapshot of state.config at the moment `draft` was last (re)synced — lets
@@ -279,16 +281,38 @@ struct SettingsView: View {
         // this off while a show happens to be recording should tear the relay down right away, not
         // leave it advertised until that recording ends.
         if relayEnabledChanged { state.updateVirtualTunerPresence() }
-        if formatChanged {
+        // Turning the air guide on with no saved scan to switch to: keep the guide in use now (when it is recent enough), don't
+        // blank it, and take the person to the scan instead. preferOTA is already on, so the next refresh picks the scan up once it exists.
+        let airGuideTurnedOn = draft.Guide_use_ota && !old.Guide_use_ota && draft.Guide_use_xml == old.Guide_use_xml
+        let devices = state.recordableDevices
+        let noScanYet = !devices.isEmpty && !devices.allSatisfy { OTAStore.hasFreshGuide(deviceId: $0.DeviceID) }
+        let currentGuideUsable = !devices.isEmpty && devices.allSatisfy { state.guideStore.isFresh(deviceId: $0.DeviceID, within: GuideStore.staleFallbackMaxAge) }
+        if formatChanged && airGuideTurnedOn && noScanYet && currentGuideUsable {
+            glog("[Settings] air guide turned on with no saved scan — keeping the current guide and offering a scan")
+            selection = .advanced
+            scrollToOTA += 1
+            Task { @MainActor in await offerAirScan() }
+        } else if formatChanged {
             state.guideStore.invalidateAll()
             state.guideByDevice = [:]
             Task { @MainActor in await state.refreshGuide() }
+            if airGuideTurnedOn && noScanYet { selection = .advanced; scrollToOTA += 1; Task { @MainActor in await offerAirScan() } }
         }
         // formatChanged already forces a full refetch-and-rebuild above, which naturally rewarms
         // this cache too — only need the lightweight local rebuild here when that didn't already fire.
         if skipConfigChanged && !formatChanged && !interfaceChanged {
             state.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: state)
         }
+    }
+
+    /// Non-blocking prompt after the air guide is turned on with nothing scanned yet: the scan lives in Advanced → Over-the-Air Guide.
+    private func offerAirScan() async {
+        let alert = NSAlert()
+        alert.messageText = "No over-the-air guide yet"
+        alert.informativeText = "The guide you have now stays in use until a scan finishes. A full scan builds the air guide from what stations broadcast: the channel list is ready in about 3 minutes and the full guide in about 15, using idle tuners only (it gives them up for a recording). You can also start it later under Advanced → Over-the-Air Guide."
+        alert.addButton(withTitle: "Scan the Air Now")
+        alert.addButton(withTitle: "Not Now")
+        if await Dialogs.present(alert) == .alertFirstButtonReturn { state.startOTAScan() }
     }
 
     @ViewBuilder
@@ -581,6 +605,7 @@ struct SettingsView: View {
     // MARK: - Advanced
 
     private var advancedView: some View {
+        ScrollViewReader { proxy in
         Form {
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
@@ -698,6 +723,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("Over-the-Air Guide") {
+                    Color.clear.frame(height: 0).id("ota-section")
                     Picker(selection: $draft.OTA_scan_hour) {
                         Text("Never").tag(-1)
                         ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
@@ -733,6 +759,8 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")
+        .onChange(of: scrollToOTA) { _, _ in withAnimation { proxy.scrollTo("ota-section", anchor: .top) } }
+        }
     }
 
     // MARK: - Sharing

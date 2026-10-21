@@ -32,6 +32,26 @@ final class GuideStore {
     func guideHasNoSeriesIDs(deviceId: String) -> Bool {
         !(channelsByDevice[deviceId] ?? []).isEmpty && (seriesIDsByDevice[deviceId] ?? []).isEmpty
     }
+    /// Where a device's guide in memory came from. `cache` = the last saved copy of the cloud guide, used because the fetch failed.
+    enum GuideSource: String { case cloud, xmltv, ota, cache }
+    private(set) var sourceByDevice: [String: GuideSource] = [:]
+
+    /// One line for the web guide's tuner dropdown: where the guide and the channel list come from, and how old the guide is.
+    func sourceLine(deviceId: String, now: Date = Date()) -> String {
+        let lineup = "Lineup: the tuner"
+        guard let source = sourceByDevice[deviceId], let loaded = loadTimestamps[deviceId] else { return "Guide: not loaded · \(lineup)" }
+        let age = Self.ageText(now.timeIntervalSince(loaded))
+        switch source {
+        case .cloud: return "Guide: SiliconDust, \(age) · \(lineup)"
+        case .xmltv: return "Guide: SiliconDust (XMLTV), \(age) · \(lineup)"
+        case .ota:   return "Guide: from the air, scanned \(age) · \(lineup)"
+        case .cache: return "Guide: saved SiliconDust copy, \(age) · \(lineup)"
+        }
+    }
+    nonisolated static func ageText(_ seconds: TimeInterval) -> String {
+        let m = Int(max(0, seconds) / 60)
+        return m < 1 ? "just now" : m < 90 ? "\(m) min ago" : "\(Int((Double(m) / 60).rounded())) h ago"
+    }
     private var seriesIDsByDevice: [String: Set<String>] = [:]     // deviceId → seriesIDs it contributed to seriesIndex (so a reload prunes only those)
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
@@ -186,6 +206,7 @@ final class GuideStore {
         guard invalidationEpoch == epochAtStart else { return false }
         applyIndex(prepared)
         loadTimestamps[id] = modified
+        sourceByDevice[id] = .ota
         glog("[\(id)] loaded the over-the-air guide saved \(Int(Date().timeIntervalSince(modified) / 60)) min ago")
         return true
     }
@@ -206,7 +227,7 @@ final class GuideStore {
             return false
         }
 
-        return await fetchAndIndex(id: id, url: url, cacheFile: cacheFile(id: id, kind: "xml", hours: hours), maxCacheAge: maxCacheAge) { data in
+        return await fetchAndIndex(id: id, url: url, source: .xmltv, cacheFile: cacheFile(id: id, kind: "xml", hours: hours), maxCacheAge: maxCacheAge) { data in
             let (channels, parsedOK) = XmltvParser().parse(data)
             guard parsedOK else {
                 glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
@@ -232,7 +253,7 @@ final class GuideStore {
     /// guards stay in each caller (not here) so their exact glog lines/ordering are unaffected by
     /// this refactor. `parse` returns nil on failure — it owns its own failure logging, since the
     /// JSON and XMLTV parse-failure messages intentionally read differently.
-    private func fetchAndIndex(id: String, url: URL, cacheFile: URL? = nil, maxCacheAge: TimeInterval? = nil,
+    private func fetchAndIndex(id: String, url: URL, source: GuideSource = .cloud, cacheFile: URL? = nil, maxCacheAge: TimeInterval? = nil,
                                parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
         // Captured before the network+decode await below — see the epochAtStart guard right
@@ -319,6 +340,7 @@ final class GuideStore {
 
             applyIndex(prepared)
             loadTimestamps[id] = Date()
+            sourceByDevice[id] = source
             lastFailure.removeValue(forKey: id)
             if let cacheFile { Self.writeCache(data, to: cacheFile); pruneDiskCache() }
             glog("[\(id)] index built and timestamp set — guide ready")
@@ -387,6 +409,7 @@ final class GuideStore {
               invalidationEpoch == epochAtStart else { return nil }
         applyIndex(prepared)
         loadTimestamps[id] = cached.modified
+        sourceByDevice[id] = .cache
         glog("[\(id)] guide loaded from disk cache (\(Int(Date().timeIntervalSince(cached.modified)))s old, \(cached.data.count) bytes)")
         return cached.modified
     }
@@ -838,6 +861,7 @@ final class GuideStore {
         seriesIndex = [:]
         unsortedSeries = []
         seriesIDsByDevice = [:]
+        sourceByDevice = [:]
         loadTimestamps = [:]
         // The saved copies too — otherwise the next load() quietly restores the very data this was
         // asked to throw away. Synchronous (a handful of files) so it can't race a load started right after.

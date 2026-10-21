@@ -70,6 +70,13 @@ enum OTAStore {
         }
     }
 
+    /// True when a saved guide for this device exists and is no older than `maxAge` (the same 36 h GuideStore.loadOTA accepts).
+    static func hasFreshGuide(deviceId: String, maxAge: TimeInterval = GuideStore.staleFallbackMaxAge, root: URL = OTAStore.root) -> Bool {
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: guideFile(deviceId: deviceId, root: root).path))?[.modificationDate] as? Date
+        else { return false }
+        return Date().timeIntervalSince(modified) <= maxAge
+    }
+
     static func loadSummary(deviceId: String, root: URL = OTAStore.root) -> OTAScanSummary? {
         guard let data = try? Data(contentsOf: folder(deviceId: deviceId, root: root).appendingPathComponent("scan.json")) else { return nil }
         let decoder = JSONDecoder()

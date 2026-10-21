@@ -49,6 +49,36 @@ struct OTAStoreTests {
         #expect(store.needsRecovery(deviceId: "TEST") == false)
     }
 
+    @Test func theGuideSourceIsNamedForTheTunerDropdown() async throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = GuideStore()
+        #expect(store.sourceLine(deviceId: "TEST").hasPrefix("Guide: not loaded"))
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        #expect(await store.loadOTA(deviceId: "TEST", root: root))
+        #expect(store.sourceByDevice["TEST"] == .ota)
+        let line = store.sourceLine(deviceId: "TEST")
+        #expect(line.hasPrefix("Guide: from the air, scanned "))
+        #expect(line.hasSuffix("Lineup: the tuner"))
+        store.invalidateAll()
+        #expect(store.sourceByDevice["TEST"] == nil)
+    }
+
+    @Test func ageTextReadsLikeAPerson() {
+        #expect(GuideStore.ageText(20) == "just now")
+        #expect(GuideStore.ageText(12 * 60) == "12 min ago")
+        #expect(GuideStore.ageText(3 * 3600) == "3 h ago")
+    }
+
+    @Test func aSavedGuideIsFreshOnlyWithinThirtySixHours() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        #expect(OTAStore.hasFreshGuide(deviceId: "TEST", root: root) == false)
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        #expect(OTAStore.hasFreshGuide(deviceId: "TEST", root: root))
+        let file = OTAStore.guideFile(deviceId: "TEST", root: root)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-48 * 3600)], ofItemAtPath: file.path)
+        #expect(OTAStore.hasFreshGuide(deviceId: "TEST", root: root) == false)
+    }
+
     @Test func aMissingOrStaleSavedGuideIsNotUsed() async throws {
         let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let store = GuideStore()

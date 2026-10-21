@@ -132,7 +132,10 @@ html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
 #sum-del{background:var(--s4)!important;color:var(--t2)!important;border-color:var(--b4)!important}
 #sum-del.danger{background:#6a1010!important;color:#ffaaaa!important;border-color:#883030!important}
 html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;border-color:#cc3030!important}
-#sum button:not(#sum-btn):not(#sum-del){color:var(--t6)!important}
+#sum button:not(#sum-btn):not(#sum-del):not(#sum-watch){color:var(--t6)!important}
+/* Watch Now!: the panel's primary action for a show airing now — the accent button the app's own Watch Now buttons use (.mac-btn-prom), not the catch-all grey above */
+#sum-watch{background:var(--ac)!important;color:#fff!important;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 1px 2px rgba(0,0,0,.25)}
+#sum-watch:hover{filter:brightness(1.08)}
 .sum-tag{border-radius:999px;padding:2px 8px;font-size:.58rem;font-weight:700;letter-spacing:.06em;color:rgba(255,255,255,.92);background:rgba(255,255,255,.18)}
 html.lm .sum-tag{color:rgba(0,0,0,.7)}
 #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
@@ -535,6 +538,7 @@ html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
 .sp-rec{color:#ff8080}
 html.lm .sp-rec{color:#cc2020}
 .sp-div{height:1px;background:var(--b1);margin:2px 0}
+.sp-src{font-size:.68rem;color:var(--t4);padding:8px 14px 4px;border-bottom:1px solid var(--b3)}
 .sp-empty{font-size:.8rem;color:var(--t5);padding:12px 14px;text-align:center}
 /* ── Other Upcoming Airings (record modal) — same row language as .sp-row ── */
 .rm-air-row{display:flex;align-items:flex-start;gap:7px;padding:5px 4px;margin:0 -4px;border-bottom:1px solid var(--b0);border-radius:4px;cursor:pointer;transition:background .12s}
