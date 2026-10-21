@@ -130,7 +130,7 @@ final class AppState: ObservableObject {
     private var sigtermSource: DispatchSourceSignal?
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
-    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.Guide_use_ota } }
+    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.guidePrefersAir } }
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
@@ -242,6 +242,7 @@ final class AppState: ObservableObject {
     var otaScanTask: Task<Void, Never>? = nil
     @Published var otaScanStatus: String = ""
     var lastScheduledOTAAttempt: Date? = nil
+    var lastOTALineupAttempt: Date? = nil
     var otaScanGeneration = 0
     /// Tuners ("tuner0"…) the running OTA scan is holding right now. They are the app's to take back (the scan yields), so they do not
     /// count as occupied when deciding whether a recording or a live stream may start (see `activeTunerCount`).
@@ -2890,6 +2891,7 @@ final class AppState: ObservableObject {
         warnOfLiveWatchPreemptionIfNeeded()
         maintainFeedCacheSessions()
         startScheduledOTAScanIfDue()
+        startScheduledOTALineupRefreshIfDue()
         let now = Date()
         var dirty = false
 

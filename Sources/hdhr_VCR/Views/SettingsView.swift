@@ -40,8 +40,6 @@ struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
-    /// Bumped to scroll Advanced to its Over-the-Air Guide section (after turning the air guide on with no scan saved).
-    @State private var scrollToOTA = 0
     @State private var signalScanDeviceID: String = ""      // Signal Strength Scan picker; "" = all tuners
     @State private var draft: AppConfig = AppConfig()
     // Snapshot of state.config at the moment `draft` was last (re)synced — lets
@@ -220,14 +218,13 @@ struct SettingsView: View {
             glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
         }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
-        if draft.Guide_use_ota       != old.Guide_use_ota       { glog("[Settings] GuideUseOta: \(old.Guide_use_ota) → \(draft.Guide_use_ota)") }
+        if draft.OTA_lineup_auto     != old.OTA_lineup_auto     { glog("[Settings] OTALineupAuto: \(old.OTA_lineup_auto) → \(draft.OTA_lineup_auto)") }
         if draft.OTA_scan_hour       != old.OTA_scan_hour       { glog("[Settings] OTAScanHour: \(old.OTA_scan_hour) → \(draft.OTA_scan_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
-                             || draft.Guide_use_ota       != old.Guide_use_ota
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         // WebServer.buildGuideJSON caches its skip-already-recorded on-disk scan
         // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
@@ -288,38 +285,16 @@ struct SettingsView: View {
         // this off while a show happens to be recording should tear the relay down right away, not
         // leave it advertised until that recording ends.
         if relayEnabledChanged { state.updateVirtualTunerPresence() }
-        // Turning the air guide on with no saved scan to switch to: keep the guide in use now (when it is recent enough), don't
-        // blank it, and take the person to the scan instead. preferOTA is already on, so the next refresh picks the scan up once it exists.
-        let airGuideTurnedOn = draft.Guide_use_ota && !old.Guide_use_ota && draft.Guide_use_xml == old.Guide_use_xml
-        let devices = state.recordableDevices
-        let noScanYet = !devices.isEmpty && !devices.allSatisfy { OTAStore.hasFreshGuide(deviceId: $0.DeviceID) }
-        let currentGuideUsable = !devices.isEmpty && devices.allSatisfy { state.guideStore.isFresh(deviceId: $0.DeviceID, within: GuideStore.staleFallbackMaxAge) }
-        if formatChanged && airGuideTurnedOn && noScanYet && currentGuideUsable {
-            glog("[Settings] air guide turned on with no saved scan — keeping the current guide and offering a scan")
-            selection = .advanced
-            scrollToOTA += 1
-            Task { @MainActor in await offerAirScan() }
-        } else if formatChanged {
+        if formatChanged {
             state.guideStore.invalidateAll()
             state.guideByDevice = [:]
             Task { @MainActor in await state.refreshGuide() }
-            if airGuideTurnedOn && noScanYet { selection = .advanced; scrollToOTA += 1; Task { @MainActor in await offerAirScan() } }
         }
         // formatChanged already forces a full refetch-and-rebuild above, which naturally rewarms
         // this cache too — only need the lightweight local rebuild here when that didn't already fire.
         if skipConfigChanged && !formatChanged && !interfaceChanged {
             state.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: state)
         }
-    }
-
-    /// Non-blocking prompt after the air guide is turned on with nothing scanned yet: the scan lives in Advanced → Over-the-Air Guide.
-    private func offerAirScan() async {
-        let alert = NSAlert()
-        alert.messageText = "No over-the-air guide yet"
-        alert.informativeText = "The guide you have now stays in use until a scan finishes. A full scan builds the air guide from what stations broadcast: the channel list is ready in about 3 minutes and the full guide in about 15, using idle tuners only (it gives them up for a recording). You can also start it later under Advanced → Over-the-Air Guide."
-        alert.addButton(withTitle: "Scan the Air Now")
-        alert.addButton(withTitle: "Not Now")
-        if await Dialogs.present(alert) == .alertFirstButtonReturn { state.startOTAScan() }
     }
 
     @ViewBuilder
@@ -375,14 +350,6 @@ struct SettingsView: View {
                     CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
                                  systemImage: "exclamationmark.triangle")
                         .accessibilityIdentifier("settings-guide-xmltv-warning")
-                }
-                Toggle(isOn: $draft.Guide_use_ota) {
-                    HStack { Text("Use the guide from the air (beta)"); InfoButton("Builds the guide from the listings stations broadcast with their TV signal instead of the SiliconDust guide service: it works with no internet. It needs a scan first (Advanced → Over-the-Air Guide). With it off, the saved scan is still used as a fallback when the guide service can't be reached.") }
-                }
-                if draft.Guide_use_ota {
-                    CaveatBanner(text: "The air carries no series IDs, genre tags, episode titles or images, and some stations send no guide at all. Series recording falls back on matching titles.",
-                                 systemImage: "exclamationmark.triangle")
-                        .accessibilityIdentifier("settings-guide-ota-warning")
                 }
             }
         }
@@ -615,7 +582,6 @@ struct SettingsView: View {
     // MARK: - Advanced
 
     private var advancedView: some View {
-        ScrollViewReader { proxy in
         Form {
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
@@ -733,15 +699,18 @@ struct SettingsView: View {
                     }
                 }
                 Section("Over-the-Air Guide") {
-                    Color.clear.frame(height: 0).id("ota-section")
+                    Toggle(isOn: $draft.OTA_lineup_auto) {
+                        HStack { Text("Keep the channel list from the air up to date"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) and refreshes that list about once a week, only in the early hours (2–6 AM), using idle tuners that it gives up the moment a recording or a viewer needs one. It is a cheap backup list; it changes nothing else.") }
+                    }
+                    .accessibilityIdentifier("settings-ota-lineup-auto")
                     Picker(selection: $draft.OTA_scan_hour) {
                         Text("Never").tag(-1)
                         ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                     } label: {
-                        HStack { Text("Rescan automatically"); InfoButton("Rescans the full guide once a day from this hour on, using only idle tuners. It waits for a free tuner and gives it up the moment a recording or the player needs it.") }
+                        HStack { Text("Rescan the backup guide daily"); InfoButton("Rescans the full guide from the air once a day from this hour on, so the backup guide stays fresh enough to use if the SiliconDust guide is ever unreachable (a saved air guide is only used up to 36 hours). It uses only idle tuners, waits for a free one and gives it up the moment a recording or the player needs it. Best set to a quiet hour.") }
                     }
                     .accessibilityIdentifier("settings-ota-schedule")
-                    Text("Tunes every TV channel in turn and reads the guide listings stations broadcast with their signal, then saves them as a guide that works with no internet. Takes about 10 minutes and uses idle tuners only; it stops for a recording.")
+                    Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if state.otaScanTask != nil {
@@ -769,8 +738,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")
-        .onChange(of: scrollToOTA) { _, _ in withAnimation { proxy.scrollTo("ota-section", anchor: .top) } }
-        }
     }
 
     // MARK: - Sharing

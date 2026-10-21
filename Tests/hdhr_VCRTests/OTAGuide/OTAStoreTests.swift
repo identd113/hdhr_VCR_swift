@@ -178,6 +178,20 @@ struct OTAStoreTests {
         #expect(OTAScanView.clock(3750) == "1:02:30")
     }
 
+    @Test func theChannelListIsRefreshedOnlyInTheEarlyHours() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func at(_ day: Int, _ hour: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: 30))! }
+        let due = { (now: Date, list: Date?, last: Date?) in AppState.lineupRefreshDue(now: now, lineupDate: list, lastAttempt: last, calendar: cal) }
+        #expect(due(at(21, 3), nil, nil))                       // no list yet, 3:30 AM: go
+        #expect(!due(at(21, 20), nil, nil))                     // prime time: never
+        #expect(!due(at(21, 12), nil, nil))                     // midday: not the slow moment either
+        #expect(!due(at(21, 6), nil, nil))                      // the window is 2–6 AM
+        #expect(due(at(21, 2), at(10, 3), nil))                 // a list from 11 days ago is stale
+        #expect(!due(at(21, 3), at(18, 3), nil))                // a list from 3 days ago is fine
+        #expect(!due(at(21, 4), nil, at(21, 3)))                // already tried tonight: once a day
+        #expect(due(at(22, 4), nil, at(21, 3)))                 // tried yesterday: try again
+    }
+
     @Test func ageTextReadsLikeAPerson() {
         #expect(GuideStore.ageText(20) == "just now")
         #expect(GuideStore.ageText(12 * 60) == "12 min ago")

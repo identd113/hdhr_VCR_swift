@@ -102,6 +102,11 @@ enum OTAStore {
         if lineup { try? FileManager.default.removeItem(at: dir.appendingPathComponent("lineup.json")) }
     }
 
+    /// When this device's saved channel list was written, or nil when there is none.
+    static func lineupDate(deviceId: String, root: URL = OTAStore.root) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json").path))?[.modificationDate] as? Date
+    }
+
     static func loadSummary(deviceId: String, root: URL = OTAStore.root) -> OTAScanSummary? {
         guard let data = try? Data(contentsOf: folder(deviceId: deviceId, root: root).appendingPathComponent("scan.json")) else { return nil }
         let decoder = JSONDecoder()

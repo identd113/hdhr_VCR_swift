@@ -460,3 +460,15 @@ fresh values, not stale ones.
       real device's `.foundSingle` path live (`HDHR-105404BE · 2 tuners · 112 channels ready`,
       confirmed via screenshot) — the `.foundMultiple` list rendering has not been device-tested
       live (would need a second physical/virtual HDHomeRun on the test network).
+
+
+## Step "Channels from the Air" (added 2026-10-21, right after Recording Defaults)
+`Step.airChannels` (`airChannelsScreen`, title "Channels from the Air"): a short explanation (a cheap backup channel list read from what stations broadcast; about
+three minutes; idle tuners only and it steps aside for a recording or a viewer; the air guide is only ever used if no other guide is available; it refreshes itself
+about once a week in the early hours) and `AirChannelsCard` (`Views/AirChannelsCard.swift`): **Scan the air for channels** (`wizard-air-scan`) starts a lineup-only
+OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindow: false)`: the wizard shows the progress itself); while it runs, a bar with
+"N of 49 RF channels · M stations · K channels" and Cancel (`wizard-air-progress`, `wizard-air-cancel`, plus the "stepped aside" note if the scan yields); afterwards
+"Found 18 stations with 118 channels." (`wizard-air-found`) or "No stations found" with an antenna hint (`wizard-air-none`), and "Scan again". With no tuner found yet the
+card says so (`wizard-air-no-tuner`). Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
+Skipping it still ends up with a list: `AppState.startScheduledOTALineupRefreshIfDue` runs the same scan in the early hours when none exists.
+(The step dots and "Step N of M" labels derive from `Step.allCases`, so they now count one more step; the numbered sections above predate this step.)

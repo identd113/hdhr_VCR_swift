@@ -19,7 +19,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
+    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
@@ -134,6 +134,10 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
+                case .airChannels:
+                    airChannelsScreen
+                        .transition(slideTransition)
+                        .id(Step.airChannels)
                 case .vlcRequired:
                     vlcRequiredScreen
                         .transition(slideTransition)
@@ -368,6 +372,27 @@ struct FirstRunWizardView: View {
     // "(Requires VLC)" via VLCBridge.shared.isAvailable/gatedLabel when VLC is missing — this step
     // is what makes that requirement visible up front, with an actual path to fix it, instead of a
     // new user discovering it only once they click a dimmed button somewhere later.
+    /// Step 2 (added 2026-10-21): a quick scan that reads the channel list the stations broadcast, so a backup channel list exists
+    /// from day one. Optional and non-blocking; see AirChannelsCard.
+    private var airChannelsScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Channels from the Air").font(.headline)
+                    Text("Besides the SiliconDust guide, your tuner can read the channel names and numbers that stations broadcast with their signal. It takes about three minutes, uses only idle tuners and steps aside whenever a recording or a viewer needs one. It is a cheap backup list, and the air guide is only ever used if no other guide is available. Once it exists, it refreshes itself about once a week in the early hours.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                AirChannelsCard(progress: state.otaProgress)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var vlcRequiredScreen: some View {
         Form {
             Section {
@@ -674,6 +699,7 @@ struct FirstRunWizardView: View {
     private static func stepTitle(_ step: Step) -> String {
         switch step {
         case .recordingDefaults:  return "Recording Defaults"
+        case .airChannels:        return "Channels from the Air"
         case .vlcRequired:        return "VLC"
         case .webLAN:             return "Web LAN"
         case .terminalGuide:      return "Terminal Guide"

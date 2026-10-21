@@ -58,3 +58,12 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
 - **Source in the web guide:** each tuner's info popover shows the guide source and age (`GuideStore.sourceLine`), see `docs/WebServer.md`. The channel list is still the tuner's own; the saved air `lineup.json` is not used as one yet.
 - **SeriesID:** the air guide has none, so the SeriesID type is dimmed for a tuner whose guide has no series IDs (`GuideStore.guideHasNoSeriesIDs`; native form, web Type row, and `/api/record` rejects it).
 - **Air lineup (developer only):** Settings → Developer can use the saved scan as the lineup (`OTAStore.lineupEntries`, tuned with `/auto/ch<Hz>-<program>`). Debug builds only; the tuner's own lineup is always used in release builds. The web guide's tuner popover names the lineup source.
+
+## Fallback only, and an automatic channel list (2026-10-21)
+- **The air guide is only a fallback.** A shipped app never tries it before the SiliconDust guide: `AppConfig.guidePrefersAir` is false outside debug builds, and the old
+  General toggle "Use the guide from the air" is gone. `GuideStore` loads the saved air guide only when a guide fetch fails and the device has no guide in memory (and
+  the saved one is under 36 h old). The Developer section can still make a debug build prefer it (`Guide_use_ota`), for testing.
+- **The channel list is kept up to date automatically.** `OTA_lineup_auto` (default on; Settings → Advanced → Over-the-Air Guide) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
+  lineup-only scan (a few minutes, no window) when the saved list is missing or older than 7 days, **only between 2 and 6 AM local time** (never prime time), at most once a day
+  (`AppState.lineupRefreshDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
+- "Rescan the backup guide daily" (`OTA_scan_hour`, off by default) is the only thing that keeps the *guide* fresh enough to be usable as a fallback (36 h limit).

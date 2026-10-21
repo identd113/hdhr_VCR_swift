@@ -7,7 +7,7 @@ import Foundation
 extension AppState {
     /// Starts a scan of one device (default: the first real tuner). Returns a one-line status for the caller.
     @discardableResult
-    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true) -> String {
+    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true, showWindow: Bool = true) -> String {
         if otaScanTask != nil { return "A scan is already running: \(otaScanStatus)" }
         guard let device = recordableDevices.first(where: { deviceId == nil || $0.DeviceID == deviceId }), device.isAvailable else {
             return "No tuner available to scan."
@@ -44,7 +44,7 @@ extension AppState {
         let twoPass = !lineupOnly && rfChannels == nil   // a full scan of the whole band: channel lists first, then guides
         otaProgress.reset(lineupOnly: lineupOnly, twoPass: twoPass)
         otaWindowActivates = userInitiated
-        otaWindowRequest += 1
+        if showWindow { otaWindowRequest += 1 }   // the wizard shows its own progress and keeps this window closed
         glog("[OTA] \(lineupOnly ? "lineup-only " : "")scan starting on \(id) (\(host)), \(tunerCount) tuner(s), \(Int(seconds)) s per channel")
         let report: @Sendable (String) -> Void = { [weak self] line in Task { @MainActor in self?.otaScanStatus = line } }
         otaScanGeneration += 1
@@ -109,6 +109,28 @@ extension AppState {
         lastScheduledOTAAttempt = now
         glog("[OTA] scheduled scan due (\(config.OTA_scan_hour):00)")
         startOTAScan(deviceId: id, userInitiated: false)
+    }
+
+    // MARK: keeping the channel list from the air up to date
+
+    /// Pure rule for the automatic channel-list refresh, so it can be tested: due when the list is missing or older than `maxAge`, only in
+    /// the early hours (a slow moment, never prime time), and at most once a day.
+    nonisolated static func lineupRefreshDue(now: Date, lineupDate: Date?, lastAttempt: Date?, calendar: Calendar = .current,
+                                              quietHours: Range<Int> = 2..<6, maxAge: TimeInterval = 7 * 24 * 3600) -> Bool {
+        guard quietHours.contains(calendar.component(.hour, from: now)) else { return false }
+        if let lineupDate, now.timeIntervalSince(lineupDate) < maxAge { return false }
+        if let lastAttempt, calendar.isDate(lastAttempt, inSameDayAs: now) { return false }
+        return true
+    }
+
+    /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) in the early hours when the saved list is missing or a week old.
+    /// It runs without opening the scan window and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
+    func startScheduledOTALineupRefreshIfDue(now: Date = Date()) {
+        guard config.OTA_lineup_auto, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
+        guard Self.lineupRefreshDue(now: now, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
+        lastOTALineupAttempt = now
+        glog("[OTA] refreshing the channel list from the air (early hours, list missing or a week old)")
+        startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false, showWindow: false)
     }
 
     // MARK: handing a tuner to the app while a scan runs
