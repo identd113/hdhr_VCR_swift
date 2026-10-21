@@ -13,6 +13,8 @@ final class AppState: ObservableObject {
     @Published var shows: [Show] = []
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
+    private var lineupFetchTasks: [String: Task<Void, Never>] = [:]   // deviceId → the lineup fetch in flight (see fetchAllLineups)
+    private(set) var lineupFetchCount = 0                             // lineups actually fetched (a test and diagnostics counter)
     var lineupFromAirByDevice: Set<String> = []                 // devices whose lineup above is the saved over-the-air one (developer section)
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
         // Rebuild caches on guide load (infrequent). The 403 feedback loop is broken by
@@ -1893,7 +1895,25 @@ final class AppState: ObservableObject {
         await task.value
     }
 
+    /// Fetches the lineup of each device, once at a time per device: a device whose lineup is already being fetched is waited for, not fetched
+    /// again (startup, a guide refresh, the Developer pickers and the idle loop can all ask within the same second).
     private func fetchAllLineups(for devices: [HDHRDevice]) async {
+        var fresh: [HDHRDevice] = []
+        var running: [Task<Void, Never>] = []
+        for device in devices {
+            if let t = lineupFetchTasks[device.DeviceID] { running.append(t) } else { fresh.append(device) }
+        }
+        if !fresh.isEmpty {
+            lineupFetchCount += fresh.count
+            let task = Task { await self.fetchLineupsNow(for: fresh) }
+            for device in fresh { lineupFetchTasks[device.DeviceID] = task }
+            await task.value
+            for device in fresh { lineupFetchTasks[device.DeviceID] = nil }
+        }
+        for t in running { await t.value }
+    }
+
+    private func fetchLineupsNow(for devices: [HDHRDevice]) async {
         await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
             for device in devices {
                 group.addTask {
@@ -7136,6 +7156,7 @@ extension AppState {
 
     /// Switches the guide source, saves it, drops the guide in memory and fetches it again from the new source.
     func setGuideSource(_ choice: GuideSourceChoice) async {
+        guard choice != guideSourceChoice else { return }   // a segmented picker can report the same pick twice: load once
         config.Guide_use_ota = (choice == .air)
         config.Guide_use_xml = (choice == .xmltv)
         saveConfig()
@@ -7147,6 +7168,7 @@ extension AppState {
 
     /// Switches the lineup between the tuner's own and the saved over-the-air one, then loads it again.
     func setLineupSource(air: Bool) async {
+        guard (config.Dev_lineup_source == "air") != air else { return }
         config.Dev_lineup_source = air ? "air" : "tuner"
         saveConfig()
         glog("[Dev] lineup source → \(air ? "air" : "tuner")")
