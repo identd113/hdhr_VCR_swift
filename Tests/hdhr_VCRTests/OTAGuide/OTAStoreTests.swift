@@ -82,15 +82,17 @@ struct OTAStoreTests {
         #expect(!OTAStore.hasFreshGuide(deviceId: "TEST", root: root))
     }
 
-    @Test func theScanWindowSaysEpisodesAndHowFarBackTheyStart() {
-        let utc = TimeZone(identifier: "UTC")!, en = Locale(identifier: "en_US")
-        // 2026-10-20 18:00 UTC is a Tuesday.
-        let start = Date(timeIntervalSince1970: 1_792_519_200)
-        #expect(OTASubChannelRow.episodeText(count: 0, earliest: start, locale: en, timeZone: utc) == nil)
-        #expect(OTASubChannelRow.episodeText(count: 1, earliest: nil, locale: en, timeZone: utc) == "1 episode")
-        let text = OTASubChannelRow.episodeText(count: 103, earliest: start, locale: en, timeZone: utc)
-        #expect(text?.hasPrefix("103 episodes · from Tue") == true)
-        #expect(text?.contains("6:00") == true)
+    @Test func aChannelSaysHowFarAheadItsGuideReaches() {
+        let now = Date(timeIntervalSince1970: 1_792_519_200)
+        var sub = OTASubChannelRow(sourceId: 1, number: "4.1", name: "WCCO", listings: 0, done: false)
+        #expect(sub.reachText(now: now) == nil)                      // nothing listed
+        sub.listings = 103
+        sub.latestEnd = now.addingTimeInterval(66 * 3600)
+        #expect(sub.reachText(now: now) == "2.8 days")
+        sub.latestEnd = now.addingTimeInterval(14 * 3600)
+        #expect(sub.reachText(now: now) == "14 h")
+        sub.latestEnd = now.addingTimeInterval(-3600)               // already past: 0 h, never negative
+        #expect(sub.reachText(now: now) == "0 h")
     }
 
     @Test func aStationsFactsAreWorkedOutFromWhatWasRead() throws {
@@ -127,9 +129,10 @@ struct OTAStoreTests {
         #expect(row.info.majors == [4, 23])
         #expect(row.info.videoChannels == 7)
         #expect(row.info.episodes == result.events.count)
-        #expect(row.info.earliest != nil && row.info.latestEnd != nil)
+        #expect(row.info.latestEnd != nil)
         #expect(row.info.frequencyMHz == 581)
-        #expect(row.subChannels.first?.earliest != nil)
+        #expect(row.subChannels.first?.latestEnd != nil)
+        #expect(row.subChannels.allSatisfy { !$0.audioOnly })
     }
 
     @Test func ageTextReadsLikeAPerson() {

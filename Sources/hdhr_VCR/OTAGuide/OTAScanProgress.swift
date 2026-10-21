@@ -10,25 +10,14 @@ struct OTASubChannelRow: Identifiable, Equatable {
     var name: String
     var listings: Int
     var done: Bool
-    /// Start of the earliest program listed for this channel (the one on the air now, usually), or nil before any listing arrives.
-    var earliest: Date?
+    var audioOnly = false
+    /// End of the last program listed for this channel: how far ahead its guide reaches.
+    var latestEnd: Date?
 
-    /// "103 episodes · from Tue 1:00 PM"; nil while there are none.
-    var episodeText: String? { Self.episodeText(count: listings, earliest: earliest) }
-
-    static func episodeText(count: Int, earliest: Date?, locale: Locale = .current, timeZone: TimeZone = .current) -> String? {
-        guard count > 0 else { return nil }
-        let noun = count == 1 ? "1 episode" : "\(count) episodes"
-        guard let earliest else { return noun }
-        return noun + " · from " + startText(earliest, locale: locale, timeZone: timeZone)
-    }
-
-    /// "Tue 7:00 PM".
-    static func startText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        let f = DateFormatter()
-        f.locale = locale; f.timeZone = timeZone
-        f.setLocalizedDateFormatFromTemplate("EEEjmm")
-        return f.string(from: date)
+    /// "2.8 days" / "14 h" ahead of `now`; nil when nothing is listed.
+    func reachText(now: Date = Date()) -> String? {
+        guard listings > 0, let latestEnd else { return nil }
+        return OTAScanView.hoursText(max(0, latestEnd.timeIntervalSince(now) / 3600))
     }
 }
 
@@ -40,7 +29,6 @@ struct OTAMuxInfo: Equatable {
     var guideTablesAnnounced = 0        // the Master Guide Table's count of listing tables: 0 means the station sends no guide
     var broadcastTime: Date?            // the station's own clock (System Time Table)
     var episodes = 0
-    var earliest: Date?
     var latestEnd: Date?
     var strength: Int?                  // the tuner's signal strength / quality readings, percent
     var quality: Int?
@@ -147,7 +135,7 @@ final class OTAScanProgress: ObservableObject {
         let carried = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }
         let subs = carried.map {
             OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
-                              earliest: bySource[$0.sourceId]?.map(\.start).min())
+                              audioOnly: $0.serviceType == 3, latestEnd: bySource[$0.sourceId]?.map(\.end).max())
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
         guard !subs.isEmpty else { return }
         var info = OTAMuxInfo(frequencyMHz: Double(OTAScanner.frequencyHz(rf: rf) ?? 0) / 1_000_000)
@@ -155,7 +143,6 @@ final class OTAScanProgress: ObservableObject {
         info.guideTablesAnnounced = result.announcedEITCount
         info.broadcastTime = result.broadcastTime
         info.episodes = result.events.count
-        info.earliest = result.events.map(\.start).min()
         info.latestEnd = result.events.map(\.end).max()
         info.majors = Array(Set(carried.map(\.major))).sorted()
         info.videoChannels = carried.filter { $0.serviceType == 2 }.count

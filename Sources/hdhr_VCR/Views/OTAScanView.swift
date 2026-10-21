@@ -53,7 +53,7 @@ struct OTAScanView: View {
             }
         }
         .padding(16)
-        .frame(width: 480, height: 600)
+        .frame(width: 480, height: 620)
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
@@ -148,76 +148,122 @@ struct OTAScanView: View {
     // MARK: the selected station
 
     private func panel(_ row: OTAMultiplexRow) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let i = row.info
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 marker(row.state)
-                Text("RF \(row.rf) · \(Self.mhz(row.info.frequencyMHz))").font(.headline)
-                Text(stateWord(row.state)).font(.caption).foregroundStyle(.secondary)
+                Text("RF \(row.rf)").font(.title3.bold())
+                Text(Self.mhz(i.frequencyMHz)).foregroundStyle(.secondary)
+                Text(stateWord(row.state)).font(.caption).padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 Spacer(minLength: 0)
-            }
-            facts(row)
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(row.subChannels) { sub in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            if row.state == .scanning {
-                                if sub.done { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                                else { ProgressView().controlSize(.mini) }
-                            }
-                            Text("\(sub.number)  \(sub.name)").font(.callout)
-                            Spacer(minLength: 8)
-                            if !progress.lineupOnly {
-                                if let text = sub.episodeText { Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-                                else if row.state != .waiting && row.state != .scanning { Text("no guide").font(.caption).foregroundStyle(.secondary) }
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
+                if let q = i.quality ?? i.strength {
+                    HStack(spacing: 4) {
+                        SignalBarsView(bucket: SignalBucket(Double(q) / 100))
+                        Text("\(q)%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
+                    .help([i.strength.map { "Strength \($0)%" }, i.quality.map { "Quality \($0)%" }].compactMap { $0 }.joined(separator: " · "))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Signal")
+                    .accessibilityValue([i.strength.map { "strength \($0) percent" }, i.quality.map { "quality \($0) percent" }].compactMap { $0 }.joined(separator: ", "))
+                    .accessibilityIdentifier("ota-scan-signal")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            HStack(spacing: 8) {
+                tile("\(row.subChannels.count)", "channels", id: "channels")
+                if !progress.lineupOnly {
+                    tile(i.episodes > 0 ? "\(i.episodes)" : "–", "episodes", id: "episodes")
+                    tile(guideTileValue(row), "guide ahead", id: "guide")
+                }
+            }
+            channelTable(row)
+            Text(footnote(row)).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                .accessibilityIdentifier("ota-scan-facts")
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Color.secondary.opacity(0.07)))
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.07)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
         .accessibilityIdentifier("ota-scan-mux-\(row.rf)")
     }
 
-    /// What is interesting about the station itself, as label/value pairs in two columns.
-    private func facts(_ row: OTAMultiplexRow) -> some View {
+    private func tile(_ value: String, _ label: String, id: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value).font(.title3.monospacedDigit().bold()).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.10)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+        .accessibilityIdentifier("ota-scan-tile-\(id)")
+    }
+
+    /// How far ahead the station's guide reaches, or why there is none.
+    private func guideTileValue(_ row: OTAMultiplexRow) -> String {
         let i = row.info
-        var items: [(String, String)] = []
-        let majors = i.majors.map { "\($0).x" }.joined(separator: ", ")
-        items.append(("Carries", "\(row.subChannels.count) channels" + (majors.isEmpty ? "" : " (\(majors))")
-                      + (i.audioChannels > 0 ? ", \(i.audioChannels) audio-only" : "")))
-        if !progress.lineupOnly {
-            if i.guideTablesAnnounced == 0, row.state != .scanning { items.append(("Guide", "none sent")) }
-            else if i.episodes > 0 {
-                var g = "\(i.episodes) episodes"
-                if let hours = i.guideHoursAhead() { g += ", reaches \(Self.hoursText(hours)) ahead" }
-                items.append(("Guide", g))
-            } else { items.append(("Guide", "reading…")) }
-            if let first = i.earliest { items.append(("Oldest listing", OTASubChannelRow.startText(first))) }
-            if i.guideTablesAnnounced > 0 { items.append(("Listing tables", "\(i.guideTablesAnnounced) announced")) }
-        }
-        if i.strength != nil || i.quality != nil {
-            items.append(("Signal", [i.strength.map { "strength \($0)%" }, i.quality.map { "quality \($0)%" }].compactMap { $0 }.joined(separator: ", ")))
-        }
-        if let mbps = i.mbps { items.append(("Data rate", String(format: "%.1f Mbit/s over %d s", mbps, Int(i.seconds.rounded())))) }
-        if let off = i.clockOffset() { items.append(("Station clock", off == 0 ? "matches this Mac" : "\(off > 0 ? "+" : "")\(off) s vs this Mac")) }
-        return LazyVGrid(columns: [GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)], alignment: .leading, spacing: 5) {
-            ForEach(items, id: \.0) { item in
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(item.0).font(.caption2).foregroundStyle(.secondary)
-                    Text(item.1).font(.caption)
+        if let hours = i.guideHoursAhead() { return Self.hoursText(hours) }
+        if i.guideTablesAnnounced == 0, row.state != .scanning { return "none sent" }
+        return "reading…"
+    }
+
+    private func channelTable(_ row: OTAMultiplexRow) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("Channel").frame(maxWidth: .infinity, alignment: .leading)
+                if !progress.lineupOnly {
+                    Text("Episodes").frame(width: 64, alignment: .trailing)
+                    Text("Reaches").frame(width: 66, alignment: .trailing)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("ota-scan-fact-\(item.0.replacingOccurrences(of: " ", with: "-").lowercased())")
+            }
+            .font(.caption2).foregroundStyle(.secondary)
+            .padding(.bottom, 4)
+            Divider()
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(row.subChannels) { sub in
+                        HStack(spacing: 6) {
+                            Group {
+                                if row.state == .scanning && !sub.done { ProgressView().controlSize(.mini) }
+                                else if row.state == .scanning { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                                else { Color.clear }
+                            }
+                            .frame(width: 14)
+                            Text(sub.number).font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
+                            Text(sub.name).font(.callout).lineLimit(1)
+                            if sub.audioOnly {
+                                Image(systemName: "speaker.wave.2").font(.caption).foregroundStyle(.secondary).help("Audio only")
+                                    .accessibilityLabel("audio only")
+                            }
+                            Spacer(minLength: 4)
+                            if !progress.lineupOnly {
+                                Text(sub.listings > 0 ? "\(sub.listings)" : "–").font(.callout.monospacedDigit())
+                                    .frame(width: 64, alignment: .trailing)
+                                Text(sub.reachText() ?? (row.state == .scanning || row.state == .waiting ? "" : "no guide"))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .frame(width: 66, alignment: .trailing)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
+                        Divider().opacity(0.4)
+                    }
+                }
             }
         }
+    }
+
+    /// The technical readings, kept small: data rate, listing tables announced, the station's clock against this Mac's.
+    private func footnote(_ row: OTAMultiplexRow) -> String {
+        let i = row.info
+        var parts: [String] = []
+        if let mbps = i.mbps { parts.append(String(format: "%.1f Mbit/s over %d s", mbps, Int(i.seconds.rounded()))) }
+        if i.guideTablesAnnounced > 0, !progress.lineupOnly { parts.append("\(i.guideTablesAnnounced) listing tables") }
+        if let off = i.clockOffset() { parts.append(abs(off) <= 2 ? "clock in step with this Mac" : "clock \(off > 0 ? "+" : "")\(off) s vs this Mac") }
+        return parts.joined(separator: " · ")
     }
 
     static func mhz(_ v: Double) -> String { v == v.rounded() ? String(format: "%.0f MHz", v) : String(format: "%.1f MHz", v) }
