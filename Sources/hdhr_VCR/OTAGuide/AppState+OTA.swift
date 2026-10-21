@@ -13,6 +13,7 @@ extension AppState {
             return "No tuner available to scan."
         }
         let id = device.DeviceID
+        otaScanDeviceId = id
         let tunerCount = device.TunerCount ?? 1
         let seconds = lineupOnly ? min(seconds, 10) : seconds
         let host = device.LocalIP
@@ -36,7 +37,8 @@ extension AppState {
                     return next.map { $0.timeIntervalSinceNow }
                 }
             },
-            tunerLimit: { [weak self] in await MainActor.run { [weak self] in self?.otaTunerLimit ?? 1 } })
+            tunerLimit: { [weak self] in await MainActor.run { [weak self] in self?.otaTunerLimit ?? 1 } },
+            onHeldChange: { [weak self] held in Task { @MainActor [weak self] in self?.otaHeldResources = held } })
         otaScanStatus = "Scanning \(id)…"
         let twoPass = !lineupOnly && rfChannels == nil   // a full scan of the whole band: channel lists first, then guides
         otaProgress.reset(lineupOnly: lineupOnly, twoPass: twoPass)
@@ -76,7 +78,7 @@ extension AppState {
                 guard let self else { return }
                 // A cancelled scan's late finish must not clear the state of a scan started right after it.
                 let current = self.otaScanGeneration == generation
-                if current { self.otaScanTask = nil; self.otaProgress.running = false }
+                if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaHeldResources = [] }
                 // A cancelled full scan saved its channel lists already; its half-read guide must not replace an earlier complete one.
                 let saved = (twoPass && outcome.cancelled) ? nil : OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly)
                 if let summary = saved {
@@ -112,6 +114,7 @@ extension AppState {
         otaScanTask?.cancel()
         otaScanTask = nil
         otaProgress.running = false
+        otaHeldResources = []
         otaScanStatus = "Scan cancelled"
     }
 }

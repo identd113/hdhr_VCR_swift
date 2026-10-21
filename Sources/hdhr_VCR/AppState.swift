@@ -243,6 +243,10 @@ final class AppState: ObservableObject {
     @Published var otaScanStatus: String = ""
     var lastScheduledOTAAttempt: Date? = nil
     var otaScanGeneration = 0
+    /// Tuners ("tuner0"…) the running OTA scan is holding right now. They are the app's to take back (the scan yields), so they do not
+    /// count as occupied when deciding whether a recording or a live stream may start (see `activeTunerCount`).
+    var otaHeldResources: Set<String> = []
+    var otaScanDeviceId: String?
     /// Live progress shown by the OTA scan window, and the user's tuner allowance for the running scan (the window's pulldown).
     let otaProgress = OTAScanProgress()
     @Published var otaTunerLimit = 2
@@ -6835,7 +6839,8 @@ final class AppState: ObservableObject {
     // Never count recordings alone — the in-app VLC stream also occupies a tuner (unless it's
     // playing the recording relay — see vlcOccupiesTuner).
     func activeTunerCount(for deviceId: String) -> Int {
-        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.isInUse }.count ?? 0
+        let held = deviceId == otaScanDeviceId ? otaHeldResources : []
+        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.isInUse && !held.contains($0.Resource.lowercased()) }.count ?? 0
         let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
         // Both slots can independently occupy a tuner on the same device (a device with ≥2 tuners
         // showing live channels in both primary and PiP secondary) — sum them; each is scoped to

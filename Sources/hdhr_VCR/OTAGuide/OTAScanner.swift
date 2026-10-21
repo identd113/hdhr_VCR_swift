@@ -19,6 +19,8 @@ struct OTAScanEnvironment: Sendable {
     /// How many tuners the user currently allows the scan (the window's pulldown). Read between channels: lowering it lets a running
     /// capture finish and then leaves that worker idle; raising it puts an idle worker back to work within a second.
     var tunerLimit: @Sendable () async -> Int = { Int.max }
+    /// Called whenever the set of tuners ("tuner0"…) this scan is holding changes, so the app can tell its own use from the scan's.
+    var onHeldChange: @Sendable (Set<String>) -> Void = { _ in }
 }
 
 /// What the scan window shows, as it happens.
@@ -74,6 +76,7 @@ actor OTAScanner {
         finished = 0
         total = queue.count
         events = onEvent
+        onHeldChange = env.onHeldChange
         onEvent(.queued(total: total))
         let workers = max(1, env.tunerCount)
         await withTaskGroup(of: Void.self) { group in
@@ -142,6 +145,7 @@ actor OTAScanner {
             let busy = max(externalBusy, appBusy)
             if let row = rows.first(where: { !$0.busy && !claimed.contains($0.resource) }), busy + claimed.count < env.tunerCount {
                 claimed.insert(row.resource)
+                env.onHeldChange(claimed)
                 return row.resource
             }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -149,7 +153,8 @@ actor OTAScanner {
         return nil
     }
 
-    private func release(_ tuner: String) { claimed.remove(tuner) }
+    private var onHeldChange: @Sendable (Set<String>) -> Void = { _ in }
+    private func release(_ tuner: String) { claimed.remove(tuner); onHeldChange(claimed) }
 
     /// True when a recording is about to start, or the app has taken tuners so that it plus this scan no longer fit on the device.
     private func shouldYield(env: OTAScanEnvironment) async -> Bool {

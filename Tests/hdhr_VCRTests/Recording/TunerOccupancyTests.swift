@@ -59,6 +59,24 @@ struct TunerOccupancyTests {
         #expect(await state.activeTunerCount(for: "DEV1") == 1)
     }
 
+    @Test func activeTunerCount_ignoresTunersTheOTAScanIsHolding() async {
+        // The scan tunes by frequency, which the hardware now (correctly) reports as in use, but the scan yields to the app, so its
+        // tuners must not make the device look full: a due recording would otherwise be skipped as a tuner conflict.
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        await MainActor.run {
+            state.deviceTunerOccupancy["DEV1"] = [
+                DeviceTunerInfo(Resource: "tuner0", VctNumber: nil, TargetIP: "10.0.0.2", SignalQualityPercent: nil, Frequency: 593_000_000),
+                DeviceTunerInfo(Resource: "tuner1", VctNumber: nil, TargetIP: "10.0.0.2", SignalQualityPercent: nil, Frequency: 599_000_000),
+            ]
+            state.otaScanDeviceId = "DEV1"
+            state.otaHeldResources = ["tuner0", "tuner1"]
+        }
+        #expect(await state.activeTunerCount(for: "DEV1") == 0)
+        #expect(await !state.tunersFull(for: "DEV1"))
+        await MainActor.run { state.otaHeldResources = ["tuner0"] }   // tuner1 is someone else's (not held by the scan)
+        #expect(await state.activeTunerCount(for: "DEV1") == 1)
+    }
+
     @Test func activeTunerCount_localRecordingsOnly_noHardwarePollYet() async {
         // Just-started recording: status.json hasn't caught up yet, so deviceTunerOccupancy is
         // empty/stale, but the local recordingShows array already knows about it.
