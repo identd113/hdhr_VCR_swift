@@ -92,10 +92,10 @@ enum APIDocs {
         APIRoute(method: "GET", path: "/api/art?u={url}", group: "Assets", summary: "Cached/proxied poster or logo image.", response: "image", streaming: true),
         APIRoute(method: "GET", path: "/api/icon", group: "Assets", summary: "The app icon.", response: "image/png", streaming: true),
         // — Virtual tuner (only answers while something is recording)
-        APIRoute(method: "GET", path: "/discover.json", group: "Virtual tuner", summary: "HDHomeRun-style discovery for the recording relay (404 when not recording)."),
-        APIRoute(method: "GET", path: "/lineup.json", group: "Virtual tuner", summary: "The relay's lineup: the shows being recorded."),
-        APIRoute(method: "GET", path: "/status.json", group: "Virtual tuner", summary: "The relay's tuner status."),
-        APIRoute(method: "GET", path: "/auto/v{channel}", group: "Virtual tuner", summary: "Stream a recording in progress as if it were a tuner channel.", response: "video/mp2t", streaming: true),
+        APIRoute(method: "GET", path: "/discover.json", group: "Virtual tuner (HDHomeRun protocol, outside /api/ on purpose)", summary: "HDHomeRun-style discovery for the recording relay (404 when not recording)."),
+        APIRoute(method: "GET", path: "/lineup.json", group: "Virtual tuner (HDHomeRun protocol, outside /api/ on purpose)", summary: "The relay's lineup: the shows being recorded."),
+        APIRoute(method: "GET", path: "/status.json", group: "Virtual tuner (HDHomeRun protocol, outside /api/ on purpose)", summary: "The relay's tuner status."),
+        APIRoute(method: "GET", path: "/auto/v{channel}", group: "Virtual tuner (HDHomeRun protocol, outside /api/ on purpose)", summary: "Stream a recording in progress as if it were a tuner channel.", response: "video/mp2t", streaming: true),
     ]
 
     /// Every `"/api/…"`-style literal the documentation must account for (used by the drift test).
@@ -134,7 +134,7 @@ enum APIDocs {
         let doc: [String: Any] = [
             "openapi": "3.0.3",
             "info": ["title": "hdhrVCRplus web API", "version": appVersion,
-                     "description": "LAN-only. POST bodies are JSON and must send Content-Type: application/json. Debug builds only."],
+                     "description": "LAN-only. POST bodies are JSON and must send Content-Type: application/json. Debug builds only. Every route is under /api/ except the virtual tuner group, which must sit at the root to look like an HDHomeRun to other instances and clients."],
             "servers": [["url": "/"]],
             "paths": paths,
         ]
