@@ -10,6 +10,21 @@ struct OTASubChannelRow: Identifiable, Equatable {
     var name: String
     var listings: Int
     var done: Bool
+    /// Start of the earliest program listed for this channel (the one on the air now, usually), or nil before any listing arrives.
+    var earliest: Date?
+
+    /// "103 episodes · from Tue 1:00 PM"; nil while there are none.
+    var episodeText: String? { Self.episodeText(count: listings, earliest: earliest) }
+
+    static func episodeText(count: Int, earliest: Date?, locale: Locale = .current, timeZone: TimeZone = .current) -> String? {
+        guard count > 0 else { return nil }
+        let noun = count == 1 ? "1 episode" : "\(count) episodes"
+        guard let earliest else { return noun }
+        let f = DateFormatter()
+        f.locale = locale; f.timeZone = timeZone
+        f.setLocalizedDateFormatFromTemplate("EEEjmm")
+        return noun + " · from " + f.string(from: earliest)
+    }
 }
 
 struct OTAMultiplexRow: Identifiable, Equatable {
@@ -89,9 +104,11 @@ final class OTAScanProgress: ObservableObject {
     }
 
     private func upsert(rf: Int, result: OTADecodeResult, done: Bool) {
-        let counts = Dictionary(grouping: result.events, by: \.sourceId).mapValues(\.count)
+        let bySource = Dictionary(grouping: result.events, by: \.sourceId)
+        let counts = bySource.mapValues(\.count)
         let subs = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }.map {
-            OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1))
+            OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
+                              earliest: bySource[$0.sourceId]?.map(\.start).min())
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
         guard !subs.isEmpty else { return }
         let row = OTAMultiplexRow(rf: rf, state: !done ? .scanning : (twoPass && pass == 1 ? .waiting : .done), subChannels: subs)

@@ -82,6 +82,17 @@ struct OTAStoreTests {
         #expect(!OTAStore.hasFreshGuide(deviceId: "TEST", root: root))
     }
 
+    @Test func theScanWindowSaysEpisodesAndHowFarBackTheyStart() {
+        let utc = TimeZone(identifier: "UTC")!, en = Locale(identifier: "en_US")
+        // 2026-10-20 18:00 UTC is a Tuesday.
+        let start = Date(timeIntervalSince1970: 1_792_519_200)
+        #expect(OTASubChannelRow.episodeText(count: 0, earliest: start, locale: en, timeZone: utc) == nil)
+        #expect(OTASubChannelRow.episodeText(count: 1, earliest: nil, locale: en, timeZone: utc) == "1 episode")
+        let text = OTASubChannelRow.episodeText(count: 103, earliest: start, locale: en, timeZone: utc)
+        #expect(text?.hasPrefix("103 episodes · from Tue") == true)
+        #expect(text?.contains("6:00") == true)
+    }
+
     @Test func ageTextReadsLikeAPerson() {
         #expect(GuideStore.ageText(20) == "just now")
         #expect(GuideStore.ageText(12 * 60) == "12 min ago")

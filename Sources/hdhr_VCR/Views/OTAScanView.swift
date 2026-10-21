@@ -5,6 +5,7 @@ import SwiftUI
 struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
+    @State private var expanded: Set<Int> = []   // finished stations whose channels are unfolded
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
@@ -61,7 +62,7 @@ struct OTAScanView: View {
         HStack(spacing: 18) {
             stat(progress.rows.count, "multiplexes", id: "ota-scan-multiplexes")
             stat(progress.channelCount, "channels", id: "ota-scan-channels")
-            if !progress.lineupOnly { stat(progress.listingCount, "listings", id: "ota-scan-listings") }
+            if !progress.lineupOnly { stat(progress.listingCount, "episodes", id: "ota-scan-listings") }
             Spacer()
         }
     }
@@ -92,22 +93,48 @@ struct OTAScanView: View {
         switch s { case .waiting: return "waiting for guide"; case .scanning: return "scanning"; case .done: return "done"; case .noGuide(let why): return "no guide: \(why)" }
     }
 
+    private func isFinished(_ s: OTAMultiplexRow.State) -> Bool {
+        switch s { case .done, .noGuide: return true; case .waiting, .scanning: return false }
+    }
+
+    /// A finished station folds its channels away; one still being read, or waiting for its guide, shows the channels it carries.
+    private func showsChannels(_ row: OTAMultiplexRow) -> Bool {
+        switch row.state {
+        case .scanning, .waiting: return true
+        case .done, .noGuide: return expanded.contains(row.rf)
+        }
+    }
+
     @ViewBuilder private func multiplexView(_ row: OTAMultiplexRow) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 marker(row.state)
                 Text("RF \(row.rf)").bold()
-                Text("\(row.subChannels.count) channels" + (progress.lineupOnly ? "" : " · \(row.listings) listings"))
+                Text("\(row.subChannels.count) channels" + (progress.lineupOnly || row.listings == 0 ? "" : " · \(row.listings) episodes"))
                     .font(.caption).foregroundStyle(.secondary)
                 if case .noGuide(let why) = row.state { Text(why).font(.caption).foregroundStyle(.orange) }
+                Spacer(minLength: 0)
+                if isFinished(row.state) {
+                    Button { if expanded.contains(row.rf) { expanded.remove(row.rf) } else { expanded.insert(row.rf) } } label: {
+                        Image(systemName: expanded.contains(row.rf) ? "chevron.down" : "chevron.right").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(expanded.contains(row.rf) ? "Hide channels" : "Show channels")
+                    .accessibilityIdentifier("ota-scan-expand-\(row.rf)")
+                }
             }
-            if row.state == .scanning {
+            if showsChannels(row) {
                 ForEach(row.subChannels) { sub in
                     HStack(spacing: 6) {
-                        if sub.done { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                        else { ProgressView().controlSize(.mini) }
+                        if row.state == .scanning {
+                            if sub.done { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                            else { ProgressView().controlSize(.mini) }
+                        }
                         Text("\(sub.number)  \(sub.name)").font(.callout)
-                        if !progress.lineupOnly, sub.listings > 0 { Text("\(sub.listings)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                        if !progress.lineupOnly {
+                            if let text = sub.episodeText { Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                            else if row.state != .waiting && row.state != .scanning { Text("no guide").font(.caption).foregroundStyle(.secondary) }
+                        }
                     }
                     .padding(.leading, 22)
                     .accessibilityElement(children: .combine)
