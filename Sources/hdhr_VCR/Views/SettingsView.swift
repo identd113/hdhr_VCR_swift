@@ -79,6 +79,10 @@ struct SettingsView: View {
     private static let parsedChangelogSections: [String] = parseChangelog(changelogText).sections
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
+    @State private var purgeMemory = true
+    @State private var purgeSDCache = false
+    @State private var purgeAirGuide = false
+    @State private var purgeAirLineup = false
     @State private var configIOStatus: String = ""
     @State private var guideRefreshInProgress: Bool = false
     @State private var updateCheckInProgress: Bool = false
@@ -1086,23 +1090,42 @@ struct SettingsView: View {
                 }
             }
             Section("Purges") {
-                maintenanceRow("Clear guide in memory", "Drops the guide held in memory and loads it again from the current source") {
-                    state.guideStore.invalidateAll()
-                    state.guideByDevice = [:]
-                    await state.refreshGuide()
-                    return "Guide cleared and reloaded"
-                }
-                maintenanceRow("Delete cached SiliconDust guide files", "Removes the on-disk copies of the SiliconDust guide that are reused after a relaunch or when the service is down") {
-                    state.purgeGuideDiskCache()
-                }
-                maintenanceRow("Delete saved air guide", "Removes the saved over-the-air guide and its scan record for every tuner. The next air-guide refresh finds nothing until you scan again") {
-                    state.purgeSavedAirData(guide: true, lineup: false)
-                }
-                maintenanceRow("Delete saved air lineup", "Removes the saved over-the-air channel list for every tuner") {
-                    state.purgeSavedAirData(guide: false, lineup: true)
-                }
-                maintenanceRow("Delete all saved air data", "Removes the saved air guide, scan record and channel list for every tuner, so the next scan starts from nothing") {
-                    state.purgeSavedAirData(guide: true, lineup: true)
+                Toggle("Guide in memory", isOn: $purgeMemory)
+                Toggle("Cached SiliconDust guide files", isOn: $purgeSDCache)
+                Toggle("Saved air guide", isOn: $purgeAirGuide)
+                Toggle("Saved air lineup", isOn: $purgeAirLineup)
+                HStack {
+                    Text("Removes what is ticked, reloads the guide, and opens the scan window when an air item was removed (a new scan starts).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if maintenanceBusy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Run") {
+                            maintenanceBusy = true
+                            maintenanceStatus = ""
+                            Task { @MainActor in
+                                var done: [String] = []
+                                if purgeSDCache { done.append(state.purgeGuideDiskCache()) }
+                                if purgeAirGuide || purgeAirLineup {
+                                    done.append(state.purgeSavedAirData(guide: purgeAirGuide, lineup: purgeAirLineup))
+                                }
+                                if purgeMemory {
+                                    state.guideStore.invalidateAll()
+                                    state.guideByDevice = [:]
+                                }
+                                if purgeMemory || purgeSDCache || purgeAirGuide { await state.refreshGuide() }
+                                if purgeAirLineup { await state.reloadLineups() }
+                                if purgeAirGuide || purgeAirLineup {
+                                    done.append(state.startOTAScan(lineupOnly: !purgeAirGuide))
+                                }
+                                maintenanceStatus = done.isEmpty ? "Nothing ticked" : done.joined(separator: " · ")
+                                maintenanceBusy = false
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!(purgeMemory || purgeSDCache || purgeAirGuide || purgeAirLineup))
+                    }
                 }
             }
             if !maintenanceStatus.isEmpty {
