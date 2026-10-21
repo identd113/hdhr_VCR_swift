@@ -2647,6 +2647,14 @@ final class WebServer: @unchecked Sendable {
             }
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
+        #if DEBUG
+        // API reference (debug builds only; APIDocs.swift): the spec as JSON and a Try-it page built from it.
+        case "/api/help":
+            return .ok(contentType: "application/json", body: APIDocs.helpJSON())
+        case "/api/docs":
+            return .ok(contentType: "text/html; charset=utf-8", body: Data(APIDocs.pageHTML.utf8))
+        #endif
+
         case "/api/ota-status":
             let p = state.otaProgress
             return jsonResponse(["status": state.otaScanStatus, "running": state.otaScanTask != nil,
