@@ -95,4 +95,17 @@ struct PSIPDecoderTests {
         #expect(guide[0].SeriesID == nil)
         #expect(guide.map(\.StartTime) == guide.map(\.StartTime).sorted())
     }
+
+    /// Data that never lines up as transport-stream packets must be dropped as it arrives, not piled up and rescanned on every chunk
+    /// (13 MB used to take 23 s), and the decoder must still find real packets afterwards.
+    @Test func garbageIsDroppedQuicklyAndTheDecoderResyncs() throws {
+        let decoder = PSIPDecoder()
+        var junk = Data(count: 65536)
+        for i in 0..<junk.count { junk[i] = UInt8((i * 31 + 7) % 251) }   // 251 is prime: 0x47 never repeats 188 bytes apart
+        let start = Date()
+        for _ in 0..<200 { decoder.ingest(junk) }
+        #expect(Date().timeIntervalSince(start) < 3, "13 MB of junk was slow to ingest")
+        decoder.ingest(try Data(contentsOf: Self.fixture))
+        #expect(decoder.result().channels.count == 7)
+    }
 }

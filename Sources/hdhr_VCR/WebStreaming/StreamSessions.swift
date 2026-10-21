@@ -54,6 +54,10 @@ actor StreamSessions {
     private let lookupTimeout: TimeInterval
     private let followerOptions: HLSFollower.Options
     private var sessions: [String: Session] = [:]
+    /// When a show's follower gave up: it is not restarted for `retryAfterFailure` (a browser polls constantly, so an unsupported
+    /// source would otherwise restart a doomed conversion every few seconds).
+    private var failedAt: [String: Date] = [:]
+    static let retryAfterFailure: TimeInterval = 30
     private var janitor: Task<Void, Never>?
     private var enabledKnown = false   // last answer from the app; lets running sessions be served without any lookup
 
@@ -105,6 +109,10 @@ actor StreamSessions {
     /// or nil when streaming is off, the id is not valid, the show has no file to stream, or the app did not answer in time.
     func touch(showId: String) async -> URL? {
         guard Self.isValidShowId(showId) else { return nil }
+        if let failed = failedAt[showId] {
+            if Date().timeIntervalSince(failed) < Self.retryAfterFailure { return nil }
+            failedAt[showId] = nil
+        }
         if let existing = sessions[showId] {
             guard enabledKnown else { return nil }
             existing.lastTouch = Date()
@@ -124,16 +132,26 @@ actor StreamSessions {
         if !src.isRecording { options.startBehindLive = nil; options.keepSegments = nil }
         let follower = HLSFollower(input: URL(fileURLWithPath: src.path), outputDir: dir, options: options,
                                    isGrowing: { [growing = session.growing] in growing.isOn })
-        session.task = Task.detached(priority: .utility) {
+        session.task = Task.detached(priority: .utility) { [weak self] in
             do { _ = try await follower.run() } catch is CancellationError {} catch {
                 // After a stop the folder is already gone and the follower may trip over that: not worth a warning.
-                if !Task.isCancelled { glog("[Stream] \(showId) stopped: \(error.localizedDescription)", level: .warning) }
+                if !Task.isCancelled {
+                    glog("[Stream] \(showId) stopped: \(error.localizedDescription)", level: .warning)
+                    await self?.followerFailed(showId: showId, session: session)
+                }
             }
         }
         sessions[showId] = session
         startJanitorIfNeeded()
         glog("[Stream] started web stream for show \(showId)")
         return dir
+    }
+
+    /// The follower gave up: drop the dead session (so viewers stop polling a playlist that will never come) and hold off a restart.
+    private func followerFailed(showId: String, session: Session) {
+        guard sessions[showId] === session else { return }   // already replaced or stopped
+        failedAt[showId] = Date()
+        stop(showId: showId, reason: "conversion failed")
     }
 
     /// The file a browser asked for, if it is one we may serve and it exists. Counts as activity.

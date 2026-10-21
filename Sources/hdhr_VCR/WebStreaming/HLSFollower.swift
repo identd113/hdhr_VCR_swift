@@ -25,6 +25,8 @@ final class HLSFollower: @unchecked Sendable {
 
     /// Consecutive failed passes (about a minute at the default interval) before giving up.
     private static let maxFailedPasses = 20
+    /// Consecutive passes with no readable picture (about two minutes at the default interval) before giving up.
+    private static let maxPassesWithoutPicture = 40
     /// Longest a pass waits for the writer to take the next sample before leaving the rest for the next pass.
     private static let feedPatience = 1.5
 
@@ -76,6 +78,16 @@ final class HLSFollower: @unchecked Sendable {
         var finalPass = false
         var audioFinished = false
         var failedPasses = 0   // consecutive passes that could not open/read the file
+        var writerFailures = 0 // consecutive passes whose writer could not be set up (unsupported picture, encoder busy…)
+        var passesWithoutPicture = 0   // consecutive passes that found no readable video track
+        var finishedNormally = false
+        // Any way out but a clean finish (a stop, a failure) must release the half-written output.
+        defer {
+            if !finishedNormally {
+                if let w = writer, w.status == .writing { w.cancelWriting() }
+                if let a = audioOnlyWriter, a.status == .writing { a.cancelWriting() }
+            }
+        }
 
         while true {
             try Task.checkCancellation()
@@ -87,15 +99,28 @@ final class HLSFollower: @unchecked Sendable {
             let tracks = (try? await asset.load(.tracks)) ?? []
             let duration = (try? await asset.load(.duration).seconds) ?? 0
             if let vt = tracks.first(where: { $0.mediaType == .video }), duration.isFinite, duration > 0 {
+                passesWithoutPicture = 0
                 let at = tracks.first(where: { $0.mediaType == .audio })
                 let joinAt = (options.startBehindLive != nil && !finalPass) ? max(0, duration - hold - options.startBehindLive!) : nil
-                if writer == nil, let made = try? await makeWriter(video: vt, hasAudio: at != nil, sink: sink, startOffset: joinAt) {
-                    writer = made.writer; activeWriter = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
-                    if at != nil { makeAudioOnlyWriter(sink: audioSink, start: startTime) }
-                    videoCursor = startTime.seconds - 1
-                    audioCursor = startTime.seconds - 1
-                    streamStart = startTime.seconds
-                    frameDuration = vt.nominalFrameRate > 1 ? 1 / Double(vt.nominalFrameRate) : 1.0 / 30
+                if writer == nil {
+                    do {
+                        let made = try await makeWriter(video: vt, hasAudio: at != nil, sink: sink, startOffset: joinAt)
+                        writer = made.writer; activeWriter = made.writer; videoIn = made.video; audioIn = made.audio; startTime = made.start
+                        if at != nil { makeAudioOnlyWriter(sink: audioSink, start: startTime) }
+                        videoCursor = startTime.seconds - 1
+                        audioCursor = startTime.seconds - 1
+                        streamStart = startTime.seconds
+                        let fps = (try? await vt.load(.nominalFrameRate)) ?? 0
+                        frameDuration = fps > 1 ? 1 / Double(fps) : 1.0 / 30
+                    } catch {
+                        if error is CancellationError || Task.isCancelled { throw CancellationError() }
+                        // Used to be swallowed: a picture the writer cannot take left this loop retrying silently forever.
+                        writerFailures += 1
+                        if writerFailures == 1 || writerFailures % 10 == 0 {
+                            glog("[Stream] \(input.lastPathComponent): could not set up the writer (\(writerFailures) in a row): \(error.localizedDescription)", level: .warning)
+                        }
+                        if finalPass || writerFailures >= Self.maxFailedPasses { throw error }
+                    }
                 }
                 let end = startTime.seconds + max(0, duration - hold)
                 if writer != nil, let videoIn {
@@ -128,11 +153,18 @@ final class HLSFollower: @unchecked Sendable {
                     }
                 }
             }
+            else {
+                // No readable picture yet. A new recording needs ~12 s; a source that never has one (radio, an unsupported
+                // codec) used to be polled forever.
+                passesWithoutPicture += 1
+                if passesWithoutPicture >= Self.maxPassesWithoutPicture { throw HLSConverterError.noVideoTrack }
+            }
             if finalPass { break }
             try await Task.sleep(nanoseconds: UInt64(options.passInterval * 1_000_000_000))
         }
 
         guard let writer else { throw HLSConverterError.noVideoTrack }
+        finishedNormally = true
         videoIn?.markAsFinished()
         if !audioFinished { audioIn?.markAsFinished(); audioOnlyIn?.markAsFinished() }
         await writer.finishWriting()

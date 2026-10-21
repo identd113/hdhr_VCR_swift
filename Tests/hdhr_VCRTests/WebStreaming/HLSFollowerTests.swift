@@ -110,7 +110,8 @@ struct HLSFollowerTests {
         opts.passInterval = 0.3
         let out = dir.appendingPathComponent("out")
         let result = try await HLSFollower(input: input, outputDir: out, options: opts, isGrowing: { false }).run()
-        let files = try FileManager.default.contentsOfDirectory(atPath: out.path).filter { $0.hasSuffix(".m4s") }
+        // "seg-…" only: the audio-only twin keeps its own "a-seg-…" files in the same folder.
+        let files = try FileManager.default.contentsOfDirectory(atPath: out.path).filter { $0.hasPrefix("seg-") && $0.hasSuffix(".m4s") }
         #expect(files.count == 2, "kept \(files.count) segment files")
         #expect(result.segments.count == 2)
         let playlist = try String(contentsOf: out.appendingPathComponent("index.m3u8"), encoding: .utf8)
@@ -246,5 +247,21 @@ struct HLSFollowerTests {
         private var flag = false
         var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
         func set() { lock.lock(); flag = true; lock.unlock() }
+    }
+
+    /// A file that never yields a picture (radio, an unsupported or damaged source) used to be polled forever; now the follower gives up.
+    @Test func aSourceWithNoPictureIsGivenUpOn() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hls-nopic-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let input = dir.appendingPathComponent("recording.ts")
+        try Data(repeating: 0xAB, count: 200_000).write(to: input)   // not a transport stream
+        var opts = HLSFollower.Options()
+        opts.passInterval = 0.005
+        let started = Date()
+        await #expect(throws: HLSConverterError.noVideoTrack) {
+            _ = try await HLSFollower(input: input, outputDir: dir.appendingPathComponent("out"), options: opts, isGrowing: { true }).run()
+        }
+        #expect(Date().timeIntervalSince(started) < 30)
     }
 }

@@ -76,7 +76,7 @@ final class PSIPDecoder {
             if carry[i] != 0x47 {   // lost sync: skip to the next position where a packet start repeats 188 bytes later
                 var j = i + 1
                 while j + 188 < n, !(carry[j] == 0x47 && carry[j + 188] == 0x47) { j += 1 }
-                if j + 188 >= n { break }
+                if j + 188 >= n { i = max(i, n - 188); break }   // no sync in what we have: drop the junk, keep a packet's worth to resync on (else it piles up and every chunk rescans it all)
                 i = j
                 continue
             }

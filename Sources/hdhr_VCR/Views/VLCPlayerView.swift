@@ -1295,7 +1295,6 @@ struct VLCPlayerView: View {
         guard on != barWanted else { return }
         barCloseTask?.cancel()
         let seconds = Self.barSlideSeconds
-        let motion = Animation.easeInOut(duration: seconds)   // the window animates on the same curve and time
         barSlidIn = on
         if persist { statusBarEnabled = on }   // a peek leaves the saved choice alone, so it can never get stuck open
         let target = on ? VLCPlayerWindowManager.playerStatusBarHeight : 0

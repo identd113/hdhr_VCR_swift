@@ -605,7 +605,7 @@ final class RecordingManager {
         }
         guard let fh = FileHandle(forWritingAtPath: path) else { return }
         defer { try? fh.close() }
-        try? fh.seekToEnd()
+        _ = try? fh.seekToEnd()
         let header = "\n[CURL] \(showId) → \(outputPath) | \(curlArgs.joined(separator: " "))\n"
         try? fh.write(contentsOf: header.data(using: .utf8) ?? Data())
     }
