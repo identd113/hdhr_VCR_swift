@@ -44,7 +44,7 @@ struct CrossDevicePiPTests {
               let data = fetch(surl, timeout: 4).data(using: .utf8),
               let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
         else { return nil }
-        return Counts(hw: arr.filter { $0["VctNumber"] != nil }.count, app: app, total: total)
+        return Counts(hw: arr.filter { $0["VctNumber"] != nil || $0["Frequency"] != nil || $0["TargetIP"] != nil }.count, app: app, total: total)
     }
 
     private func deviceIDsInPage(_ page: String) -> [String] {

@@ -243,7 +243,7 @@ private func tunerSnapshot(deviceID: String, page: String) -> Tuners {
     if let surl = (obj["surl"] as? String)?.replacingOccurrences(of: "\\/", with: "/"),
        let data = curl(surl, timeout: 4).data(using: .utf8),
        let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-        out.hw = arr.filter { $0["VctNumber"] != nil }.count
+        out.hw = arr.filter { $0["VctNumber"] != nil || $0["Frequency"] != nil || $0["TargetIP"] != nil }.count   // a tuner tuned by frequency (air lineup) has no VctNumber
     }
     return out
 }
