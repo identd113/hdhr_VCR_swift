@@ -1,11 +1,13 @@
 import SwiftUI
 
-// Over-the-air scan dashboard (docs/OTAScanView.md): a small floating window that opens when a scan starts. Multiplexes as a vertical
-// list; the one being read shows its sub-channels with spinners, a finished one collapses to a green check.
+// Over-the-air scan dashboard (docs/OTAScanView.md): a floating window that opens when a scan starts. The stations found run along the
+// top as tabs; the one being read is selected automatically (until you click another) and below it are facts about that station and
+// its channels, each with its episode count and the start of its earliest listing.
 struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
-    @State private var expanded: Set<Int> = []   // finished stations whose channels are unfolded
+    @State private var pinnedRF: Int?       // a tab the person clicked: the selection stays there instead of following the scan
+    @State private var followedRF: Int?     // the last station the scan was working on that has a tab
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
@@ -34,14 +36,12 @@ struct OTAScanView: View {
                     .accessibilityIdentifier("ota-scan-status")
             }
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    if progress.rows.isEmpty {
-                        Text(progress.running ? "Looking for stations…" : "No stations found.").foregroundStyle(.secondary)
-                    }
-                    ForEach(progress.rows) { row in multiplexView(row) }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if progress.rows.isEmpty {
+                Text(progress.running ? "Looking for stations…" : "No stations found.").foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            } else {
+                tabStrip
+                if let row = selectedRow { panel(row) }
             }
             HStack {
                 if progress.withoutSignal > 0 {
@@ -53,7 +53,7 @@ struct OTAScanView: View {
             }
         }
         .padding(16)
-        .frame(width: 380, height: 460)
+        .frame(width: 480, height: 600)
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
@@ -93,59 +93,135 @@ struct OTAScanView: View {
         switch s { case .waiting: return "waiting for guide"; case .scanning: return "scanning"; case .done: return "done"; case .noGuide(let why): return "no guide: \(why)" }
     }
 
-    private func isFinished(_ s: OTAMultiplexRow.State) -> Bool {
-        switch s { case .done, .noGuide: return true; case .waiting, .scanning: return false }
-    }
+    // MARK: tabs
 
-    /// A finished station folds its channels away; one still being read, or waiting for its guide, shows the channels it carries.
-    private func showsChannels(_ row: OTAMultiplexRow) -> Bool {
-        switch row.state {
-        case .scanning, .waiting: return true
-        case .done, .noGuide: return expanded.contains(row.rf)
-        }
+    private var selectedRF: Int? {
+        if let pinnedRF, progress.rows.contains(where: { $0.rf == pinnedRF }) { return pinnedRF }
+        if let cur = progress.currentRF, progress.rows.contains(where: { $0.rf == cur }) { return cur }
+        return followedRF.flatMap { f in progress.rows.contains(where: { $0.rf == f }) ? f : nil } ?? progress.rows.first?.rf
     }
+    private var selectedRow: OTAMultiplexRow? { selectedRF.flatMap { rf in progress.rows.first { $0.rf == rf } } }
 
-    @ViewBuilder private func multiplexView(_ row: OTAMultiplexRow) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                marker(row.state)
-                Text("RF \(row.rf)").bold()
-                Text("\(row.subChannels.count) channels" + (progress.lineupOnly || row.listings == 0 ? "" : " · \(row.listings) episodes"))
-                    .font(.caption).foregroundStyle(.secondary)
-                if case .noGuide(let why) = row.state { Text(why).font(.caption).foregroundStyle(.orange) }
-                Spacer(minLength: 0)
-                if isFinished(row.state) {
-                    Button { if expanded.contains(row.rf) { expanded.remove(row.rf) } else { expanded.insert(row.rf) } } label: {
-                        Image(systemName: expanded.contains(row.rf) ? "chevron.down" : "chevron.right").font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(expanded.contains(row.rf) ? "Hide channels" : "Show channels")
-                    .accessibilityIdentifier("ota-scan-expand-\(row.rf)")
-                }
-            }
-            if showsChannels(row) {
-                ForEach(row.subChannels) { sub in
+    private var tabStrip: some View {
+        HStack(spacing: 6) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: true) {
                     HStack(spacing: 6) {
-                        if row.state == .scanning {
-                            if sub.done { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                            else { ProgressView().controlSize(.mini) }
-                        }
-                        Text("\(sub.number)  \(sub.name)").font(.callout)
-                        if !progress.lineupOnly {
-                            if let text = sub.episodeText { Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-                            else if row.state != .waiting && row.state != .scanning { Text("no guide").font(.caption).foregroundStyle(.secondary) }
-                        }
+                        ForEach(progress.rows) { row in tab(row).id(row.rf) }
                     }
-                    .padding(.leading, 22)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
+                    .padding(.vertical, 2)
+                }
+                .onChange(of: selectedRF) { _, rf in
+                    if let rf { withAnimation { proxy.scrollTo(rf, anchor: .center) } }
+                    if pinnedRF == nil, let rf { followedRF = rf }
                 }
             }
+            if pinnedRF != nil, progress.running {
+                Button("Follow") { pinnedRF = nil }
+                    .controlSize(.small)
+                    .help("Go back to the station being read")
+                    .accessibilityIdentifier("ota-scan-follow")
+            }
         }
+    }
+
+    private func tab(_ row: OTAMultiplexRow) -> some View {
+        let selected = row.rf == selectedRF
+        return Button { pinnedRF = row.rf } label: {
+            HStack(spacing: 5) {
+                marker(row.state)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("RF \(row.rf)").font(.callout.bold())
+                    Text("\(row.subChannels.count) ch").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.22) : Color.secondary.opacity(0.10)))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? Color.accentColor : .clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("ota-scan-tab-\(row.rf)")
+    }
+
+    // MARK: the selected station
+
+    private func panel(_ row: OTAMultiplexRow) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                marker(row.state)
+                Text("RF \(row.rf) · \(Self.mhz(row.info.frequencyMHz))").font(.headline)
+                Text(stateWord(row.state)).font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            facts(row)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(row.subChannels) { sub in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            if row.state == .scanning {
+                                if sub.done { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                                else { ProgressView().controlSize(.mini) }
+                            }
+                            Text("\(sub.number)  \(sub.name)").font(.callout)
+                            Spacer(minLength: 8)
+                            if !progress.lineupOnly {
+                                if let text = sub.episodeText { Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                                else if row.state != .waiting && row.state != .scanning { Text("no guide").font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.secondary.opacity(0.07)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
         .accessibilityIdentifier("ota-scan-mux-\(row.rf)")
     }
+
+    /// What is interesting about the station itself, as label/value pairs in two columns.
+    private func facts(_ row: OTAMultiplexRow) -> some View {
+        let i = row.info
+        var items: [(String, String)] = []
+        let majors = i.majors.map { "\($0).x" }.joined(separator: ", ")
+        items.append(("Carries", "\(row.subChannels.count) channels" + (majors.isEmpty ? "" : " (\(majors))")
+                      + (i.audioChannels > 0 ? ", \(i.audioChannels) audio-only" : "")))
+        if !progress.lineupOnly {
+            if i.guideTablesAnnounced == 0, row.state != .scanning { items.append(("Guide", "none sent")) }
+            else if i.episodes > 0 {
+                var g = "\(i.episodes) episodes"
+                if let hours = i.guideHoursAhead() { g += ", reaches \(Self.hoursText(hours)) ahead" }
+                items.append(("Guide", g))
+            } else { items.append(("Guide", "reading…")) }
+            if let first = i.earliest { items.append(("Oldest listing", OTASubChannelRow.startText(first))) }
+            if i.guideTablesAnnounced > 0 { items.append(("Listing tables", "\(i.guideTablesAnnounced) announced")) }
+        }
+        if i.strength != nil || i.quality != nil {
+            items.append(("Signal", [i.strength.map { "strength \($0)%" }, i.quality.map { "quality \($0)%" }].compactMap { $0 }.joined(separator: ", ")))
+        }
+        if let mbps = i.mbps { items.append(("Data rate", String(format: "%.1f Mbit/s over %d s", mbps, Int(i.seconds.rounded())))) }
+        if let off = i.clockOffset() { items.append(("Station clock", off == 0 ? "matches this Mac" : "\(off > 0 ? "+" : "")\(off) s vs this Mac")) }
+        return LazyVGrid(columns: [GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)], alignment: .leading, spacing: 5) {
+            ForEach(items, id: \.0) { item in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(item.0).font(.caption2).foregroundStyle(.secondary)
+                    Text(item.1).font(.caption)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("ota-scan-fact-\(item.0.replacingOccurrences(of: " ", with: "-").lowercased())")
+            }
+        }
+    }
+
+    static func mhz(_ v: Double) -> String { v == v.rounded() ? String(format: "%.0f MHz", v) : String(format: "%.1f MHz", v) }
+    static func hoursText(_ h: Double) -> String { h < 48 ? "\(Int(h.rounded())) h" : String(format: "%.1f days", h / 24) }
 
     @ViewBuilder private func marker(_ s: OTAMultiplexRow.State) -> some View {
         switch s {

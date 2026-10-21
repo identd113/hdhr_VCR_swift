@@ -93,6 +93,45 @@ struct OTAStoreTests {
         #expect(text?.contains("6:00") == true)
     }
 
+    @Test func aStationsFactsAreWorkedOutFromWhatWasRead() throws {
+        let now = Date(timeIntervalSince1970: 1_792_519_200)
+        var info = OTAMuxInfo(frequencyMHz: 581)
+        #expect(info.mbps == nil)                              // nothing read yet
+        info.bytes = 61_000_000; info.seconds = 25
+        #expect(abs((info.mbps ?? 0) - 19.52) < 0.01)
+        #expect(info.guideHoursAhead(now: now) == nil)
+        info.latestEnd = now.addingTimeInterval(66 * 3600)
+        #expect(info.guideHoursAhead(now: now) == 66)
+        info.latestEnd = now.addingTimeInterval(-3600)         // a guide that ended already reads as 0 h, not negative
+        #expect(info.guideHoursAhead(now: now) == 0)
+        info.broadcastTime = now.addingTimeInterval(-4)
+        #expect(info.clockOffset(now: now) == -4)
+        #expect(OTAScanView.hoursText(30) == "30 h")
+        #expect(OTAScanView.hoursText(72) == "3.0 days")
+        #expect(OTAScanView.mhz(581) == "581 MHz")
+    }
+
+    @Test func theScanWindowFollowsTheStationBeingRead() throws {
+        let progress = OTAScanProgress()
+        progress.reset(lineupOnly: false)
+        let data = try Data(contentsOf: PSIPDecoderTests.fixture)
+        let decoder = PSIPDecoder(); decoder.ingest(data)
+        let result = decoder.result()
+        progress.apply(.started(rf: 31))
+        #expect(progress.currentRF == 31)
+        progress.apply(.update(rf: 32, result: result, bytes: 1_000_000, seconds: 1))
+        #expect(progress.currentRF == 32)
+        progress.apply(.signal(rf: 32, strength: 88, quality: 98))
+        let row = try #require(progress.rows.first { $0.rf == 32 })
+        #expect(row.info.strength == 88 && row.info.quality == 98)
+        #expect(row.info.majors == [4, 23])
+        #expect(row.info.videoChannels == 7)
+        #expect(row.info.episodes == result.events.count)
+        #expect(row.info.earliest != nil && row.info.latestEnd != nil)
+        #expect(row.info.frequencyMHz == 581)
+        #expect(row.subChannels.first?.earliest != nil)
+    }
+
     @Test func ageTextReadsLikeAPerson() {
         #expect(GuideStore.ageText(20) == "just now")
         #expect(GuideStore.ageText(12 * 60) == "12 min ago")

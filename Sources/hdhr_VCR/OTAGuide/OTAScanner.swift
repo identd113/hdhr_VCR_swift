@@ -30,8 +30,9 @@ struct OTAScanEnvironment: Sendable {
 enum OTAScanEvent: Sendable {
     case queued(total: Int)
     case started(rf: Int)
-    case update(rf: Int, result: OTADecodeResult)    // about once a second while a multiplex is being read
-    case finished(rf: Int, result: OTADecodeResult)
+    case update(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double)   // about once a second while a multiplex is being read
+    case finished(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double)
+    case signal(rf: Int, strength: Int?, quality: Int?)   // the tuner's own reading while it is on this station
     case skipped(rf: Int, why: String)
     case paused(rf: Int)                              // put back in the queue because a tuner was needed; read again later
 }
@@ -41,6 +42,7 @@ struct OTAMultiplex: Sendable, Equatable {
     var frequencyHz: Int
     var result: OTADecodeResult
     var bytes: Int
+    var seconds: Double = 0   // how long it was read
 }
 
 struct OTAScanOutcome: Sendable {
@@ -115,7 +117,7 @@ actor OTAScanner {
     private func record(rf: Int, multiplex: OTAMultiplex?, skipped: String?, progress: @Sendable (String) -> Void) {
         finished += 1
         if let multiplex {
-            events(.finished(rf: rf, result: multiplex.result))
+            events(.finished(rf: rf, result: multiplex.result, bytes: multiplex.bytes, seconds: multiplex.seconds))
             outcome.multiplexes.append(multiplex)
             progress("RF \(rf): \(multiplex.result.channels.count) channels, \(multiplex.result.events.count) events (\(finished)/\(total))")
         } else if let skipped {
@@ -136,11 +138,20 @@ actor OTAScanner {
         defer { release(tuner) }
         if await env.yieldRequested() { requeue(rf, why: "a tuner is needed", progress: progress); return 2 }
         events(.started(rf: rf))
+        let signalOnce = OnceFlag()
+        let started = Date()
         let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly,
-                                      onUpdate: { [events] result in events(.update(rf: rf, result: result)) }) { [self] in await self.shouldYield(env: env) }
+                                      onUpdate: { [events] result, bytes, elapsed in
+                                          events(.update(rf: rf, result: result, bytes: bytes, seconds: elapsed))
+                                          // The tuner's own signal reading, once the stream has settled.
+                                          if elapsed >= 2, signalOnce.take(),
+                                             let row = await Self.statusRows(host: env.host).first(where: { $0.resource == tuner }) {
+                                              events(.signal(rf: rf, strength: row.strength, quality: row.quality))
+                                          }
+                                      }) { [self] in await self.shouldYield(env: env) }
         switch capture {
         case .decoded(let result, let bytes):
-            record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes), skipped: nil, progress: progress)
+            record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes, seconds: Date().timeIntervalSince(started)), skipped: nil, progress: progress)
         case .skipped("tuner needed"):
             requeue(rf, why: "a tuner is needed", progress: progress); return 2
         case .skipped(let why):
@@ -182,7 +193,13 @@ actor OTAScanner {
         return await env.appBusyTuners() + claimed.count > env.tunerCount
     }
 
-    struct StatusRow: Sendable { let resource: String; let busy: Bool }
+    struct StatusRow: Sendable { let resource: String; let busy: Bool; var strength: Int? = nil; var quality: Int? = nil }
+
+    /// True the first time it is asked, false after: runs a once-per-capture action from a closure.
+    final class OnceFlag: @unchecked Sendable {
+        private let lock = NSLock(); private var taken = false
+        func take() -> Bool { lock.lock(); defer { lock.unlock() }; if taken { return false }; taken = true; return true }
+    }
 
     static func statusRows(host: String) async -> [StatusRow] {
         guard let url = URL(string: "http://\(host)/status.json"),
@@ -192,7 +209,7 @@ actor OTAScanner {
             guard let name = row["Resource"] as? String else { return nil }
             // A tuner in use reports a channel, a frequency or a target address; an idle one has only its name.
             let busy = row["VctNumber"] != nil || row["Frequency"] != nil || row["TargetIP"] != nil
-            return StatusRow(resource: name, busy: busy)
+            return StatusRow(resource: name, busy: busy, strength: row["SignalStrengthPercent"] as? Int, quality: row["SignalQualityPercent"] as? Int)
         }
     }
 
@@ -203,7 +220,7 @@ actor OTAScanner {
     /// Streams one multiplex into a decoder (`lineupOnly`: stops as soon as the channel list is read, a couple of seconds). Ends early when there is no signal (almost no bytes after 3 s), no guide tables after
     /// 12 s, a station that announces no guide at all (after 15 s), or when `shouldYield` says so (checked every 5 s).
     static func capture(host: String, tuner: String, hz: Int, seconds: TimeInterval, lineupOnly: Bool = false,
-                        onUpdate: @escaping @Sendable (OTADecodeResult) -> Void = { _ in },
+                        onUpdate: @escaping @Sendable (OTADecodeResult, Int, TimeInterval) async -> Void = { _, _, _ in },
                         shouldYield: @escaping @Sendable () async -> Bool) async -> CaptureOutcome {
         guard let url = URL(string: "http://\(host):5004/\(tuner)/ch\(hz)") else { return .skipped("bad address") }
         let reader = StreamReader(url: url)
@@ -228,7 +245,7 @@ actor OTAScanner {
                 if Date().timeIntervalSince(lastUpdate) >= 1, decoder.hasMasterGuide {
                     lastUpdate = Date()
                     let snapshot = decoder.result()
-                    onUpdate(snapshot)
+                    await onUpdate(snapshot, bytes, elapsed)
                     if elapsed >= 15, snapshot.announcedEITCount == 0 { break }   // names only: a guide is never coming
                     if lineupOnly, !snapshot.channels.isEmpty { break }           // the channel list repeats several times a second
                 }

@@ -20,11 +20,40 @@ struct OTASubChannelRow: Identifiable, Equatable {
         guard count > 0 else { return nil }
         let noun = count == 1 ? "1 episode" : "\(count) episodes"
         guard let earliest else { return noun }
+        return noun + " · from " + startText(earliest, locale: locale, timeZone: timeZone)
+    }
+
+    /// "Tue 7:00 PM".
+    static func startText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let f = DateFormatter()
         f.locale = locale; f.timeZone = timeZone
         f.setLocalizedDateFormatFromTemplate("EEEjmm")
-        return noun + " · from " + f.string(from: earliest)
+        return f.string(from: date)
     }
+}
+
+/// Facts about one station (multiplex), shown at the top of its section in the scan window.
+struct OTAMuxInfo: Equatable {
+    var frequencyMHz: Double
+    var bytes = 0
+    var seconds = 0.0
+    var guideTablesAnnounced = 0        // the Master Guide Table's count of listing tables: 0 means the station sends no guide
+    var broadcastTime: Date?            // the station's own clock (System Time Table)
+    var episodes = 0
+    var earliest: Date?
+    var latestEnd: Date?
+    var strength: Int?                  // the tuner's signal strength / quality readings, percent
+    var quality: Int?
+    var majors: [Int] = []              // virtual channel numbers carried (4, 23…)
+    var videoChannels = 0
+    var audioChannels = 0
+
+    /// Average data rate of the stream while it was read (a full multiplex is about 19.4 Mbit/s).
+    var mbps: Double? { seconds >= 1 && bytes > 0 ? Double(bytes) * 8 / seconds / 1_000_000 : nil }
+    /// How far ahead the guide reaches from `now`, in hours; nil when there is none.
+    func guideHoursAhead(now: Date = Date()) -> Double? { latestEnd.map { max(0, $0.timeIntervalSince(now) / 3600) } }
+    /// The station's clock minus this Mac's, in seconds (a stream that is behind or a wrong clock shows here).
+    func clockOffset(now: Date = Date()) -> Int? { broadcastTime.map { Int($0.timeIntervalSince(now).rounded()) } }
 }
 
 struct OTAMultiplexRow: Identifiable, Equatable {
@@ -33,6 +62,7 @@ struct OTAMultiplexRow: Identifiable, Equatable {
     var rf: Int
     var state: State
     var subChannels: [OTASubChannelRow]
+    var info: OTAMuxInfo
     var listings: Int { subChannels.reduce(0) { $0 + $1.listings } }
 }
 
@@ -41,6 +71,8 @@ final class OTAScanProgress: ObservableObject {
     @Published var rows: [OTAMultiplexRow] = []
     /// RF channels a tuner is on right now, before or while they are read.
     @Published var tuning: Set<Int> = []
+    /// The station most recently started or updated: the scan window selects its tab while it is being worked on.
+    @Published var currentRF: Int?
     @Published var finished = 0
     @Published var total = 0
     @Published var withoutSignal = 0
@@ -52,12 +84,13 @@ final class OTAScanProgress: ObservableObject {
     private var queuedCalls = 0
     @Published var summary = ""
     private var startedAt = Date()
+    private var signals: [Int: (strength: Int?, quality: Int?)] = [:]
 
     var channelCount: Int { rows.reduce(0) { $0 + $1.subChannels.count } }
     var listingCount: Int { rows.reduce(0) { $0 + $1.listings } }
 
     func reset(lineupOnly: Bool, twoPass: Bool = false) {
-        rows = []; tuning = []; finished = 0; total = 0; withoutSignal = 0; summary = ""
+        rows = []; tuning = []; currentRF = nil; signals = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""
         running = true
         startedAt = Date()
         self.lineupOnly = lineupOnly
@@ -81,15 +114,20 @@ final class OTAScanProgress: ObservableObject {
             self.total = total
             finished = 0
             startedAt = Date()
-        case .started(let rf): tuning.insert(rf)
+        case .started(let rf): tuning.insert(rf); currentRF = rf
         case .paused(let rf):
             tuning.remove(rf)
             if let i = rows.firstIndex(where: { $0.rf == rf }), rows[i].state == .scanning { rows[i].state = .waiting }
-        case .update(let rf, let result): upsert(rf: rf, result: result, done: false)
-        case .finished(let rf, let result):
+        case .update(let rf, let result, let bytes, let seconds):
+            currentRF = rf
+            upsert(rf: rf, result: result, bytes: bytes, seconds: seconds, done: false)
+        case .signal(let rf, let strength, let quality):
+            signals[rf] = (strength, quality)
+            if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].info.strength = strength; rows[i].info.quality = quality }
+        case .finished(let rf, let result, let bytes, let seconds):
             tuning.remove(rf)
             finished += 1
-            upsert(rf: rf, result: result, done: true)
+            upsert(rf: rf, result: result, bytes: bytes, seconds: seconds, done: true)
         case .skipped(let rf, let why):
             tuning.remove(rf)
             finished += 1
@@ -103,15 +141,29 @@ final class OTAScanProgress: ObservableObject {
         }
     }
 
-    private func upsert(rf: Int, result: OTADecodeResult, done: Bool) {
+    private func upsert(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double, done: Bool) {
         let bySource = Dictionary(grouping: result.events, by: \.sourceId)
         let counts = bySource.mapValues(\.count)
-        let subs = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }.map {
+        let carried = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }
+        let subs = carried.map {
             OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
                               earliest: bySource[$0.sourceId]?.map(\.start).min())
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
         guard !subs.isEmpty else { return }
-        let row = OTAMultiplexRow(rf: rf, state: !done ? .scanning : (twoPass && pass == 1 ? .waiting : .done), subChannels: subs)
+        var info = OTAMuxInfo(frequencyMHz: Double(OTAScanner.frequencyHz(rf: rf) ?? 0) / 1_000_000)
+        info.bytes = bytes; info.seconds = seconds
+        info.guideTablesAnnounced = result.announcedEITCount
+        info.broadcastTime = result.broadcastTime
+        info.episodes = result.events.count
+        info.earliest = result.events.map(\.start).min()
+        info.latestEnd = result.events.map(\.end).max()
+        info.majors = Array(Set(carried.map(\.major))).sorted()
+        info.videoChannels = carried.filter { $0.serviceType == 2 }.count
+        info.audioChannels = carried.filter { $0.serviceType == 3 }.count
+        info.strength = signals[rf]?.strength; info.quality = signals[rf]?.quality
+        // A later pass reads for a different length of time: keep the figures from the longer, fuller read.
+        if let old = rows.first(where: { $0.rf == rf })?.info, old.seconds > info.seconds, old.bytes > 0 { info.bytes = old.bytes; info.seconds = old.seconds }
+        let row = OTAMultiplexRow(rf: rf, state: !done ? .scanning : (twoPass && pass == 1 ? .waiting : .done), subChannels: subs, info: info)
         if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i] = row }
         else { rows.append(row); rows.sort { $0.rf < $1.rf } }
     }
