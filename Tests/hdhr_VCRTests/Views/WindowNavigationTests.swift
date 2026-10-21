@@ -774,8 +774,9 @@ struct WindowNavigationTests {
         let before = parsed(halves[0])
         let after  = parsed(halves[1])
 
-        #expect(before.count == 8, "expected 8 tabs before toggling, saw \(before.count): \(halves[0])")
-        #expect(after.count == 8,  "expected 8 tabs after toggling, saw \(after.count): \(halves[1])")
+        // 8 tabs in a release build; debug builds add the Developer tab (Settings → Developer, compiled out of release builds).
+        #expect(before.count == 8 || before.count == 9, "expected 8 (release) or 9 (debug) tabs before toggling, saw \(before.count): \(halves[0])")
+        #expect(after.count == before.count,  "expected the same \(before.count) tabs after toggling, saw \(after.count): \(halves[1])")
 
         // Every label's own title should still match itself both before AND after the toggle
         // (general tab-reachability, not specific to guide source — see this function's doc

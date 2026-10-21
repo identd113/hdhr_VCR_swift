@@ -151,7 +151,7 @@ struct MenuContent: View {
                             + (state.secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
             let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
             let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
-            let hwCount     = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
+            let hwCount     = liveInfo?.filter { $0.isInUse }.count ?? appCount
             // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —
             // not hwCount alone. Right after a recording or in-app VLC stream starts but before the
             // next status.json poll lands, hwCount is still the stale pre-start value; showing it

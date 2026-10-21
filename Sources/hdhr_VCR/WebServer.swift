@@ -2940,7 +2940,7 @@ final class WebServer: @unchecked Sendable {
         if showType.isSeries, state.guideStore.guideHasNoSeriesIDs(deviceId: deviceId) {
             return json(["ok": false, "error": "This guide has no SeriesIDs, so a SeriesID recording could never match. Pick Single or DateTime."])
         }
-        let activeTuners = state.deviceTunerOccupancy[deviceId]?.filter({ $0.VctNumber != nil }).count ?? 0
+        let activeTuners = state.deviceTunerOccupancy[deviceId]?.filter({ $0.isInUse }).count ?? 0
         let total        = device.TunerCount ?? 0
         // tunersFull() counts both active recordings and the in-app VLC stream; raw
         // deviceTunerOccupancy only reflects hardware status and misses VLC.
@@ -3985,13 +3985,13 @@ final class WebServer: @unchecked Sendable {
                         }()
                         let ch       = matchShow?.show_channel ?? info.VctNumber ?? "?"
                         let ip       = matchShow == nil ? (info.TargetIP ?? "") : ""
-                        let idle     = matchShow == nil && info.VctNumber == nil ? "1" : ""
+                        let idle     = matchShow == nil && !info.isInUse ? "1" : ""
                         let rec      = matchShow != nil ? "1" : ""
                         // Tuned (VctNumber present) but not matched to one of our own shows or live
                         // watch — distinct from `idle` (no VctNumber at all, nothing tuned) so the
                         // client can label this case explicitly instead of showing a bare title
                         // indistinguishable from an owned one save for the missing red dot.
-                        let external = (matchShow == nil && info.VctNumber != nil && !isOwnLiveWatch) ? "1" : ""
+                        let external = (matchShow == nil && info.isInUse && !isOwnLiveWatch) ? "1" : ""
                         let endTs    = matchShow?.show_end.map { String(Int($0.timeIntervalSince1970)) } ?? ""
                         entries.append(["tuner": info.Resource, "title": title, "ch": ch, "chname": chName(ch), "ip": ip, "idle": idle, "rec": rec, "external": external, "endTime": endTs])
                     }
@@ -4224,7 +4224,7 @@ final class WebServer: @unchecked Sendable {
             // directly since we need the pieces separately, not just their max().
             let vlcCount = (state.vlcOccupiesTuner(for: deviceId) ? 1 : 0)
                          + (state.secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
-            let hwOccupied = online ? (state.deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0) : 0
+            let hwOccupied = online ? (state.deviceTunerOccupancy[deviceId]?.filter { $0.isInUse }.count ?? 0) : 0
             let otherOccupancy = max(0, hwOccupied - (recs.count + vlcCount))
 
             let upNext = groups.upNext.flatMap { s -> UpNextRef? in

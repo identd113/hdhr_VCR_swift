@@ -3692,7 +3692,7 @@ final class AppState: ObservableObject {
            let idx = tuners.firstIndex(where: { $0.Resource.lowercased() == show.show_tuner_resource }) {
             deviceTunerOccupancy[show.hdhr_record]?[idx] = DeviceTunerInfo(
                 Resource: tuners[idx].Resource, VctNumber: nil,
-                TargetIP: tuners[idx].TargetIP, SignalQualityPercent: tuners[idx].SignalQualityPercent)
+                TargetIP: nil, SignalQualityPercent: tuners[idx].SignalQualityPercent)   // no TargetIP/Frequency either: isInUse must read false
         }
         // broadcastRecordingEvent alone only patches the ring/tuner-badge fragments in place — the
         // web guide's Recording section is a physical row bucket decided once at grid-build time
@@ -6384,7 +6384,7 @@ final class AppState: ObservableObject {
         // reflects another Mac's own recording, not anything this instance is doing, and must
         // never keep this instance's own sleep-prevention assertions held.
         let anyTunerActive = recordableDevices.compactMap { deviceTunerOccupancy[$0.DeviceID] }
-            .contains { $0.contains { $0.VctNumber != nil } }
+            .contains { $0.contains { $0.isInUse } }
         guard !anyTunerActive,
               recordingShows.isEmpty,
               VLCPlayerWindowManager.shared.currentDeviceID == nil
@@ -6462,8 +6462,8 @@ final class AppState: ObservableObject {
         // Write only when the active-tuner *count* changed (per-tuner fields like SNQ change every poll, so a full comparison
         // would always differ). While the menu is open, at most once per menuOpenTunerWriteCooldown, so an external client
         // channel-surfing can't keep re-glitching the open menu (CLAUDE.md "Menu rebuild churn"). Signal alerting below always runs.
-        let newActiveCount = tuners.filter { $0.VctNumber != nil }.count
-        let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.VctNumber != nil }.count
+        let newActiveCount = tuners.filter { $0.isInUse }.count
+        let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.isInUse }.count
         let countChanged = newActiveCount != oldActiveCount
         let cooldownElapsed = lastMenuOpenTunerWrite[device.DeviceID].map {
             Date().timeIntervalSince($0) >= Self.menuOpenTunerWriteCooldown
@@ -6472,7 +6472,7 @@ final class AppState: ObservableObject {
             if menuIsOpen { lastMenuOpenTunerWrite[device.DeviceID] = Date() }
             deviceTunerOccupancy[device.DeviceID] = tuners
 
-            let active   = tuners.filter { $0.VctNumber != nil }.count
+            let active   = tuners.filter { $0.isInUse }.count
             let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
             // Same two checks activeTunerCount sums — a live OTA stream in either slot, never a local
             // relay (recording/FEED) — so the audit line agrees with what tunersFull actually counts.
@@ -6506,7 +6506,7 @@ final class AppState: ObservableObject {
                             ? tuners.first(where: { $0.Resource.lowercased() == show.show_tuner_resource })
                             : nil)
                      ?? tuners.first(where: { $0.VctNumber == show.show_channel })
-                     ?? tuners.first(where: { $0.VctNumber != nil })
+                     ?? tuners.first(where: { $0.isInUse })
             guard let match,
                   let idx = Int(match.Resource.dropFirst(5))   // "tuner0" → 0
             else { continue }
@@ -6835,7 +6835,7 @@ final class AppState: ObservableObject {
     // Never count recordings alone — the in-app VLC stream also occupies a tuner (unless it's
     // playing the recording relay — see vlcOccupiesTuner).
     func activeTunerCount(for deviceId: String) -> Int {
-        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
+        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.isInUse }.count ?? 0
         let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
         // Both slots can independently occupy a tuner on the same device (a device with ≥2 tuners
         // showing live channels in both primary and PiP secondary) — sum them; each is scoped to

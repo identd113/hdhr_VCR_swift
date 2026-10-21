@@ -47,6 +47,18 @@ struct TunerOccupancyTests {
         #expect(await state.activeTunerCount(for: "DEV1") == 2)
     }
 
+    @Test func activeTunerCount_countsATunerTunedByFrequency() async throws {
+        // A tuner locked with /auto/ch<Hz>-<program> (the over-the-air lineup, the OTA scan, a client tuning by frequency) reports a
+        // Frequency and TargetIP but no VctNumber; counting only VctNumber read it as idle (found 2026-10-21). Rows as the hardware sends them.
+        let json = Data(#"[{"Resource":"tuner0","Frequency":593000000,"SignalQualityPercent":98,"TargetIP":"10.0.2.100"},{"Resource":"tuner1"}]"#.utf8)
+        let rows = try JSONDecoder().decode([DeviceTunerInfo].self, from: json)
+        #expect(rows[0].isInUse)
+        #expect(!rows[1].isInUse)
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        await MainActor.run { state.deviceTunerOccupancy["DEV1"] = rows }
+        #expect(await state.activeTunerCount(for: "DEV1") == 1)
+    }
+
     @Test func activeTunerCount_localRecordingsOnly_noHardwarePollYet() async {
         // Just-started recording: status.json hasn't caught up yet, so deviceTunerOccupancy is
         // empty/stale, but the local recordingShows array already knows about it.

@@ -1173,9 +1173,15 @@ struct GuideChannel: Codable {
 // One entry from /status.json — only present when that tuner slot is actively streaming.
 struct DeviceTunerInfo: Decodable {
     let Resource:             String  // "tuner0", "tuner1", …
-    let VctNumber:            String? // channel number if locked
+    let VctNumber:            String? // channel number if locked (absent when tuned by frequency: /auto/ch<Hz>-<program>, the over-the-air lineup and the OTA scan)
     let TargetIP:             String? // client IP receiving the stream
     let SignalQualityPercent: Int?    // snq 0–100 from status.json; used for passive signal collection
+    var Frequency:            Int? = nil   // Hz the tuner is locked to; present whenever it is in use, with or without a VctNumber
+
+    /// Is something using this tuner? An idle row is just {"Resource":"tuner1"}. A tuner tuned by frequency has a Frequency and
+    /// TargetIP but no VctNumber, so a count of `VctNumber != nil` misses it (found 2026-10-21 with the air lineup: the app read 0 busy
+    /// tuners while a recording held one). Every "how many tuners are busy" count must use this, not VctNumber.
+    var isInUse: Bool { VctNumber != nil || Frequency != nil || TargetIP != nil }
 }
 
 struct TunerStatus {

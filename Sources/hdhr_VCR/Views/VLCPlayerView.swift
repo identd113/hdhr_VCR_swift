@@ -3181,7 +3181,7 @@ struct VLCPlayerView: View {
         guard let url = URL(string: device.statusURL),
               let data = await LANFetch.data(from: url, label: "status.json (tuner wait)"),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return nil }
-        return tuners.filter { $0.VctNumber != nil }.count
+        return tuners.filter { $0.isInUse }.count
     }
 
     enum TunerWaitOutcome { case notNeeded, freed, timedOut }
@@ -3247,7 +3247,7 @@ struct VLCPlayerView: View {
                   let data = await LANFetch.data(from: statusURL, label: "status.json (post-switch)"),
                   let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return }
             let tunerCount  = device.TunerCount ?? 2
-            let active      = tuners.filter { $0.VctNumber != nil }.count
+            let active      = tuners.filter { $0.isInUse }.count
             let weActive    = VLCBridge.shared.currentURL != nil ? 1 : 0
             let otherActive = active - weActive
             glog("[VLC] post-switch tuner status ch \(ch.GuideNumber): \(active)/\(tunerCount) active (ours=\(weActive) other=\(otherActive))")
