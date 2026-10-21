@@ -21,10 +21,17 @@ SiliconDust guide service and no internet. Research and findings: `overtime/` (R
   device has no guide in memory (before the older on-disk cloud copy). Scans older than 36 h are ignored.
 
 ## Tuner rules (never regress)
-Only tuners the hardware reports idle and this scan does not already hold; never more tuners than are free after the app's own
-recordings and in-app player (`appBusyTuners`); no capture starts when a recording starts within the capture time + 30 s, and a running
-one is abandoned when a recording is due within 20 s or the app takes a tuner; cancelling the task closes the stream, which frees the
-tuner. The scan uses `recordableDevices` only (never the virtual relay), and is off the main actor throughout.
+The scan runs on every free tuner and gives way to anything else, so nothing needs to be predicted ahead of time:
+- It uses only tuners the hardware reports idle and that this scan does not already hold, and never more than are free after the app's own
+  recordings and in-app player (`appBusyTuners`). If another device in the house has taken a tuner, the scan simply works with the other one.
+- Tuners the scan holds do **not** count as occupied for the app (`AppState.otaHeldResources`, `activeTunerCount`): `tunersFull` stays false
+  while the scan is the only thing in the way.
+- The app asks the scan to step aside before it tunes: live Watch / PiP / the in-window channel picker (`tunerAvailable` →
+  `yieldOTAScan`, waits up to ~6 s) and a recording start (`startRecording` → `requestOTAYield`, starts on a later tick). The scan drops its
+  captures (checked every second), takes no tuner for 12 s, and **puts the interrupted channels back at the front of its queue**
+  (`paused`, not skipped); once the app's stream is up it carries on with whatever tuner is still free.
+- A recording due within 20 s also makes the scan let go and wait. Cancelling the task closes the stream, which frees the tuner.
+The scan uses `recordableDevices` only (never the virtual relay), and is off the main actor throughout.
 
 ## Where to run it
 - Settings → General → Guide: **Use the guide from the air (beta)** (`Guide_use_ota`).

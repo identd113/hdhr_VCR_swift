@@ -136,9 +136,6 @@ actor OTAScanner {
         defer { release(tuner) }
         if await env.yieldRequested() { requeue(rf, why: "a tuner is needed", progress: progress); return 2 }
         events(.started(rf: rf))
-        if let due = await env.secondsUntilNextRecording(), due < seconds + 30 {
-            requeue(rf, why: "a recording starts in \(Int(due)) s", progress: progress); return 15   // resumes once that recording is running and the other tuner is free
-        }
         let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly,
                                       onUpdate: { [events] result in events(.update(rf: rf, result: result)) }) { [self] in await self.shouldYield(env: env) }
         switch capture {
@@ -157,7 +154,9 @@ actor OTAScanner {
     private func claimTuner(env: OTAScanEnvironment) async -> String? {
         let deadline = Date().addingTimeInterval(15 * 60)
         while !Task.isCancelled, Date() < deadline {
-            if await env.yieldRequested() { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }   // the app is about to use a tuner: take none
+            // The app is about to use a tuner (an explicit request, or a recording due in the next 20 s): take none, whichever tuner it is.
+            if await env.yieldRequested() { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
+            if let due = await env.secondsUntilNextRecording(), due < 20 { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
             let rows = await Self.statusRows(host: env.host)
             let appBusy = await env.appBusyTuners()
             // Tuners busy in hardware for anyone except us (our own claimed tuners show up there too).
