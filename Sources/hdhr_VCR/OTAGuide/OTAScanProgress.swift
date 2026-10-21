@@ -54,8 +54,25 @@ struct OTAMultiplexRow: Identifiable, Equatable {
     var listings: Int { subChannels.reduce(0) { $0 + $1.listings } }
 }
 
+/// What one tuner is doing right now: the station it is on, when that read began and how long it can take at most.
+struct OTAScanLane: Equatable {
+    var rf: Int
+    var startedAt: Date
+    var expectedSeconds: Double
+
+    func elapsed(now: Date = Date()) -> Double { max(0, now.timeIntervalSince(startedAt)) }
+    /// 0...1 of the longest this read can take. A read often ends sooner (no guide, no signal), so the bar may jump to full.
+    func fraction(now: Date = Date()) -> Double { expectedSeconds > 0 ? min(1, elapsed(now: now) / expectedSeconds) : 0 }
+}
+
 @MainActor
 final class OTAScanProgress: ObservableObject {
+    /// Tuner resource ("tuner0"…) → what it is reading. A tuner not in here is idle.
+    @Published var lanes: [String: OTAScanLane] = [:]
+    /// Why nothing is being read right now ("Stepped aside: …", "Waiting for a free tuner"), or nil.
+    @Published var note: String?
+    /// When a scan that has ended finished (nil while running).
+    @Published var endedAt: Date?
     @Published var rows: [OTAMultiplexRow] = []
     /// RF channels a tuner is on right now, before or while they are read.
     @Published var tuning: Set<Int> = []
@@ -79,6 +96,7 @@ final class OTAScanProgress: ObservableObject {
 
     func reset(lineupOnly: Bool, twoPass: Bool = false) {
         rows = []; tuning = []; currentRF = nil; signals = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""
+        lanes = [:]; note = nil; endedAt = nil
         running = true
         startedAt = Date()
         self.lineupOnly = lineupOnly
@@ -87,12 +105,28 @@ final class OTAScanProgress: ObservableObject {
         queuedCalls = 0
     }
 
-    /// Rough time left: the average time per RF channel so far, times those still to go. Rough because stations with a guide take
-    /// far longer than empty channels, and the empty ones tend to be spread through the band. Nil until a few channels are done.
+    /// Rough time left: the time taken so far scaled by how much is done (`fraction`). Rough because stations with a guide take far
+    /// longer than empty channels. Nil until there is something to go on.
     func estimatedSecondsRemaining(now: Date = Date()) -> TimeInterval? {
-        guard running, finished >= 3, total > finished else { return nil }
-        return now.timeIntervalSince(startedAt) / Double(finished) * Double(total - finished)
+        let f = fraction(now: now)
+        let elapsed = now.timeIntervalSince(startedAt)
+        guard running, f >= 0.05, elapsed >= 8, f < 1 else { return nil }
+        return elapsed / f * (1 - f)
     }
+
+    private func freeLane(_ rf: Int) {
+        for (tuner, lane) in lanes where lane.rf == rf { lanes[tuner] = nil }
+    }
+
+    /// Overall progress 0...1: stations finished plus the part-way reads on each tuner, so the bar moves smoothly instead of
+    /// in steps of one station.
+    func fraction(now: Date = Date()) -> Double {
+        guard total > 0 else { return 0 }
+        let partial = lanes.values.reduce(0.0) { $0 + min(0.95, $1.fraction(now: now)) }
+        return min(1, (Double(finished) + partial) / Double(total))
+    }
+
+    func elapsedSeconds(now: Date = Date()) -> TimeInterval { (endedAt ?? now).timeIntervalSince(startedAt) }
 
     func apply(_ event: OTAScanEvent) {
         switch event {
@@ -102,9 +136,14 @@ final class OTAScanProgress: ObservableObject {
             self.total = total
             finished = 0
             startedAt = Date()
-        case .started(let rf): tuning.insert(rf); currentRF = rf
+        case .started(let rf, let tuner, let expected):
+            tuning.insert(rf); currentRF = rf
+            lanes[tuner] = OTAScanLane(rf: rf, startedAt: Date(), expectedSeconds: expected)
+            note = nil
+        case .note(let text): note = text
         case .paused(let rf):
             tuning.remove(rf)
+            freeLane(rf)
             if let i = rows.firstIndex(where: { $0.rf == rf }), rows[i].state == .scanning { rows[i].state = .waiting }
         case .update(let rf, let result, let bytes, let seconds):
             currentRF = rf
@@ -114,10 +153,12 @@ final class OTAScanProgress: ObservableObject {
             if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].info.strength = strength; rows[i].info.quality = quality }
         case .finished(let rf, let result, let bytes, let seconds):
             tuning.remove(rf)
+            freeLane(rf)
             finished += 1
             upsert(rf: rf, result: result, bytes: bytes, seconds: seconds, done: true)
         case .skipped(let rf, let why):
             tuning.remove(rf)
+            freeLane(rf)
             finished += 1
             if pass == 2 {
                 if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].state = .noGuide(why) }   // keeps its channel list from pass 1

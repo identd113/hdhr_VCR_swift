@@ -79,7 +79,7 @@ extension AppState {
                 guard let self else { return }
                 // A cancelled scan's late finish must not clear the state of a scan started right after it.
                 let current = self.otaScanGeneration == generation
-                if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaHeldResources = [] }
+                if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaProgress.endedAt = Date(); self.otaProgress.lanes = [:]; self.otaProgress.note = nil; self.otaHeldResources = [] }
                 // A cancelled full scan saved its channel lists already; its half-read guide must not replace an earlier complete one.
                 let saved = (twoPass && outcome.cancelled) ? nil : OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly)
                 if let summary = saved {
@@ -146,6 +146,7 @@ extension AppState {
         otaScanTask?.cancel()
         otaScanTask = nil
         otaProgress.running = false
+        otaProgress.endedAt = Date(); otaProgress.lanes = [:]; otaProgress.note = nil
         otaHeldResources = []
         otaScanStatus = "Scan cancelled"
     }

@@ -29,7 +29,8 @@ struct OTAScanEnvironment: Sendable {
 /// What the scan window shows, as it happens.
 enum OTAScanEvent: Sendable {
     case queued(total: Int)
-    case started(rf: Int)
+    case started(rf: Int, tuner: String, expectedSeconds: Double)   // a tuner is on this station; the read lasts up to `expectedSeconds`
+    case note(String?)                                // why nothing is being read right now (nil = clear it)
     case update(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double)   // about once a second while a multiplex is being read
     case finished(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double)
     case signal(rf: Int, strength: Int?, quality: Int?)   // the tuner's own reading while it is on this station
@@ -137,7 +138,7 @@ actor OTAScanner {
         }
         defer { release(tuner) }
         if await env.yieldRequested() { requeue(rf, why: "a tuner is needed", progress: progress); return 2 }
-        events(.started(rf: rf))
+        events(.started(rf: rf, tuner: tuner, expectedSeconds: seconds))
         let signalOnce = OnceFlag()
         let started = Date()
         let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly,
@@ -164,10 +165,18 @@ actor OTAScanner {
 
     private func claimTuner(env: OTAScanEnvironment) async -> String? {
         let deadline = Date().addingTimeInterval(15 * 60)
+        var noted = false
+        defer { if noted { events(.note(nil)) } }
         while !Task.isCancelled, Date() < deadline {
             // The app is about to use a tuner (an explicit request, or a recording due in the next 20 s): take none, whichever tuner it is.
-            if await env.yieldRequested() { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
-            if let due = await env.secondsUntilNextRecording(), due < 20 { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
+            if await env.yieldRequested() {
+                if !noted { noted = true; events(.note("Stepped aside: a tuner is needed for a recording or a live view")) }
+                try? await Task.sleep(nanoseconds: 1_000_000_000); continue
+            }
+            if let due = await env.secondsUntilNextRecording(), due < 20 {
+                if !noted { noted = true; events(.note("Stepped aside: a recording starts in a few seconds")) }
+                try? await Task.sleep(nanoseconds: 1_000_000_000); continue
+            }
             let rows = await Self.statusRows(host: env.host)
             let appBusy = await env.appBusyTuners()
             // Tuners busy in hardware for anyone except us (our own claimed tuners show up there too).
@@ -178,6 +187,7 @@ actor OTAScanner {
                 env.onHeldChange(claimed)
                 return row.resource
             }
+            if !noted { noted = true; events(.note("Waiting for a free tuner")) }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
         return nil

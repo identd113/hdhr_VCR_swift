@@ -119,7 +119,7 @@ struct OTAStoreTests {
         let data = try Data(contentsOf: PSIPDecoderTests.fixture)
         let decoder = PSIPDecoder(); decoder.ingest(data)
         let result = decoder.result()
-        progress.apply(.started(rf: 31))
+        progress.apply(.started(rf: 31, tuner: "tuner0", expectedSeconds: 60))
         #expect(progress.currentRF == 31)
         progress.apply(.update(rf: 32, result: result, bytes: 1_000_000, seconds: 1))
         #expect(progress.currentRF == 32)
@@ -133,6 +133,32 @@ struct OTAStoreTests {
         #expect(row.info.frequencyMHz == 581)
         #expect(row.subChannels.first?.latestEnd != nil)
         #expect(row.subChannels.allSatisfy { !$0.audioOnly })
+    }
+
+    @Test func theScanWindowShowsWhatEachTunerIsDoing() throws {
+        let progress = OTAScanProgress()
+        progress.reset(lineupOnly: false)
+        progress.apply(.queued(total: 10))
+        let decoder = PSIPDecoder(); decoder.ingest(try Data(contentsOf: PSIPDecoderTests.fixture))
+        let result = decoder.result()
+        progress.apply(.started(rf: 31, tuner: "tuner0", expectedSeconds: 60))
+        progress.apply(.started(rf: 32, tuner: "tuner1", expectedSeconds: 60))
+        #expect(progress.lanes["tuner0"]?.rf == 31 && progress.lanes["tuner1"]?.rf == 32)
+        let start = progress.lanes["tuner1"]!.startedAt
+        #expect(progress.lanes["tuner1"]!.fraction(now: start.addingTimeInterval(30)) == 0.5)
+        #expect(progress.lanes["tuner1"]!.fraction(now: start.addingTimeInterval(500)) == 1)    // never past full
+        // The bar moves between whole stations: nothing finished, both reads half way, 2 of 10 stations' worth.
+        #expect(abs(progress.fraction(now: start.addingTimeInterval(30)) - 0.1) < 0.01)
+        progress.apply(.note("Waiting for a free tuner"))
+        #expect(progress.note == "Waiting for a free tuner")
+        progress.apply(.finished(rf: 31, result: result, bytes: 1, seconds: 60))
+        #expect(progress.lanes["tuner0"] == nil && progress.lanes["tuner1"] != nil)          // finishing frees that tuner's lane
+        progress.apply(.paused(rf: 32))
+        #expect(progress.lanes.isEmpty)                                                      // a paused read frees its lane too
+        progress.apply(.started(rf: 33, tuner: "tuner0", expectedSeconds: 60))
+        #expect(progress.note == nil)                                                        // a tuner on a station clears the note
+        #expect(OTAScanView.clock(372) == "6:12")
+        #expect(OTAScanView.clock(3750) == "1:02:30")
     }
 
     @Test func ageTextReadsLikeAPerson() {
