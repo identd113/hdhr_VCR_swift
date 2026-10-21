@@ -67,6 +67,9 @@ final class OTAScanProgress: ObservableObject {
             finished = 0
             startedAt = Date()
         case .started(let rf): tuning.insert(rf)
+        case .paused(let rf):
+            tuning.remove(rf)
+            if let i = rows.firstIndex(where: { $0.rf == rf }), rows[i].state == .scanning { rows[i].state = .waiting }
         case .update(let rf, let result): upsert(rf: rf, result: result, done: false)
         case .finished(let rf, let result):
             tuning.remove(rf)

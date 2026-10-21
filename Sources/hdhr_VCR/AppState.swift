@@ -247,6 +247,7 @@ final class AppState: ObservableObject {
     /// count as occupied when deciding whether a recording or a live stream may start (see `activeTunerCount`).
     var otaHeldResources: Set<String> = []
     var otaScanDeviceId: String?
+    var otaYieldUntil: Date = .distantPast   // while in the future the scan steps aside (see requestOTAYield)
     /// Live progress shown by the OTA scan window, and the user's tuner allowance for the running scan (the window's pulldown).
     let otaProgress = OTAScanProgress()
     @Published var otaTunerLimit = 2
@@ -3493,6 +3494,14 @@ final class AppState: ObservableObject {
         if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
             preemptOwnLiveWatch(for: show)
         }
+        // The OTA scan is holding the tuners this recording needs: ask it to step aside and start on a later tick (never await here,
+        // see the note below about `shows` shifting). It puts its interrupted channels back and carries on afterwards.
+        if otaNeedsYield(for: show.hdhr_record) {
+            requestOTAYield(deviceId: show.hdhr_record)
+            Task { await self.fetchDeviceStatus(for: device) }
+            glog("[\(show.show_title)] waiting for the over-the-air scan to release a tuner")
+            return
+        }
         if tunersFull(for: show.hdhr_record),
            let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
            Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
@@ -5287,6 +5296,7 @@ final class AppState: ObservableObject {
     // Not private: VLCPlayerView.playChannel (a different file) also calls this — see its own
     // doc comment for why the in-window toolbar channel picker needs this same pre-flight check.
     func tunerAvailable(_ device: HDHRDevice, context: String? = nil) async -> Bool {
+        await yieldOTAScan(for: device)   // an OTA scan holding the tuners steps aside first
         await fetchDeviceStatus(for: device)
         guard tunersFull(for: device.DeviceID) else { return true }
         let tunerCount = device.TunerCount ?? 2
@@ -6411,7 +6421,7 @@ final class AppState: ObservableObject {
     // the same in-flight Task rather than either stacking up redundant requests or (the wrong fix)
     // skipping and returning immediately with stale data — watchInApp specifically needs the
     // awaited call to reflect an actually-fresh poll.
-    private func fetchDeviceStatus(for device: HDHRDevice) async {
+    func fetchDeviceStatus(for device: HDHRDevice) async {
         let id = device.DeviceID
         if let existing = fetchStatusTasks[id] {
             await existing.value

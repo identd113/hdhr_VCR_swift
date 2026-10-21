@@ -77,6 +77,32 @@ struct TunerOccupancyTests {
         #expect(await state.activeTunerCount(for: "DEV1") == 1)
     }
 
+    @Test func theOTAScanStepsAsideOnlyWhenItIsWhatBlocksANewStream() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        await MainActor.run {
+            state.otaScanDeviceId = "DEV1"
+            state.otaScanTask = Task { try? await Task.sleep(nanoseconds: 60_000_000_000) }   // "a scan is running"
+            state.deviceTunerOccupancy["DEV1"] = [
+                DeviceTunerInfo(Resource: "tuner0", VctNumber: nil, TargetIP: "10.0.0.2", SignalQualityPercent: nil, Frequency: 593_000_000),
+                DeviceTunerInfo(Resource: "tuner1", VctNumber: nil, TargetIP: "10.0.0.2", SignalQualityPercent: nil, Frequency: 599_000_000),
+            ]
+            state.otaHeldResources = ["tuner0", "tuner1"]
+        }
+        #expect(await state.otaNeedsYield(for: "DEV1"))        // both tuners are the scan's: it must let go before anything can tune
+        await MainActor.run {
+            state.deviceTunerOccupancy["DEV1"] = [
+                DeviceTunerInfo(Resource: "tuner0", VctNumber: nil, TargetIP: "10.0.0.2", SignalQualityPercent: nil, Frequency: 593_000_000),
+                DeviceTunerInfo(Resource: "tuner1", VctNumber: nil, TargetIP: nil, SignalQualityPercent: nil),
+            ]
+            state.otaHeldResources = ["tuner0"]
+        }
+        #expect(await !state.otaNeedsYield(for: "DEV1"))       // tuner1 is free: nothing to step aside for
+        await MainActor.run { state.requestOTAYield(deviceId: "DEV1") }
+        #expect(await state.otaYieldUntil > Date())             // the request holds the scan back for a few seconds
+        await MainActor.run { state.otaScanTask?.cancel(); state.otaScanTask = nil }
+        #expect(await !state.otaNeedsYield(for: "DEV1"))       // no scan, nothing to yield
+    }
+
     @Test func activeTunerCount_localRecordingsOnly_noHardwarePollYet() async {
         // Just-started recording: status.json hasn't caught up yet, so deviceTunerOccupancy is
         // empty/stale, but the local recordingShows array already knows about it.

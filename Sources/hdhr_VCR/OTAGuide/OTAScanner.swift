@@ -21,6 +21,9 @@ struct OTAScanEnvironment: Sendable {
     var tunerLimit: @Sendable () async -> Int = { Int.max }
     /// Called whenever the set of tuners ("tuner0"…) this scan is holding changes, so the app can tell its own use from the scan's.
     var onHeldChange: @Sendable (Set<String>) -> Void = { _ in }
+    /// True while the app wants a tuner back right now (a live stream or recording is about to start): the scan drops its captures,
+    /// takes no new tuner, and puts the interrupted channels back in the queue.
+    var yieldRequested: @Sendable () async -> Bool = { false }
 }
 
 /// What the scan window shows, as it happens.
@@ -30,6 +33,7 @@ enum OTAScanEvent: Sendable {
     case update(rf: Int, result: OTADecodeResult)    // about once a second while a multiplex is being read
     case finished(rf: Int, result: OTADecodeResult)
     case skipped(rf: Int, why: String)
+    case paused(rf: Int)                              // put back in the queue because a tuner was needed; read again later
 }
 
 struct OTAMultiplex: Sendable, Equatable {
@@ -86,7 +90,9 @@ actor OTAScanner {
                         // Worker `index` only runs while the user's tuner limit is above it.
                         if index >= max(1, await env.tunerLimit()) { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }
                         guard let rf = await self.nextChannel() else { break }
-                        await self.scanOne(rf: rf, env: env, seconds: secondsPerChannel, lineupOnly: lineupOnly, progress: progress)
+                        if let pause = await self.scanOne(rf: rf, env: env, seconds: secondsPerChannel, lineupOnly: lineupOnly, progress: progress) {
+                            try? await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000))
+                        }
                     }
                 }
             }
@@ -98,6 +104,13 @@ actor OTAScanner {
     private func hasWork() -> Bool { !queue.isEmpty }
 
     private func nextChannel() -> Int? { queue.isEmpty ? nil : queue.removeFirst() }
+
+    /// Puts a channel back at the front of the queue (the scan paused instead of dropping it).
+    private func requeue(_ rf: Int, why: String, progress: @Sendable (String) -> Void) {
+        queue.insert(rf, at: 0)
+        events(.paused(rf: rf))
+        progress("RF \(rf): paused, \(why)")
+    }
 
     private func record(rf: Int, multiplex: OTAMultiplex?, skipped: String?, progress: @Sendable (String) -> Void) {
         finished += 1
@@ -112,25 +125,31 @@ actor OTAScanner {
         }
     }
 
-    private func scanOne(rf: Int, env: OTAScanEnvironment, seconds: TimeInterval, lineupOnly: Bool, progress: @escaping @Sendable (String) -> Void) async {
-        guard let hz = Self.frequencyHz(rf: rf) else { return }
+    /// Reads one RF channel. Returns nil when it finished (read or skipped for good), or how long the worker should wait when it
+    /// paused instead (the channel is back in the queue).
+    private func scanOne(rf: Int, env: OTAScanEnvironment, seconds: TimeInterval, lineupOnly: Bool, progress: @escaping @Sendable (String) -> Void) async -> TimeInterval? {
+        guard let hz = Self.frequencyHz(rf: rf) else { return nil }
         // Wait (up to ~15 min) for a tuner that is free for real: idle in hardware, not ours already, and one the app does not need.
         guard let tuner = await claimTuner(env: env) else {
-            record(rf: rf, multiplex: nil, skipped: Task.isCancelled ? "cancelled" : "no free tuner", progress: progress); return
+            record(rf: rf, multiplex: nil, skipped: Task.isCancelled ? "cancelled" : "no free tuner", progress: progress); return nil
         }
         defer { release(tuner) }
+        if await env.yieldRequested() { requeue(rf, why: "a tuner is needed", progress: progress); return 2 }
         events(.started(rf: rf))
         if let due = await env.secondsUntilNextRecording(), due < seconds + 30 {
-            record(rf: rf, multiplex: nil, skipped: "a recording starts in \(Int(due)) s", progress: progress); return
+            requeue(rf, why: "a recording starts in \(Int(due)) s", progress: progress); return 15   // resumes once that recording is running and the other tuner is free
         }
         let capture = await Self.capture(host: env.host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly,
                                       onUpdate: { [events] result in events(.update(rf: rf, result: result)) }) { [self] in await self.shouldYield(env: env) }
         switch capture {
         case .decoded(let result, let bytes):
             record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes), skipped: nil, progress: progress)
+        case .skipped("tuner needed"):
+            requeue(rf, why: "a tuner is needed", progress: progress); return 2
         case .skipped(let why):
             record(rf: rf, multiplex: nil, skipped: why, progress: progress)
         }
+        return nil
     }
 
     // MARK: tuner claim
@@ -138,6 +157,7 @@ actor OTAScanner {
     private func claimTuner(env: OTAScanEnvironment) async -> String? {
         let deadline = Date().addingTimeInterval(15 * 60)
         while !Task.isCancelled, Date() < deadline {
+            if await env.yieldRequested() { try? await Task.sleep(nanoseconds: 1_000_000_000); continue }   // the app is about to use a tuner: take none
             let rows = await Self.statusRows(host: env.host)
             let appBusy = await env.appBusyTuners()
             // Tuners busy in hardware for anyone except us (our own claimed tuners show up there too).
@@ -158,6 +178,7 @@ actor OTAScanner {
 
     /// True when a recording is about to start, or the app has taken tuners so that it plus this scan no longer fit on the device.
     private func shouldYield(env: OTAScanEnvironment) async -> Bool {
+        if await env.yieldRequested() { return true }
         if let due = await env.secondsUntilNextRecording(), due < 20 { return true }
         return await env.appBusyTuners() + claimed.count > env.tunerCount
     }
@@ -213,7 +234,7 @@ actor OTAScanner {
                     if lineupOnly, !snapshot.channels.isEmpty { break }           // the channel list repeats several times a second
                 }
                 if elapsed >= seconds { break }
-                if Date().timeIntervalSince(lastYieldCheck) >= 5 {
+                if Date().timeIntervalSince(lastYieldCheck) >= 1 {
                     lastYieldCheck = Date()
                     if await shouldYield() { return .skipped("tuner needed") }
                 }

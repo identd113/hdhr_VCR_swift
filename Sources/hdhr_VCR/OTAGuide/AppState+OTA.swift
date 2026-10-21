@@ -38,7 +38,8 @@ extension AppState {
                 }
             },
             tunerLimit: { [weak self] in await MainActor.run { [weak self] in self?.otaTunerLimit ?? 1 } },
-            onHeldChange: { [weak self] held in Task { @MainActor [weak self] in self?.otaHeldResources = held } })
+            onHeldChange: { [weak self] held in Task { @MainActor [weak self] in self?.otaHeldResources = held } },
+            yieldRequested: { [weak self] in await MainActor.run { [weak self] in Date() < (self?.otaYieldUntil ?? .distantPast) } })
         otaScanStatus = "Scanning \(id)…"
         let twoPass = !lineupOnly && rfChannels == nil   // a full scan of the whole band: channel lists first, then guides
         otaProgress.reset(lineupOnly: lineupOnly, twoPass: twoPass)
@@ -108,6 +109,37 @@ extension AppState {
         lastScheduledOTAAttempt = now
         glog("[OTA] scheduled scan due (\(config.OTA_scan_hour):00)")
         startOTAScan(deviceId: id, userInitiated: false)
+    }
+
+    // MARK: handing a tuner to the app while a scan runs
+
+    /// Would a new stream on this device find every tuner held by something, with the OTA scan among the holders? Then the scan must let
+    /// go first. (Tuners the scan holds do not count as occupied for `tunersFull`: the scan yields.)
+    func otaNeedsYield(for deviceId: String) -> Bool {
+        guard deviceId == otaScanDeviceId, otaScanTask != nil, !otaHeldResources.isEmpty,
+              let device = devices.first(where: { $0.DeviceID == deviceId }), let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
+        let hwAll = deviceTunerOccupancy[deviceId]?.filter { $0.isInUse }.count ?? 0
+        let app = recordingShows.filter { $0.hdhr_record == deviceId }.count
+            + (vlcOccupiesTuner(for: deviceId) ? 1 : 0) + (secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
+        return max(hwAll, app + otaHeldResources.count) >= tunerCount
+    }
+
+    /// Asks the scan to drop its captures and take no tuner for the next 12 s (the app is about to tune). The interrupted channels go back
+    /// in the scan's queue; once the app's stream is up the scan carries on with whatever tuner is still free.
+    func requestOTAYield(deviceId: String) {
+        guard deviceId == otaScanDeviceId, otaScanTask != nil else { return }
+        otaYieldUntil = Date().addingTimeInterval(12)
+        glog("[OTA] a tuner is needed on \(deviceId) — the scan is stepping aside")
+    }
+
+    /// For the live-watch paths: if the scan is in the way, ask it to step aside and wait (up to ~6 s) until it has let go.
+    func yieldOTAScan(for device: HDHRDevice) async {
+        guard otaNeedsYield(for: device.DeviceID) else { return }
+        requestOTAYield(deviceId: device.DeviceID)
+        for _ in 0..<12 where !otaHeldResources.isEmpty {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        await fetchDeviceStatus(for: device)
     }
 
     func cancelOTAScan() {
