@@ -21,14 +21,5 @@ Accessibility identifiers: `ota-scan-window`, `ota-scan-progress` (value "N of M
 `ota-scan-tab-<RF>` / `ota-scan-mux-<RF>` (the selected station's panel; label "RF 32, 7 channels, scanning|done|no guide: …"), `ota-scan-follow`, `ota-scan-fact-*` and `ota-scan-sub-<major.minor>`. Settings: `settings-ota-scan`,
 `settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-schedule`. Without the UI: `POST /api/ota-scan` / `GET /api/ota-status` (docs/OTAGuide.md).
 
-## Automation
-Accessibility identifiers: `ota-scan-window`, `ota-scan-progress` (value "N of M RF channels"), `ota-scan-count`, `ota-scan-time-left`, `ota-scan-status`,
-`ota-scan-tuners` (the pulldown), `ota-scan-cancel`, `ota-scan-close`, `ota-scan-multiplexes` / `-channels` / `-listings` (label + value), per-row
-`ota-scan-tab-<RF>` / `ota-scan-mux-<RF>` (the selected station's panel; label "RF 32, 7 channels, scanning|done|no guide: …"), `ota-scan-follow`, `ota-scan-fact-*` and `ota-scan-sub-<major.minor>`. Settings: `settings-ota-scan`,
-`settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-schedule`. Without the UI: `POST /api/ota-scan` / `GET /api/ota-status` (docs/OTAGuide.md).
-
-## Channels and episodes
-A station's channels (number and name) are listed as soon as they are known: while it is being read, and while it waits for its guide after the channel-list pass. A finished station folds them away; the chevron (`ota-scan-expand-<RF>`) unfolds them. Each channel line reads "103 episodes · from Tue 1:00 PM": the count of programs listed for it and the start of the earliest one (usually the show on the air when it was read). A channel with no listings says "no guide". The header counts "episodes" (id `ota-scan-listings`, unchanged).
-
 ![The scan window part-way through a scan](screenshots/ota-scan-window.png)
 (Rendered with a test fixture: its data rate and station clock are not real readings.)
