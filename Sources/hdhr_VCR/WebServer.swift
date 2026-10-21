@@ -788,7 +788,8 @@ final class WebServer: @unchecked Sendable {
             // cache) renders the Record/Edit modal's no-transcode warning as permanently off for
             // that device until the next full page reload rebuilds `tuners` from scratch.
             counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0, "nt": device.supportsTranscode ? 0 : 1,
-                                         "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: device.DeviceID) ? 1 : 0]
+                                         "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: device.DeviceID) ? 1 : 0,
+                                         "g": sourceParts(for: device.DeviceID, state: state).guide, "l": sourceParts(for: device.DeviceID, state: state).lineup]
         }
         guard !counts.isEmpty else { return }
         broadcastEvent(["type": "tuner_update", "counts": counts])
@@ -838,6 +839,11 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func feedCacheStillActive(sessionId: String) -> Bool {
         appState?.isFeedCacheSessionStillActive(id: sessionId) ?? false
+    }
+
+    /// The guide/lineup source of one tuner for the web guide's tuner popover.
+    @MainActor private func sourceParts(for deviceId: String, state: AppState) -> (guide: String, lineup: String) {
+        state.guideStore.sourceParts(deviceId: deviceId, lineupSource: state.lineupSourceLabel(deviceId: deviceId))
     }
 
     // GET /api/hls/<show>/<file> — web streaming (docs/WebStreaming.md). Runs entirely off the main thread: the session
@@ -3286,9 +3292,7 @@ final class WebServer: @unchecked Sendable {
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Paused</div>\(rows)</div>")
         }
 
-        // Where this tuner's guide and channel list come from (SiliconDust, the air, a saved copy) and how old the guide is.
-        let source = "<div class=\"sp-src\" id=\"sp-src-\(he(deviceId))\">\(he(state.guideStore.sourceLine(deviceId: deviceId, lineupSource: state.lineupSourceLabel(deviceId: deviceId))))</div>"
-        return source + (parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined())
+        return parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined()
     }
 
     // Per-device tuner counts (total slots vs. currently occupied). Shared by buildHTML (feeds
@@ -3928,7 +3932,9 @@ final class WebServer: @unchecked Sendable {
                 dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": d.statusURL,
                                      "nt": d.supportsTranscode ? 0 : 1,
                                      // "ns": the guide has no SeriesIDs (over-the-air), so the Type row dims its SeriesID option
-                                     "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: d.DeviceID) ? 1 : 0]
+                                     "ns": state.guideStore.guideHasNoSeriesIDs(deviceId: d.DeviceID) ? 1 : 0,
+                                     // where the guide and channel list come from, for the tuner popover ("g"/"l")
+                                     "g": sourceParts(for: d.DeviceID, state: state).guide, "l": sourceParts(for: d.DeviceID, state: state).lineup]
             }
             guard let data = try? JSONSerialization.data(withJSONObject: dict),
                   let str  = String(data: data, encoding: .utf8) else { return "var tuners={};" }

@@ -538,7 +538,6 @@ html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
 .sp-rec{color:#ff8080}
 html.lm .sp-rec{color:#cc2020}
 .sp-div{height:1px;background:var(--b1);margin:2px 0}
-.sp-src{font-size:.68rem;color:var(--t4);padding:8px 14px 4px;border-bottom:1px solid var(--b3)}
 .sp-empty{font-size:.8rem;color:var(--t5);padding:12px 14px;text-align:center}
 /* ── Other Upcoming Airings (record modal) — same row language as .sp-row ── */
 .rm-air-row{display:flex;align-items:flex-start;gap:7px;padding:5px 4px;margin:0 -4px;border-bottom:1px solid var(--b0);border-radius:4px;cursor:pointer;transition:background .12s}

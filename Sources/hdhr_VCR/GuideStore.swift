@@ -38,14 +38,19 @@ final class GuideStore {
 
     /// One line for the web guide's tuner dropdown: where the guide and the channel list come from, and how old the guide is.
     func sourceLine(deviceId: String, lineupSource: String = "the tuner", now: Date = Date()) -> String {
-        let lineup = "Lineup: \(lineupSource)"
-        guard let source = sourceByDevice[deviceId], let loaded = loadTimestamps[deviceId] else { return "Guide: not loaded · \(lineup)" }
+        let p = sourceParts(deviceId: deviceId, lineupSource: lineupSource, now: now)
+        return "Guide: \(p.guide) · Lineup: \(p.lineup)"
+    }
+
+    /// The two halves separately ("SiliconDust, 53 min ago" / "the tuner"), for the web guide's tuner popover.
+    func sourceParts(deviceId: String, lineupSource: String = "the tuner", now: Date = Date()) -> (guide: String, lineup: String) {
+        guard let source = sourceByDevice[deviceId], let loaded = loadTimestamps[deviceId] else { return ("not loaded", lineupSource) }
         let age = Self.ageText(now.timeIntervalSince(loaded))
         switch source {
-        case .cloud: return "Guide: SiliconDust, \(age) · \(lineup)"
-        case .xmltv: return "Guide: SiliconDust (XMLTV), \(age) · \(lineup)"
-        case .ota:   return "Guide: from the air, scanned \(age) · \(lineup)"
-        case .cache: return "Guide: saved SiliconDust copy, \(age) · \(lineup)"
+        case .cloud: return ("SiliconDust, \(age)", lineupSource)
+        case .xmltv: return ("SiliconDust (XMLTV), \(age)", lineupSource)
+        case .ota:   return ("from the air, scanned \(age)", lineupSource)
+        case .cache: return ("saved SiliconDust copy, \(age)", lineupSource)
         }
     }
     nonisolated static func ageText(_ seconds: TimeInterval) -> String {

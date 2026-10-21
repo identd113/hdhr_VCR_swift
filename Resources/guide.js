@@ -728,6 +728,13 @@ function showTunerInfo(devId,anchor){
   var dt=tuners[devId]||{t:0,a:0};
   var full=dt.t>0&&dt.a>=dt.t;
   document.getElementById('t-pop-hdr').textContent=(dt.t>0?dt.a+'/'+dt.t+' tuners':'Tuners')+(full?' — FULL':'');
+  // Where this tuner's guide and channel list come from (SiliconDust, the air, a saved copy) and how old the guide is.
+  var srcEl=document.getElementById('t-pop-src');
+  if(srcEl){
+    srcEl.innerHTML=dt.g?('<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">Guide</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.g)+'</span></div>'
+      +'<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">Lineup</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.l||'')+'</span></div>'):'';
+    srcEl.style.display=dt.g?'block':'none';
+  }
   var list=document.getElementById('t-pop-list');
   if(recs.length===0){
     list.innerHTML='<div style="color:var(--t4);font-size:.8rem;padding:4px 0">No active recordings</div>';
@@ -1971,7 +1978,7 @@ setInterval(updateNowLine,60000);
           var c=d.counts[dev],a=c.a,t=c.t;
           // Refresh "nt" on an existing entry too (not just the fresh-entry fallback) — cheap, and
           // keeps it from ever silently going stale relative to what the server just sent.
-          if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;tuners[dev].ns=c.ns;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt,ns:c.ns};}
+          if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;tuners[dev].ns=c.ns;tuners[dev].g=c.g;tuners[dev].l=c.l;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt,ns:c.ns,g:c.g,l:c.l};}
           var tb=document.getElementById('tun-'+dev);
           if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
         });

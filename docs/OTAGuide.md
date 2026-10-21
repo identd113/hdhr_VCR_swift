@@ -55,6 +55,6 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
   it at once; pass 2 reads the guide (full `seconds`) of only the stations pass 1 found that announce a guide. Stations pass 2 skips or loses keep
   their pass 1 result. A scan cancelled in pass 2 keeps the saved channel list and leaves the earlier guide untouched. (Why: on the Twin Cities test
   the air lineup matched SiliconDust's closely, so the list is worth having early; 32 of 49 RF channels carry nothing and need no guide pass.)
-- **Source in the web guide:** each tuner's dropdown shows the guide source and age (`GuideStore.sourceLine`), see `docs/WebServer.md`. The channel list is still the tuner's own; the saved air `lineup.json` is not used as one yet.
+- **Source in the web guide:** each tuner's info popover shows the guide source and age (`GuideStore.sourceLine`), see `docs/WebServer.md`. The channel list is still the tuner's own; the saved air `lineup.json` is not used as one yet.
 - **SeriesID:** the air guide has none, so the SeriesID type is dimmed for a tuner whose guide has no series IDs (`GuideStore.guideHasNoSeriesIDs`; native form, web Type row, and `/api/record` rejects it).
-- **Air lineup (developer only):** Settings → Developer can use the saved scan as the lineup (`OTAStore.lineupEntries`, tuned with `/auto/ch<Hz>-<program>`). Debug builds only; the tuner's own lineup is always used in release builds. The web guide's tuner dropdown names the lineup source.
+- **Air lineup (developer only):** Settings → Developer can use the saved scan as the lineup (`OTAStore.lineupEntries`, tuned with `/auto/ch<Hz>-<program>`). Debug builds only; the tuner's own lineup is always used in release builds. The web guide's tuner popover names the lineup source.
