@@ -267,7 +267,7 @@ final class GuideStore {
         // deploys). The file is only trusted when it parses and still covers the present — otherwise
         // fall through to the normal network fetch below.
         if let cacheFile, let maxCacheAge {
-            if await applyDiskCache(id: id, file: cacheFile, maxAge: maxCacheAge, epochAtStart: epochAtStart, parse: parse) != nil {
+            if await applyDiskCache(id: id, file: cacheFile, maxAge: maxCacheAge, epochAtStart: epochAtStart, source: source, parse: parse) != nil {
                 return true
             }
             glog("[\(id)] disk-cached guide unusable (parse failed or no longer covers now) — fetching from network")
@@ -288,7 +288,7 @@ final class GuideStore {
                 glog("[\(id)] guide refresh failed — using the saved over-the-air guide until it succeeds", level: .warning)
             } else if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
                let modified = await applyDiskCache(id: id, file: cacheFile, maxAge: Self.staleFallbackMaxAge,
-                                                   epochAtStart: epochAtStart, parse: parse) {
+                                                   epochAtStart: epochAtStart, source: .cache, parse: parse) {
                 glog("[\(id)] guide refresh failed — using the on-disk copy from \(Int(Date().timeIntervalSince(modified) / 60)) min ago until it succeeds", level: .warning)
             }
             return false
@@ -397,7 +397,7 @@ final class GuideStore {
 
     /// Parses `file` and, if it decodes and still covers the present, applies it. Returns the file's
     /// modification date when applied, nil otherwise (missing/too old/unparseable/stale epoch).
-    private func applyDiskCache(id: String, file: URL, maxAge: TimeInterval, epochAtStart: Int,
+    private func applyDiskCache(id: String, file: URL, maxAge: TimeInterval, epochAtStart: Int, source: GuideSource,
                                 parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Date? {
         guard let cached = Self.readFreshCache(file, maxAge: maxAge) else { return nil }
         let nowEpoch = Int(Date().timeIntervalSince1970)
@@ -409,7 +409,7 @@ final class GuideStore {
               invalidationEpoch == epochAtStart else { return nil }
         applyIndex(prepared)
         loadTimestamps[id] = cached.modified
-        sourceByDevice[id] = .cache
+        sourceByDevice[id] = source   // .cache only for the failed-fetch fallback; a recent cache hit is still plain SiliconDust data
         glog("[\(id)] guide loaded from disk cache (\(Int(Date().timeIntervalSince(cached.modified)))s old, \(cached.data.count) bytes)")
         return cached.modified
     }
