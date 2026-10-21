@@ -90,12 +90,15 @@ final class OTAScanProgress: ObservableObject {
     @Published var summary = ""
     private var startedAt = Date()
     private var signals: [Int: (strength: Int?, quality: Int?)] = [:]
+    private var lastUpdateApplied: [Int: Date] = [:]
+    /// Seconds between redraws of a station's running numbers.
+    static let updateEvery: TimeInterval = 4
 
     var channelCount: Int { rows.reduce(0) { $0 + $1.subChannels.count } }
     var listingCount: Int { rows.reduce(0) { $0 + $1.listings } }
 
     func reset(lineupOnly: Bool, twoPass: Bool = false) {
-        rows = []; tuning = []; currentRF = nil; signals = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""
+        rows = []; tuning = []; currentRF = nil; signals = [:]; lastUpdateApplied = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""
         lanes = [:]; note = nil; endedAt = nil
         running = true
         startedAt = Date()
@@ -146,12 +149,17 @@ final class OTAScanProgress: ObservableObject {
             freeLane(rf)
             if let i = rows.firstIndex(where: { $0.rf == rf }), rows[i].state == .scanning { rows[i].state = .waiting }
         case .update(let rf, let result, let bytes, let seconds):
-            currentRF = rf
+            // Calm: a station's numbers are redrawn every few seconds, not every second (and an update never moves the
+            // selected tab: with two tuners reading, that made it flip back and forth).
+            let now = Date()
+            if let last = lastUpdateApplied[rf], now.timeIntervalSince(last) < Self.updateEvery, rows.contains(where: { $0.rf == rf }) { return }
+            lastUpdateApplied[rf] = now
             upsert(rf: rf, result: result, bytes: bytes, seconds: seconds, done: false)
         case .signal(let rf, let strength, let quality):
             signals[rf] = (strength, quality)
             if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].info.strength = strength; rows[i].info.quality = quality }
         case .finished(let rf, let result, let bytes, let seconds):
+            lastUpdateApplied[rf] = nil
             tuning.remove(rf)
             freeLane(rf)
             finished += 1

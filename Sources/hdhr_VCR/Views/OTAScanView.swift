@@ -33,7 +33,7 @@ struct OTAScanView: View {
     // MARK: 1. overview
 
     private var overview: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+        TimelineView(.periodic(from: .now, by: 2)) { context in
             let now = context.date
             let value = progress.running ? progress.fraction(now: now) : (progress.total > 0 ? 1 : 0)
             VStack(alignment: .leading, spacing: 7) {
@@ -49,6 +49,7 @@ struct OTAScanView: View {
                         .accessibilityIdentifier("ota-scan-time-left")
                 }
                 ProgressView(value: value)
+                    .animation(.linear(duration: 2), value: value)
                     .accessibilityLabel("Scan progress")
                     .accessibilityValue("\(progress.finished) of \(progress.total) \(progress.pass == 2 ? "stations" : "RF channels")")
                     .accessibilityIdentifier("ota-scan-progress")
@@ -57,7 +58,6 @@ struct OTAScanView: View {
                         .font(.caption.monospacedDigit())
                         .accessibilityIdentifier("ota-scan-count")
                     Spacer()
-                    Text("elapsed \(Self.clock(progress.elapsedSeconds(now: now)))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 22) {
                     stat(progress.rows.count, "stations found", id: "ota-scan-multiplexes")
@@ -118,7 +118,7 @@ struct OTAScanView: View {
                         .accessibilityIdentifier("ota-scan-status")
                 }
             }
-            TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            TimelineView(.periodic(from: .now, by: 2)) { context in
                 HStack(spacing: 10) {
                     ForEach(0..<max(1, state.otaTunerMax), id: \.self) { i in laneCard(i, now: context.date) }
                 }
@@ -155,11 +155,10 @@ struct OTAScanView: View {
                     Text(Self.mhz(Double(OTAScanner.frequencyHz(rf: lane.rf) ?? 0) / 1_000_000)).font(.caption).foregroundStyle(.secondary)
                 }
                 ProgressView(value: lane.fraction(now: now)).tint(color)
+                    .animation(.linear(duration: 2), value: lane.fraction(now: now))
                     .accessibilityLabel("Tuner \(index) progress")
                     .accessibilityIdentifier("ota-scan-lane-progress-\(index)")
-                Text("\(Int(lane.elapsed(now: now))) s of up to \(Int(lane.expectedSeconds)) s")
-                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                Text(laneReadings(info)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(laneReadings(info, lane: lane)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             } else {
                 Text(laneIdleText(st)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                 Spacer(minLength: 0)
@@ -188,7 +187,6 @@ struct OTAScanView: View {
         ZStack {
             Circle().stroke(color.opacity(0.6), lineWidth: 1.5).frame(width: 14, height: 14)
             Image(systemName: "circle.fill").font(.system(size: 8)).foregroundStyle(lit)
-                .symbolEffect(.pulse, options: .repeating, isActive: st == .reading || st == .tuning)
         }
     }
 
@@ -213,13 +211,11 @@ struct OTAScanView: View {
         default: return "Waiting for the next station."
         }
     }
-    /// Live readings for the station on this tuner: what has been found so far, the data rate and the tuner's signal.
-    private func laneReadings(_ info: OTAMuxInfo?) -> String {
-        guard let info, info.bytes > 0 else { return "locking on…" }
-        var parts: [String] = []
-        if let mbps = info.mbps { parts.append(String(format: "%.1f Mbit/s", mbps)) }
-        if let q = info.quality { parts.append("signal \(q)%") }
-        return parts.isEmpty ? "reading…" : parts.joined(separator: " · ")
+    /// A quiet line under the bar: how long the read can take, and the tuner's signal once it has been read (a fixed reading, not a live one).
+    private func laneReadings(_ info: OTAMuxInfo?, lane: OTAScanLane) -> String {
+        var parts = ["up to \(Int(lane.expectedSeconds)) s"]
+        if let q = info?.quality { parts.append("signal \(q)%") } else if info == nil || info?.bytes == 0 { parts.append("locking on") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: 3. stations
@@ -259,7 +255,7 @@ struct OTAScanView: View {
                     .padding(.vertical, 2)
                 }
                 .onChange(of: selectedRF) { _, rf in
-                    if let rf { withAnimation { proxy.scrollTo(rf, anchor: .center) } }
+                    if let rf { proxy.scrollTo(rf, anchor: .center) }
                     if pinnedRF == nil, let rf { followedRF = rf }
                 }
             }
@@ -378,12 +374,6 @@ struct OTAScanView: View {
                 VStack(spacing: 0) {
                     ForEach(row.subChannels) { sub in
                         HStack(spacing: 6) {
-                            Group {
-                                if row.state == .scanning && !sub.done { ProgressView().controlSize(.mini) }
-                                else if row.state == .scanning { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                                else { Color.clear }
-                            }
-                            .frame(width: 14)
                             Text(sub.number).font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
                             Text(sub.name).font(.callout).lineLimit(1)
                             if sub.audioOnly {
@@ -449,7 +439,7 @@ struct OTAScanView: View {
     @ViewBuilder private func marker(_ s: OTAMultiplexRow.State) -> some View {
         switch s {
         case .waiting: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
-        case .scanning: ProgressView().controlSize(.small)
+        case .scanning: Image(systemName: "circle.inset.filled").foregroundStyle(Color.accentColor)
         case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .noGuide: Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
         }

@@ -121,8 +121,12 @@ struct OTAStoreTests {
         let result = decoder.result()
         progress.apply(.started(rf: 31, tuner: "tuner0", expectedSeconds: 60))
         #expect(progress.currentRF == 31)
-        progress.apply(.update(rf: 32, result: result, bytes: 1_000_000, seconds: 1))
+        progress.apply(.started(rf: 32, tuner: "tuner1", expectedSeconds: 60))
         #expect(progress.currentRF == 32)
+        // An update from the other tuner's station must not move the selection (it made the tab flip back and forth).
+        progress.apply(.update(rf: 31, result: result, bytes: 1_000_000, seconds: 1))
+        #expect(progress.currentRF == 32)
+        progress.apply(.update(rf: 32, result: result, bytes: 1_000_000, seconds: 1))
         progress.apply(.signal(rf: 32, strength: 88, quality: 98))
         let row = try #require(progress.rows.first { $0.rf == 32 })
         #expect(row.info.strength == 88 && row.info.quality == 98)
@@ -133,6 +137,19 @@ struct OTAStoreTests {
         #expect(row.info.frequencyMHz == 581)
         #expect(row.subChannels.first?.latestEnd != nil)
         #expect(row.subChannels.allSatisfy { !$0.audioOnly })
+    }
+
+    @Test func aStationsRunningNumbersAreRedrawnEveryFewSeconds() throws {
+        let progress = OTAScanProgress()
+        progress.reset(lineupOnly: false)
+        let decoder = PSIPDecoder(); decoder.ingest(try Data(contentsOf: PSIPDecoderTests.fixture))
+        let result = decoder.result()
+        progress.apply(.update(rf: 32, result: result, bytes: 1_000_000, seconds: 1))
+        #expect(progress.rows.first?.info.bytes == 1_000_000)                  // the first reading is shown at once
+        progress.apply(.update(rf: 32, result: result, bytes: 2_000_000, seconds: 2))
+        #expect(progress.rows.first?.info.bytes == 1_000_000)                  // the next one, a second later, is held back
+        progress.apply(.finished(rf: 32, result: result, bytes: 9_000_000, seconds: 9))
+        #expect(progress.rows.first?.info.bytes == 9_000_000)                  // a finished read always shows
     }
 
     @Test func theScanWindowShowsWhatEachTunerIsDoing() throws {
