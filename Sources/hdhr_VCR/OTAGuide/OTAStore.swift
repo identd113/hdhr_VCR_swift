@@ -77,6 +77,31 @@ enum OTAStore {
         return Date().timeIntervalSince(modified) <= maxAge
     }
 
+    /// The saved air lineup as the app's own `LineupEntry`s (no copy-protected or hidden services), tuned by frequency and program number:
+    /// `http://<tuner>:5004/auto/ch<Hz>-<program>` (verified live: the tuner filters the stream to that one program). Nil when there is
+    /// no saved scan or it is older than `maxAge`.
+    static func lineupEntries(deviceId: String, host: String, maxAge: TimeInterval = GuideStore.staleFallbackMaxAge, root: URL = OTAStore.root) -> [LineupEntry]? {
+        let file = folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json")
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date,
+              Date().timeIntervalSince(modified) <= maxAge,
+              let data = try? Data(contentsOf: file),
+              let saved = try? JSONDecoder().decode([OTALineupEntry].self, from: data) else { return nil }
+        let entries = saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }.map { e in
+            LineupEntry(GuideNumber: e.GuideNumber, GuideName: e.GuideName, URL: "http://\(host):5004/auto/ch\(e.Frequency)-\(e.ProgramNumber)",
+                        HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil)
+        }
+        return entries.sorted {
+            ($0.GuideNumber.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.GuideNumber.split(separator: ".").compactMap { Int($0) })
+        }
+    }
+
+    /// Developer purge: removes a device's saved air data. `guide` = guide.json + scan.json, `lineup` = lineup.json.
+    static func deleteSaved(deviceId: String, guide: Bool, lineup: Bool, root: URL = OTAStore.root) {
+        let dir = folder(deviceId: deviceId, root: root)
+        if guide { for f in ["guide.json", "scan.json"] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(f)) } }
+        if lineup { try? FileManager.default.removeItem(at: dir.appendingPathComponent("lineup.json")) }
+    }
+
     static func loadSummary(deviceId: String, root: URL = OTAStore.root) -> OTAScanSummary? {
         guard let data = try? Data(contentsOf: folder(deviceId: deviceId, root: root).appendingPathComponent("scan.json")) else { return nil }
         let decoder = JSONDecoder()

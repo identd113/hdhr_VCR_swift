@@ -63,6 +63,25 @@ struct OTAStoreTests {
         #expect(store.sourceByDevice["TEST"] == nil)
     }
 
+    @Test func theSavedLineupBecomesTunableEntries() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        #expect(OTAStore.lineupEntries(deviceId: "TEST", host: "10.0.0.5", root: root) == nil)
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        let entries = try #require(OTAStore.lineupEntries(deviceId: "TEST", host: "10.0.0.5", root: root))
+        #expect(!entries.isEmpty)
+        let first = try #require(entries.first)
+        #expect(first.GuideNumber == "4.1")
+        // Frequency and program number, not the tuner's own channel number: tunes channels the tuner's lineup lacks.
+        #expect(first.URL?.hasPrefix("http://10.0.0.5:5004/auto/ch") == true)
+        #expect(first.URL?.contains("-") == true)
+        #expect(first.Favorite == nil)
+        OTAStore.deleteSaved(deviceId: "TEST", guide: false, lineup: true, root: root)
+        #expect(OTAStore.lineupEntries(deviceId: "TEST", host: "10.0.0.5", root: root) == nil)
+        #expect(OTAStore.hasFreshGuide(deviceId: "TEST", root: root))   // the lineup purge leaves the guide
+        OTAStore.deleteSaved(deviceId: "TEST", guide: true, lineup: false, root: root)
+        #expect(!OTAStore.hasFreshGuide(deviceId: "TEST", root: root))
+    }
+
     @Test func ageTextReadsLikeAPerson() {
         #expect(GuideStore.ageText(20) == "just now")
         #expect(GuideStore.ageText(12 * 60) == "12 min ago")

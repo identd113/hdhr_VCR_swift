@@ -12,6 +12,10 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     // The tab is "Sharing": an umbrella over the web server ("Web LAN" section), Terminal Guide and Recording FEED.
     case sharing       = "Sharing"
     case maintenance   = "Maintenance"
+    #if DEBUG
+    // Developer tools (guide/lineup source switches, purges): compiled out of release builds entirely.
+    case developer     = "Developer"
+    #endif
     case about         = "About"
 
     var icon: String {
@@ -23,6 +27,9 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .advanced:      return "terminal"
         case .sharing:       return "globe"
         case .maintenance:   return "wrench.and.screwdriver"
+        #if DEBUG
+        case .developer:     return "hammer"
+        #endif
         case .about:         return "info.circle"
         }
     }
@@ -325,6 +332,9 @@ struct SettingsView: View {
         case .advanced:      advancedView
         case .sharing:       sharingView
         case .maintenance:   maintenanceView
+        #if DEBUG
+        case .developer:     developerView
+        #endif
         case .about:         aboutView
         }
     }
@@ -1075,6 +1085,67 @@ struct SettingsView: View {
             }
         }
     }
+
+    #if DEBUG
+    // MARK: - Developer (debug builds only; docs/SettingsView.md "Developer")
+
+    private var developerView: some View {
+        Form {
+            Section("Guide source") {
+                Picker("Guide", selection: Binding(
+                    get: { state.guideSourceChoice },
+                    set: { choice in Task { @MainActor in await state.setGuideSource(choice) } })) {
+                    ForEach(AppState.GuideSourceChoice.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("dev-guide-source")
+                Text("Switching saves the choice, drops the guide in memory and fetches it again from the new source. The same two switches exist under General (JSON / XMLTV, and the air guide).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Lineup source") {
+                Picker("Lineup", selection: Binding(
+                    get: { state.config.lineupFromAir },
+                    set: { air in Task { @MainActor in await state.setLineupSource(air: air) } })) {
+                    Text("The tuner").tag(false)
+                    Text("From the air").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("dev-lineup-source")
+                Text("The air lineup is the saved scan (Advanced → Over-the-Air Guide), tuned by frequency and program number, so it includes channels the tuner's own lineup lacks. Favorites do not apply to it. Falls back to the tuner's lineup when no scan under 36 hours old exists.")
+                    .font(.caption).foregroundStyle(.secondary)
+                maintenanceRow("Reload Lineup", "Fetches the lineup again from the chosen source") {
+                    await state.reloadLineups()
+                    return "Lineup reloaded — \(state.lineups.values.map(\.count).reduce(0, +)) channel(s)"
+                }
+            }
+            Section("Purges") {
+                maintenanceRow("Clear guide in memory", "Drops the guide held in memory and loads it again from the current source") {
+                    state.guideStore.invalidateAll()
+                    state.guideByDevice = [:]
+                    await state.refreshGuide()
+                    return "Guide cleared and reloaded"
+                }
+                maintenanceRow("Delete cached SiliconDust guide files", "Removes the on-disk copies of the SiliconDust guide that are reused after a relaunch or when the service is down") {
+                    state.purgeGuideDiskCache()
+                }
+                maintenanceRow("Delete saved air guide", "Removes the saved over-the-air guide and its scan record for every tuner. The next air-guide refresh finds nothing until you scan again") {
+                    state.purgeSavedAirData(guide: true, lineup: false)
+                }
+                maintenanceRow("Delete saved air lineup", "Removes the saved over-the-air channel list for every tuner") {
+                    state.purgeSavedAirData(guide: false, lineup: true)
+                }
+                maintenanceRow("Delete all saved air data", "Removes the saved air guide, scan record and channel list for every tuner, so the next scan starts from nothing") {
+                    state.purgeSavedAirData(guide: true, lineup: true)
+                }
+            }
+            if !maintenanceStatus.isEmpty {
+                Section { Label(maintenanceStatus, systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.callout) }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Developer")
+    }
+    #endif
 
     @ViewBuilder
     private func maintenanceRow(_ title: String, _ description: String,

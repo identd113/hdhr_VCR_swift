@@ -3279,7 +3279,7 @@ final class WebServer: @unchecked Sendable {
         }
 
         // Where this tuner's guide and channel list come from (SiliconDust, the air, a saved copy) and how old the guide is.
-        let source = "<div class=\"sp-src\" id=\"sp-src-\(he(deviceId))\">\(he(state.guideStore.sourceLine(deviceId: deviceId)))</div>"
+        let source = "<div class=\"sp-src\" id=\"sp-src-\(he(deviceId))\">\(he(state.guideStore.sourceLine(deviceId: deviceId, lineupSource: state.lineupSourceLabel(deviceId: deviceId))))</div>"
         return source + (parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined())
     }
 

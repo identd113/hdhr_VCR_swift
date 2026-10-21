@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @Published var shows: [Show] = []
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
+    var lineupFromAirByDevice: Set<String> = []                 // devices whose lineup above is the saved over-the-air one (developer section)
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
         // Rebuild caches on guide load (infrequent). The 403 feedback loop is broken by
         // ensureGuideLoaded's success-only guard on guideByDevice assignment.
@@ -1887,10 +1888,20 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            for await (id, lu) in group {
+            for await (id, tunerLineup) in group {
+                var lu = tunerLineup
+                // Developer lineup source "air": the saved scan replaces the tuner's own channel list (see OTAStore.lineupEntries).
+                if config.lineupFromAir, let device = devices.first(where: { $0.DeviceID == id }),
+                   let air = OTAStore.lineupEntries(deviceId: id, host: device.LocalIP), !air.isEmpty {
+                    glog("[Lineup] \(id) using the saved over-the-air lineup (\(air.count) channels) instead of the tuner's \(tunerLineup?.count ?? 0)")
+                    lineupFromAirByDevice.insert(id)
+                    lu = air
+                } else {
+                    lineupFromAirByDevice.remove(id)
+                    if let lu, lu.isEmpty == false { reconcileFavorites(deviceId: id, freshLineup: lu) }
+                }
                 if let lu {
                     glog("[Lineup] \(id) loaded \(lu.count) channels")
-                    reconcileFavorites(deviceId: id, freshLineup: lu)
                     lineups[id] = lu
                     confirmLocalNetworkAccessIfNeeded()
                 }
@@ -7071,5 +7082,55 @@ private final class ResumeOnce: @unchecked Sendable {
     func resume() {
         lock.lock(); let c = cont; cont = nil; lock.unlock()
         c?.resume()
+    }
+}
+
+// MARK: - Developer section (Settings → Developer, debug builds): guide / lineup source switches and purges
+
+extension AppState {
+    enum GuideSourceChoice: String, CaseIterable, Identifiable {
+        case json = "SiliconDust JSON", xmltv = "SiliconDust XMLTV", air = "From the air"
+        var id: String { rawValue }
+    }
+
+    var guideSourceChoice: GuideSourceChoice {
+        config.Guide_use_ota ? .air : (config.Guide_use_xml ? .xmltv : .json)
+    }
+
+    /// Switches the guide source, saves it, drops the guide in memory and fetches it again from the new source.
+    func setGuideSource(_ choice: GuideSourceChoice) async {
+        config.Guide_use_ota = (choice == .air)
+        config.Guide_use_xml = (choice == .xmltv)
+        saveConfig()
+        glog("[Dev] guide source → \(choice.rawValue)")
+        guideStore.invalidateAll()
+        guideByDevice = [:]
+        await refreshGuide()
+    }
+
+    /// Switches the lineup between the tuner's own and the saved over-the-air one, then loads it again.
+    func setLineupSource(air: Bool) async {
+        config.Dev_lineup_source = air ? "air" : "tuner"
+        saveConfig()
+        glog("[Dev] lineup source → \(air ? "air" : "tuner")")
+        await reloadLineups()
+    }
+
+    func reloadLineups() async {
+        lineups = [:]
+        await fetchAllLineups(for: recordableDevices)
+        webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self)
+    }
+
+    /// For the web guide's tuner dropdown ("Lineup: …").
+    func lineupSourceLabel(deviceId: String) -> String {
+        lineupFromAirByDevice.contains(deviceId) ? "from the air" : "the tuner"
+    }
+
+    /// Purges. Each returns a one-line result for the Settings status row.
+    func purgeGuideDiskCache() -> String { "Deleted \(guideStore.clearDiskCache()) cached guide file(s)" }
+    func purgeSavedAirData(guide: Bool, lineup: Bool) -> String {
+        for d in recordableDevices { OTAStore.deleteSaved(deviceId: d.DeviceID, guide: guide, lineup: lineup) }
+        return "Deleted the saved air " + [guide ? "guide" : nil, lineup ? "lineup" : nil].compactMap { $0 }.joined(separator: " and ")
     }
 }

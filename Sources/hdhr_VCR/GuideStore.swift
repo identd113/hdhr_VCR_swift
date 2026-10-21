@@ -37,8 +37,8 @@ final class GuideStore {
     private(set) var sourceByDevice: [String: GuideSource] = [:]
 
     /// One line for the web guide's tuner dropdown: where the guide and the channel list come from, and how old the guide is.
-    func sourceLine(deviceId: String, now: Date = Date()) -> String {
-        let lineup = "Lineup: the tuner"
+    func sourceLine(deviceId: String, lineupSource: String = "the tuner", now: Date = Date()) -> String {
+        let lineup = "Lineup: \(lineupSource)"
         guard let source = sourceByDevice[deviceId], let loaded = loadTimestamps[deviceId] else { return "Guide: not loaded · \(lineup)" }
         let age = Self.ageText(now.timeIntervalSince(loaded))
         switch source {
@@ -438,6 +438,13 @@ final class GuideStore {
     /// Drops saved guides too old for the 36 h restore window (a changed GuideHours/XML setting or a
     /// departed device otherwise leaves a ~1.4 MB file behind forever). Off the main actor; no-op when the
     /// disk cache is disabled. Called at launch and after each successful write.
+    /// Developer purge: deletes every cached SiliconDust guide file. Returns how many were removed.
+    @discardableResult
+    func clearDiskCache() -> Int {
+        guard let dir = diskCacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return 0 }
+        return files.filter { $0.pathExtension == "guide" }.reduce(0) { n, f in (try? FileManager.default.removeItem(at: f)) != nil ? n + 1 : n }
+    }
+
     func pruneDiskCache() {
         guard let dir = diskCacheDir else { return }
         Task.detached(priority: .utility) {
