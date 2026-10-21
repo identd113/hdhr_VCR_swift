@@ -248,6 +248,18 @@ final class AppState: ObservableObject {
     var otaHeldResources: Set<String> = []
     var otaScanDeviceId: String?
     var otaYieldUntil: Date = .distantPast   // while in the future the scan steps aside (see requestOTAYield)
+    private var idleRetryPending = false
+
+    /// Runs one more idle-loop pass soon (the loop's own tick is ~10 s apart); used while a hand-over from the OTA scan is in progress.
+    func scheduleIdleRetry(after seconds: Double) {
+        guard !idleRetryPending else { return }
+        idleRetryPending = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            self?.idleRetryPending = false
+            await self?.idleLoop()
+        }
+    }
     /// Live progress shown by the OTA scan window, and the user's tuner allowance for the running scan (the window's pulldown).
     let otaProgress = OTAScanProgress()
     @Published var otaTunerLimit = 2
@@ -3500,6 +3512,14 @@ final class AppState: ObservableObject {
             requestOTAYield(deviceId: show.hdhr_record)
             Task { await self.fetchDeviceStatus(for: device) }
             glog("[\(show.show_title)] waiting for the over-the-air scan to release a tuner")
+            scheduleIdleRetry(after: 3)
+            return
+        }
+        // The scan has let go but the tuner's own status.json has not caught up yet: still a hand-over in progress, not a conflict.
+        if show.hdhr_record == otaScanDeviceId, Date() < otaYieldUntil, tunersFull(for: show.hdhr_record) {
+            Task { await self.fetchDeviceStatus(for: device) }
+            glog("[\(show.show_title)] waiting for \(show.hdhr_record) to show the scan's tuner as free")
+            scheduleIdleRetry(after: 3)
             return
         }
         if tunersFull(for: show.hdhr_record),

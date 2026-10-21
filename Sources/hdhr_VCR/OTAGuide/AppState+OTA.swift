@@ -124,11 +124,11 @@ extension AppState {
         return max(hwAll, app + otaHeldResources.count) >= tunerCount
     }
 
-    /// Asks the scan to drop its captures and take no tuner for the next 12 s (the app is about to tune). The interrupted channels go back
+    /// Asks the scan to drop its captures and take no tuner for the next 25 s (the app is about to tune). The interrupted channels go back
     /// in the scan's queue; once the app's stream is up the scan carries on with whatever tuner is still free.
     func requestOTAYield(deviceId: String) {
         guard deviceId == otaScanDeviceId, otaScanTask != nil else { return }
-        otaYieldUntil = Date().addingTimeInterval(12)
+        otaYieldUntil = Date().addingTimeInterval(25)   // long enough to outlast the idle loop's own tick, so the scan cannot take the tuner back first
         glog("[OTA] a tuner is needed on \(deviceId) — the scan is stepping aside")
     }
 

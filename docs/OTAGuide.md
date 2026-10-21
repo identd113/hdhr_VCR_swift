@@ -28,7 +28,7 @@ The scan runs on every free tuner and gives way to anything else, so nothing nee
   while the scan is the only thing in the way.
 - The app asks the scan to step aside before it tunes: live Watch / PiP / the in-window channel picker (`tunerAvailable` →
   `yieldOTAScan`, waits up to ~6 s) and a recording start (`startRecording` → `requestOTAYield`, starts on a later tick). The scan drops its
-  captures (checked every second), takes no tuner for 12 s, and **puts the interrupted channels back at the front of its queue**
+  captures (checked every second), takes no tuner for 25 s, and **puts the interrupted channels back at the front of its queue**
   (`paused`, not skipped); once the app's stream is up it carries on with whatever tuner is still free.
 - A recording due within 20 s also makes the scan let go and wait. Cancelling the task closes the stream, which frees the tuner.
 The scan uses `recordableDevices` only (never the virtual relay), and is off the main actor throughout.
