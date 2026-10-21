@@ -1095,7 +1095,7 @@ struct SettingsView: View {
                 Toggle("Saved air guide", isOn: $purgeAirGuide)
                 Toggle("Saved air lineup", isOn: $purgeAirLineup)
                 HStack {
-                    Text("Removes what is ticked, reloads the guide, and opens the scan window when an air item was removed (a new scan starts).")
+                    Text("Removes what is ticked, reloads the guide, then starts a new air scan and opens its window (channel list only when just the air lineup was ticked).")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if maintenanceBusy {
@@ -1116,9 +1116,7 @@ struct SettingsView: View {
                                 }
                                 if purgeMemory || purgeSDCache || purgeAirGuide { await state.refreshGuide() }
                                 if purgeAirLineup { await state.reloadLineups() }
-                                if purgeAirGuide || purgeAirLineup {
-                                    done.append(state.startOTAScan(lineupOnly: !purgeAirGuide))
-                                }
+                                done.append(state.startOTAScan(lineupOnly: !(purgeMemory || purgeSDCache || purgeAirGuide)))
                                 maintenanceStatus = done.isEmpty ? "Nothing ticked" : done.joined(separator: " · ")
                                 maintenanceBusy = false
                             }
