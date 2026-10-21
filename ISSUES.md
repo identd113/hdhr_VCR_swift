@@ -18,7 +18,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 
 | # | Area | Item | Where | Ver | Simp | UI | Stab |
 |---|---|---|---|---|---|---|---|
-| T03 | Config | Config + `.bak` are keyed by `ProcessInfo.hostName` (changes with VPN/SSID/Bonjour suffix) → looks like a fresh install; call can also block on DNS | `ConfigManager.swift:14` | ✓ | 3 | 4 | 4 |
+| T03 | Config | ~~looks like a fresh install after a hostname change~~ *(fixed `fdb9cff` 2026-10-09: the newest other `hdhr_VCR-*.json` is adopted)*. Still open: `ProcessInfo.hostName` can block on DNS | `ConfigManager.swift:14` | ✓ | 3 | 1 | 2 |
 | T13 | Config | `ConfigManager.save()` refreshes `.bak` from a main file it never verified decodes | `ConfigManager.swift:~60` | A | 4 | 1 | 3 |
 | T14 | Transcode | Transcode session port freed synchronously but the old httpd torn down later → quick viewer reconnect can hit a bind conflict | `VLCBridge.swift:~2130–2244` | A | 3 | 2 | 3 |
 | T18 | Web server | No concurrent-connection / SSE-subscriber cap; no SSE backpressure; transcode relay proxy buffer unbounded (LAN-only) | `WebServer.swift:504, 694, 2086` | ✓ | 3 | 1 | 3 |
@@ -32,7 +32,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 | T34 | Engine | `prefetchChannelIcons` assigns `@Published` state even when unchanged / menu open; `AppState` keeps every decoded icon uncapped | `AppState.swift:~1966–1995` | ✓ | 4 | 1 | 2 |
 | T36 | FEED | Puller respawn appends at an arbitrary byte, shifting the 188-byte TS alignment of everything after (VLC resyncs — cosmetic) | `RecordingManager.swift:~357` | A | 3 | 1 | 1 |
 | T38 | Web server | Nits: FEED pacer stats the file every 20 ms; loopback relay URL doesn't escape `showId`; HEAD/Range on `/auto/v*` *(guide.js `CSS.escape` and `_heavyCache` eviction fixed 2026-10-05)* | `WebServer.swift` | A | 4 | 1 | 1 |
-| T39 | Tests | Flaky under full-suite load: `WebServerLifecycleTests.backToBackTriggers…` and `RecordingManagerTests.reattach_…`; MenuContent snapshots depend on time of day; `GuideJSONNewEpisodeTests` uses local midnight as "UTC" | `Tests/` | ✓ | 4 | 1 | 2 |
+| T39 | Tests | Flaky under full-suite load *(2026-10-20: also `AppState tuner occupancy › pendingRecordingChannels_justInsideGraceWindow_isIncluded` — passes alone, fails in the full run; the `UI Snapshots` MenuContent snapshot failed once in a full run and passes alone; the stale `HLSFollowerTests` keep-segments test is fixed)*: `WebServerLifecycleTests.backToBackTriggers…` and `RecordingManagerTests.reattach_…`; MenuContent snapshots depend on time of day; `GuideJSONNewEpisodeTests` uses local midnight as "UTC" | `Tests/` | ✓ | 4 | 1 | 2 |
 | T40 | Docs | Drift from the 2026-10-03 docs audit (14 items: VLCPlayerView.md, AppState.md, VirtualTunerService.md, Config.md, WebServer.md, CLAUDE.md tuner-occupancy text) | `docs/`, `CLAUDE.md` | ✓ | 4 | 1 | 1 |
 | T41 | Cleanup | Remaining near-duplicates *(`ps` runner and the three Discord senders' request building done `5459f17`)*: two device-merge policies, status.json fetch+decode ×4, primary/secondary parallel field sets, `transcodeViewerCount` mirror, 3 Watch buttons in MenuContent | several | A | 3 | 1 | 1 |
 | T42 | Tools/Build | `test_favorite.sh` has no restore trap; `setup_signing.sh` docs stale; `run_test_scenarios.sh` restart race; Info.plist lacks `LSMinimumSystemVersion`/category/copyright; AddShow GeometryReader writes `@AppStorage` per tick | `tools/`, `Info.plist` | A | 4 | 1 | 1 |
@@ -52,6 +52,18 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 <!-- REVIEW-2026-10-05 BEGIN -->
 
 > **Status 2026-10-05 (end of day):** fixed in `1429087`, `28d49b7`, `a01f394`, `6b90c56`, `18131b1`, `6f6a2d0` — see `issues_resolved.md` ("2026-10-05 repo-wide review: first batch fixed"): the Int32 stat-counter trap, DeviceAuth in logs, DeviceID in paths, framing, FileHandle exceptions, the `mock_scenario.py` glob, signal-history dates, Bonus Time stacking, partial-recording overwrite, signal-scan busy tuners/zeros, Edit Show NAS re-point, Add Show state leak, test log/cache/live-app isolation, deploy-script hazards + privacy manifest. Everything else below is still open.
+
+### 2026-10-20 — review of everything since v2.6.5 (web streaming, OTA guide, player status bar, Developer section, API docs)
+
+Fixed ones are in `issues_resolved.md` ("Review of everything since v2.6.5", `e57a2cc`). Still open:
+
+- **OPEN (medium) — web streaming will convert a *finished* recording whole, with no size or free-space check** (`StreamSessions.touch`: `!src.isRecording` → `startBehindLive`/`keepSegments` nil). The docs say Watch Now! is for recordings in progress, but `GET /api/hls/<showId>/index.m3u8` for any show with a `show_recording_path` starts a full-file H.264 conversion into Caches (a 3 h show at 4 Mb/s is ~5.4 GB) for any LAN client that knows the (guide-page-visible) show id. Fix options: refuse to start a session unless the show is recording, or add a free-space guard (reuse `Min_disk_free_gb`).
+- **OPEN (low) — `/api/hls` playlist requests each poll an actor every 250 ms for up to 25 s** (`WebServer.handleHLS`); no cap on concurrent waiting requests. LAN-only; same class as T18.
+- **OPEN (low) — `POST /api/ota-scan` with `"rf": []` starts a scan of nothing** and ends "found nothing usable". An empty list should mean "all" or be rejected.
+- **OPEN (to verify) — the air guide and existing SeriesID shows.** The changelog and `docs/OTAGuide.md` say series recording "matches by title" under the air guide, and the SeriesID *type* is now dimmed for new shows, but nothing in the repo shows an existing SeriesID show still scheduling against an air-only guide. Check on a tuner with the air guide on before telling users to rely on it.
+- **OPEN (to verify) — recording from an air-only channel** (Developer → lineup from the air): `http://<tuner>:5004/auto/ch<Hz>-<program>` streams (verified with curl on 19.1), but a scheduled recording through `RecordingManager` from such a URL has not been run; air lineup entries also have no favorites and no HD/codec fields.
+- **OPEN (unexplained) — `WindowNavigationTests.pipPickerOpensFromPlayerContextMenu` fails on the mini in isolation and in the full run** (the player's right-click menu opens per the app log, but System Events cannot see it under the window and the action never fires). Not caused by the OTA guide (fails with it on and off), not an overlapping window, not a locked display; the test's own doc comment already calls it a known cold-accessibility-session flake. Passed several times earlier the same day, then failed 10+ times in a row.
+- **Stale entries found:** T03 (above, half fixed). Re-checked and still true: T13 (`save()` refreshes `.bak` from an unverified main file), T18 (no connection/SSE cap in `WebServer`), T22 (`bufferInfo` still published), T32 (`hdhrvcrplus://watch` handler unchanged).
 
 ### 2026-10-13 — live UI run after the T02/T08/T15/T24/T25/T28 batch (unattended)
 

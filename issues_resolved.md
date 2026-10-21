@@ -6,6 +6,17 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Review of everything since v2.6.5 — 2026-10-20 (`e57a2cc`)
+
+- **PSIP decoder: non-transport-stream data piled up and was rescanned on every chunk** (`PSIPDecoder.ingest`). When no sync byte repeated 188 bytes apart in the buffered bytes it broke out without discarding anything, so junk accumulated and each chunk rescanned all of it: 13 MB took 23 s (quadratic). It now keeps only a packet's worth to resync on (13 MB: 0.5 s); regression test `garbageIsDroppedQuicklyAndTheDecoderResyncs`.
+- **HLS follower swallowed writer-setup failures and polled a picture-less source forever** (`HLSFollower.run`). `try? await makeWriter` hid every error, and a source with no readable video was re-opened every 3 s with no log and no limit. Writer failures are now logged and end the follower after 20 passes; no readable picture for 40 passes (~2 min) ends it with `noVideoTrack`; test `aSourceWithNoPictureIsGivenUpOn`.
+- **HLS follower left its AVAssetWriters running on any exit but a clean finish.** A stop or failure now calls `cancelWriting()` on the video and audio-only writers.
+- **A failed web-stream session stayed registered, so viewers kept polling a playlist that would never come.** `StreamSessions` now drops a session whose follower gave up and will not restart that show for 30 s (a browser polls constantly).
+- **`HLSFollowerTests.onlyTheMostRecentSegmentsStayOnDisk` failed (4 files, expected 2):** the test predated the audio-only twin, whose `a-seg-*.m4s` files share the folder; it now counts `seg-*` only.
+- Two compiler warnings (an unused `Animation` in `setStatusBar`, an unused `try?` in `RecordingManager`) and a deprecated `nominalFrameRate` read.
+
+---
+
 # T15, T24, T25 — player fixes — 2026-10-13
 
 - **T15 — VLCBridge edge cases:** a nil `libvlc_media_new_location` now publishes the error state (it left "Connecting…" forever with timers stopped); a stream's commit is matched by player object + URL (`VLCBridge.owningSlot`), so a PiP swap while it was connecting no longer drops its state reset and timers; a second `play()` of the same URL releases the media the first one committed; stats/fast-poll ticks no longer run for a stopped slot (they raced the async stop and could set `isPlaying` again). Tests: `OwningSlotTests`.

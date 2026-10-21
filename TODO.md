@@ -443,7 +443,7 @@ Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (spor
 
 ## Web streaming: audio-only sources
 
-Watch Now! cannot play a source with no video (radio or audio-only channels): the HLS converter needs a video track. The audio-only twin of a normal stream exists (`audio.m3u8`); a source with no picture still needs a writer that starts without the video. See `docs/WebStreaming.md` "Open / not built".
+Watch Now! cannot play a source with no video (radio or audio-only channels): the HLS converter needs a video track. The audio-only twin of a normal stream exists (`audio.m3u8`); a source with no picture still needs a writer that starts without the video. Today such a source is given up on after about two minutes (`HLSFollower`, logged, 30 s cooldown) instead of being polled forever. See `docs/WebStreaming.md` "Open / not built".
 
 ## OTA guide: refresh a multiplex from a recording or viewer already holding its tuner (2026-10-20)
 Idea: while a show records or plays on a multiplex, read the guide tables from that stream and merge them into the saved OTA guide, at no extra tuner cost. **Unknown first:** the app uses `/auto/v<channel>`, which the HDHomeRun filters to one program; only the raw `/tunerN/ch<Hz>` stream is confirmed to carry the Master Guide Table / channel list / listings (`overtime/README.md`). Test first: a short `/auto/v<channel>` capture on a free tuner, count PIDs and table types (MGT `0x1FFB`, the EIT/ETT PIDs it names). If only the channel list and time tables are present, the idea gives lineup refreshes but not listings, and listings stay idle-tuner-only. If listings are present: tee the recording's bytes into `PSIPDecoder` (off the main actor, no extra I/O) and merge per multiplex.
