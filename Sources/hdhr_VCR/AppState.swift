@@ -245,6 +245,9 @@ final class AppState: ObservableObject {
     @Published var otaScanStatus: String = ""
     var lastScheduledOTAAttempt: Date? = nil
     var lastOTALineupAttempt: Date? = nil
+    /// Guide-failure fallback (AppState+OTA.swift): set once per outage when the person has been asked; the task is the one-hour wait.
+    var airFallbackOffered = false
+    var airFallbackTask: Task<Void, Never>? = nil
     var otaScanGeneration = 0
     /// Tuners ("tuner0"…) the running OTA scan is holding right now. They are the app's to take back (the scan yields), so they do not
     /// count as occupied when deciding whether a recording or a live stream may start (see `activeTunerCount`).
@@ -2910,7 +2913,6 @@ final class AppState: ObservableObject {
         maintainVLCSleepAssertionIfNeeded()
         warnOfLiveWatchPreemptionIfNeeded()
         maintainFeedCacheSessions()
-        startScheduledOTAScanIfDue()
         startScheduledOTALineupRefreshIfDue()
         let now = Date()
         var dirty = false
@@ -5261,6 +5263,7 @@ final class AppState: ObservableObject {
                                                                         deviceId: deviceId, retryMinutes: mins)
         notify(title, body: deviceId, subtitle: subtitle)
         discordError(title, detail: detail, color: color, enabled: config.Discord_on_guide_error)
+        offerAirGuideFallback(deviceId: deviceId)
     }
 
     /// Words for a guide-fetch failure. A certificate/TLS failure gets its own, plainer alert — it is
@@ -5294,9 +5297,10 @@ final class AppState: ObservableObject {
                          color: 0x2ECC71, enabled: config.Discord_on_guide_error)
         }
         guideApiBackoff.removeValue(forKey: deviceId)
+        if guideApiBackoff.isEmpty { endAirGuideFallbackOffer() }
     }
 
-    private func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
+    func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
                               webhookURL: String? = nil) {
         guard let url = discordEffectiveURL(enabled: enabled, webhookURL: webhookURL) else { return }
         glog("[Discord] \(event) — \(detail)")

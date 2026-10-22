@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // Over-the-air guide: the app side of the scan (overtime/APP_PLAN.md). Starts an OTAScanner on a real tuner device, follows the
@@ -96,40 +97,24 @@ extension AppState {
         return otaScanStatus
     }
 
-    /// Idle-loop hook: starts a scan in the background when the user's schedule (`OTA_scan_hour`) says one is due. Never interrupts
-    /// anything: the scanner itself only takes idle tuners and yields to a recording or the player.
-    func startScheduledOTAScanIfDue(now: Date = Date()) {
-        guard config.OTA_scan_hour >= 0, otaScanTask == nil,
-              let device = recordableDevices.first(where: \.isAvailable) else { return }
-        let id = device.DeviceID
-        let cal = Calendar.current
-        guard let dueToday = cal.date(bySettingHour: config.OTA_scan_hour, minute: 0, second: 0, of: now), now >= dueToday else { return }
-        if let last = OTAStore.loadSummary(deviceId: id)?.date, last >= dueToday { return }
-        if let tried = lastScheduledOTAAttempt, tried >= dueToday { return }   // one try per day: a scan that found nothing is not retried every tick
-        lastScheduledOTAAttempt = now
-        glog("[OTA] scheduled scan due (\(config.OTA_scan_hour):00)")
-        startOTAScan(deviceId: id, userInitiated: false)
-    }
-
     // MARK: keeping the channel list from the air up to date
 
-    /// Pure rule for the automatic channel-list refresh, so it can be tested: due when the list is missing or older than `maxAge`, only in
-    /// the early hours (a slow moment, never prime time), and at most once a day.
-    nonisolated static func lineupRefreshDue(now: Date, lineupDate: Date?, lastAttempt: Date?, calendar: Calendar = .current,
-                                              quietHours: Range<Int> = 2..<6, maxAge: TimeInterval = 7 * 24 * 3600) -> Bool {
-        guard quietHours.contains(calendar.component(.hour, from: now)) else { return false }
-        if let lineupDate, now.timeIntervalSince(lineupDate) < maxAge { return false }
-        if let lastAttempt, calendar.isDate(lastAttempt, inSameDayAs: now) { return false }
+    /// Pure rule for the daily channel-list scan, so it can be tested: due once the chosen hour has passed today when the saved list
+    /// is older than that mark, and at most one try per day (a scan that found nothing is not retried every tick). `hour` -1 = never.
+    nonisolated static func lineupScanDue(now: Date, hour: Int, lineupDate: Date?, lastAttempt: Date?, calendar: Calendar = .current) -> Bool {
+        guard hour >= 0, let mark = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now), now >= mark else { return false }
+        if let lineupDate, lineupDate >= mark { return false }
+        if let lastAttempt, lastAttempt >= mark { return false }
         return true
     }
 
-    /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) in the early hours when the saved list is missing or a week old.
+    /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) once a day from `OTA_lineup_hour`.
     /// It runs without opening the scan window and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
     func startScheduledOTALineupRefreshIfDue(now: Date = Date()) {
-        guard config.OTA_lineup_auto, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
-        guard Self.lineupRefreshDue(now: now, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
+        guard config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
+        guard Self.lineupScanDue(now: now, hour: config.OTA_lineup_hour, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
         lastOTALineupAttempt = now
-        glog("[OTA] refreshing the channel list from the air (early hours, list missing or a week old)")
+        glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
         startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false, showWindow: false)
     }
 
@@ -171,5 +156,44 @@ extension AppState {
         otaProgress.endedAt = Date(); otaProgress.lanes = [:]; otaProgress.note = nil
         otaHeldResources = []
         otaScanStatus = "Scan cancelled"
+    }
+
+    // MARK: guide failure → offer the air guide
+
+    /// The guide could not be pulled for `deviceId` (called once per outage, from `handleGuideLoadFailure`): ask the person whether to scan
+    /// the air for a backup guide, tell Discord, and start the scan by itself if nobody answers within an hour. "Not now" ends the offer for
+    /// this outage. A guide that loads again cancels everything (`endAirGuideFallbackOffer`).
+    func offerAirGuideFallback(deviceId: String, wait: TimeInterval = 3600) {
+        guard !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
+              recordableDevices.contains(where: { $0.DeviceID == deviceId }) else { return }
+        airFallbackOffered = true
+        glog("[OTA] guide unavailable for \(deviceId) — offering an air scan, starting it in \(Int(wait / 60)) min if nobody answers")
+        let alert = NSAlert()
+        alert.messageText = "The guide is unavailable"
+        alert.informativeText = "hdhrVCRplus can't load the guide for \(deviceId). It can scan the air for a backup guide instead (it takes a while, uses only idle tuners and steps aside for recordings). Scan now, or it starts by itself in an hour."
+        alert.addButton(withTitle: "Scan Now")
+        alert.addButton(withTitle: "Not Now")
+        Dialogs.show(alert) { [weak self] response in
+            guard let self else { return }
+            self.airFallbackTask?.cancel(); self.airFallbackTask = nil
+            if response == .alertFirstButtonReturn { self.startOTAScan(deviceId: deviceId) }
+            else { glog("[OTA] air guide scan declined for this outage") }
+        }
+        discordError("📡 Guide unavailable — air scan offered",
+                     detail: "Device \(deviceId) — the guide can't be loaded. Answer the prompt in the app (Scan Now / Not Now); with no answer the app scans the air for a backup guide in \(Int(wait / 60)) min.",
+                     color: 0xE67E22, enabled: config.Discord_on_guide_error)
+        airFallbackTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled, let self else { return }
+            self.airFallbackTask = nil
+            glog("[OTA] no answer after \(Int(wait / 60)) min — starting the air scan")
+            self.startOTAScan(deviceId: deviceId, userInitiated: false)
+        }
+    }
+
+    /// The guide loads again (or the outage ended): forget the offer so the next outage asks afresh.
+    func endAirGuideFallbackOffer() {
+        airFallbackTask?.cancel(); airFallbackTask = nil
+        airFallbackOffered = false
     }
 }

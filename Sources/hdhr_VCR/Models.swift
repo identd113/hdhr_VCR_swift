@@ -558,8 +558,9 @@ struct AppConfig: Equatable {
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
     var Guide_use_ota: Bool      = false    // prefer the guide built from the air (OTAGuide/, a saved scan) over the cloud guide; the cloud guide is used when no scan exists
     var Dev_lineup_source: String = "tuner"   // developer section only (Settings → Developer, debug builds): "tuner" = the tuner's own /lineup.json, "air" = the saved over-the-air scan
-    var OTA_lineup_auto: Bool    = true    // keep the over-the-air channel list (a quick scan, no guide) up to date, only in the early hours (OTAGuide/AppState+OTA.swift)
-    var OTA_scan_hour: Int       = -1       // hour of day (0-23) the over-the-air guide is rescanned in the background on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
+    var OTA_lineup_hour: Int     = 3        // hour of day (0-23) the over-the-air channel list is rescanned in the background (a quick scan, no guide) on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
+    var OTA_lineup_auto: Bool    = true    // LEGACY (replaced by OTA_lineup_hour, only read to migrate an old config): keep the over-the-air channel list (a quick scan, no guide) up to date, only in the early hours (OTAGuide/AppState+OTA.swift)
+    var OTA_scan_hour: Int       = -1       // LEGACY, unused since the guide is scanned only after a guide failure (AppState.offerAirGuideFallback): hour of day (0-23) the over-the-air guide is rescanned in the background on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
     // How often the background auto-refresh re-fetches lineup+guide (AppState.idleLoop), expressed as
     // a fraction of GuideHours rather than an absolute duration — e.g. GuideHours=24 + divisor=8 means
     // refresh every 3h. Ties the two settings together deliberately: a wider fetch-ahead window can
@@ -749,6 +750,7 @@ extension AppConfig: Codable {
         Guide_use_ota         = (try? c.decode(Bool.self,   forKey: .Guide_use_ota))         ?? false
         OTA_scan_hour         = (try? c.decode(Int.self,    forKey: .OTA_scan_hour))         ?? -1
         OTA_lineup_auto       = (try? c.decode(Bool.self,   forKey: .OTA_lineup_auto))       ?? true
+        OTA_lineup_hour       = (try? c.decode(Int.self,    forKey: .OTA_lineup_hour))       ?? (OTA_lineup_auto ? 3 : -1)
         Dev_lineup_source     = (try? c.decode(String.self, forKey: .Dev_lineup_source))     ?? "tuner"
         // Only 2/4/8 are ever offered in the UI — a corrupt/hand-edited value outside that set falls
         // back to the default (8) rather than being clamped into it, since there's no sensible

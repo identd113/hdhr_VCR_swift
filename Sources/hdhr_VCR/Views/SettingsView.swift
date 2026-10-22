@@ -222,8 +222,7 @@ struct SettingsView: View {
             glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
         }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
-        if draft.OTA_lineup_auto     != old.OTA_lineup_auto     { glog("[Settings] OTALineupAuto: \(old.OTA_lineup_auto) → \(draft.OTA_lineup_auto)") }
-        if draft.OTA_scan_hour       != old.OTA_scan_hour       { glog("[Settings] OTAScanHour: \(old.OTA_scan_hour) → \(draft.OTA_scan_hour)") }
+        if draft.OTA_lineup_hour     != old.OTA_lineup_hour     { glog("[Settings] OTALineupHour: \(old.OTA_lineup_hour) → \(draft.OTA_lineup_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
@@ -703,17 +702,13 @@ struct SettingsView: View {
                     }
                 }
                 Section("Over-the-Air Guide") {
-                    Toggle(isOn: $draft.OTA_lineup_auto) {
-                        HStack { Text("Keep the channel list from the air up to date"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) and refreshes that list about once a week, only in the early hours (2–6 AM), using idle tuners that it gives up the moment a recording or a viewer needs one. It is a cheap backup list; it changes nothing else.") }
-                    }
-                    .accessibilityIdentifier("settings-ota-lineup-auto")
-                    Picker(selection: $draft.OTA_scan_hour) {
+                    Picker(selection: $draft.OTA_lineup_hour) {
                         Text("Never").tag(-1)
                         ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                     } label: {
-                        HStack { Text("Rescan the backup guide daily"); InfoButton("Rescans the full guide from the air once a day from this hour on, so the backup guide stays fresh enough to use if the SiliconDust guide is ever unreachable (a saved air guide is only used up to 36 hours). It uses only idle tuners, waits for a free one and gives it up the moment a recording or the player needs it. Best set to a quiet hour.") }
+                        HStack { Text("Rescan the channel list from the air"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.") }
                     }
-                    .accessibilityIdentifier("settings-ota-schedule")
+                    .accessibilityIdentifier("settings-ota-lineup-hour")
                     Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

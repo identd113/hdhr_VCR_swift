@@ -380,7 +380,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Channels from the Air").font(.headline)
-                    Text("Besides the SiliconDust guide, your tuner can read the channel names and numbers that stations broadcast with their signal. It takes about three minutes, uses only idle tuners and steps aside whenever a recording or a viewer needs one. It is a cheap backup list, and the air guide is only ever used if no other guide is available. Once it exists, it refreshes itself about once a week in the early hours.")
+                    Text("Besides the SiliconDust guide, your tuner can read the channel names and numbers that stations broadcast with their signal. It takes about three minutes, uses only idle tuners and steps aside whenever a recording or a viewer needs one. It is a cheap backup list, and the air guide is only ever used if no other guide is available. Once it exists, it is read again once a day at the time you pick below.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -393,7 +393,7 @@ struct FirstRunWizardView: View {
                     Text("Never").tag(-1)
                     ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                 } label: {
-                    HStack { Text("Rescan the air"); InfoButton("Once a day from this hour on, on idle tuners only, the app rescans the air: first the channel list, then the guide the stations broadcast. Both are a backup, used only if no other guide is available. The scan steps aside whenever a recording or a viewer needs a tuner. You can change this later in Settings → Advanced → Over-the-Air Guide.") }
+                    HStack { Text("Rescan the channel list"); InfoButton("Once a day from this hour on, on idle tuners only, the app rereads the channel list from the air. The scan steps aside whenever a recording or a viewer needs a tuner. The guide from the air is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself. You can change this later in Settings → Advanced → Over-the-Air Guide.") }
                 }
                 .accessibilityIdentifier("wizard-air-schedule")
             }
@@ -782,7 +782,7 @@ struct FirstRunWizardView: View {
         sharingEnabled        = state.config.Web_server_enabled
         terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
-        airScanHour          = state.config.OTA_scan_hour >= 0 ? state.config.OTA_scan_hour : (state.config.First_run_wizard_shown ? -1 : 3)
+        airScanHour          = state.config.OTA_lineup_hour
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
         failThreshold         = state.config.Fail_count_setting
@@ -808,7 +808,7 @@ struct FirstRunWizardView: View {
         state.config.Terminal_guide_enabled = terminalGuideEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
-        state.config.OTA_scan_hour          = airScanHour
+        state.config.OTA_lineup_hour         = airScanHour
         state.config.First_run_wizard_shown = true
         state.saveConfig()
         // Same commit pattern as SettingsView.save(): only (re)start the listener if the toggle

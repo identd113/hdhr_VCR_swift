@@ -95,7 +95,7 @@ struct AirChannelsCard: View {
                 Label("Found \(o.stations) stations with \(o.channels) channels.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout.bold())
                     .accessibilityIdentifier("wizard-air-found")
-                Text("Saved as a backup channel list. It refreshes itself about once a week in the early hours.")
+                Text("Saved as a backup channel list. It is read again once a day at the time set below.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Label("No stations found.", systemImage: "exclamationmark.triangle.fill")
