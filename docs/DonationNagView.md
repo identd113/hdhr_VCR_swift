@@ -108,3 +108,5 @@ The heart badge and the panel's rose glow are the card's only strong colour. The
 **Entrance (2026-10-15):** calmed to match the other cards — the heart badge fades in and the one-shot glow eases out (no spring), and as a launch card the code field is not allowed to take focus on appear (a focus ring popping in mid-slide). The splash also holds deferred launch work off during the slide (`LaunchSplashController.motionActive`, docs/LaunchSplash.md).
 
 Escape closes the card, like "Not yet" (`.onExitCommand`, added 2026-10-15; before that only the button did).
+
+**Accessibility polish (2026-10-22):** the header icon is decorative (`.accessibilityHidden(true)`; the title beside it names the app). With Reduce Motion on, the appear glow is skipped (heart and ring jump straight to their end state, no animation). The "That code didn't match." warning clears as soon as the code field is edited (`.onChange(of: enteredCode)`), and pressing Return in an empty (or whitespace-only) field does nothing instead of showing the mismatch warning (`attemptUnlock` also guards on an empty code).

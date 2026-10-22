@@ -38,6 +38,7 @@ struct DonationNagView: View {
     @State private var enteredCode = ""
     @State private var showMismatch = false
     @State private var glowOut = false   // one-shot ring pulse behind the icon on appear
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,7 +110,7 @@ struct DonationNagView: View {
                     .opacity(glowOut ? 1 : 0)
             }
             .frame(width: 52, height: 52)
-            .accessibilityLabel("hdhrVCRplus app icon")
+            .accessibilityHidden(true)   // decorative: the title beside it already names the app
             VStack(alignment: .leading, spacing: 1) {
                 Text("Support hdhrVCRplus").font(.system(size: 20, weight: .bold, design: .rounded))
                 Text("Free to use — tips keep it going.")
@@ -122,7 +123,8 @@ struct DonationNagView: View {
         .padding(.top, 18)
         .padding(.bottom, 14)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.7)) { glowOut = true }
+            // Reduce Motion: jump straight to the end state (heart visible, ring faded) with no pulse.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.7)) { glowOut = true }
         }
     }
 
@@ -161,9 +163,9 @@ struct DonationNagView: View {
                         .padding(.vertical, 7)
                         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(.white.opacity(0.16), lineWidth: 1))
-                        .onSubmit(attemptUnlock)
+                        .onSubmit { if ready { attemptUnlock() } }
+                        .onChange(of: enteredCode) { _, _ in showMismatch = false }
 
-                    let ready = !enteredCode.trimmingCharacters(in: .whitespaces).isEmpty
                     Button(action: attemptUnlock) {
                         Text("Unlock")
                             .font(.subheadline).bold()
@@ -189,8 +191,11 @@ struct DonationNagView: View {
         .padding(.bottom, 20)
     }
 
+    private var ready: Bool { !enteredCode.trimmingCharacters(in: .whitespaces).isEmpty }
+
     private func attemptUnlock() {
         let normalized = enteredCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
         let digitSum = normalized.reduce(into: 0 as Int?) { sum, ch in
             guard let current = sum, let value = ch.hexDigitValue else { sum = nil; return }
             sum = current + value

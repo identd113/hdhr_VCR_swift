@@ -17,6 +17,9 @@ struct TunerDiscoveryStatus: Equatable {
 struct TunerDiscoveryCard: View {
     var status: TunerDiscoveryStatus
     var onOpenPrivacySettings: () -> Void
+    /// Re-runs discovery from scratch (shown only in the not-found state).
+    var onCheckAgain: (() -> Void)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Pops the checkmark once, the moment status first turns "found" — same spring family as
     // StarburstBadge's own pop-in (see that file's doc for the timing rationale), not a fresh design.
@@ -31,6 +34,12 @@ struct TunerDiscoveryCard: View {
             }
             Spacer(minLength: 0)
             if status.kind == .notFound {
+                if let onCheckAgain {
+                    Button("Check Again") { onCheckAgain() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("wizard-tuner-check-again")
+                }
                 Button("Open Privacy Settings") { onOpenPrivacySettings() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -51,12 +60,12 @@ struct TunerDiscoveryCard: View {
         case .checking:
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .foregroundStyle(.orange)
-                .symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: true)
+                .symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: !reduceMotion)
         case .foundSingle, .foundMultiple:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .keyframeAnimator(initialValue: CheckPopValue(), trigger: checkPop) { content, v in
-                    content.scaleEffect(v.scale)
+                    content.scaleEffect(reduceMotion ? 1 : v.scale)
                 } keyframes: { _ in
                     KeyframeTrack(\.scale) {
                         LinearKeyframe(CGFloat(1.4), duration: 0.01)

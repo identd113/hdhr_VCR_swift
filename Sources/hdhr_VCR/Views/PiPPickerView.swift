@@ -20,6 +20,8 @@ import SwiftUI
 // pipActionTrailing(label:isCurrent:action:) and each row's own isCurrent check.
 struct PiPPickerView: View {
     @EnvironmentObject var state: AppState
+    // Observed so "Now Playing" / enabled state follow the player (VLCBridge.shared is read directly below).
+    @ObservedObject private var vlc = VLCBridge.shared
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDeviceId: String = ""
 
@@ -47,6 +49,14 @@ struct PiPPickerView: View {
             selectedDeviceId = pickerDeviceId(current: selectedDeviceId, available: ids)
         }
         .frame(minWidth: 380, minHeight: 300)
+        // Esc closes the picker; invisible, no layout or visual change.
+        .background {
+            Button("Close") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
     }
 
     // Shared trailing control for every row below — either the normal "Add as PIP" button, or, when

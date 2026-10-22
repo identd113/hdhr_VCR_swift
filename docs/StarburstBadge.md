@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### At rest
-A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 48pt in EditShowView, 65pt in AddShowView details — sized down from 150pt/115pt so the badge no longer overlaps the form's field rows). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
+A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 48pt in EditShowView, 65pt in AddShowView details — sized down from 150pt/115pt so the badge no longer overlaps the form's field rows — true only when the form is scrolled to offset 0: the badge is an overlay on the `ScrollView`, not part of its content, so scrolled content passes underneath it). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape. The badge is a single accessibility element labelled "Bonus time, plus N minutes". With Reduce Motion on, the pop-in spin/overshoot and the 5-tap celebration are skipped (the badge just appears; `@Environment(\.accessibilityReduceMotion)` makes both keyframe animators ignore their values).
 
 Centered inside the starburst: `"+N min"` in white `.caption` bold. At 100pt size this text is ~12pt, clearly legible. At the default orange color (SwiftUI `Color.orange`) the badge reads as warm and energetic.
 

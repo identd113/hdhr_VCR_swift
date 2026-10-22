@@ -20,22 +20,31 @@ struct RecordingDefaultsFields: View {
     // "wizard-recording") — see WindowNavigationTests.swift for why these matter more for
     // AppleScript/System Events automation than accessibilityLabel alone.
     var idPrefix: String
+    // Full tilde-abbreviated path for the folder label's tooltip (the label itself is truncated).
+    var folderPath: String = ""
+
+    private var folderHelp: String {
+        folderPath.isEmpty ? folderLabel : (folderPath as NSString).abbreviatingWithTildeInPath
+    }
 
     var body: some View {
         Group {
             LabeledContent {
                 HStack {
                     Text(folderLabel).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(folderHelp)
                     Button("Choose…") { onChooseFolder() }
                         .accessibilityIdentifier("\(idPrefix)-choose-folder")
                     if let onResetFolder {
-                        Button("Reset") { onResetFolder() }
+                        Button("Use Default") { onResetFolder() }
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("\(idPrefix)-reset-folder")
                     }
                 }
             } label: {
-                HStack { Text("Default folder"); InfoButton("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.") }
+                HStack { Text("Default folder"); InfoButton("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.", about: "Default folder") }
             }
 
             Picker(selection: $transcode) {
@@ -44,17 +53,17 @@ struct RecordingDefaultsFields: View {
                 Text("Mobile").tag("mobile")
                 Text("Internet 720").tag("internet720")
             } label: {
-                HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — on an unsupported tuner this is silently ignored and recorded as None, with no error.") }
+                HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — on an unsupported tuner this is silently ignored and recorded as None, with no error.", about: "Default transcode") }
             }
             .accessibilityIdentifier("\(idPrefix)-default-transcode")
 
             Stepper(value: $minFreeDiskGB, in: 1...100, step: 1) {
-                HStack { Text("Min free disk: \(minFreeDiskGB, specifier: "%.0f") GB"); InfoButton("Recordings are skipped when free space on the save drive drops below this threshold.") }
+                HStack { Text("Min free disk: \(minFreeDiskGB, specifier: "%.0f") GB"); InfoButton("Recordings are skipped when free space on the save drive drops below this threshold.", about: "Min free disk") }
             }
             .accessibilityIdentifier("\(idPrefix)-min-free-disk")
 
             Stepper(value: $failThreshold, in: 1...10) {
-                HStack { Text("Pause after \(failThreshold) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
+                HStack { Text("Pause a show after \(failThreshold) failed recordings"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.", about: "Pause threshold") }
             }
             .accessibilityIdentifier("\(idPrefix)-fail-threshold")
 
@@ -63,7 +72,7 @@ struct RecordingDefaultsFields: View {
                 Text("Each Recording").tag("perFile")
                 Text("Show's Folder").tag("perFolder")
             } label: {
-                HStack { Text("Exclude from Time Machine"); InfoButton("Keeps TV recordings out of Time Machine backups. \"Each Recording\" tags every file individually. \"Show's Folder\" tags the containing folder once instead — Time Machine skips an excluded folder entirely, so this also covers future episodes automatically, but any other files you keep in that same folder are excluded too.") }
+                HStack { Text("Exclude from Time Machine"); InfoButton("Keeps TV recordings out of Time Machine backups. \"Each Recording\" tags every file individually. \"Show's Folder\" tags the containing folder once instead — Time Machine skips an excluded folder entirely, so this also covers future episodes automatically, but any other files you keep in that same folder are excluded too.", about: "Exclude from Time Machine") }
             }
             .accessibilityIdentifier("\(idPrefix)-tm-exclude")
         }

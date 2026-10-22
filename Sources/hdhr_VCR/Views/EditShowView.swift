@@ -5,6 +5,7 @@ struct EditShowView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var show: Show?
+    @State private var showMissing = false   // loadShow found no show for editingShowId (deleted since)
     @State private var originalShow: Show?
     @State private var seriesType: ShowState = .single
     @State private var airDays: Set<String> = []
@@ -27,13 +28,30 @@ struct EditShowView: View {
     // form (that scope floats across every channel the tuner receives, so there's nothing for the
     // user to fix), so gating Save on it here would dead-lock: no visible field, disabled button.
     private var canSave: Bool {
-        guard let s = show, !s.show_title.isEmpty else { return false }
-        // Same 1…1440 bound the web edit path enforces — 0/negative would record for no time.
-        guard (1...1440).contains(s.show_length) else { return false }
-        guard seriesType != .seriesAll else { return true }
-        guard !s.show_channel.isEmpty else { return false }
-        guard let lineup = state.lineups[s.hdhr_record], !lineup.isEmpty else { return true }
+        show != nil && titleError == nil && lengthError == nil && channelError == nil && daysError == nil
+    }
+
+    // Why Save is disabled — each shown as a red caption under its field (and together they are canSave).
+    private var titleError: String? {
+        guard let s = show, s.show_title.isEmpty else { return nil }
+        return "Title is required."
+    }
+    // Same 1…1440 bound the web edit path enforces — 0/negative would record for no time.
+    private var lengthError: String? {
+        guard let s = show, !(1...1440).contains(s.show_length) else { return nil }
+        return "Length must be 1-1440 minutes."
+    }
+    private var channelError: String? {
+        guard let s = show, seriesType != .seriesAll else { return nil }
+        if s.show_channel.isEmpty { return "Channel is required." }
+        guard let lineup = state.lineups[s.hdhr_record], !lineup.isEmpty else { return nil }
         return lineup.contains { $0.GuideNumber == s.show_channel }
+            ? nil : "Channel \(s.show_channel) isn't in this tuner's lineup."
+    }
+    // A DateTime show with every day deselected saves and then never fires (series types use all 7 days).
+    private var daysError: String? {
+        guard seriesType == .dateTime, airDays.isEmpty else { return nil }
+        return "Pick at least one day."
     }
 
     private let weekdays = Show.weekdayNames
@@ -55,6 +73,13 @@ struct EditShowView: View {
                         }
                     Divider()
                     navBar
+                }
+                .frame(width: 480, height: 520)
+            } else if showMissing {
+                VStack(spacing: 12) {
+                    Text("This show no longer exists.").font(.title3)
+                    Button("Close") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
                 }
                 .frame(width: 480, height: 520)
             } else {
@@ -119,7 +144,9 @@ struct EditShowView: View {
                     recordFolder: $recordFolder,
                     folderButtonLabel: "Change…",
                     onSeriesTypeChange: { applySeriesType() },
-                    onChooseFolder: { chooseFolder() }
+                    onChooseFolder: { chooseFolder() },
+                    titleError: titleError,
+                    daysError: daysError
                 )
 
                 // Hidden for SeriesID(All) — that scope floats across every channel the tuner
@@ -135,15 +162,17 @@ struct EditShowView: View {
                             .frame(width: 80)
                     }
                     .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
+                    if let channelError { FormErrorCaption(text: channelError) }
                 }
 
                 LabeledContent("Length (min)") {
                     TextField("", value: Binding(
                         get: { show?.show_length ?? 60 },
-                        set: { show?.show_length = $0 }), format: .number)
+                        set: { show?.show_length = $0 }), format: .number.grouping(.never))
                         .frame(width: 60)
                 }
                 .help("Recording duration in minutes, set from the guide end time. Bonus Time adds extra minutes past the guide end.")
+                if let lengthError { FormErrorCaption(text: lengthError) }
 
                 if s.show_fail_count > 0 {
                     LabeledContent("Failures") {
@@ -154,6 +183,7 @@ struct EditShowView: View {
                                 show?.show_fail_reason = ""
                                 show?.show_active = true
                             }
+                            .help("Clears failures and re-enables the show")
                         }
                     }
                 }
@@ -179,7 +209,7 @@ struct EditShowView: View {
                 if let s = show { state.confirmAndDeleteShow(s) { dismiss() } }
             }
             Spacer()
-            Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(!canSave)
+            Button("Save") { save() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!canSave)
         }
         .padding()
     }
@@ -188,7 +218,11 @@ struct EditShowView: View {
 
     private func loadShow() {
         guard let id = state.editingShowId,
-              let s = state.shows.first(where: { $0.show_id == id }) else { return }
+              let s = state.shows.first(where: { $0.show_id == id }) else {
+            if show == nil { showMissing = true }
+            return
+        }
+        showMissing = false
         show = s
         originalShow = s   // snapshot for dirty tracking
         seriesType = s.state

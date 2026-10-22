@@ -26,7 +26,9 @@ Selected row highlighted in accent color. Each row carries `accessibilityIdentif
 **Save bar** (bottom, always visible):
 - `"Unsaved changes"` secondary small text + `"Discard"` secondary-color button when dirty
 - `"Test the webhook before saving"` orange warning + Discard when webhook untested
-- Right side: `"Save"` button (disabled when clean or webhook untested, ⌘S shortcut) + **"Save & Close"** prominent button (orange tint when dirty, blue/accent when clean, Return shortcut)
+- `"Import pending — restart to apply; saving is paused"` orange label (replaces the other messages) after Import Config while `ConfigManager.savesSuppressedAfterImport` is true; Save and Save & Close are both disabled then (`settings-import-pending`)
+- The two orange warnings each carry a small **Show** button that switches to the relevant tab (webhook → Notifications `settings-show-webhook`, port → Sharing `settings-show-port`)
+- Right side: `"Save"` button (disabled when clean, webhook untested or import pending, ⌘S shortcut) + **"Save & Close"** prominent button (orange tint when dirty, blue/accent when clean, Return shortcut)
 - Accessibility identifiers: `settings-discard`, `settings-save`, `settings-save-close`
 
 ### Category: General
@@ -37,16 +39,16 @@ Two `Section`s:
 ### Category: Recording
 Two `Section`s:
 
-**Recording** section:
-- Default folder: `LabeledContent` with secondary path text + `"Choose…"` + optional `"Reset"` buttons
+**Defaults** section (was "Recording"):
+- Default folder: `LabeledContent` with secondary path text (one line, middle-truncated, full tilde-abbreviated path as tooltip) + `"Choose…"` + optional `"Use Default"` (was "Reset") buttons
 - Default transcode: inline `Picker` — None / Heavy / Mobile / Internet 720
 - Min free disk: `Stepper` showing `"Min free disk: N GB"`, range 1–100
-- Pause after N failures: `Stepper`, range 1–10
-- Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
+- Pause a show after N failed recordings: `Stepper`, range 1–10
+- Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5), labelled `"Bonus Time: N min past guide end"`
 
 **Post-Processing** section:
 - Series subfolders: `Toggle`; when on, SeriesID recordings are organized into `Title/Season XX/` subfolders; episode tag (e.g. `S02E04`) is embedded in the filename
-- Skip already-recorded episodes: `Toggle` (only visible when Series subfolders is on) — skips a managed episode whose `SxxExx` is already on disk
+- Skip already-recorded episodes: `Toggle` (disabled, with the caption "Requires Series subfolders", while Series subfolders is off) — skips a managed episode whose `SxxExx` is already on disk
 - Post-recording script: path field + `"Choose…"` button — runs after a recording finishes
 
 ### Category: Guide
@@ -60,9 +62,9 @@ One `Section`:
 The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10 — see that section above.
 
 ### Category: Notifications
-**Notifications** section: Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
+**Reminders** section (was "Notifications"): Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
 
-**Discord** section: `Toggle("Enable Discord notifications")`. When enabled: `HStack` with monospaced `TextField` for webhook URL + `"Test"` `.bordered` button (or `ProgressView` while testing). Status labels:
+**Discord** section: `Toggle("Enable Discord notifications")`. When enabled: `HStack` with monospaced `TextField` for webhook URL (placeholder `https://discord.com/api/webhooks/…`; a "Paste a webhook URL to enable notifications" caption while empty) + `"Test"` `.bordered` button (or `ProgressView` while testing). Status labels:
 - Passed: green `checkmark.circle.fill` + `"Verified"`
 - Failed: red `xmark.circle.fill` + error text
 - Untested: orange text `"Test the webhook before saving."`
@@ -70,7 +72,7 @@ The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General
 **Notify when…** section (visible only when enabled + URL set): 4 grouped toggles (Lifecycle events, Reminders, Problems, Other) instead of 12 flat per-event rows.
 
 ### Category: Advanced
-Four sections:
+Five sections (Signal Strength Scan only with signal bars on; **Over-the-Air Guide** always visible, independent of the signal-bars toggle):
 - **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. (The idle-check-interval stepper that used to live here was removed 2026-07-23 — see below.)
 - **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button. Config path (text-selectable) + `"Show config in Finder"` button — merged here from the former standalone Config File section.
 - **Updates**: single `Toggle("Check for updates automatically")` bound to `draft.Check_for_updates` (default on). Gates only the automatic once-a-day background check (`AppState.updateCheckLoop()`); the manual "Check for Updates" button on the About tab always runs regardless. See `UpdateChecker.swift`.
@@ -82,7 +84,7 @@ in `DonationNagView.swift` now, not per-install config. See [DonationNagView.md]
 ### Category: Maintenance
 Sections: Shows, Guide & Devices.
 
-Each action row: title in medium weight + a small `ⓘ` `InfoButton` (tapping shows the description in a popover) + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
+Each action row has its own busy state (`busyRow`, the row title) so running one doesn't swap the other rows' buttons for spinners; the Run button reads "Run <title>" to VoiceOver (id `settings-maint-<title>`); the result line clears when the selected tab changes. Row layout: title in medium weight + a small `ⓘ` `InfoButton` (tapping shows the description in a popover) + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
 
 When a task finishes: green `checkmark.circle.fill` + result message in a separate `Section`.
 
@@ -94,6 +96,8 @@ When a task finishes: green `checkmark.circle.fill` + result message in a separa
 See the About section description below — app image with signal-pulse tap effect, version, native markdown changelog, GitHub link.
 
 ## InfoButton pattern
+
+`InfoButton(_:about:)` takes an optional `about:` (the row's label) so VoiceOver reads "More information about <label>" (default "More information"); it has a "Show help" tooltip and a 2 pt padded hit area. The icon stays `.tertiary`.
 
 All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, fixed width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including the `maintenanceRow` helper — that helper's label+InfoButton `HStack` no longer overrides the default spacing (a since-fixed 2026-08-29 bug had it hardcoded to `spacing: 6`, pulling Maintenance's info icons closer to their labels than every other tab's).
 
@@ -135,12 +139,14 @@ private var isDirty: Bool {
 }
 ```
 
+`isDirty`, `webhookNeedsTest` and `webPortInvalid` are read once per body render. `launchAtLoginRegistered`, the interface list (`netInterfaces`, for the picker and `lanIP()`), `vlcInstalled` and the Terminal Guide binary's existence are `@State` caches refreshed by `refreshSystemCaches()` (appear, window refocus, after Save) instead of syscalls per render.
+
 `isDirty` isn't just the `AppConfig` diff — the default save directory and Launch at Login are tracked outside `draft` (they're not `AppConfig` fields) but still need to mark the window dirty when changed, so both get their own OR clause.
 
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
 - **Save** → `applyAndSave()` sets `state.config` to `codableApplyingEdits(live: state.config, original: draftBaseline, edited: draft)` — only the fields edited in this window are applied onto the live config (2026-10-01 review #22: saving the whole draft reverted anything changed elsewhere meanwhile, e.g. the donation unlock or the guide's appearance bridge), then resets `draft`/`draftBaseline` to that merged value — calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
-- **Save & Close** → if `canSave` (`isDirty && !webhookNeedsTest && !webPortInvalid`), calls `applyAndSave()`, then always closes the window regardless. **Disabled** (not always enabled) when the Discord webhook needs testing or the web port is out of range — closing without saving in that state is still possible via the window's own close button, just not this one. Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
+- **Save & Close** → if `canSave` (`isDirty && !webhookNeedsTest && !webPortInvalid`), calls `applyAndSave()`, then always closes the Settings window itself (captured via `WindowCloseInterceptor`'s `onWindow`), not `NSApp.keyWindow`, which may be a sheet. **Disabled** (not always enabled) when the Discord webhook needs testing or the web port is out of range — closing without saving in that state is still possible via the window's own close button, just not this one. Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows a sheet (`Dialogs`, never `runModal()`): Save / Discard / Cancel
 
@@ -177,10 +183,10 @@ Sidebar entries (with SF Symbol icons):
 
 ### Recording
 
-- **Default folder** — label (last path component) + Choose… + Reset. Stored in `@AppStorage("defaultSaveDirectory")` (not `AppConfig`). Priority order for resolution: UserDefaults → `config.Hdhr_setup_folder` → `~/Movies/hdhr_videos`.
+- **Default folder** — label (last path component, middle-truncated, tooltip = full path) + Choose… + Use Default (was "Reset"). Stored in `@AppStorage("defaultSaveDirectory")` (not `AppConfig`). Priority order for resolution: UserDefaults → `config.Hdhr_setup_folder` → `~/Movies/hdhr_videos`.
 - **Default transcode** — `Picker`: None / Heavy / Mobile / Internet 720. Stored in `draft.Default_transcode`.
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
-- **Pause after N failures** — `Stepper` (1–10; also clamped to ≥ 1 when the config is decoded — a hand-edited 0 used to pause every show before its first attempt). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
+- **Pause a show after N failed recordings** (was "Pause after N failure(s)") — `Stepper` (1–10; also clamped to ≥ 1 when the config is decoded — a hand-edited 0 used to pause every show before its first attempt). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
 - **Exclude from Time Machine** — `Picker`: Off / Each Recording / Show's Folder. Stored in `draft.TimeMachine_exclude_mode` ("off"/"perFile"/"perFolder"). Excludes recordings from Time Machine backups via `CSBackupSetItemExcluded` (Models.swift's `excludeFromTimeMachine(_:)`) — "Each Recording" tags every output file individually (`RecordingManager.start()`); "Show's Folder" tags the containing directory once instead, at the same point `AppState` creates it, which also covers future episodes automatically (Time Machine skips an excluded folder's contents entirely) but excludes any other file sharing that folder too.
 - **Min buffer rate** — no longer exposed in Settings (removed 2026-07-23; low-utility tuning knob). The `Player_buffer_min_rate` config field was removed 2026-10-14 (it had been unread since 2026-10-03, when playback went to always exactly 1.0× — see `docs/VLCBridge.md`); a stale key in an old config is ignored on load.
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
@@ -262,7 +268,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
 - At rest: a **Tuner** pulldown ("All Tuners", then each recordable device as `FriendlyName (DeviceID)`; a selection whose device has gone away behaves as "All Tuners") followed by one **Measure Signal** button (disabled with no devices). Calls `state.startSignalScan(force: true, deviceId:)` — `deviceId` is nil for "All Tuners", else only that device is scanned; `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
-**Over-the-Air Guide section** (Advanced, below Signal Strength Scan; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
+**Over-the-Air Guide section** (Advanced, below Signal Strength Scan, visible regardless of the signal-bars toggle; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
 - Caption text, then: while scanning, a `Label` (`dot.radiowaves.left.and.right`) with `state.otaScanStatus` and a red **Cancel Scan** button (`settings-ota-cancel`); at rest the last status line (if any) and **Scan the Air Now** (`settings-ota-scan`, disabled with no recordable device). Calls `state.startOTAScan()` / `cancelOTAScan()`.
 
 ---
@@ -274,8 +280,8 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 Three independent sharing *methods* — **Web LAN** (the LAN web server itself), Terminal Guide, Recording FEED — each with its own toggle that reveals its own options directly beneath it when on. Recording FEED's whole section is gated behind `FEED_feature_enabled` (default on as of v2.5.0 — see its own entry below) — Web LAN and Terminal Guide stay always-visible. The Web LAN toggle is the one durable, user-controlled capability; Terminal Guide's toggle is `.disabled` whenever it's off (Terminal Guide connects to that exact same internal web server, no separate listener of its own); Recording FEED's toggle is **not** gated on it at all — see its own entry below for why. All three of the actual per-method toggles (`Virtual_tuner_relay_enabled` included) default off — a user still has to opt this specific Mac in — and are each explained, with their own purpose-built animated diagram, on first launch by `FirstRunWizardView`'s Web LAN, Terminal Guide, and Recording FEED steps (three separate steps, not combined — see `docs/FirstRunWizardView.md` for why) — see `docs/FirstRunWizardView.md`.
 
 - **Web LAN section** — its own **Enable Web LAN** `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
-- **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
-- **Access row** — part of the Web LAN section itself (not a separate "Access" section — folded in 2026-09-05, previously its own section directly below), shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
+- **Port** — `TextField` titled "Port" with `.labelsHidden()` and id `settings-web-port` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
+- **Access row** — part of the Web LAN section itself (not a separate "Access" section — folded in 2026-09-05, previously its own section directly below), shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text (two lines max, middle-truncated) with an **Open** `Link` and a **Copy** button. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
 - **Web Streaming (Beta) section** — above Terminal Guide; its **Watch recordings in a browser** `Toggle` (bound to `Web_streaming_enabled`, default off) is `.disabled` while Web LAN is off. Takes effect immediately (the flag is read per request and by the guide JSON's `streamingEnabled`); turning it off stops every web stream. See `docs/WebStreaming.md`.
 - **Terminal Guide section** — always visible; its **Enable Terminal Guide** `Toggle` (bound to
   `draft.Terminal_guide_enabled`, defaults `false`) is `.disabled(!draft.Web_server_enabled)` and its
@@ -295,7 +301,7 @@ Three independent sharing *methods* — **Web LAN** (the LAN web server itself),
   discoverability only, not a security boundary, since the same JSON endpoint is already reachable
   to any LAN browser once Web LAN is on regardless of this flag (see `docs/TUIGuide.md`). When both
   the Web LAN and Terminal Guide toggles are on: if the server is actually live
-  (`state.config.Web_server_enabled && state.webServerRunning`), shows the binary path (selectable
+  (`state.config.Web_server_enabled && state.webServerRunning`), shows the binary path (two lines max, middle-truncated, **Copy** button; selectable
   monospaced text), an **Open in Terminal** button, and a one-line caption; otherwise (draft toggled
   on but not yet Saved) shows a `"Save to activate…"` placeholder instead of a button that would
   currently fail. The button (`openInTerminal(_:)`) opens a new Terminal window and runs
@@ -447,8 +453,6 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 - **No per-show fail-threshold override** — `Fail_count_setting` (deactivate/pause after N consecutive failures) applies globally only; there's no `show_fail_threshold`-style field to give one show a different tolerance. Transcode and Bonus Time are *not* in this gap — both are already per-show (`show_transcode`, `show_bonus_time`), editable per show in the Add/Edit forms (`ShowFormSection.swift`) with `Default_transcode`/`Sports_padding_enabled` only supplying the initial default. (This entry previously claimed all three applied globally only — corrected 2026-08-28; only the fail-threshold half of that claim was ever accurate.)
 
-- **Bonus Time label clarity** — the stepper says "Bonus Time: 30 min" with no inline context. The `.help()` tooltip explains it, but a visible note like "(past guide end)" in the label itself would clarify without requiring hover.
-
 - **No per-show Discord overrides** — Discord toggles apply globally. A per-show "notify on complete" checkbox would require adding fields to `Show`.
 
 - **Version stamp only on deploy** — running `swift build` directly won't update `Version.swift`. A Xcode pre-build phase or Swift Package Manager build plugin would make the version always current.
@@ -457,7 +461,7 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 **Dialogs (2026-10-14):** the unsaved-changes prompt on window close is a sheet on the Settings window, not `runModal()` (`WindowCloseInterceptor.windowShouldClose` returns `false`, asks via `promptUnsavedChanges(…on:)`, then `close()`s once answered); Export/Import Config and the folder/script pickers are `Dialogs.choose` sheets; the "Config imported — restart required" alert is `Dialogs.show`. Nothing in Settings blocks the main thread, so the web server keeps answering while any of them is open.
 
-**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Advanced → Over-the-Air Guide now has **Rescan the channel list from the air** (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
+**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Advanced → Over-the-Air Guide now has **Rescan channel list** (was "Rescan the channel list from the air") (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
 
 ## Developer (debug builds only)
 `SettingsCategory.developer` (`hammer`) exists only under `#if DEBUG` — `deploy.sh` builds debug, so both dev Macs show it; `deploy_release.sh` builds release, which compiles the whole section out (nothing to switch off before a release). Contents (`developerView`, all actions immediate, none go through the Save draft):

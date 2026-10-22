@@ -28,7 +28,7 @@ struct AboutLogo: View {
                     .font(.system(size: 80)).foregroundStyle(.secondary)
             }
         }
-        .accessibilityLabel("hdhrVCRplus app icon, matching the menu bar status light")
+        .accessibilityHidden(true)   // decorative: the "What do the lights mean?" button and the text below carry the meaning
     }
 }
 
@@ -44,6 +44,7 @@ struct AboutStatusLight: View {
     @State private var preview: Int? = nil
     @State private var clicks = 0
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Entry: Identifiable {
         let id: String
@@ -98,7 +99,7 @@ struct AboutStatusLight: View {
                 // Obviously clickable: hover ring + slight lift + pointing-hand cursor, and a real button below.
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.accentColor.opacity(hovering ? 0.8 : 0), lineWidth: 2))
                 .scaleEffect(hovering ? 1.03 : 1)
-                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
                 .contentShape(Rectangle())
                 .onHover { inside in
                     hovering = inside
@@ -140,9 +141,11 @@ struct AboutStatusLight: View {
         } else {
             // Previewed light: simulate the 5 s on / 1 s off blink the menu bar uses.
             TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                let lit = !shown.blinks || Int(ctx.date.timeIntervalSinceReferenceDate) % 6 != 5
+                // Reduce Motion: no blinking, the preview stays lit.
+                let lit = reduceMotion || !shown.blinks || Int(ctx.date.timeIntervalSinceReferenceDate) % 6 != 5
                 if let icon = fullSizeStatusImage(for: shown.kind, lit: lit) {
                     Image(nsImage: icon).resizable().aspectRatio(contentMode: .fit).cornerRadius(12)
+                        .accessibilityHidden(true)
                 }
             }
         }

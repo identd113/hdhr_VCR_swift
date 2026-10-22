@@ -28,7 +28,7 @@ struct AirLastScanLines: View {
     }
 
     private func reload() {
-        guard let id = state.recordableDevices.first?.DeviceID else { dates = (nil, nil); return }
+        guard let id = OTAScanView.scanDeviceId(state) else { dates = (nil, nil); return }
         dates = OTAStore.lastCompletedScans(deviceId: id)
     }
 }
@@ -79,7 +79,7 @@ struct AirChannelsCard: View {
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     Spacer()
                     Button("Cancel") { state.cancelOTAScan() }
-                        .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                        .buttonStyle(.link).font(.caption)
                         .accessibilityIdentifier("wizard-air-cancel")
                 }
                 if let note = progress.note {
@@ -96,7 +96,7 @@ struct AirChannelsCard: View {
                     .foregroundStyle(.secondary).font(.callout.bold())
                     .accessibilityIdentifier("wizard-air-cancelled")
             } else if o.channels > 0 {
-                Label("Found \(o.stations) stations with \(o.channels) channels.", systemImage: "checkmark.circle.fill")
+                Label("Found \(o.stations) \(o.stations == 1 ? "station" : "stations") with \(o.channels) \(o.channels == 1 ? "channel" : "channels").", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout.bold())
                     .accessibilityIdentifier("wizard-air-found")
                 Text("Saved as a backup channel list. It is read again once a day at the time set below.")
@@ -110,7 +110,7 @@ struct AirChannelsCard: View {
             }
             AirLastScanLines(progress: progress, showGuide: false)
             Button("Scan again") { state.startOTAScan(lineupOnly: true, userInitiated: true, showWindow: false) }
-                .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                .buttonStyle(.link).font(.caption)
                 .accessibilityIdentifier("wizard-air-rescan")
         }
     }

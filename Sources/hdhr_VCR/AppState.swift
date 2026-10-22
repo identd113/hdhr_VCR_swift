@@ -1715,7 +1715,7 @@ final class AppState: ObservableObject {
                 merged.append(contentsOf: found.filter { !existingIDs.contains($0.DeviceID) })
                 devices = merged
                 await fetchAllLineups(for: found)
-                statusMessage = "\(devices.count) tuner(s) found"
+                statusMessage = "\(devices.count) \(plural(devices.count, "tuner")) found"
                 glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
                 return
             } catch {
@@ -2039,7 +2039,7 @@ final class AppState: ObservableObject {
         // Stamp the refresh time (and draw a fresh jittered target) so the first idle-loop tick
         // doesn't immediately re-fetch the guide that startup just loaded.
         if loadedCount > 0 { armNextGuideRefresh(at: Date()) }
-        statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
+        statusMessage = "\(shows.count) \(plural(shows.count, "show")) — \(availableDeviceCount) \(plural(availableDeviceCount, "tuner")) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
         if loadedCount > 0 {
@@ -2168,7 +2168,7 @@ final class AppState: ObservableObject {
             }
         }
         glog("[Icons] downloaded \(needed) new icon(s) — \(urls.count) total cached")
-        statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
+        statusMessage = "\(shows.count) \(plural(shows.count, "show")) — \(availableDeviceCount) \(plural(availableDeviceCount, "tuner")) ready"
         // Only the cold-cache path above writes new files, so this is the point to check the
         // disk cap — once per prefetch batch, not per file (see pruneDiskCacheIfNeeded's comment).
         await ChannelIconCache.shared.pruneDiskCacheIfNeeded()
@@ -4516,14 +4516,14 @@ final class AppState: ObservableObject {
             }
             var icon: NSImage? = nil
             if let urlStr = imageURL, let url = URL(string: urlStr),
-               let (data, _) = try? await URLSession.shared.data(from: url) {
+               let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 3)) {
                 icon = NSImage(data: data)
             }
             let alert = NSAlert()
             alert.messageText     = "Delete \"\(show.show_title)\"?"
             alert.informativeText = "This cannot be undone."
             if let icon { alert.icon = icon }
-            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Delete").hasDestructiveAction = true
             alert.addButton(withTitle: "Cancel")
             alert.alertStyle = .warning
             if await Dialogs.present(alert) == .alertFirstButtonReturn {
@@ -7214,3 +7214,6 @@ extension AppState {
         return "Deleted the saved air " + [guide ? "guide" : nil, lineup ? "lineup" : nil].compactMap { $0 }.joined(separator: " and ")
     }
 }
+
+/// "1 tuner" / "2 tuners" — avoids "tuner(s)" in user-visible strings.
+func plural(_ n: Int, _ word: String) -> String { n == 1 ? word : word + "s" }

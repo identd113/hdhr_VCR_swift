@@ -14,10 +14,51 @@ function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function postJSON(url,payload){
   return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
 }
+// Respect prefers-reduced-motion for scripted scrolling (CSS animations are handled in guide.css).
+function scrollBehavior(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';}catch(e){return 'smooth';}}
+// ---- Modal focus management (Record / Edit / Delete-confirm sheets and the tuner popover) ----
+// openModal saves the element that had focus, shows the overlay, and moves focus into the sheet (first
+// field/button; on touch devices the sheet itself, so the on-screen keyboard doesn't pop up). Tab is
+// trapped inside the topmost open overlay (see the Tab keydown below); closeModal restores focus.
+var _modalPrev={};
+var _MODAL_ORDER=['del-confirm-modal','edit-modal','t-pop','rec-modal'];   // topmost (highest z-index) first
+function modalIsOpen(id){var m=document.getElementById(id);return !!m&&m.style.display!=='none'&&m.style.display!=='';}
+function openModal(id,display){
+  var m=document.getElementById(id);if(!m)return;
+  if(!modalIsOpen(id)){var ae=document.activeElement;_modalPrev[id]=(ae&&ae!==document.body)?ae:null;}
+  m.style.display=display||'flex';
+  var sheet=m.firstElementChild,t=null;
+  var coarse=false;try{coarse=window.matchMedia('(pointer:coarse)').matches;}catch(e){}
+  if(!coarse)t=m.querySelector('input:not([type=hidden]):not([type=checkbox]):not([disabled]),button:not([disabled])');
+  if(!t&&sheet){sheet.setAttribute('tabindex','-1');t=sheet;}
+  if(t&&t.focus)try{t.focus({preventScroll:true});}catch(e){}
+}
+function closeModal(id){
+  var m=document.getElementById(id);if(m)m.style.display='none';
+  var p=_modalPrev[id];_modalPrev[id]=null;
+  if(p&&document.body.contains(p)&&p.focus)try{p.focus({preventScroll:true});}catch(e){}
+}
+function _modalFocusables(m){
+  return Array.prototype.filter.call(m.querySelectorAll('a[href],button,input,select,textarea,[tabindex]'),function(el){
+    return !el.disabled&&el.tabIndex>=0&&el.offsetParent!==null&&getComputedStyle(el).visibility!=='hidden';
+  });
+}
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Tab'||e.metaKey||e.ctrlKey||e.altKey)return;
+  if(typeof _wn!=='undefined'&&_wn.open)return;
+  var top=null;
+  for(var i=0;i<_MODAL_ORDER.length;i++){if(modalIsOpen(_MODAL_ORDER[i])){top=document.getElementById(_MODAL_ORDER[i]);break;}}
+  if(!top)return;
+  var f=_modalFocusables(top);
+  if(!f.length){e.preventDefault();return;}
+  var first=f[0],last=f[f.length-1],ae=document.activeElement,inside=top.contains(ae);
+  if(e.shiftKey&&(!inside||ae===first||ae===top.firstElementChild)){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&(!inside||ae===last)){e.preventDefault();first.focus();}
+});
 // Theme: .lm class on <html> = light mode active
 var _mq=window.matchMedia('(prefers-color-scheme:light)');
 var _themeMode='dark';
-function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){b.classList.toggle('th-sel',b.dataset.m===_themeMode);});}
+function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){var on=b.dataset.m===_themeMode;b.classList.toggle('th-sel',on);b.setAttribute('aria-pressed',on?'true':'false');});}
 function refreshSumTheme(){var sel=document.querySelector('.g-prog.g-sel');if(sel)showInfo(sel);}
 // Split from setTheme() below so a native-pushed theme (AddShowView's embedded WKWebView calling
 // this directly, never setTheme itself) can never loop back through the native bridge and get
@@ -102,13 +143,15 @@ function showInfo(el){
   var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=el.style.background||gc(d.genre);
   var li=document.getElementById('sum-logo');
   li.src=d.logo||'/api/icon';li.style.display='inline';
-  document.getElementById('sum-title').textContent=d.title||'';
+  var sTitle=document.getElementById('sum-title');sTitle.textContent=d.title||'';sTitle.title=d.title||'';
   var gi=document.getElementById('sum-genre');
   var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
   if(d.new==='1')_allTags.unshift('__new__');
-  if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__new__')return '<span class="sum-tag" style="background:#27ae60;color:#fff;font-weight:800;letter-spacing:.07em">NEW</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+heJs(f.toUpperCase())+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
+  if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__new__')return '<span class="sum-tag" style="background:#1e8449;color:#fff;font-weight:800;letter-spacing:.07em">NEW</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+heJs(f.toUpperCase())+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
   renderHeavyFields(el);
-  document.getElementById('sum-ct').textContent='Ch '+d.num+' · '+d.chname+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
+  var sCt=document.getElementById('sum-ct');
+  sCt.textContent='Ch '+d.num+' · '+d.chname+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
+  sCt.title=sCt.textContent;
   var btn=document.getElementById('sum-btn');
   var del=document.getElementById('sum-del');
   var note=document.getElementById('sum-note');
@@ -187,7 +230,7 @@ function paintHeavyFields(el){
     pi.onerror=function(){pi.style.display='none';};
     pi.src=d.logo;pi.style.display='block';
   }else{pi.style.display='none';}
-  so('sum-ep',d.ep||'');
+  so('sum-ep',d.ep||'');document.getElementById('sum-ep').title=d.ep||'';
   so('sum-date',d.new==='1'?'':(d.date?'Orig. '+d.date:''));
   var sy=document.getElementById('sum-syn');
   if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
@@ -414,7 +457,7 @@ function doRecord(){
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
   },_d);
-  document.getElementById('rec-modal').style.display='flex';
+  openModal('rec-modal');
 }
 var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0,_rmType='single';
 function loadAirings(ser,gen){
@@ -489,7 +532,7 @@ function renderAirings(list){
   }).join('');
   panel.style.display='flex';
 }
-function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
+function cancelRecord(){closeModal('rec-modal');var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
 function toggleRmBonusStar(){syncBonusStar('rm-bonus','rm-bonus-star');}
 function confirmRecord(){
   var type=_rmType||'single';
@@ -520,6 +563,7 @@ function confirmRecord(){
         if(tb&&j.tunerTotal>0){
           tb.textContent=j.tunerActive+'/'+j.tunerTotal+(j.tunerFull?' — FULL':'');
           if(j.tunerFull)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');
+          syncDevLabel(_d);
         }
         btn.style.display='none';
         var note=document.getElementById('sum-note');
@@ -617,19 +661,28 @@ function applyGuidePayload(d,selOverride){
     // scanning it — lets the browser's native selector engine find the match directly.
     var match=document.querySelector('.g-prog[data-start="'+cq(prevStart)+'"][data-num="'+cq(prevNum)+'"][data-device="'+cq(prevDev)+'"]');
     if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
+    else{closeSummary();}   // the selected airing is gone from the refreshed grid: don't leave its stale details/buttons up
   }
   else if(prevAir){   // keep the air-only selection (and its Watch / Refresh buttons) across a refresh, e.g. when the multiplex scan it asked for finishes
     var am=document.querySelector('.g-air-blk[data-dev="'+cq(prevAir.dev)+'"][data-ch="'+cq(prevAir.ch)+'"][data-start="'+cq(prevAir.start)+'"]');
     if(am)showAirInfo(am);
   }
 }
+// Transient, non-blocking error toast (#g-toast).
+var _toastTimer=null;
+function showToast(msg){
+  var t=document.getElementById('g-toast');if(!t)return;
+  t.textContent=msg;t.style.display='block';
+  if(_toastTimer)clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(function(){t.style.display='none';_toastTimer=null;},4000);
+}
 function refreshGuide(selOverride){
   // Returns the fetch chain (existing callers all ignore the return value) so pull-to-refresh
   // can wait for the real completion instead of guessing with a timeout.
   var seq=nextEvtSeq();
-  return fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
+  return fetch('/api/guide-refresh').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){
     applyGuidePayloadSeq(seq,d,selOverride);
-  }).catch(function(){});
+  }).catch(function(){showToast("Couldn\u2019t refresh the guide");});
 }
 function doEditFromGuide(){
   var sel=document.querySelector('.g-prog.g-sel');
@@ -663,10 +716,10 @@ function showDeleteConfirm(title,poster,typeStr,isRec,onConfirm){
     :'This cannot be undone.';
   document.getElementById('dc-confirm-btn').textContent=isRec?'Stop & Delete':'Delete';
   _delConfirmAction=onConfirm;
-  document.getElementById('del-confirm-modal').style.display='flex';
+  openModal('del-confirm-modal');
 }
 function cancelDeleteConfirm(){
-  document.getElementById('del-confirm-modal').style.display='none';
+  closeModal('del-confirm-modal');
   _delConfirmAction=null;
 }
 function confirmDeleteConfirm(){
@@ -862,12 +915,13 @@ function showTunerInfo(devId,anchor){
   if(dt&&dt.surl){statusLink.href=dt.surl;statusLink.style.display='block';}else{statusLink.style.display='none';}
   var pop=document.getElementById('t-pop-c');
   var rect=anchor.getBoundingClientRect();
-  var left=Math.min(rect.left,window.innerWidth-410);
+  var pw=Math.min(400,window.innerWidth-16);   // matches #t-pop-c's max-width (guide.css)
+  var left=Math.min(rect.left,window.innerWidth-pw-8);
   pop.style.left=Math.max(8,left)+'px';
   pop.style.top=(rect.bottom+8)+'px';
-  document.getElementById('t-pop').style.display='block';
+  openModal('t-pop','block');
 }
-function closeTunerPop(){tPopGen++;document.getElementById('t-pop').style.display='none';}
+function closeTunerPop(){tPopGen++;closeModal('t-pop');}
 // Compact relative time for signal "last checked" freshness.
 function relTime(epoch){
   if(!epoch)return'never';
@@ -885,7 +939,7 @@ function goToShow(ch){
     var progs=rows[i].querySelectorAll('.g-prog');
     for(var j=0;j<progs.length;j++){
       var p=progs[j];
-      if(+p.dataset.start<=now&&+p.dataset.end>now){p.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});showInfo(p);return;}
+      if(+p.dataset.start<=now&&+p.dataset.end>now){p.scrollIntoView({behavior:scrollBehavior(),block:'center',inline:'center'});showInfo(p);return;}
     }
   }
 }
@@ -894,7 +948,7 @@ function goToShow(ch){
 // Tries exact data-start epoch match first; falls back to currently-airing search.
 function jumpToGuide(rowEl){
   var ch=rowEl.dataset.ch,dev=rowEl.dataset.dev,epoch=rowEl.dataset.next;
-  document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
+  closeTunerDrops();
   setDev(dev);
   var p=null;
   if(epoch&&+epoch>0)p=document.querySelector('.g-prog[data-num="'+cq(ch)+'"][data-device="'+cq(dev)+'"][data-start="'+cq(epoch)+'"]');
@@ -907,23 +961,42 @@ function jumpToGuide(rowEl){
       });
     });
   }
-  if(p){p.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});showInfo(p);}
+  if(p){p.scrollIntoView({behavior:scrollBehavior(),block:'nearest',inline:'center'});showInfo(p);}
 }
 // Per-tuner ▾ dropdown: toggle this tuner's show list; close any other open one.
+function closeTunerDrops(){
+  document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';x.classList.remove('tdrop-r');x.style.left='';});
+  document.querySelectorAll('.tdrop-btn').forEach(function(b){b.setAttribute('aria-expanded','false');});
+}
 function toggleTunerDrop(dev){
   var d=document.getElementById('tdrop-'+dev);if(!d)return;
   var willOpen=d.style.display==='none';
-  document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
-  if(willOpen)d.style.display='block';
+  closeTunerDrops();
+  if(!willOpen)return;
+  d.style.display='block';
+  // Keep the dropdown on screen: right-align it to its tuner box if it would run past the right edge;
+  // if that would then clip the left edge, fall back to left-aligned and shift it left just enough.
+  var vw=document.documentElement.clientWidth||window.innerWidth,r=d.getBoundingClientRect();
+  if(r.right>vw-8){
+    d.classList.add('tdrop-r');
+    r=d.getBoundingClientRect();
+    if(r.left<8){
+      d.classList.remove('tdrop-r');
+      var over=d.getBoundingClientRect().right-(vw-8);
+      d.style.left=(-over)+'px';
+    }
+  }
+  document.querySelectorAll('.tdrop-btn[data-dev]').forEach(function(b){if(b.dataset.dev===dev)b.setAttribute('aria-expanded','true');});
 }
 // Clicking inside a different tuner box closes any open dropdown belonging to another box.
 // Clicking completely outside any tuner box also closes open dropdowns.
 document.addEventListener('click',function(e){
   var box=e.target.closest&&e.target.closest('.tuner-box');
   if(box){
-    document.querySelectorAll('.tdrop').forEach(function(x){if(!box.contains(x))x.style.display='none';});
+    document.querySelectorAll('.tdrop').forEach(function(x){if(!box.contains(x)){x.style.display='none';x.classList.remove('tdrop-r');x.style.left='';}});
+    document.querySelectorAll('.tdrop-btn').forEach(function(b){var t=document.getElementById('tdrop-'+b.dataset.dev);if(!t||t.style.display==='none')b.setAttribute('aria-expanded','false');});
   } else {
-    document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
+    closeTunerDrops();
   }
   var sBar=e.target.closest&&e.target.closest('#search-bar');
   if(!sBar){closeSearchDrop();closeSearchHelp();}
@@ -1030,9 +1103,9 @@ function openEditShow(el){
   // Watch Now! only for a show airing right now (data-recording, already on the row) — and only when web streaming is on.
   var ew=document.getElementById('em-watch');ew.style.display='none';
   if(_editRec)streamingEnabled(function(on){if(on&&_editId===d.id)ew.style.display='inline-block';});
-  document.getElementById('edit-modal').style.display='flex';
+  openModal('edit-modal');
 }
-function closeEditShow(){document.getElementById('edit-modal').style.display='none';var ebstar=document.getElementById('em-bonus-star');ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
+function closeEditShow(){closeModal('edit-modal');var ebstar=document.getElementById('em-bonus-star');ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
 function doEditPause(){
   var pb=document.getElementById('em-pause');
   pb.disabled=true;pb.textContent='…';
@@ -1211,8 +1284,31 @@ function applyFilterDim(){
     if(dim)p.setAttribute('aria-hidden','true');else p.removeAttribute('aria-hidden');
   });
 }
+// Highlights (.d-sel) the selected tuner's name button and mirrors it into aria-pressed. Also re-run after a
+// dev-bar swap, whose fresh markup carries neither.
+function syncDevSelection(id){
+  if(id===undefined)id=curDev;
+  var onlineBtns=document.querySelectorAll('.d-btn[data-dev]');
+  document.querySelectorAll('.d-btn').forEach(function(b){
+    var on=id ? b.dataset.dev===id : onlineBtns.length===1&&b===onlineBtns[0];
+    b.classList.toggle('d-sel',on);
+    if(b.dataset.dev)b.setAttribute('aria-pressed',on?'true':'false');
+  });
+}
+// Accessible name of a tuner button, including occupancy: txt is the "a/t" or "a/t — FULL" text of #tun-<dev>.
+function devAriaLabel(dev,txt){
+  var m=/^(\d+)\/(\d+)(\s+\u2014\s+FULL)?$/.exec(txt||''),occ='';
+  if(m)occ=', '+m[1]+' of '+m[2]+' tuners in use'+(m[3]?', FULL':'');
+  return 'Switch guide to tuner HDHR-'+String(dev).toUpperCase()+occ+'; click again to see tuner details';
+}
+function syncDevLabel(dev){
+  var tb=document.getElementById('tun-'+dev);if(!tb)return;
+  var btn=tb.closest&&tb.closest('.d-btn');
+  if(btn&&btn.dataset.dev)btn.setAttribute('aria-label',devAriaLabel(btn.dataset.dev,tb.textContent));
+}
 function setDev(id){
   var switched=id!==curDev;
+  if(switched)closeSummary();   // the selected airing belongs to the tuner we're leaving
   // Both filters are scoped to "the tuner you're viewing" (search explicitly, genre because
   // rebuildGenreFilter only offers genres seen on curDev) — a switch invalidates either.
   if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';clearSearchFilter();}
@@ -1223,10 +1319,7 @@ function setDev(id){
   // tuner's box as selected too, instead of leaving every box unhighlighted just because there's
   // nothing to disambiguate it from. Offline boxes render as a <span> with no data-dev, so they
   // never match here regardless.
-  var onlineBtns=document.querySelectorAll('.d-btn[data-dev]');
-  document.querySelectorAll('.d-btn').forEach(function(b){
-    b.classList.toggle('d-sel', id ? b.dataset.dev===id : onlineBtns.length===1&&b===onlineBtns[0]);
-  });
+  syncDevSelection(id);
   var seen={};
   _rows.forEach(function(r){
     if(id){r.style.display=r.dataset.dev===id?'':'none';}
@@ -1325,7 +1418,7 @@ function closeSearchDrop(){
   if(d){d.style.display='none';d.innerHTML='';}
   _searchHi=-1;
   var inp=document.getElementById('search-in');
-  if(inp)inp.setAttribute('aria-expanded','false');
+  if(inp){inp.setAttribute('aria-expanded','false');inp.removeAttribute('aria-activedescendant');}
 }
 // ⓘ help popover — same on/off toggle + outside-click-closes pattern as the tuner ▾ dropdowns
 // and the search results dropdown, just a static explainer instead of live data.
@@ -1355,7 +1448,7 @@ function jumpToChannelPrefix(prefix){
   var row=Array.prototype.find.call(_rows,function(r){
     return r.style.display!=='none'&&r.dataset.ch&&r.dataset.ch.indexOf(prefix)===0;
   });
-  if(row)row.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});
+  if(row)row.scrollIntoView({behavior:scrollBehavior(),block:'nearest',inline:'nearest'});
 }
 function onSearchInput(){
   closeSearchHelp(); // typing again means they're past reading the ⓘ explainer
@@ -1381,13 +1474,22 @@ function runSearch(q){
   if(!dev)return;
   var reqId=++_searchReqId;
   fetch('/api/guide-search/'+encodeURIComponent(dev)+'/'+encodeURIComponent(q))
-    .then(function(r){return r.json();})
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
     .then(function(d){
       if(reqId!==_searchReqId)return; // superseded by a newer query/backspace since this fetch started
       _searchResults=d.shows||[];
       renderSearchDrop();
     })
-    .catch(function(){});
+    .catch(function(){
+      if(reqId!==_searchReqId)return;
+      _searchResults=[];
+      var dd=document.getElementById('search-drop'),ii=document.getElementById('search-in');
+      if(!dd)return;
+      _searchHi=-1;
+      dd.innerHTML='<div class="search-empty">Search failed</div>';
+      dd.style.display='block';
+      if(ii)ii.setAttribute('aria-expanded','true');
+    });
 }
 function renderSearchDrop(){
   var d=document.getElementById('search-drop');
@@ -1402,7 +1504,7 @@ function renderSearchDrop(){
       var sub=s.airings.length>1?(s.airings.length+' airings'):(next?hej(next.chName):'');
       var img=s.poster?'<img src="'+hej(s.poster)+'" loading="lazy" onerror="this.style.display=\'none\'">'
                        :'<div class="search-row-noart"></div>';
-      return '<div class="search-row" role="option" aria-selected="false" data-idx="'+i+'" onclick="selectSearchShow(_searchResults['+i+'])">'
+      return '<div class="search-row" role="option" id="search-opt-'+i+'" aria-selected="false" data-idx="'+i+'" onclick="selectSearchShow(_searchResults['+i+'])">'
         +img+'<div class="search-row-txt"><div class="search-row-title">'+hej(s.title)+'</div><div class="search-row-sub">'+sub+'</div></div>'
         +'</div>';
     }).join('');
@@ -1417,6 +1519,8 @@ function highlightSearchRow(idx){
     r.classList.toggle('search-hi',hi);
     r.setAttribute('aria-selected',hi?'true':'false');
   });
+  var inp=document.getElementById('search-in');
+  if(inp){if(idx>=0&&rows[idx])inp.setAttribute('aria-activedescendant',rows[idx].id);else inp.removeAttribute('aria-activedescendant');}
   if(idx>=0&&rows[idx])rows[idx].scrollIntoView({block:'nearest'});
 }
 function onSearchKeydown(event){
@@ -1448,6 +1552,13 @@ function onSearchKeydown(event){
     var help=document.getElementById('search-help');
     var helpOpen=help&&help.style.display!=='none';
     if(open||helpOpen){event.preventDefault();closeSearchDrop();closeSearchHelp();}
+    else if(event.target&&event.target.value){   // second Escape: nothing left to close, so clear the typed text
+      event.preventDefault();
+      event.target.value='';
+      _searchReqId++;_searchResults=[];
+      if(_searchDebounce){clearTimeout(_searchDebounce);_searchDebounce=null;}
+      armSearchStrayTimer();
+    }
   }
 }
 function selectSearchShow(show){
@@ -1498,7 +1609,7 @@ function jumpToSearchAiring(){
   var a=_searchShow.airings[_searchShow.idx];
   if(!a)return;
   var p=document.querySelector('.g-prog[data-device="'+cq(a.device)+'"][data-num="'+cq(a.ch)+'"][data-start="'+cq(a.start)+'"]');
-  if(p){p.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});showInfo(p);}
+  if(p){p.scrollIntoView({behavior:scrollBehavior(),block:'nearest',inline:'center'});showInfo(p);}
 }
 function cycleSearchEpisode(delta){
   if(!_searchShow)return;
@@ -1549,6 +1660,7 @@ function loadHlsJs(cb){
 }
 function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
   closeWatchNow();
+  var _wnAe=document.activeElement;_wn.prevFocus=(_wnAe&&_wnAe!==document.body)?_wnAe:null;
   _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;_wn.failed=false;
   var gen=_wn.gen;
   document.getElementById('wn-title').textContent=title;
@@ -1709,6 +1821,8 @@ function closeWatchNow(){
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
   if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
   document.getElementById('wn-modal').style.display='none';
+  var pf=_wn.prevFocus;_wn.prevFocus=null;
+  if(pf&&document.body.contains(pf)&&pf.focus)try{pf.focus({preventScroll:true});}catch(e){}
 }
 window.addEventListener('pagehide',closeWatchNow);
 // While the player is open it owns the keyboard: nothing reaches the guide's search/shortcut handlers underneath.
@@ -1728,6 +1842,66 @@ document.addEventListener('keydown',function(e){
   else{if(k.length===1)e.stopPropagation();return;}   // other printable keys must not reach the guide's search; everything else is left alone
   e.preventDefault();e.stopPropagation();
 },true);
+// Escape closes, in order: delete confirm, edit sheet, record sheet, tuner popover, then any open tuner dropdown.
+// Skipped while Watch Now / the shortcuts card own the keyboard, and while the search dropdown or help is open
+// (onSearchKeydown handles those; it calls preventDefault when it acts, which also covers the second-Escape clear).
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape'||e.defaultPrevented||e.isComposing)return;
+  if(_wn.open||_kbCardOpen)return;
+  var sd=document.getElementById('search-drop'),sh=document.getElementById('search-help');
+  if((sd&&sd.style.display!=='none')||(sh&&sh.style.display!=='none'))return;
+  if(modalIsOpen('del-confirm-modal')){cancelDeleteConfirm();}
+  else if(modalIsOpen('edit-modal')){closeEditShow();}
+  else if(modalIsOpen('rec-modal')){cancelRecord();}
+  else if(modalIsOpen('t-pop')){closeTunerPop();}
+  else {
+    var open=null;
+    document.querySelectorAll('.tdrop').forEach(function(x){if(x.style.display!=='none')open=x;});
+    if(!open)return;
+    var dev=open.id.replace(/^tdrop-/,'');
+    closeTunerDrops();
+    var b=document.querySelector('.tdrop-btn[data-dev="'+cq(dev)+'"]');if(b)b.focus();
+  }
+  e.preventDefault();
+});
+// Enter in the Record / Edit title field = Schedule / Save.
+(function(){
+  function wire(id,btnId,fn){
+    var el=document.getElementById(id);if(!el)return;
+    el.addEventListener('keydown',function(e){
+      if(e.key!=='Enter'||e.isComposing||e.shiftKey||e.altKey||e.ctrlKey||e.metaKey)return;
+      e.preventDefault();
+      var b=btnId?document.getElementById(btnId):null;
+      if(b&&b.disabled)return;
+      fn();
+    });
+  }
+  wire('rm-title-in',null,function(){confirmRecord();});
+  wire('em-title-in','em-save',function(){confirmEdit();});
+})();
+// Tuner-dropdown show rows are role="button" tabindex="0": Enter / Space opens them (the inner "jump" button keeps its own).
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  var t=e.target;
+  if(!t||!t.classList||!t.classList.contains('sp-row'))return;
+  e.preventDefault();
+  t.click();
+});
+// aria-pressed on the Type / Scope / Day toggle buttons mirrors their .sel class, wherever it is set.
+(function(){
+  function sync(b){if(b.classList&&(b.classList.contains('rm-type-btn')||b.classList.contains('day-btn')))b.setAttribute('aria-pressed',b.classList.contains('sel')?'true':'false');}
+  if(!window.MutationObserver)return;
+  var mo=new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      if(m.type==='attributes'){sync(m.target);return;}
+      m.addedNodes.forEach(function(n){if(n.nodeType!==1)return;sync(n);if(n.querySelectorAll)n.querySelectorAll('.rm-type-btn,.day-btn').forEach(sync);});
+    });
+  });
+  ['rec-modal','edit-modal'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)mo.observe(el,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+  });
+})();
 function anyGuideModalOpen(){
   return ['rec-modal','edit-modal','del-confirm-modal','wn-modal'].some(function(id){
     var el=document.getElementById(id);
@@ -1860,7 +2034,7 @@ function showAirInfo(el){
   var li=document.getElementById('sum-logo');li.src='/api/icon';li.style.display='inline';
   document.getElementById('sum-title').textContent=d.title||d.gname||('Channel '+d.ch);
   ['sum-genre','sum-date','sum-poster'].forEach(function(i){document.getElementById(i).style.display='none';});
-  so('sum-ep',d.ep||'');
+  so('sum-ep',d.ep||'');document.getElementById('sum-ep').title=d.ep||'';
   var sy=document.getElementById('sum-syn');if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
   document.getElementById('sum-ct').textContent='Ch '+d.ch+' · '+(d.gname||'')+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
   var gr=+d.gread;   // when this multiplex's guide was last read to the end (0 = never)
@@ -1993,6 +2167,7 @@ requestAnimationFrame(function(){
   // Remove splash after first paint. If it loaded fast it's still invisible (delayed CSS animation);
   // if it's already visible, fade it out first.
   requestAnimationFrame(function(){
+    var spf=document.getElementById('splash-fail');if(spf&&spf.parentNode)spf.parentNode.removeChild(spf);   // guide.js loaded: the CSS "failed to load" fallback isn't needed
     var sp=document.getElementById('splash');
     if(!sp)return;
     var vis=parseFloat(getComputedStyle(sp).opacity)>0.05;
@@ -2029,7 +2204,14 @@ setInterval(updateNowLine,60000);
   // until some unrelated later event. Re-sync on every RE-open (the first open is the page load itself), and when a
   // hidden tab becomes visible again after a while (timers/sockets are throttled or frozen while hidden).
   var _esOpenedOnce=false;
-  es.onopen=function(){if(_esOpenedOnce)refreshGuide();_esOpenedOnce=true;};
+  es.onopen=function(){
+    var nb=document.getElementById('net-banner');if(nb)nb.style.display='none';
+    if(_esOpenedOnce)refreshGuide();_esOpenedOnce=true;
+  };
+  es.onerror=function(){
+    var nb=document.getElementById('net-banner');
+    if(nb){nb.innerHTML=es.readyState===2?'Disconnected &ndash; reload the page':'Disconnected &ndash; retrying&hellip;';nb.style.display='block';}
+  };
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'&&Date.now()-_lastApplyAt>120000)refreshGuide();
   });
@@ -2044,7 +2226,7 @@ setInterval(updateNowLine,60000);
           // keeps it from ever silently going stale relative to what the server just sent.
           if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;tuners[dev].ns=c.ns;tuners[dev].g=c.g;tuners[dev].l=c.l;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt,ns:c.ns,g:c.g,l:c.l};}
           var tb=document.getElementById('tun-'+dev);
-          if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
+          if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');syncDevLabel(dev);}
         });
       } else if(d.type==='signal_update'&&d.gname&&d.bucket){
         // Inline DOM update — no full reload needed
@@ -2122,7 +2304,7 @@ setInterval(updateNowLine,60000);
             if(tuners[d.device])tuners[d.device].a=d.tunerA;
             else tuners[d.device]={t:d.tunerT,a:d.tunerA,surl:''};
             var tb=document.getElementById('tun-'+d.device);
-            if(tb){var full=d.tunerA>=d.tunerT;tb.textContent=d.tunerA+'/'+d.tunerT+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
+            if(tb){var full=d.tunerA>=d.tunerT;tb.textContent=d.tunerA+'/'+d.tunerT+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');syncDevLabel(d.device);}
           }
         }
       } else if(d.devbar){
@@ -2143,7 +2325,8 @@ setInterval(updateNowLine,60000);
           if(openId){var tmp=document.createElement('div');tmp.innerHTML=d.devbar;if(!tmp.querySelector('[id="'+cq(openId)+'"]'))skip=true;}
           if(!skip){
             db.innerHTML=d.devbar;
-            if(openId){var reopened=document.getElementById(openId);if(reopened)reopened.style.display='block';}
+            if(openId){var reopened=document.getElementById(openId);if(reopened){reopened.style.display='block';var rb=document.querySelector('.tdrop-btn[data-dev="'+cq(openId.replace(/^tdrop-/,''))+'"]');if(rb)rb.setAttribute('aria-expanded','true');}}
+            syncDevSelection();
           }
         }
       } else {

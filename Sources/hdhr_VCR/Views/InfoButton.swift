@@ -2,8 +2,11 @@ import SwiftUI
 
 struct InfoButton: View {
     let text: String
+    // What the help is about ("Port"), so VoiceOver says "More information about Port" instead of a bare
+    // "More information" repeated for every row. nil keeps the generic label.
+    let about: String?
     @State private var isPresented = false
-    init(_ text: String) { self.text = text }
+    init(_ text: String, about: String? = nil) { self.text = text; self.about = about }
     var body: some View {
         Button { isPresented.toggle() } label: {
             Image(systemName: "info.circle")
@@ -11,7 +14,10 @@ struct InfoButton: View {
                 .foregroundStyle(.tertiary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("More information")
+        .padding(2)
+        .contentShape(Rectangle())
+        .help("Show help")
+        .accessibilityLabel(about.map { "More information about \($0)" } ?? "More information")
         .accessibilityHint(text)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             // Explicit foreground rather than relying on .popover's own default Text color —

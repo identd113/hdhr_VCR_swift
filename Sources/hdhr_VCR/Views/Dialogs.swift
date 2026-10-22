@@ -18,8 +18,15 @@ enum Dialogs {
 
     /// The window a sheet should hang off: the key window, else any visible, keyable app window.
     static func hostWindow() -> NSWindow? {
-        if let key = NSApp.keyWindow, key.isVisible, !key.isSheet { return key }
-        return NSApp.windows.first { $0.isVisible && !$0.isSheet && $0.canBecomeKey && !($0 is NSPanel) }
+        if let key = NSApp.keyWindow, key.isVisible, !key.isSheet, isHostable(key) { return key }
+        return NSApp.windows.first { $0.isVisible && !$0.isSheet && $0.canBecomeKey && !($0 is NSPanel) && isHostable($0) }
+    }
+
+    /// The launch splash's borderless window is not a place for a sheet while it is only an animation (it ignores
+    /// mouse events and floats at pop-up-menu level, over the menu bar); once it hosts an input card it drops to
+    /// modal-panel level and takes the mouse, and is a fine host again.
+    private static func isHostable(_ window: NSWindow) -> Bool {
+        !window.ignoresMouseEvents && window.level != .popUpMenu
     }
 
     /// Shows `alert` without blocking and returns the user's choice (`.alertFirstButtonReturn` …).

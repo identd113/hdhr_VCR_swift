@@ -18,14 +18,15 @@ struct OTASpectrumDial: View {
 
     /// The three broadcast bands (RF channel ranges and the frequencies they cover), as drawn under the bars.
     static let bands: [(name: String, range: ClosedRange<Int>, mhz: String)] = [
-        ("VHF low", 2...6, "54–88"), ("VHF high", 7...13, "174–216"), ("UHF", 14...51, "470–698 MHz")]
+        ("VHF low", 2...6, "54–88 MHz"), ("VHF high", 7...13, "174–216 MHz"), ("UHF", 14...51, "470–698 MHz")]
 
     var body: some View {
         GeometryReader { geo in
             let barW = max(3, (geo.size.width - gap * CGFloat(rfs.count - 1)) / CGFloat(rfs.count))
+            let rowsByRF = Dictionary(progress.rows.map { ($0.rf, $0) }, uniquingKeysWith: { a, _ in a })
             VStack(spacing: 4) {
                 HStack(alignment: .bottom, spacing: gap) {
-                    ForEach(rfs, id: \.self) { rf in column(rf, width: barW) }
+                    ForEach(rfs, id: \.self) { rf in column(rf, width: barW, row: rowsByRF[rf]) }
                 }
                 .frame(height: dialHeight, alignment: .bottom)
                 axis(barW: barW)
@@ -36,6 +37,7 @@ struct OTASpectrumDial: View {
         .onChange(of: progress.running) { _, _ in syncBob() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("The airwaves: one bar for each RF channel")
+        .accessibilityValue("\(progress.rows.count) station\(progress.rows.count == 1 ? "" : "s") found")
         .accessibilityIdentifier("ota-scan-dial")
     }
 
@@ -51,8 +53,15 @@ struct OTASpectrumDial: View {
         return progress.listenedRF.contains(rf) ? 4 : 8
     }
 
-    private func column(_ rf: Int, width: CGFloat) -> some View {
-        let row = progress.rows.first { $0.rf == rf }
+    private func stateSuffix(_ row: OTAMultiplexRow) -> String {
+        switch row.state {
+        case .done: return ", guide read"
+        case .scanning: return ", reading"
+        case .waiting, .noGuide: return ""
+        }
+    }
+
+    private func column(_ rf: Int, width: CGFloat, row: OTAMultiplexRow?) -> some View {
         let reading = readers(of: rf)
         let selected = rf == selectedRF
         let height = barHeight(rf, row: row)
@@ -64,7 +73,7 @@ struct OTASpectrumDial: View {
                     ForEach(reading, id: \.self) { i in
                         Image(systemName: "arrowtriangle.down.fill").font(.system(size: 8)).foregroundStyle(laneColor(i))
                             .offset(y: reduceMotion ? 0 : (bob ? -2 : 2))
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
                     }
                 }
                 .frame(height: 9)
@@ -79,11 +88,11 @@ struct OTASpectrumDial: View {
         }
         .buttonStyle(.plain)
         .disabled(row == nil)
-        .animation(.spring(response: 0.55, dampingFraction: 0.6), value: height)
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: reading)
-        .animation(.easeOut(duration: 0.2), value: selected)
+        .animation(reduceMotion ? nil : .spring(response: 0.55, dampingFraction: 0.6), value: height)
+        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.7), value: reading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: selected)
         .accessibilityHidden(row == nil)
-        .accessibilityLabel(row.map { "RF \(rf), \($0.subChannels.count) channels" } ?? "RF \(rf)")
+        .accessibilityLabel(row.map { "RF \(rf), \($0.subChannels.count) channels\(stateSuffix($0))" } ?? "RF \(rf)")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("ota-scan-tab-\(rf)")
     }

@@ -62,6 +62,7 @@ struct StarburstBadge: View {
     @State private var popCount   = 0
     @State private var celebCount = 0
     @State private var tapCount   = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         StarburstShape()
@@ -73,10 +74,13 @@ struct StarburstBadge: View {
             )
             // Pop-in: badge slams in spinning from far behind, overshoots scale, springs to rest.
             // initialValue.scale=0 keeps it hidden until the first pop fires from onAppear.
+            // Reduce Motion: the badge just appears (no spin/overshoot); the keyframe values are ignored.
             .keyframeAnimator(initialValue: StarburstPopValues(), trigger: popCount) { content, v in
-                content
-                    .scaleEffect(v.scale)
-                    .rotationEffect(.degrees(v.rotation))
+                if reduceMotion { content } else {
+                    content
+                        .scaleEffect(v.scale)
+                        .rotationEffect(.degrees(v.rotation))
+                }
             } keyframes: { _ in
                 KeyframeTrack(\.scale) {
                     LinearKeyframe(CGFloat(1.30), duration: 0.01)
@@ -93,9 +97,11 @@ struct StarburstBadge: View {
             // Stacks on top of pop-in (scales multiply, rotations add).
             // 360° end = 0° visually, so consecutive celebrations re-trigger cleanly.
             .keyframeAnimator(initialValue: StarburstCelebValues(), trigger: celebCount) { content, v in
-                content
-                    .scaleEffect(v.scale)
-                    .rotationEffect(.degrees(v.rotation))
+                if reduceMotion { content } else {
+                    content
+                        .scaleEffect(v.scale)
+                        .rotationEffect(.degrees(v.rotation))
+                }
             } keyframes: { _ in
                 KeyframeTrack(\.scale) {
                     CubicKeyframe(CGFloat(0.45), duration: 0.10)
@@ -110,6 +116,8 @@ struct StarburstBadge: View {
                     LinearKeyframe(Double(0), duration: 0.001)   // snap to 0 (same visual; resets stored value so next celebration starts clean)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Bonus time, plus \(minutes) minutes")
             .onTapGesture {
                 tapCount += 1
                 if tapCount >= 5 { tapCount = 0; celebCount += 1 }

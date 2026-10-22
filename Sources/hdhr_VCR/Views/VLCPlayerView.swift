@@ -237,6 +237,8 @@ struct VLCPlayerView: View {
     // yield its tuner" entry and quickRecordMenu's yieldWatchNowConfirm parameter.
     @State private var yieldWatchNowConfirm: QuickRecordYieldRequest? = nil
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
+    @State private var toolbarWidth: CGFloat = 0   // measured width of the toolbar row (0 until first measured) — drives the overflow plan
+    @State private var toolbarPlanMemo: ToolbarOverflowPlanner.Plan?   // the plan in force, for the planner's hysteresis
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
     @State private var pipHovered = false         // reveals the PiP thumbnail's close button on hover (see pipOverlay)
     // Toolbar "Info" button ("i" on a TV remote) — toggled true/false; a `.task(id:)` below
@@ -2126,8 +2128,81 @@ struct VLCPlayerView: View {
 
     // MARK: - Toolbar
 
+    /// The quick-record target (selected channel + airing entry) when the Record control applies; nil hides it.
+    /// Hidden while watching a recording-relay stream (already being captured, see bridge.recordingShowId),
+    /// when nothing's currently airing on the selected channel, or when this exact channel already has an
+    /// active managed show (avoids offering a redundant add).
+    private var quickRecordTarget: (channel: LineupEntry, entry: GuideEntry)? {
+        guard bridge.recordingShowId == nil, let ch = selectedChannel, let entry = currentGuideEntry,
+              !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber })
+        else { return nil }
+        return (ch, entry)
+    }
+
+    private var showsH264Toggle: Bool { device.isVirtualRelay && !feedSourceAlreadyModern }
+
+    /// The responsive toolbar's plan (docs/VLCPlayerView.md, "Responsive toolbar"): which controls are full, compact or
+    /// folded into the "…" menu for the width measured so far. Unmeasured (0) = everything on the bar.
+    private var toolbarPlan: ToolbarOverflowPlanner.Plan {
+        let specs = PlayerToolbarItem.specs(hasRecord: quickRecordTarget != nil, bufferEnabled: bridge.bufferInfo.enabled,
+                                            recordingRelay: bridge.recordingShowId != nil, hasH264: showsH264Toggle)
+        return ToolbarOverflowPlanner.plan(items: specs, available: toolbarWidth > 0 ? toolbarWidth : .greatestFiniteMagnitude,
+                                           previous: toolbarPlanMemo)
+    }
+
     private var toolbar: some View {
-        return HStack(spacing: 10) {
+        let plan = toolbarPlan
+        let rec = quickRecordTarget
+        // The row is an overlay on a flexible, fixed-height base: the base takes exactly the width the window offers (so the
+        // measurement can't be inflated by controls that don't fit), and the controls overflow rather than push the window wide.
+        return Color(NSColor.windowBackgroundColor)
+            .frame(height: VLCPlayerWindowManager.playerToolbarHeight)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { toolbarWidth = $0 })
+            .overlay { toolbarRow(plan: plan, rec: rec) }
+        // Slide the bar in when a stream's first frame is decoded (every new stream, not just the window opening).
+        .onChange(of: bridge.hasVideoFrame) { _, has in if has { revealStatusBarBriefly() } }
+        .task(id: upcomingKey) { upcomingSnapshot = computeUpcoming() }
+        .task(id: tempBarToken) {
+            // The toolbar exists as two copies (windowed / full-screen overlay), so a fresh copy would otherwise re-run an
+            // old token: handle each token once, and never while in full screen.
+            guard tempBarToken > handledPeekToken, !isFullScreen else { return }
+            handledPeekToken = tempBarToken
+            barIsPeek = true
+            setStatusBar(true, persist: false)
+            try? await Task.sleep(for: .seconds(Self.barSlideSeconds + Self.tempBarSeconds))
+            guard !Task.isCancelled, barIsPeek else { return }   // a click made it permanent
+            barIsPeek = false
+            setStatusBar(false, persist: false)
+        }
+        // Pulses the ⓘ icon three times.
+        .task(id: infoFlashCount) {
+            guard infoFlashCount > handledFlashCount else { return }
+            handledFlashCount = infoFlashCount
+            for _ in 0..<3 {
+                withAnimation(.easeInOut(duration: 0.3)) { infoGlow = true }
+                try? await Task.sleep(for: .milliseconds(300))
+                withAnimation(.easeInOut(duration: 0.3)) { infoGlow = false }
+                try? await Task.sleep(for: .milliseconds(350))
+                if Task.isCancelled { infoGlow = false; return }
+            }
+        }
+        .onChange(of: bridge.isPlaying) { _, playing in
+            if !playing { streamInfoHovered = false }
+        }
+        // Remember the plan in force so the planner's hysteresis has something to compare against.
+        .onChange(of: plan) { _, p in toolbarPlanMemo = p }
+        // ⓘ folded into "…": its hover popover has no anchor any more — close it and forget the hover.
+        .onChange(of: plan.isFolded(PlayerToolbarItem.info)) { _, folded in
+            if folded { streamInfoHovered = false; popoverAnchorHovered = false; popoverBodyHovered = false }
+        }
+        .focusEffectDisabled()   // no blue focus box around whichever toolbar button was last clicked
+    }
+
+    /// The toolbar's controls, laid out per `plan`: a control the plan folds is not drawn here but offered at the top of the
+    /// "…" menu (`foldedMenuItems`). Every control keeps its accessibility identifier in both places.
+    @ViewBuilder
+    private func toolbarRow(plan: ToolbarOverflowPlanner.Plan, rec: (channel: LineupEntry, entry: GuideEntry)?) -> some View {
+        HStack(spacing: ToolbarOverflowPlanner.spacing) {
             // Channel picker — sorted by guide number
             Picker("Channel", selection: $selectedChannel) {
                 // Fallback: selected whenever selectedChannel is nil and nothing else matched
@@ -2171,36 +2246,40 @@ struct VLCPlayerView: View {
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 220)
+            // Shrinks (never folds) as the window narrows — see PlayerToolbarItem.
+            .frame(maxWidth: plan.isCompact(PlayerToolbarItem.picker) ? PlayerToolbarItem.pickerCompact : PlayerToolbarItem.pickerFull)
             .accessibilityLabel("Channel")
             .accessibilityIdentifier("vlc-channel-picker")
             .onChange(of: selectedChannel) { oldCh, ch in handleChannelPickChanged(from: oldCh, to: ch) }
 
-            // Quick-record: same four-type pulldown as Watch Now's Record button
-            // (WatchNowRow/quickRecordMenu, GuideViewHelpers.swift) — icon-only here since the
-            // toolbar has no room to spare for a labeled button. Hidden while watching a
-            // recording-relay stream (already being captured, see bridge.recordingShowId),
-            // when nothing's currently airing on the selected channel, or when this exact
-            // channel already has an active managed show (avoids offering a redundant add).
-            if bridge.recordingShowId == nil, let ch = selectedChannel, let entry = currentGuideEntry,
-               !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }) {
-                quickRecordMenu(state: state, entry: entry, device: device, channel: ch,
+            // Quick-record: the same four-type pulldown as Watch Now's Record button
+            // (WatchNowRow/quickRecordMenu, GuideViewHelpers.swift), a labeled red "Record" control.
+            // Hidden under the conditions in `quickRecordTarget`; folds into a "Record" submenu of "…"
+            // (first after the clock, live buffer and H.264 toggle) when the window gets narrow.
+            if let rec, !plan.isFolded(PlayerToolbarItem.record) {
+                quickRecordMenu(state: state, entry: rec.entry, device: device, channel: rec.channel,
                                  tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm) {
                     Label("Record", systemImage: "record.circle")
+                        .lineLimit(1)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
-                .accessibilityLabel("Record \(entry.Title)")
+                .accessibilityLabel("Record \(rec.entry.Title)")
                 .accessibilityIdentifier("vlc-quick-record")
-                .help("Record \(entry.Title)")
+                .help("Record \(rec.entry.Title)")
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             // Buffer monitor + catch-up: grouped into a single control unit when buffering is active.
             // Both relate to live-stream temporal state, so they share a pill background with a
             // hairline divider between them. Catch-up stands alone when buffering is disabled.
-            if bridge.bufferInfo.enabled {
+            // With buffering on the catch-up button is icon-only (pill or not); without it, it carries a label
+            // until the window is narrow enough for the planner to step it down to the icon.
+            let bufferOn = bridge.bufferInfo.enabled
+            let showBuffer = bufferOn && !plan.isFolded(PlayerToolbarItem.buffer)
+            let showCatchUp = !plan.isFolded(PlayerToolbarItem.catchUp)
+            if showBuffer && showCatchUp {
                 HStack(spacing: 0) {
                     bufferMonitor
                         .padding(.trailing, 5)
@@ -2212,7 +2291,15 @@ struct VLCPlayerView: View {
                 .padding(.vertical, 4)
                 .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
             } else {
-                catchUpButton(showLabel: true)
+                if showBuffer {
+                    bufferMonitor
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                }
+                if showCatchUp {
+                    catchUpButton(showLabel: !bufferOn && !plan.isCompact(PlayerToolbarItem.catchUp))
+                }
             }
 
             // Raw/H.264 toggle for a remote FEED session — see currentFeedEntry's own doc comment.
@@ -2220,12 +2307,9 @@ struct VLCPlayerView: View {
             // on Another Mac" menu only offering a second Watch (H.264) item under that condition —
             // a source that's already H.264/HEVC would just get relayed as-is regardless, making the
             // toggle a no-op.
-            if device.isVirtualRelay, !feedSourceAlreadyModern {
+            if showsH264Toggle, !plan.isFolded(PlayerToolbarItem.h264) {
                 Divider().frame(height: 18)
-                Toggle(isOn: Binding(
-                    get: { feedIsTranscoding },
-                    set: { toggleFeedTranscode(to: $0) }
-                )) {
+                Toggle(isOn: feedTranscodeBinding) {
                     Text("H.264")
                 }
                 .toggleStyle(.checkbox)
@@ -2241,59 +2325,62 @@ struct VLCPlayerView: View {
             // network, purple = disk, indigo = FEED — so it doubles as an at-a-glance "where is this coming from".
             // Resizing to the picture's native size is the window's own Zoom (Option-click the green button, or
             // Window ▸ Zoom): VLCPlayerWindowManager.standardFrame.
-            Button {
-                userToggleStatusBar()
-            } label: {
-                Image(systemName: barWanted ? "info.circle.fill" : "info.circle")
-                    .foregroundStyle(nativeIconSourceColor.opacity(barWanted ? 1.0 : 0.75))
-                    .scaleEffect(infoGlow ? 1.35 : 1)
-                    .shadow(color: nativeIconSourceColor.opacity(infoGlow ? 0.9 : 0), radius: infoGlow ? 7 : 0)
-            }
-            .buttonStyle(.plain)
-            .help(barWanted ? "Hide status bar" : "Show status bar")
-            .accessibilityLabel(barWanted ? "Hide status bar" : "Show status bar")
-            .accessibilityIdentifier("vlc-status-bar-toggle")
-            .onHover { inside in
-                popoverAnchorHovered = inside
-                if inside { recordingSizeSnapshot = recordingSizeText; streamInfoHovered = true }
-                else { closeStreamPopoverSoon() }
-            }
-            .task(id: streamInfoHovered) { await measureLink() }
-            .popover(isPresented: $streamInfoHovered, arrowEdge: .bottom) {
-                streamPopover.onHover { inside in
-                    popoverBodyHovered = inside
-                    if !inside { closeStreamPopoverSoon() }
+            if !plan.isFolded(PlayerToolbarItem.info) {
+                Button {
+                    userToggleStatusBar()
+                } label: {
+                    Image(systemName: barWanted ? "info.circle.fill" : "info.circle")
+                        .foregroundStyle(nativeIconSourceColor.opacity(barWanted ? 1.0 : 0.75))
+                        .scaleEffect(infoGlow ? 1.35 : 1)
+                        .shadow(color: nativeIconSourceColor.opacity(infoGlow ? 0.9 : 0), radius: infoGlow ? 7 : 0)
+                }
+                .buttonStyle(.plain)
+                .help(barWanted ? "Hide status bar" : "Show status bar")
+                .accessibilityLabel(barWanted ? "Hide status bar" : "Show status bar")
+                .accessibilityIdentifier("vlc-status-bar-toggle")
+                .onHover { inside in
+                    popoverAnchorHovered = inside
+                    if inside { recordingSizeSnapshot = recordingSizeText; streamInfoHovered = true }
+                    else { closeStreamPopoverSoon() }
+                }
+                .task(id: streamInfoHovered) { await measureLink() }
+                .popover(isPresented: $streamInfoHovered, arrowEdge: .bottom) {
+                    streamPopover.onHover { inside in
+                        popoverBodyHovered = inside
+                        if !inside { closeStreamPopoverSoon() }
+                    }
                 }
             }
 
             // Group dividers, added 2026-09-19 (reported "crowded") — purely visual breathing room
             // between logical clusters (stream state: buffer/catch-up/H.264/native — clock — volume
             // — the existing pre-overflow divider below), no functional change to any control.
-            Divider().frame(height: 18)
-
             // Live wall-clock time. The recording scrub bar lives in a hover overlay on the video
             // instead (see body's ZStack) rather than here — it needs more room than this toolbar
-            // has to spare alongside everything else.
-            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                Text(ctx.date, style: .time)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 70)
+            // has to spare alongside everything else. Fixed width so the row's width never moves
+            // with the digits; the first control to fold into "…".
+            if !plan.isFolded(PlayerToolbarItem.clock) {
+                Divider().frame(height: 18)
+                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                    Text(ctx.date, style: .time)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                        .frame(width: PlayerToolbarItem.clockTextWidth)
+                }
             }
 
-            Divider().frame(height: 18)
-
-            // Volume
-            Image(systemName: "speaker.wave.2")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Slider(value: $volume, in: 0...100)
-                .frame(width: 100)
-                .accessibilityLabel("Volume")
-                .accessibilityIdentifier("vlc-volume-slider")
-                .onChange(of: volume) { _, v in
-                    VLCBridge.shared.setVolume(Int(v))
-                }
+            // Volume: the slider shrinks, then folds into a "Volume" submenu of "…".
+            if !plan.isFolded(PlayerToolbarItem.volume) {
+                Divider().frame(height: 18)
+                Image(systemName: "speaker.wave.2")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Slider(value: $volume, in: 0...100)
+                    .frame(width: plan.isCompact(PlayerToolbarItem.volume) ? PlayerToolbarItem.volumeSliderCompact : PlayerToolbarItem.volumeSliderFull)
+                    .accessibilityLabel("Volume")
+                    .accessibilityIdentifier("vlc-volume-slider")
+            }
 
             // Audio track / captions / audio output / display — consolidated into one overflow
             // menu (added 2026-09-13) rather than up to four always-visible icon+picker+divider
@@ -2314,9 +2401,11 @@ struct VLCPlayerView: View {
             // rather than "not applicable." Always offered once VLC itself is available;
             // discovery result only affects the submenu's *contents*.
             let hasCastEntry = bridge.isAvailable
-            if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice || hasCastEntry {
+            if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice || hasCastEntry || !plan.foldedIDs.isEmpty {
                 Divider().frame(height: 18)
                 Menu {
+                    // Controls the toolbar had no room for, most recently folded first.
+                    foldedMenuItems(plan: plan, rec: rec)
                     // Captions listed first — moved to the top 2026-09-19 per explicit request
                     // ("crowded, and not well placed"); previously sorted after Audio Track. Never
                     // shown for a recording-relay session (bridge.recordingShowId != nil):
@@ -2447,45 +2536,13 @@ struct VLCPlayerView: View {
                 // already reads as "more", so the chevron was redundant.
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Audio, captions, output, display, and cast options")
+                .help("More options — audio, captions, output, display, cast, and any controls that do not fit")
                 .accessibilityLabel("More options")
                 .accessibilityIdentifier("vlc-more-options-menu")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.windowBackgroundColor))
-        // Slide the bar in when a stream's first frame is decoded (every new stream, not just the window opening).
-        .onChange(of: bridge.hasVideoFrame) { _, has in if has { revealStatusBarBriefly() } }
-        .task(id: upcomingKey) { upcomingSnapshot = computeUpcoming() }
-        .task(id: tempBarToken) {
-            // The toolbar exists as two copies (windowed / full-screen overlay), so a fresh copy would otherwise re-run an
-            // old token: handle each token once, and never while in full screen.
-            guard tempBarToken > handledPeekToken, !isFullScreen else { return }
-            handledPeekToken = tempBarToken
-            barIsPeek = true
-            setStatusBar(true, persist: false)
-            try? await Task.sleep(for: .seconds(Self.barSlideSeconds + Self.tempBarSeconds))
-            guard !Task.isCancelled, barIsPeek else { return }   // a click made it permanent
-            barIsPeek = false
-            setStatusBar(false, persist: false)
-        }
-        // Pulses the ⓘ icon three times.
-        .task(id: infoFlashCount) {
-            guard infoFlashCount > handledFlashCount else { return }
-            handledFlashCount = infoFlashCount
-            for _ in 0..<3 {
-                withAnimation(.easeInOut(duration: 0.3)) { infoGlow = true }
-                try? await Task.sleep(for: .milliseconds(300))
-                withAnimation(.easeInOut(duration: 0.3)) { infoGlow = false }
-                try? await Task.sleep(for: .milliseconds(350))
-                if Task.isCancelled { infoGlow = false; return }
-            }
-        }
-        .onChange(of: bridge.isPlaying) { _, playing in
-            if !playing { streamInfoHovered = false }
-        }
-        .focusEffectDisabled()   // no blue focus box around whichever toolbar button was last clicked
+        .padding(.horizontal, ToolbarOverflowPlanner.horizontalPadding / 2)
+        .onChange(of: volume) { _, v in VLCBridge.shared.setVolume(Int(v)) }   // here, not on the slider: the slider may be folded
     }
 
     /// "5 seconds to live" with a fast-forward chevron, shown on the picture for a moment when Live Edge is clicked.
@@ -2571,28 +2628,105 @@ struct VLCPlayerView: View {
 
     // showLabel: false inside the compact buffer-monitor pill (no room for text there — the pill's
     // own hover popover already covers detail); true standalone, where there's space for a label.
+    /// The catch-up action, shared by the toolbar button and its folded "…" menu item.
+    private func performCatchUp() {
+        if let showId = bridge.recordingShowId {
+            flashLiveJump(behind: behindLiveSeconds(at: Date()))
+            state.seekRecordingToLiveEdge(showId: showId)
+        } else {
+            VLCBridge.shared.catchUpToLive()
+        }
+    }
+
+    private var feedTranscodeBinding: Binding<Bool> {
+        Binding(get: { feedIsTranscoding }, set: { toggleFeedTranscode(to: $0) })
+    }
+
+    /// Items the toolbar folded into the top of the "…" menu, most recently folded first, each with the accessibility
+    /// identifier of the bar control it stands in for. Order and rules: docs/VLCPlayerView.md, "Responsive toolbar".
+    @ViewBuilder
+    private func foldedMenuItems(plan: ToolbarOverflowPlanner.Plan, rec: (channel: LineupEntry, entry: GuideEntry)?) -> some View {
+        ForEach(plan.foldedIDs, id: \.self) { id in
+            switch id {
+            case PlayerToolbarItem.clock:
+                Button {} label: {
+                    Text("Time: \(Date.now.formatted(date: .omitted, time: .shortened))")
+                }
+                .disabled(true)
+                .accessibilityIdentifier("vlc-clock")
+            case PlayerToolbarItem.buffer:
+                Button {} label: {
+                    Text("Live buffer: \(min(8, Int(bridge.bufferInfo.lagSec.rounded()))) of 8 s")
+                }
+                .disabled(true)
+                .accessibilityIdentifier("vlc-buffer-monitor")
+            case PlayerToolbarItem.h264:
+                Toggle(isOn: feedTranscodeBinding) { Text("H.264") }
+                    .accessibilityIdentifier("vlc-feed-transcode-toggle")
+            case PlayerToolbarItem.record:
+                if let rec {
+                    quickRecordMenu(state: state, entry: rec.entry, device: device, channel: rec.channel,
+                                    tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm) {
+                        Label("Record", systemImage: "record.circle")
+                    }
+                    .accessibilityIdentifier("vlc-quick-record")
+                }
+            case PlayerToolbarItem.catchUp:
+                Button { performCatchUp() } label: {
+                    if bridge.recordingShowId != nil {
+                        let behind = behindLiveSeconds(at: Date()).flatMap(Self.behindText)
+                        Label(behind.map { "Live Edge · \($0)" } ?? "Live Edge", systemImage: "forward.end.circle")
+                    } else {
+                        Label("Catch Up", systemImage: "forward.end.circle")
+                    }
+                }
+                .accessibilityIdentifier("vlc-catch-up-button")
+            case PlayerToolbarItem.volume:
+                Menu {
+                    Button { volume = 0 } label: {
+                        if Int(volume) == 0 { Label("Mute", systemImage: "checkmark") } else { Text("Mute") }
+                    }
+                    ForEach([25, 50, 75, 100], id: \.self) { preset in
+                        Button { volume = Double(preset) } label: {
+                            if Int(volume.rounded()) == preset { Label("\(preset)%", systemImage: "checkmark") } else { Text("\(preset)%") }
+                        }
+                    }
+                } label: { Label("Volume", systemImage: "speaker.wave.2") }
+                .accessibilityIdentifier("vlc-volume-slider")
+            case PlayerToolbarItem.info:
+                Button { userToggleStatusBar() } label: {
+                    Label(barWanted ? "Hide Status Bar" : "Show Status Bar", systemImage: barWanted ? "info.circle.fill" : "info.circle")
+                }
+                .accessibilityIdentifier("vlc-status-bar-toggle")
+            default:
+                EmptyView()
+            }
+        }
+        if !plan.foldedIDs.isEmpty { Divider() }
+    }
+
     private func catchUpButton(showLabel: Bool) -> some View {
         // For a recording-relay session, VLCBridge.catchUpToLive() alone just replays the current
         // URL verbatim — reconnecting at the same stale &start= byte offset, doing nothing toward
         // "live". AppState.seekRecordingToLiveEdge computes a fresh near-live-edge offset instead.
         Button {
-            if let showId = bridge.recordingShowId {
-                flashLiveJump(behind: behindLiveSeconds(at: Date()))
-                state.seekRecordingToLiveEdge(showId: showId)
-            } else {
-                VLCBridge.shared.catchUpToLive()
-            }
+            performCatchUp()
         } label: {
             Group {
                 if showLabel {
+                    // Fixed widths + one line: the toolbar planner budgets these constants (PlayerToolbarItem).
                     if bridge.recordingShowId != nil {
                         TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                             let behind = behindLiveSeconds(at: ctx.date).flatMap(Self.behindText)
                             Label(behind.map { "Live Edge · \($0)" } ?? "Live Edge", systemImage: "forward.end.circle")
                                 .monospacedDigit()
+                                .lineLimit(1)
+                                .frame(width: PlayerToolbarItem.catchUpRecordingLabelWidth, alignment: .leading)
                         }
                     } else {
                         Label("Catch Up", systemImage: "forward.end.circle")
+                            .lineLimit(1)
+                            .frame(width: PlayerToolbarItem.catchUpLabelWidth, alignment: .leading)
                     }
                 } else {
                     Image(systemName: "forward.end.circle")
@@ -3510,6 +3644,7 @@ final class VLCPlayerWindowManager {
         )
         win.title = title
         let hosting = NSHostingView(rootView: playerView)
+        configureResizing(win, hosting: hosting)
         win.contentView = hosting
         self.hostingView = hosting
         win.isReleasedWhenClosed = false   // retain for reuse on next open()
@@ -3557,6 +3692,7 @@ final class VLCPlayerWindowManager {
         )
         win.title = "hdhrVCRplus"
         let hosting = NSHostingView(rootView: playerView)
+        configureResizing(win, hosting: hosting)
         win.contentView = hosting
         self.hostingView = hosting
         win.isReleasedWhenClosed = false   // retain for reuse on next open()
@@ -3935,7 +4071,20 @@ final class VLCPlayerWindowManager {
         applyContentSize(CGSize(width: current.width, height: current.height + delta), to: win, animate: false)
     }
 
-    nonisolated static let playerMinContentWidth: CGFloat = 640
+    /// Narrowest content width the window can be dragged to (2026-10-22; was 640 — the toolbar could not shrink). The
+    /// toolbar folds its controls into "…" to fit (`PlayerToolbarItem`); at this width it still has the compact channel
+    /// picker, the compact volume slider, catch-up (icon), the ⓘ button and "…". Always above `PlayerToolbarItem.essentialWidth`.
+    nonisolated static let playerMinContentWidth: CGFloat = 420
+    /// Shortest content height the window can be dragged to: the toolbar plus a sliver of picture. The aspect settle on
+    /// release (`windowDidEndLiveResize`) refits the height to the stream anyway.
+    nonisolated static let playerMinContentHeight: CGFloat = playerToolbarHeight + 120
+
+    /// Window setup shared by both construction sites: the explicit minimum content size, and a hosting view that no longer
+    /// pushes SwiftUI's minimum size into the window (the toolbar's old intrinsic minimum is what kept the window wide).
+    private func configureResizing(_ win: NSWindow, hosting: NSHostingView<AnyView>) {
+        hosting.sizingOptions = []
+        win.contentMinSize = NSSize(width: Self.playerMinContentWidth, height: Self.playerMinContentHeight)
+    }
 
     /// Pure: content size whose video area (content minus the toolbar strip) has the stream's native
     /// aspect at the requested `width`, clamped to `minContentWidth` and `maxContent` (the screen).

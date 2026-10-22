@@ -21,8 +21,9 @@ Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu h
 
 **Header rows** (non-interactive, at the top):
 - One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. The app-held count (recordings + the player's streams) includes both active recordings **and** the VLC player if it is open on that device — recording one show while watching counts as 2. Color: `systemRed` when the device is offline/unreachable (highest priority — the count is also replaced with an em dash, `"105404BE  —"`); else `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the hardware count differs from what this app holds, appends a neutral `"  · …"` note (`TunerSharing.note`): `"  · in use by another device"` (with `(N)` when more than one) when the hardware shows more tuners busy than this app holds — another Mac running this app against the same device, or a third-party client; `"  · starting…"` when the hardware is briefly behind a recording/stream this app just started. (Before 2026-10-10 this read `"  ⚠ app expects N"`, which sounded like a fault.) After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated); an offline device appends `"  ⚠ unavailable"` instead. All warning strings share one comma-separated `"  ⚠ ..."` suffix on the same line. **Which devices get a row (2026-10-10):** `AppState.displayableDevices` — reachable tuners, plus an unreachable one *only while a show is still assigned to it*; an unreachable tuner nothing depends on drops out immediately (it used to linger up to an hour, until the `staleDeviceForgetAfter` prune). Built on `recordableDevices` (`devices.filter { !$0.isVirtualRelay }`), so a discovered FEED relay device never gets its own row here — see the "Watching FEED from" row immediately below and the separate "Recording on Another Mac" section for how a relay is actually surfaced.
+- **Empty tuner list (2026-10-22)** — `"No tuners found — will keep trying"` (`secondaryLabelColor`) when `displayableDevices` is empty and startup has finished.
 - **"Watching FEED from `<hostname>`", added 2026-09-12** — shown only when `nowWatchingInfo` (see "Now Watching" below) resolves to a device with `isVirtualRelay == true`, i.e. THIS Mac is currently watching another instance's FEED. `secondaryLabelColor`, non-interactive. This is the "tuner is a shared resource" counterpart to the per-device rows above (which only ever reflect this Mac's own real tuners) and the "Relay row" below (which only reflects *other* Macs watching *this* Mac's own relay) — without it, nothing in the header acknowledged that this Mac itself might be the one borrowing someone else's tuner right now.
-- Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
+- Status message row: `"16 shows — 1 tuner ready"` (pluralised by the free function `plural(_:_:)` in `AppState.swift`; also `"N tuners found"` after discovery) — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 - **Relay row, added 2026-09-04** — `"FEED: N watching"`, shown only while `state.activeVirtualTunerDeviceID != nil` (this instance's own virtual tuner is currently advertised — a show is recording and the relay is enabled). Behind `AppConfig.FEED_feature_enabled` (default on as of v2.5.0, config-file only) — `activeVirtualTunerDeviceID` can only ever be set by `updateVirtualTunerPresence()`, which is itself gated behind that same flag, so this row stays unreachable if that flag is ever hand-flipped off; same hidden-flag note as the "Recording on Another Mac" section below. `N` sums `state.relayRawViewerCount` (raw-passthrough relay connections, tracked in `AppState` — see its own doc comment) with `VLCBridge.shared.transcodeViewerCount(showId:)` summed across every currently-recording show (already correctly ref-counted per show; not folded into the same running counter, since that accounting already exists and doesn't need a second copy). Shown even at 0 watching, as confirmation the relay itself is up, not only once someone connects. `secondaryLabelColor`, non-interactive, same visual weight as the status message row above it.
 
 Immediately below the header: **Add Show…** button, **Watch Now** button (when devices present), then **Settings…**, then — only when `state.updateCheckResult` is non-nil — an **"Update Available: vX.Y.Z"** button (`arrow.down.circle.fill` icon) that opens the GitHub release page via `NSWorkspace.shared.open(_:)`, then a divider.
@@ -49,13 +50,13 @@ Immediately below the header: **Add Show…** button, **Watch Now** button (when
 
 **Up Next** section (only visible when shows are scheduled later today — standardized 2026-09-14 to match the web guide's own "Up Next" definition, see `docs/WebServer.md`; distinct from the menu bar status light's own fixed one-hour window, `docs/AppState.md`):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
-- Within the section: shows bucketed by start time, each time slot rendered as a `Section` header (`"8:00 PM"`) with its shows below; show items have `"  ch 5.1"` appended to the title
+- Within the section: shows bucketed by start time, but the time is inlined as a prefix on each row (`"8:00 PM  1️⃣ Title  Ch 5.1"`), not a nested `Section` header (see "Up Next section" below); show items have `"  Ch 5.1"` appended to the title
 
 **Scheduled** section: `"Scheduled"` or `"Scheduled · DeviceID"` header, shows listed with state icon prefix
 
 **Paused** section: `"Paused"` or `"Paused · DeviceID"` header, shows prefixed with `⏸`
 
-**Unavailable Tuner** section (only visible when a show's assigned device is offline/unreachable — **or, since 2026-10-01 (review #19), was never discovered at all** once startup finishes: `AppState.unavailableDeviceIDs` now adds `hdhr_record` IDs absent from `devices`, and this section groups by device ID rather than via `groupedByDeviceSection`'s `[HDHRDevice]`, so with more than one tuner such shows no longer match no group and vanish from the menu): `"Unavailable Tuner"` or `"Unavailable Tuner · DeviceID"` header (per device, when more than one offline device has shows). Each show renders via `recordingMenu` or `scheduledMenu` — whichever matches its current state — same submenu as if the device were online.
+**Unavailable Tuner** section (only visible when a show's assigned device is offline/unreachable — **or, since 2026-10-01 (review #19), was never discovered at all** once startup finishes: `AppState.unavailableDeviceIDs` now adds `hdhr_record` IDs absent from `devices`, and this section groups by device ID rather than via `groupedByDeviceSection`'s `[HDHRDevice]`, so with more than one tuner such shows no longer match no group and vanish from the menu): `"Unavailable Tuner"` or `"Unavailable Tuner · DeviceID"` header (per device, when more than one offline device has shows). Each show renders via `recordingMenu`, `pausedMenu` or `scheduledMenu` — whichever matches its current state (recording, paused, else scheduled; `unavailableDeviceShows` includes paused shows) — same submenu as if the device were online.
 
 A divider separates show sections from the **Quit hdhrVCRplus** destructive button at the bottom.
 
@@ -70,7 +71,7 @@ Opening a show's submenu reveals a rich detail panel:
 Below the poster block, secondary metadata in `.footnote` / `.caption` size using `labelColor` or `secondaryLabelColor`:
 - Type and channel: `"SeriesID(All) · Channel 5.1"`
 - Start time and duration: `"8:00 PM · 60 min"` (secondary color)
-- Tuner: `"tuner 105404BE"` (secondary color)
+- Tuner: `"Tuner 105404BE"` (secondary color)
 - Conflict, failure, or bonus time warnings in secondary color
 
 Action buttons at the bottom of the submenu (standard blue text, destructive items in red).
@@ -153,7 +154,7 @@ Divider
 Settings…
 [Update Available: vX.Y.Z — arrow.down.circle.fill, only when state.updateCheckResult != nil]
 Divider
-[Now Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when nowWatchingInfo is non-nil]
+[Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when nowWatchingInfo is non-nil]
 Section "Recording Now"              ← only when shows are recording (single tuner)
 Section "Recording · DeviceID"       ← per device when multiple tuners present
   recordingMenu(show) …
@@ -179,34 +180,37 @@ Divider
 Quit hdhrVCRplus
 ```
 
-**Multi-tuner section separation**: all four show sections (Recording, Up Next, Scheduled, Paused) split into per-device sub-sections when `state.devices.count > 1`. Each sub-section is labeled `"SectionName · DeviceID"`. When only one tuner is present the device suffix is omitted.
+**Multi-tuner section separation**: all four show sections (Recording, Up Next, Scheduled, Paused) split into per-device sub-sections when `state.displayableDevices.count > 1`. Each sub-section is labeled `"SectionName · DeviceID"`. When only one tuner is present the device suffix is omitted.
 
 ### Header
 
 One `Text` line per device: `"105404BE  1/4"` (DeviceID + `liveCount/totalTuners`). `liveCount` comes from `state.deviceTunerOccupancy[deviceId]` — the decoded `/status.json` array polled each idle tick; falls back to `recordingShows` count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If the raw hardware count differs from the app-held count (and occupancy has been polled at least once), appends the `TunerSharing.note` text (`"  · in use by another device"` / `"  · starting…"`).
 
-After startup, lineup/guide failures are appended inline to the device row: `"  ⚠ no lineup"`, `"  ⚠ no guide"`, `"  ⚠ no lineup, no guide"`, or `"  ⚠ unavailable"` for an offline device. The entire row turns `systemOrange` when any warning is present (or `systemRed`, taking priority, when the device is offline) — a single visual pop replaces the earlier pattern of separate orange rows below each device. Both conditions read `@Published` vars directly so SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
+The header device row carries a plain-words VoiceOver label (`"Tuner 105404BE, 1 of 4 in use. Warning: no guide"`). **Add Show…**, **Settings…** and **Quit** have `⌘N`, `⌘,`, `⌘Q` and identifiers `menu.addShow`/`menu.settings`/`menu.quit`; each show submenu has `menu.show.<show_id>` and a plain-words label (`"Recording: …"`, `"Paused: …"`, `"Scheduled: …"`, `"Series, every episode: …"`, `"Series, this channel: …"`).
+
+After startup, lineup/guide failures are appended inline to the device row: `"  ⚠ no lineup"`, `"  ⚠ no guide"`, `"  ⚠ no lineup, no guide"`, or `"  ⚠ unavailable"` for an offline device. The entire row turns `systemOrange` when any warning is present (or `systemRed`, taking priority, when the device is offline) — a single visual pop replaces the earlier pattern of separate orange rows below each device. Both conditions read `@Published` vars directly so SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 shows — 1 tuner ready"` when one of two devices is unhealthy.
 
 ---
 
 ## Recording Now — `recordingMenu(_:)`
 
-Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is found for the airing)
+Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is found for the airing), then `" · until 9:00 PM"` when `show_end` is known. **Row-label length rule (all show rows, `rowLabel`):** when the whole label would exceed ~60 characters the episode suffix is dropped from the row (it stays in the submenu header); time prefix, icon, title and channel/until suffix are kept.
 
 **The guide entry is anchored to the show's own scheduled start (`show.show_next`), not wall-clock time** — fixed 2026-09-13 after a live report: querying "what's airing on this channel right now" broke for a Bonus Time recording, since once wall-clock time passes the original guide slot's own end, that query resolves to whatever *different* program the channel has since moved on to, not the one actually being recorded. Anchoring to the show's own start always resolves to the entry that was airing when recording began, for the life of the recording. `VLCPlayerView.currentGuideEntry` (the in-app player's poster/synopsis while watching a recording) had the identical bug, fixed the same way — see `docs/VLCPlayerView.md`. `MenuContent.nowWatchingInfo` (the header's "Now Watching" line) has the same "what's live now" shape and isn't fixed — it resolves purely by channel/URL match with no show identity to anchor to, so it could still show this drift while watching a *remote* FEED relay of someone else's Bonus Time recording.
 
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor` — followed inline by a `SignalBarsView` when `state.config.Signal_quality_enabled` and the channel is found in the device's lineup (same signal-bucket source as `docs/ChannelSignalStore.md`'s generic mention of this component)
-2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
+2. **Start time + duration** — `"Started 8:00 PM · 60 min · until 9:00 PM"` (`dayTime` format: time only today, `Tomorrow 8:00 PM`, else `Thu 8:00 PM`; the `until` part only when `show_end` is set), `secondaryLabelColor`
 3. **Bonus Time callout** — `"Bonus Time (+N min)"` when `state.config.Sports_padding_enabled` is on, `show.show_bonus_time == true`, and the recording is past the guide end time (all three required — the config toggle gates the feature even when a show's own flag is set)
-4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
+4. **Tuner ID** — `"Tuner 105404BE"`, `secondaryLabelColor`
 5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set (held steady while the menu is open and only rewritten when the displayed string changes — review #20, it was reassigned every idle tick, rebuilding an open menu): `"Signal: 78% · QAM256 · 12.4 Mbps"` (no "lock:" label; lock type uppercased), `secondaryLabelColor`
 6. Divider
 7. **Watch Now!** and **Watch from Beginning** — always shown, but disabled with a `" (Requires VLC)"` label suffix and dimmed (`disabledControlTextColor`) when `VLCBridge.shared.isAvailable` is false (VLC app not installed or dylib failed to load). Both call `state.watchRecordingInApp(show)` / `state.watchRecordingInApp(show, fromBeginning: true)` (not the generic `watchInApp`) instead of opening a second tuner stream, since HDHomeRun allocates one tuner per TCP connection with no way to share a stream between the recording and a watch session (see `docs/HDHRFindings.md`). Both play it via the WebServer's `/api/watch-recording` relay (open-ended HTTP stream — see `docs/WebServer.md`), differing only in starting offset (~30s behind live vs. byte/second 0 — see `docs/AppState.md`'s `watchRecordingInApp`), and fall back to opening a live stream only if the recording file is missing. `WatchNowView`'s own recording rows offer the same Watch Now!/Watch from Beginning choice as two separate stylized buttons, not a pull-down `Menu` (tried first, didn't match the rest of the action row's visual language) — see `docs/WatchNowView.md`'s Action row. **VoiceOver accessibility labels, added 2026-09-07**: both carry `show.show_title`-specific labels reusing `WatchNowView`'s own existing helpers (`docs/WatchNowView.md`) — `gatedLabel(watchLiveLabel(show.show_title), met:vlcReady, requirement:"VLC")`, `gatedLabel(watchFromBeginningLabel(show.show_title), ...)` — previously the bare visible text ("Watch Now!", etc.) was the only thing VoiceOver announced, ambiguous when multiple recordings each offer the same buttons. **"Watch in VLC" (external VLC.app) removed 2026-09-12** — see `CHANGELOG.md`'s "Unreleased" section for why; this app still requires VLC.app to be installed (for the in-app player's own libvlc dependency), just no longer offers a way to launch it as a separate window.
-8. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
-9. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
-10. **Show Recording in Finder** — shown when `show_recording_path` is non-empty
-11. **Edit…**
+8. **Edit…**, then **Show Recording in Finder** (when `show_recording_path` is non-empty), then a divider (action order in every show submenu: primary action, Edit…, Show in Finder, divider, destructive last)
+9. `"Paused until next airing"` info row, then **Stop & Skip This Airing** (destructive; no confirmation) — `state.skipRecording(showId:)`: stops the recording and sets `show_paused = true` with `show_fail_reason = "Skipped"` (it does not advance the schedule itself; the show shows up under Paused), no fail-count increment
+10. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
+
+"Watch as Picture-in-Picture" (was "Watch alongside current (PiP)") appears after the Watch items when a playable primary session exists; its VoiceOver text is `"Watch <title> as Picture-in-Picture"`.
 
 ---
 
@@ -225,11 +229,11 @@ Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
 
 Source: `state.activeShows` — sorted by `show_next` ascending.
 
-`showChannel: Bool = false` — when `true` (used in Up Next), `"  ch 5.1"` is appended to the menu label so the channel is visible without opening the submenu.
+`showChannel: Bool = false` — when `true` (used in Up Next), `"  Ch 5.1"` is appended to the menu label so the channel is visible without opening the submenu.
 
 `timePrefix: String? = nil` — added 2026-09-26 (see "Up Next section" above): when set, prepended as `"8:00 PM  "` onto the row label, replacing the earlier per-time-bucket `Section` wrapper.
 
-Menu label: `[timePrefix] [stateIcon] [Title]` (+ optional `  ch 5.1`) — prefixed with `⚠️` when a tuner conflict is detected (after any `timePrefix`).
+Menu label: `[timePrefix] [stateIcon] [Title]` (+ optional `  Ch 5.1`) — prefixed with `⚠️` when a tuner conflict is detected (after any `timePrefix`).
 
 State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · `🔁` SeriesID(All)
 
@@ -237,11 +241,13 @@ Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
 2. **Conflict warning** — `state.showRuntime[show.show_id]?.conflictBeatenByFavorite == true` picks between two messages: `"⚠️ Conflict — a favorited channel has priority for this tuner"` (this show specifically lost to a favorited competitor) or the generic `"⚠️ Conflict — all tuners busy at this time"`, both `secondaryLabelColor`
 3. **Conflicts-with list** — shown only when `conflict` is true and `state.conflictingShows(for: show)` (a fresh, on-demand filter — same overlap definition as `AppState.hasConflict(for:)`: same `hdhr_record`, active/unpaused, overlapping `[show_next, show_end)`, excluding the show itself, sorted by channel) is non-empty: its own `Divider()`, then a `"Conflicts with:"` caption header, then one footnote row per competing show — `"Ch 5.1 — Other Show Title · S02E05"` (episode info from `state.menuScheduledEntry[other.show_id]?.episodeInfoLabel`, same source `schEp` uses for this show's own label, omitted when not available)
-4. **Start time + duration** — `"8:00 PM · 60 min"` (absolute start time · recording length), `secondaryLabelColor`
-5. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (omits weekday when today). Preceded by "Upcoming" header when count > 1.
-6. **Failure warning** — `"⚠️ N failure(s): reason"` when `show_fail_count > 0`
+4. **Start time + duration** — `"Thu 8:00 PM · 60 min"` (`dayTime`: time only today, `Tomorrow …`, else weekday; · recording length), `secondaryLabelColor`
+5. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"`, `"Channel 5.1 · Tomorrow 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (today) — via `dayTime`. Preceded by "Upcoming" header when count > 1.
+6. **Failure warning** — `"⚠️ 1 failure: reason"` / `"⚠️ 3 failures: reason"` when `show_fail_count > 0`
 7. Divider
-8. **Edit…**, **Pause**, **Delete…** (destructive — uses `confirmAndDeleteShow`)
+8. **Pause**, **Edit…**, divider, **Delete…** (destructive — uses `confirmAndDeleteShow`)
+
+Free-form info rows (conflict message, conflicts-with list, failure reason, pause reason, remote-relay rows) use `maxWidth: 460` and `lineLimit(3)` so a long reason cannot widen the menu.
 
 ### Up Next section
 
@@ -259,11 +265,11 @@ A show enters this state via: fail threshold, manual stop, skip, disk full, miss
 
 Menu label: `⏸ [Title]`
 
-Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, pause reason (if `show_fail_reason` non-empty), next attempt time (if `show_next` is future), then **Resume Now** → `state.resumeShow(show)`, **Edit…**, **Delete…** (destructive — uses `confirmAndDeleteShow`).
+Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, pause reason (if `show_fail_reason` non-empty), next attempt time (if `show_next` is future; `dayTime` format), then **Resume Now** → `state.resumeShow(show)`, **Edit…**, divider, **Delete…** (destructive — uses `confirmAndDeleteShow`). A paused show on an offline tuner also uses this submenu (Unavailable Tuner section).
 
 ---
 
-## Now Watching — `nowWatchingInfo` / `watchingDisplay(for:)`
+## Watching — `nowWatchingInfo` / `watchingDisplay(for:)`
 
 A `Button` shown when `watchingDisplay(for: nowWatchingInfo)` resolves to non-`nil` — not `nowWatchingInfo` alone as of 2026-09-26 (see "Watching section" above for the standalone-PiP/Watch Now fallback chain that wraps it). Clicking it calls `VLCPlayerWindowManager.shared.focus()` — brings the player window to the front without switching the stream.
 
@@ -297,9 +303,11 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 
 | Function | Purpose |
 |---|---|
-| `showInfoHeader(_:entry:)` | Shared poster + title + episode + synopsis block; always shows yellow flag triangle |
+| `showInfoHeader(_:entry:)` | Shared poster + title + episode + synopsis block (DRIFT FLAG: this row previously claimed a "yellow flag triangle"; no such element exists in code — removed from this table, not invented) |
+| `dayTime(_:)` | `"8:00 PM"` today / `"Tomorrow 8:00 PM"` / `"Thu 8:00 PM"` |
+| `rowLabel(prefix:icon:title:ep:suffix:)` | Row label; drops the episode when longer than ~60 chars |
 | `stateIcon(_:)` | Emoji for show type |
-| `upcomingLabel(channel:date:)` | `"Channel 5.1 · Thu 8:00 PM"` / `"Channel 5.1 · 8:00 PM"` for today |
+| `upcomingLabel(channel:date:)` | `"Channel 5.1 · "` + `dayTime` |
 | `entry.episodeInfoLabel` | `GuideEntry` extension (Models.swift); joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
 | `truncateSynopsis(_:limit:)` | Clips to 160 chars at a word boundary |
 | `editShow(_:)` | Sets `state.editingShowId`, calls `open("edit-show")` |
@@ -308,8 +316,8 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 
 All delete actions in menus and `EditShowView` call `AppState.confirmAndDeleteShow(_ show:, then completion:)`. It:
 1. Looks up the show's poster URL from the guide cache (`nextGuideEpisode` for series, title match for singles)
-2. Fetches the image async via `URLSession`
-3. Shows an alert (`await Dialogs.present`, a sheet or floating window — never `runModal()`) with `alert.icon = image`, "Delete / Cancel" buttons
+2. Fetches the image async via `URLSession` with a 3 s request timeout (a slow poster host can no longer delay the alert up to 60 s; no poster = no icon)
+3. Shows an alert (`await Dialogs.present`, a sheet or floating window — never `runModal()`) with `alert.icon = image`, "Delete / Cancel" buttons (Delete has `hasDestructiveAction = true`)
 4. Calls `deleteShow(show)` (which also calls `recordingManager.stop`) + `completion()` on confirm
 
 `EditShowView` passes `{ dismiss() }` as the completion so the window closes after deletion. Menu callers pass `{}` (default).
@@ -323,6 +331,8 @@ All informational text explicitly uses `Color(NSColor.labelColor)` or `Color(NSC
 ---
 
 ## What Still Needs Doing
+
+- **Empty state** — `"No shows scheduled"` uses `secondaryLabelColor`.
 
 - **Elapsed timer doesn't tick** — elapsed/remaining times are static (computed when menu opens). NSMenu doesn't refresh automatically; a real-time display would require a window-based popover for recording detail.
 

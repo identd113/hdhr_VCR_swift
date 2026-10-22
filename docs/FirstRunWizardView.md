@@ -28,11 +28,11 @@ need even without an outer fixed height).
 **Fixed step height + pinned footer (2026-10-10)**: every step is a fixed `min(600, screen − 80)` pt tall (600 when shown as a launch card; the splash scales the whole card) (`FirstRunWizardView.stepHeight` — a *bounded* frame), the step content sits in a `ScrollView`, and the header and Back/Next row are outside it, so Next can never be pushed off the bottom (Step 1 clipped it on a live Mac; a first attempt with only a `minHeight` made it worse). The window itself is also sized explicitly on every step change (`WindowAction` → `setContentSize` + `center`), because a window AppKit restored at an earlier, shorter frame ignored `.windowResizability(.contentSize)`. The unbounded-ideal-height `ScrollView` that crashed the Recording FEED step is a different shape from this; all seven steps were walked through after the change.
 
 **Header band**: the app icon (`appIconImage`, `Sources/hdhr_VCR/AppIcon.swift` — the same
-global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
-rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the
+global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at `headerIconSize` (44pt) in a rounded
+rect, next to "Welcome to hdhrVCRplus" (20pt bold `.rounded`) and a one-line subtitle, giving the window the
 same "unmistakably this app's own chrome" identity `DonationNagView`'s header comment already
-argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 5
-small 8pt circles, filled accent-color = current step, hollow gray = other steps (same visual
+argues for. The step-progress dots sit directly below this, inside the same header `VStack` — one
+8pt circle per entry of `orderedSteps` (6 or 7 depending on `FEED_feature_enabled`), filled accent-color = current step, hollow gray = other steps (same visual
 pattern as `AddShowView`'s step indicator).
 
 **Finish-flourish glow**: the header icon sits in a `ZStack` with a `RadialGradient` circle behind
@@ -44,7 +44,7 @@ visible pulse in between — a two-state `withAnimation` toggle can't do that (i
 one of its two endpoints), so it's a keyframe pulse instead: `FinishGlowValues`' own `initialValue`
 is hidden (scale 0.7, opacity 0), and pressing Finish increments `finishGlowTrigger`, popping the
 glow to scale 1.3 while opacity ramps 0→0.9→0 over 0.35s, alongside the Finish button's label
-morphing to a checkmark (`finishButton`, `.transition(.scale.combined(with: .opacity))`, 0.18s).
+morphing to a checkmark (`finishButton`, `.transition(.scale.combined(with: .opacity))`, 0.18s; the checkmark carries `.accessibilityLabel("Finished")`). With Reduce Motion on, the glow is skipped and the checkmark just fades in.
 `dismiss()` fires after a separate 380ms delay (`finish()`'s `finishTask`) — long enough to see the
 flourish, short enough not to feel like a stall. `.onExitCommand`/the red-close-button still call
 `dismiss()` directly and immediately regardless of this pending task, and `finish()` itself no-ops
@@ -55,7 +55,7 @@ rest state is always its own `initialValue`, there's nothing to reset in `resetF
 
 **Step content slides horizontally** — Next moves the new screen in from the right while the old
 one exits to the left; Back mirrors it. This is a real content transition
-(`.move(edge:).combined(with: .opacity)`, 0.25s ease-in-out), distinct from `AddShowView`'s
+(`.move(edge:).combined(with: .opacity)`, 0.25s ease-in-out; with Reduce Motion on it is a 0.15s cross-fade instead), distinct from `AddShowView`'s
 window-frame-only animation (that view has no content transition at all). Each screen carries a
 distinct `.id(Step.X)` — without it SwiftUI may just diff the two similarly-shaped `Form`s in
 place instead of treating the swap as an insert/remove pair, and the transition would silently
@@ -94,7 +94,7 @@ Settings → Maintenance → "Reset First-Run Setup" (no splash, normal window l
 **Tuner discovery card** (`Views/TunerDiscoveryCard.swift`, top of Step 1, own `Section`) —
 device-aware replacement for the original plain network-status row. Four states:
 - **Checking**: an antenna glyph (`antenna.radiowaves.left.and.right`) pulsing via the native SF
-  Symbols `.symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: true)`
+  Symbols `.symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: !reduceMotion)`
   effect — chosen over a hand-rolled radar-ping animation because it's a built-in macOS effect
   (zero animation code to maintain) and is thematically exact.
 - **Found (single device)**: green checkmark with a spring "pop" (same spring family as
@@ -110,7 +110,7 @@ device-aware replacement for the original plain network-status row. Four states:
   channel-count clause included whenever known), not a shortened two-part format — not a card grid
   either, since Step 1's `Form` is already vertically tight and a grid there would overpower the
   actual recording-defaults content.
-- **Not found**: unchanged copy/behavior (the "Open Privacy Settings" button below) — deliberately
+- **Not found**: unchanged copy plus a `.bordered` "Check Again" button (`wizard-tuner-check-again`, via `TunerDiscoveryCard.onCheckAgain`) beside "Open Privacy Settings" — it resets `hasCheckedNetwork`, sets the card back to Checking and re-runs `checkNetworkAccessIfNeeded(force: true)` (a full rediscovery even if Local Network access was already confirmed) — deliberately
   no new animation on this state; whimsy belongs in progress/success states, not failure states.
 
 `checkNetworkAccessIfNeeded()` itself (the actual discovery/confirmation logic feeding this card via
@@ -128,7 +128,7 @@ via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swift`) 
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — VLC Required, added 2026-09-12
+### Step 3 — VLC Required, added 2026-09-12
 Explains that hdhrVCRplus uses VLC's own playback engine for every watching feature (live TV,
 in-progress recordings, a remote FEED session) — recording itself never needs VLC, only watching
 does. Added the same day the external "Open in VLC" feature (`Watch_in_VLC` config setting,
@@ -141,12 +141,12 @@ visible up front rather than a new user discovering it only once they click a di
 
 A live status row (`checkmark.circle.fill`/`exclamationmark.triangle.fill`, green/orange) reflects
 `VLCBridge.locateApp() != nil`, re-checked in `.onAppear` (fires every time this step becomes
-visible, not just once at wizard launch) and via a "Check Again" button — the realistic flow is
+visible, not just once at wizard launch), whenever the app is re-activated (`NSApplication.didBecomeActiveNotification` — `AppState.checkVLCHotInstall` only posts a relaunch notification, it never touches this step's `vlcInstalled`) and via a `.bordered` "Check Again" button — the realistic flow is
 land here, see "not installed," switch away to install it, come back and re-check before moving on.
 When not installed, offers one of two install paths depending on `homebrewInstalled`
 (`FileManager.fileExists` on `/opt/homebrew/bin/brew` or `/usr/local/bin/brew`, no `Process()`
 spawn needed just to check):
-- **Homebrew detected**: an "Install VLC via Homebrew" button (`installVLCViaHomebrew()`) copies
+- **Homebrew detected**: a "Copy Install Command & Open Terminal" button (`installVLCViaHomebrew()`) copies
   `brew install --cask vlc` to the clipboard and opens Terminal.app via
   `NSWorkspace.shared.open(_:)` (the same technique `SettingsView.openInTerminal` already uses for
   the Terminal Guide feature) — deliberately **not** `Process()` or AppleScript/System-Events
@@ -165,12 +165,12 @@ step) detects the fresh install automatically and prompts a relaunch, which is w
 libvlc into the running process. This step has no config of its own to persist — no
 `loadCurrentValuesIfNeeded()`/`finish()` involvement, unlike every other step's `@State` fields.
 
-### Step 3 — Web LAN
+### Step 4 — Web LAN
 A purpose-built animated diagram (`WebLANDiagram`, `Views/WebLANDiagram.swift` — see its own
 section below) — this Mac fanning out to three different device icons — above a short explanation
 and one `Toggle`, **Enable Web LAN**. See "Steps" below for the config-commit details.
 
-### Step 4 — Terminal Guide
+### Step 5 — Terminal Guide
 A second, genuinely different animated diagram (`TerminalTypingDiagram`,
 `Views/TerminalTypingDiagram.swift` — see its own section below): a mock terminal window typing a
 command, not another instance of Web LAN's own broadcast-fan visual. **Split into its own step
@@ -183,7 +183,7 @@ off) still works correctly across the step boundary — both bools are the same 
 `@State`, just read from a later step now instead of the same screen. See "Steps" below for the
 config-commit details.
 
-### Step 5 — Recording FEED (Beta)
+### Step 6 — Recording FEED (Beta)
 **Visible by default as of v2.5.0** — `orderedSteps` (see "Steps" below) includes `.recordingRelay`
 whenever `state.config.FEED_feature_enabled` is `true` (default as of v2.5.0, config-file only —
 see `docs/VirtualTunerService.md`'s top note); was hidden from 2026-09-10 until then, and a
@@ -198,11 +198,13 @@ added 2026-09-07 — the playback-hiccups and CC-track-switching parts of that o
 resolved (CC confirmed working 2026-09-13), but audio track switching on the watching Mac is still
 an open, unconfirmed question — see `ISSUES.md`. See "Steps" below for the config-commit details.
 
-### Step 6 — Notification Timing
+### Step 7 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (steps 2–5, `.bordered` — changed 2026-10-15 from a quiet plain-text button so it stays obvious
+**Return key**: Next and Finish carry `.keyboardShortcut(.defaultAction)`, so Return advances (Escape still closes the wizard without a confirmation).
+
+**Nav bar** (bottom): Back (every step but the first, `.bordered` — changed 2026-10-15 from a quiet plain-text button so it stays obvious
 on the dark launch card) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
 the last step). A `Divider` above (`opacity(0.5)`, same softened-divider treatment used below the
 header, so the dividers read as subtle separators against the material background rather than harsh
@@ -216,7 +218,7 @@ app: where recordings are saved and how, how much notice you get before one star
 Web LAN, Terminal Guide, Recording FEED), each its own step, since each is now off by default and
 worth a one-time explanation of what it actually does before a first-time user goes looking for it
 in Settings. Since 2026-09-12, also a hard requirement rather than a Settings feature: VLC.app must
-be installed for any watching feature to work at all, so Step 2 explains that plainly and offers an
+be installed for any watching feature to work at all, so Step 3 explains that plainly and offers an
 install path (Homebrew or a direct download) before a first-time user hits a dimmed, unexplained
 "Watch" button somewhere later. Everything else (Discord, Guide) is still left for `SettingsView` —
 this wizard covers "what's off by default (or a hard external dependency) and needs a plain-English
@@ -232,7 +234,7 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int, CaseIterable { case recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
+enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
 ```
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
@@ -265,14 +267,14 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold/Time-Machine-mode commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` / `.TimeMachine_exclude_mode` on Finish the same way.
 
-### Step 2 — VLC Required
+### Step 3 — VLC Required
 No `@State` field commits anywhere in `finish()` — `vlcInstalled`/`vlcInstallCopyFeedback` are
 purely live-check/UI-feedback state, re-derived from `VLCBridge.locateApp()` on `.onAppear` and the
 "Check Again" button, not settings. The only side effects a user can trigger on this screen
 (clipboard write, opening Terminal.app or a browser) are fire-and-forget, nothing this wizard's own
 save logic needs to know about.
 
-### Step 3 — Web LAN
+### Step 4 — Web LAN
 Covers `Web_server_enabled` ("Enable Web LAN," the LAN web server) on its own screen — one local
 `@State sharingEnabled` bool (default `false`, mirroring `AppConfig`'s own default), introduced by
 `WebLANDiagram()` (see its own section below) and a short paragraph.
@@ -282,29 +284,29 @@ Covers `Web_server_enabled` ("Enable Web LAN," the LAN web server) on its own sc
 already uses, so Web LAN actually starts serving the moment this wizard closes rather than waiting
 for the next unrelated settings save.
 
-### Step 4 — Terminal Guide
+### Step 5 — Terminal Guide
 Covers `Terminal_guide_enabled` ("Enable Terminal Guide") on its own screen, one step after Web
 LAN — **not combined with it on one screen**, unlike an earlier version of this step (see the
 summary section above for why: two `NetworkFlowDiagram` instances stacked together read as visually
 redundant). The dependency is still enforced exactly as before, just across the step boundary
 instead of within one screen: local `@State terminalGuideEnabled`'s `Toggle` is
 `.disabled(!sharingEnabled)` and its label suffixed `" (Requires Web LAN)"` while `sharingEnabled`
-is off — the same `sharingEnabled` bool Step 3 set, still in scope since both are plain
+is off — the same `sharingEnabled` bool Step 4 set, still in scope since both are plain
 wizard-lifetime `@State`, not per-screen state. Because the toggle is SwiftUI-`.disabled` whenever
 `sharingEnabled` is false, the wizard can never actually produce the (recoverable, but meaningless)
 state of Terminal Guide on with Web LAN off *while moving forward through the wizard normally* —
-though going back to Step 3, turning Web LAN off after having already turned Terminal Guide on
+though going back to Step 4, turning Web LAN off after having already turned Terminal Guide on
 earlier, then returning here without touching the now-disabled Terminal Guide toggle, leaves
 `terminalGuideEnabled` at its prior `true` value: accepted, not a bug, matching
 `SettingsView.sharingView`'s own identical precedent (its Terminal Guide toggle doesn't force-reset
 either — see `docs/SettingsView.md`, "Turning this off has no security effect").
 
-`finish()` commits it to `state.config.Terminal_guide_enabled` — no follow-up action needed (unlike
+`finish()` commits it to `state.config.Terminal_guide_enabled` as `terminalGuideEnabled && sharingEnabled` (so the stale-`true` case above is not saved) — no follow-up action needed (unlike
 Web LAN, nothing has to be started/stopped for this flag; it's just read passively by `hdhr_guide`
 and `/api/guide.json`).
 
 ### `WebLANDiagram` (`Views/WebLANDiagram.swift`)
-Purpose-built for Step 3, not a themed instance of `NetworkFlowDiagram` — added 2026-09-04
+Purpose-built for Step 4, not a themed instance of `NetworkFlowDiagram` — added 2026-09-04
 alongside the step split above, replacing an earlier version that palette-swapped
 `NetworkFlowDiagram`'s own two-device shape. Web LAN's real relationship (one Mac serving many
 different *kinds* of devices) is genuinely different from Recording FEED's (one Mac connecting to
@@ -317,7 +319,7 @@ than three lines pulsing in lockstep. Respects Reduce Motion (freezes to three s
 line) and is `.accessibilityHidden(true)`, same conventions as every other diagram here.
 
 ### `TerminalTypingDiagram` (`Views/TerminalTypingDiagram.swift`)
-Purpose-built for Step 4 — deliberately NOT another `NetworkFlowDiagram`/`WebLANDiagram` instance,
+Purpose-built for Step 5 — deliberately NOT another `NetworkFlowDiagram`/`WebLANDiagram` instance,
 since Terminal Guide isn't really a "this Mac broadcasting to a receiver" relationship the way the
 other two Sharing features are; it's a CLI session, so this shows that directly. A mock terminal
 window (hardcoded dark chrome — not theme-adaptive, deliberately, the same way a screenshot of
@@ -326,7 +328,7 @@ another app's own UI wouldn't re-theme itself — with three decorative traffic-
 Respects Reduce Motion (freezes on the fully-typed line with cursor showing) and is
 `.accessibilityHidden(true)`, same conventions as every other diagram here.
 
-### Step 5 — Recording FEED (Beta)
+### Step 6 — Recording FEED (Beta)
 Leads with `NetworkFlowDiagram(...)` (see its own section below), then a short plain-language
 explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
 can't do — then one `Toggle` bound to local `@State relayEnabled` (default `false`, mirroring
@@ -341,7 +343,7 @@ wizard closes — this screen exists purely so a first-time user sees the explan
 ### `NetworkFlowDiagram` (`Views/NetworkFlowDiagram.swift`)
 Self-contained animated view, parametrized (icons/badge colors/captions) so it's reusable for any
 future point-to-point "this Mac ↔ one specific other party" explainer — currently used only by
-Step 5, Recording FEED, whose "this Mac's recording, that Mac watching it" relationship is
+Step 6, Recording FEED, whose "this Mac's recording, that Mac watching it" relationship is
 genuinely one-to-one (Web LAN and Terminal Guide moved to their own purpose-built diagrams above,
 see those sections for why). Two SF Symbols (`desktopcomputer` on both sides for FEED — another
 Mac, not a generic device) connected by a dashed line, drawn in a `GeometryReader` so it scales to
@@ -361,7 +363,7 @@ without motion), the same "different code path, not a faster version" convention
 the surrounding prose doesn't already say in words — a screen reader user isn't missing content by
 skipping it.
 
-### Step 6 — Notification Timing
+### Step 7 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
 `state.config.Notify_upnext` / `.Notify_recording` on Finish.
 
@@ -471,4 +473,4 @@ OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindo
 "Found 18 stations with 118 channels." (`wizard-air-found`) or "No stations found" with an antenna hint (`wizard-air-none`), and "Scan again". With no tuner found yet the
 card says so (`wizard-air-no-tuner`). Below the button (and under the found/none result) a caption line `AirLastScanLines` says "Channel list: last scanned Oct 21, 7:42 PM", "never scanned" or "scanning now…" (`ota-last-lineup`). Below the card, one **Rescan the channel list** picker (`wizard-air-schedule`: Never / Daily at HH:00, default 03:00) sets `OTA_lineup_hour` on Finish. Only the channel list is scheduled; the guide from the air is scanned only after a guide failure (prompt, Discord message, automatic start after an hour — docs/OTAGuide.md), and a full scan always reads the channel list first, then the guide. Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
 Skipping it still ends up with a list: `AppState.startScheduledOTALineupRefreshIfDue` runs the same scan daily at the chosen hour.
-(The step dots and "Step N of M" labels derive from `Step.allCases`, so they now count one more step; the numbered sections above predate this step.)
+(The step dots and "Step N of M" labels derive from `orderedSteps`. Step order: 1 Recording Defaults, 2 Channels from the Air, 3 VLC, 4 Web LAN, 5 Terminal Guide, 6 Recording FEED (only while `FEED_feature_enabled`), 7 Notification Timing; the numbered sections above were renumbered to match.)

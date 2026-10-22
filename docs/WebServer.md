@@ -807,6 +807,22 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 
 ---
 
+## Keyboard, focus, accessibility and offline states (guide.js / guide.css / guide-shell.html)
+
+**Escape** — one document `keydown` closes, in order: `#del-confirm-modal` (`cancelDeleteConfirm`), `#edit-modal` (`closeEditShow`), `#rec-modal` (`cancelRecord`), the tuner popover `#t-pop` (`closeTunerPop`), then any open `.tdrop` (`closeTunerDrops()`, focus returns to its ▾). It does nothing while Watch Now (`_wn.open`) or the shortcuts card is open, while the search dropdown/help is open, or when the event is already `defaultPrevented` (the search box's own Escape handler: first Escape closes the dropdown/help, a **second Escape clears the typed text**; in chip mode Escape still clears the filter).
+
+**Modal focus management** — `openModal(id[, display])` / `closeModal(id)` (used by `doRecord`, `openEditShow`, `showDeleteConfirm`, `showTunerInfo` and their closers): saves `document.activeElement`, shows the overlay, focuses the first text input/button (the sheet itself on `pointer:coarse` devices so no on-screen keyboard pops up), and restores focus on close. A document `Tab` handler traps Tab/Shift-Tab inside the topmost open overlay (`_MODAL_ORDER`: delete-confirm, edit, tuner popover, record). `openWatchNow`/`closeWatchNow` restore focus via `_wn.prevFocus`; the player keeps its own key handling. **Enter** in `#rm-title-in` / `#em-title-in` triggers Schedule / Save (no `<form>`).
+
+**ARIA** — `#rec-modal` / `#edit-modal` / `#t-pop-c` sheets are `role="dialog" aria-modal="true" aria-labelledby` (`#rm-heading`, `#em-heading`, `#t-pop-hdr`); `#del-confirm-modal` is `role="alertdialog"` labelled by `#dc-title`, described by `#dc-warn`. Tuner name buttons (`.d-btn`) carry `aria-label` "Switch guide to tuner HDHR-X, N of M tuners in use[, FULL]; …" (server-rendered by `buildDevBarHTML`, rebuilt client-side by `devAriaLabel()`/`syncDevLabel()` on every `#tun-{dev}` text update) and `aria-pressed` for the selected tuner (`syncDevSelection()`, called from `setDev` and after a dev-bar swap); ▾ buttons are "Shows on HDHR-X" with `aria-expanded`/`aria-controls` kept in sync by `toggleTunerDrop`/`closeTunerDrops`. `.sp-row` dropdown rows are `role="button" tabindex="0"` (Enter/Space opens them via a delegated handler); `.sp-jump` has `aria-label="Jump to guide"`. Theme buttons have labels and `aria-pressed` (`applyLM`); `#genre-sel` is labelled "Filter by genre"; the search combobox sets `aria-activedescendant` to the highlighted `#search-opt-N` row (`highlightSearchRow`); `#sum-note` and `#wn-state` are polite live regions; Type/Scope/Day toggle buttons mirror `.sel` into `aria-pressed` through one `MutationObserver` on the two modals.
+
+**Viewport fitting** — modal sheets (`.sheet-cap`, `.wn-sheet`, `.wn-stage`) and `.tdrop` use `100dvh` after a `100vh` fallback. `.tdrop` and `#t-pop-c` have `max-width: min(…, 100vw - 16px)`; `toggleTunerDrop` measures the opened dropdown and right-aligns it (`.tdrop-r`, or shifts it left) if it would overflow; `showTunerInfo` caps the popover's `left` to the viewport. Scripted `scrollIntoView` uses `scrollBehavior()` (`auto` under `prefers-reduced-motion`); a second reduced-motion block at the end of guide.css also stops `sbPulse`, `searchIconPop`, the splash fade and the pull-to-refresh snap.
+
+**Selection hygiene** — `applyGuidePayload` calls `closeSummary()` when the previously selected airing is no longer in the refreshed grid (an air-only selection is kept as before); `setDev` calls it when the tuner actually switches. `#sum-title`/`#sum-ep`/`#sum-ct` get `title` tooltips for their truncated text.
+
+**Offline / error states (additive)** — `#net-banner` ("Disconnected – retrying…", "– reload the page" when the EventSource is permanently closed) is driven by the SSE `onerror`/`onopen`; `refreshGuide()` failures show a transient `#g-toast` ("Couldn't refresh the guide", 4 s); a failed show search shows "Search failed" in `#search-drop`. **Splash fallback:** `#splash` has a CSS-only `splash-timeout` animation that hides it after ~8 s, and `#splash-fail` ("Guide failed to load…") fades in at the same moment via CSS; guide.js removes `#splash-fail` when it takes over, so it only ever appears when the script never ran. **Empty state** (`buildGuideGridHTML`): "No tuners found — …" when `recordableDevices` is empty, otherwise "No guide data yet — loading…", plus a **Retry** button (`refreshGuide()`).
+
+---
+
 ## JavaScript — key functions
 
 | Function | Purpose |

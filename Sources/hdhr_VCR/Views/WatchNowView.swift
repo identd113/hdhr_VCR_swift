@@ -51,6 +51,7 @@ struct WatchNowView: View {
             Divider()
             content
         }
+        .frame(minWidth: 420, minHeight: 360)
         .onAppear {
             selectedDeviceId = pickerDeviceId(preferred: state.watchNowDeviceId, available: availableDeviceIds)
         }
@@ -90,6 +91,8 @@ struct WatchNowView: View {
             .padding(.vertical, 5)
             .background(color.opacity(0.16))
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     /// `section` and the row's state are part of its identity (`.id`): a row that starts recording moves from the
@@ -224,20 +227,35 @@ struct WatchNowView: View {
             // real lineup/guide data, so it doesn't belong in this picker's "browse a live tuner's
             // channels" flow.
             if state.availableDevices.count > 1 {
-                Picker("Tuner", selection: $selectedDeviceId) {
-                    ForEach(state.availableDevices) { d in
-                        Text(d.DeviceID).tag(d.DeviceID)
+                // Segmented only while it fits; three or more tuners switch to a menu.
+                Group {
+                    if state.availableDevices.count > 2 {
+                        Picker("Tuner", selection: $selectedDeviceId) {
+                            ForEach(state.availableDevices) { d in
+                                Text(d.DeviceID).tag(d.DeviceID)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    } else {
+                        Picker("Tuner", selection: $selectedDeviceId) {
+                            ForEach(state.availableDevices) { d in
+                                Text(d.DeviceID).tag(d.DeviceID)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
                     }
                 }
-                .pickerStyle(.segmented)
-                .fixedSize()
+                .accessibilityIdentifier("watch-now-tuner")
             }
             Spacer()
             Button { now = Date() } label: {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.plain)
-            .help("Refresh")
+            .help("Update what's on now")
+            .accessibilityLabel("Refresh now playing")
+            .accessibilityIdentifier("watch-now-refresh")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -252,12 +270,19 @@ struct WatchNowView: View {
                     .font(.system(size: 40))
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
-                Text("Nothing on right now")
-                    .foregroundStyle(.secondary)
-                if let device = selectedDevice, state.isGuideLoading(for: device.DeviceID) {
+                if state.availableDevices.isEmpty {
+                    Text("No tuner found")
+                        .foregroundStyle(.secondary)
+                } else if let device = selectedDevice, state.isGuideLoading(for: device.DeviceID) {
                     ProgressView().padding(.top, 2)
+                    Text("Loading the guide…")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Nothing on right now")
+                        .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityElement(children: .combine)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let device = selectedDevice {
             let ringInputs = ringStateInputs(for: device)
@@ -279,6 +304,8 @@ struct WatchNowView: View {
                     }
                     if !favs.isEmpty {
                         favTopBorder
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isHeader)
                         ForEach(favs, id: \.channel.id) { pair in
                             let info = rowInfo[pair.channel.id]!
                             channelRow(pair, device: device, section: "fav", ringState: info.ringState, managedShow: info.managedShow)
@@ -414,6 +441,12 @@ struct WatchNowRow: View {
     }
 
 
+    private var rowAccessibilityLabel: String {
+        var parts = ["Channel \(channel.GuideNumber) \(channel.GuideName)", entry.Title, timeRange]
+        if ringState != .none { parts.append(ringState.tooltipSuffix) }
+        return parts.joined(separator: ", ")
+    }
+
     private var channelLogo: NSImage? {
         state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
             .flatMap { state.channelIconImages[$0] }
@@ -429,6 +462,9 @@ struct WatchNowRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(rowAccessibilityLabel)
+        .accessibilityIdentifier("watch-now-row-\(channel.id)")
         // Tile fill = genre color, always. posterThumb() below only shows a genre-colored
         // backdrop as a *fallback* when there's no poster image (see its `else` branch) — for the
         // common case of a loaded poster, no color renders there at all, so this tile-sized area
@@ -532,7 +568,7 @@ struct WatchNowRow: View {
                     .accessibilityLabel(ringState == .none ? entry.Title : "\(entry.Title), \(ringState.tooltipSuffix)")
                 if isNewEpisode(entry) {
                     Text("NEW")
-                        .font(.system(size: 8, weight: .heavy))
+                        .font(.caption2.weight(.heavy))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
@@ -588,7 +624,7 @@ struct WatchNowRow: View {
                 Button {
                     state.watchRecordingInApp(show)
                 } label: {
-                    Label(gatedLabel("Watch Now!", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch Now!", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .accessibilityLabel(watchLiveLabel(entry.Title))
                 // Neither of these opens a fresh live tuner stream — both replay the
@@ -603,7 +639,7 @@ struct WatchNowRow: View {
                 Button {
                     state.watchRecordingInApp(show, fromBeginning: true)
                 } label: {
-                    Label(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC"), systemImage: "backward.end.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC"), systemImage: "backward.end.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .accessibilityLabel(watchFromBeginningLabel(entry.Title))
                 .help(vlcReady ? "Play the in-progress recording of \(entry.Title) from disk, starting at the beginning" : "Requires VLC to be installed")
@@ -615,7 +651,7 @@ struct WatchNowRow: View {
                     Button {
                         state.watchRecordingInAppAsSecondary(show)
                     } label: {
-                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold())
+                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .accessibilityLabel(watchAlongsideLabel(entry.Title))
                     .help(vlcReady ? "Play the in-progress recording of \(entry.Title) as a small muted thumbnail alongside what's already open" : "Requires VLC to be installed")
@@ -629,7 +665,7 @@ struct WatchNowRow: View {
                     state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
                                      guideNumber: channel.GuideNumber)
                 } label: {
-                    Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .accessibilityLabel(watchInAppLabel(entry.Title))
                 .help(vlcReady ? watchInAppLabel(entry.Title) : "Requires VLC to be installed")
@@ -646,7 +682,7 @@ struct WatchNowRow: View {
                         state.watchAsSecondary(url: channel.URL ?? "", title: entry.Title, device: device,
                                                 channelNumber: channel.GuideNumber)
                     } label: {
-                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold())
+                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .accessibilityLabel(watchAlongsideLabel(entry.Title))
                     .help(vlcReady ? "Watch \(entry.Title) as a small muted thumbnail alongside what's already open" : "Requires VLC to be installed")

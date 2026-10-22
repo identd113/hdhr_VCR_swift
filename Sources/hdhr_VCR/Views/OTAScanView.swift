@@ -5,13 +5,13 @@ import SwiftUI
 //   2. The dial: the airwaves as one bar per RF channel (OTASpectrumDial); a station springs up when it is found, an arrow in the reading
 //      tuner's colour bobs over the channel being read. Tap a bar to see that multiplex.
 //   3. The tuners, one slim chip each.
-//   4. The selected multiplex: its channels drawn as chips sharing one stream, then a list of them with their guide.
+//   4. The selected multiplex: how its stream is used, then a list of its channels with their sound/video and guide.
 struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
     @State private var pinnedRF: Int?       // a tab the person clicked: the selection stays there instead of following the scan
     @State private var followedRF: Int?
-    @State private var muxRecords: [Int: OTAStore.MuxRecord] = [:]   // when each multiplex was last read to the end (OTAStore.muxRecords)     // the last station the scan was working on that has a tab
+    @State private var muxRecords: [Int: OTAStore.MuxRecord] = [:]   // when each multiplex was last read to the end (OTAStore.muxRecords)
     @Environment(\.dismissWindow) private var dismissWindow
 
     /// One colour per tuner, used for its light, its progress bar and the dot on the tab of the station it is reading.
@@ -40,9 +40,19 @@ struct OTAScanView: View {
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
 
+    /// Redraw every 2 s while a scan runs; effectively a single static render (daily tick) otherwise.
+    private static func refreshSchedule(running: Bool) -> PeriodicTimelineSchedule {
+        .periodic(from: .now, by: running ? 2 : 86_400)
+    }
+
     private func reloadMuxRecords() {
-        let id = state.otaScanDeviceId ?? state.recordableDevices.first(where: \.isAvailable)?.DeviceID ?? state.recordableDevices.first?.DeviceID
+        let id = Self.scanDeviceId(state)
         muxRecords = id.map { OTAStore.muxRecords(deviceId: $0) } ?? [:]
+    }
+
+    /// The device the scan window (and AirChannelsCard's last-scan lines) describe.
+    static func scanDeviceId(_ state: AppState) -> String? {
+        state.otaScanDeviceId ?? state.recordableDevices.first(where: \.isAvailable)?.DeviceID ?? state.recordableDevices.first?.DeviceID
     }
 
     /// "Channel list read Oct 22, 1:14 AM · Guide read Oct 22, 1:14 AM" for a multiplex (what is saved on disk, independent of the scan in progress).
@@ -55,7 +65,7 @@ struct OTAScanView: View {
     // MARK: 1. overview
 
     private var overview: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { context in
+        TimelineView(Self.refreshSchedule(running: progress.running)) { context in
             let now = context.date
             let value = progress.running ? progress.fraction(now: now) : (progress.total > 0 && !progress.cancelled ? 1 : progress.fraction(now: now))
             VStack(alignment: .leading, spacing: 7) {
@@ -127,7 +137,7 @@ struct OTAScanView: View {
                 Text("The airwaves").font(.subheadline.bold())
                 InfoButton("TV stations share the air like lanes on a road. The spectrum is cut into numbered slices called RF channels (2 to 13 in the VHF bands, 14 to 51 in UHF), each 6 MHz wide, and each bar here is one slice. A station uses one slice and fits several channels into it: that is a multiplex. The 5.1, 5.2 and 5.3 you tune are separate programs riding one shared stream of about 19.4 Mbit/s. The scan tunes every slice in turn; a tall bar is a slice with channels on it, and the more channels it carries, the taller the bar.")
                 Spacer()
-                Text(progress.running ? "Tuning…" : "\(progress.rows.count) multiplexes found")
+                Text(progress.running ? "Tuning…" : "\(progress.rows.count) \(progress.rows.count == 1 ? "station" : "stations") found")
                     .font(.caption).foregroundStyle(.secondary)
             }
             OTASpectrumDial(progress: progress, selectedRF: selectedRF, laneColor: laneColor) { pinnedRF = $0 }
@@ -157,7 +167,7 @@ struct OTAScanView: View {
                         .accessibilityIdentifier("ota-scan-status")
                 }
             }
-            TimelineView(.periodic(from: .now, by: 2)) { context in
+            TimelineView(Self.refreshSchedule(running: progress.running)) { context in
                 HStack(spacing: 10) {
                     ForEach(0..<max(1, state.otaTunerMax), id: \.self) { i in laneChip(i, now: context.date) }
                 }
@@ -325,11 +335,11 @@ struct OTAScanView: View {
     private var footer: some View {
         HStack {
             if progress.withoutSignal > 0 {
-                Text("\(progress.withoutSignal) RF channel(s) with no signal").font(.caption).foregroundStyle(.secondary)
+                Text("\(progress.withoutSignal) RF channel\(progress.withoutSignal == 1 ? "" : "s") with no signal").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if progress.running { Button("Cancel Scan") { state.cancelOTAScan() }.accessibilityIdentifier("ota-scan-cancel") }
-            else { Button("Close") { dismissWindow(id: "ota-scan") }.accessibilityIdentifier("ota-scan-close") }
+            else { Button("Close") { dismissWindow(id: "ota-scan") }.keyboardShortcut(.cancelAction).accessibilityIdentifier("ota-scan-close") }
         }
     }
 

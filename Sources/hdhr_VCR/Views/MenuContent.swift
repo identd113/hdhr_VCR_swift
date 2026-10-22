@@ -178,6 +178,14 @@ struct MenuContent: View {
                                  hasWarn  ? Color(NSColor.systemOrange) :
                                  liveCount > 0 ? Color(NSColor.labelColor) :
                                                  Color(NSColor.secondaryLabelColor))
+                .accessibilityLabel(offline
+                    ? "Tuner \(device.DeviceID), unavailable"
+                    : "Tuner \(device.DeviceID), \(liveCount) of \(slots) in use"
+                      + (sharing.map { ". \($0)" } ?? "")
+                      + (hasWarn ? ". Warning: \(warnings)" : ""))
+        }
+        if state.displayableDevices.isEmpty && !state.isStartingUp {
+            Text("No tuners found — will keep trying").foregroundStyle(Color(NSColor.secondaryLabelColor))
         }
         if let hostname = watchingRemoteFeedHostname(for: watchingInfo) {
             Text("Watching FEED from \(hostname)")
@@ -202,11 +210,15 @@ struct MenuContent: View {
         }
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
+            .keyboardShortcut("n")
+            .accessibilityIdentifier("menu.addShow")
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
         Divider()
 
         Button("Settings…")    { open("settings") }
+            .keyboardShortcut(",")
+            .accessibilityIdentifier("menu.settings")
         if let update = state.updateCheckResult {
             Button {
                 NSWorkspace.shared.open(update.releaseURL)
@@ -250,7 +262,7 @@ struct MenuContent: View {
         let remoteRelayEntries = state.remoteRelayEntries
         if !remoteRelayEntries.isEmpty {
             Section("Recording on Another Mac (Beta)") {
-                ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
+                ForEach(Array(remoteRelayEntries.enumerated()), id: \.offset) { _, pair in
                     let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
                     let vlcReady = VLCBridge.shared.isAvailable
                     let codec = pair.entry.VideoCodec ?? "unknown"
@@ -310,13 +322,13 @@ struct MenuContent: View {
                             Button {
                                 state.watchRemoteRelayAsSecondary(url: pair.entry.URL ?? "", title: title, device: pair.device)
                             } label: {
-                                Label(gatedLabel("Watch alongside current (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
+                                Label(gatedLabel("Watch as Picture-in-Picture", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
                             }
                             .disabled(!vlcReady)
-                            .accessibilityLabel(gatedLabel(watchAlongsideLabel(title), met: vlcReady, requirement: "VLC"))
+                            .accessibilityLabel(gatedLabel(pipAccessibilityLabel(title), met: vlcReady, requirement: "VLC"))
                         }
                         Divider()
-                        menuInfo("Source: \(codec)", font: .footnote, secondary: true)
+                        menuInfo("Source: \(codec)", font: .footnote, secondary: true, maxWidth: 460, lines: 3)
                         // Reflects an already-active remote transcode session (any viewer of THIS
                         // show on the remote Mac, not just this instance) — see
                         // VirtualTunerService.transcodeViewersKey's own doc comment. Omitted
@@ -341,9 +353,9 @@ struct MenuContent: View {
                             // from. Omitted (not "Recording on <title> — unknown") on the rare
                             // chance an older build on the source Mac never set the field.
                             if let hostname = pair.entry.virtualRelaySourceHostname {
-                                Text("Recording on \(title) — \(hostname)")
+                                Text("Recording on \(title) — \(hostname)").lineLimit(3).frame(maxWidth: 460, alignment: .leading)
                             } else {
-                                Text("Recording on \(title)")
+                                Text("Recording on \(title)").lineLimit(3).frame(maxWidth: 460, alignment: .leading)
                             }
                         } icon: {
                             Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
@@ -406,7 +418,7 @@ struct MenuContent: View {
         // ── Scheduled shows ───────────────────────────────────────────────
         let availablePaused = pausedShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         if availableActive.isEmpty && availablePaused.isEmpty && unavailableShows.isEmpty {
-            Text("No shows scheduled").foregroundStyle(.secondary)
+            Text("No shows scheduled").foregroundStyle(Color(NSColor.secondaryLabelColor))
         } else {
             if !remainingActive.isEmpty {
                 groupedByDeviceSection(singleTitle: "Scheduled", multiTitlePrefix: "Scheduled",
@@ -437,7 +449,7 @@ struct MenuContent: View {
                 if !deviceShows.isEmpty {
                     Section(unavailableIDs.count > 1 ? "Unavailable Tuner · \(deviceId)" : "Unavailable Tuner") {
                         ForEach(deviceShows) { show in
-                            if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
+                            if show.show_recording { recordingMenu(show) } else if show.show_paused { pausedMenu(show) } else { scheduledMenu(show) }
                         }
                     }
                 }
@@ -446,6 +458,8 @@ struct MenuContent: View {
         Divider()
 
         Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
+            .keyboardShortcut("q")
+            .accessibilityIdentifier("menu.quit")
     }
 
     // Shared shape behind five near-identical menu sections (Recording Now, Up Next, Scheduled,
@@ -509,7 +523,8 @@ struct MenuContent: View {
         let anchorTime   = show.show_next ?? recNow
         let currentEntry = recEntries.first { $0.startDate <= anchorTime && $0.endDate > anchorTime }
         let recEp        = currentEntry.flatMap { $0.episodeInfoLabel }
-        let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
+        let untilStr     = show.show_end.map { " · until \(Self.timeFormatter.string(from: $0))" } ?? ""
+        let menuTitle    = rowLabel(prefix: "", icon: "🔴", title: show.show_title, ep: recEp, suffix: untilStr)
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
         Menu(menuTitle) {
             let started     = show.show_next ?? recNow
@@ -529,11 +544,11 @@ struct MenuContent: View {
                     }
                 }
             }
-            menuInfo("\(Self.timeFormatter.string(from: started)) · \(show.show_length) min", font: .footnote, secondary: true)
+            menuInfo("Started \(dayTime(started)) · \(show.show_length) min" + untilStr, font: .footnote, secondary: true)
             if inBonusTime {
                 menuInfo("Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)
             }
-            menuInfo("tuner \(show.hdhr_record)", font: .footnote, secondary: true)
+            menuInfo("Tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             if let sig = state.tunerStatus[show.show_id] {
                 menuInfo(sig.displayString, font: .footnote, secondary: true)
             }
@@ -553,22 +568,27 @@ struct MenuContent: View {
             .accessibilityLabel(gatedLabel(watchFromBeginningLabel(show.show_title), met: vlcReady, requirement: "VLC"))
             if state.hasPlayablePrimarySession {
                 Button(action: { state.watchRecordingInAppAsSecondary(show) }) {
-                    Label { Text(gatedLabel("Watch alongside current (PiP)", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                    Label { Text(gatedLabel("Watch as Picture-in-Picture", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                           icon: { Image(systemName: "pip.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                 }
                 .disabled(!vlcReady)
-                .accessibilityLabel(gatedLabel(watchAlongsideLabel(show.show_title), met: vlcReady, requirement: "VLC"))
+                .accessibilityLabel(gatedLabel(pipAccessibilityLabel(show.show_title), met: vlcReady, requirement: "VLC"))
             }
-            Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
-            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
+            Divider()
+            Button("Edit…") { editShow(show) }
             if !show.show_recording_path.isEmpty {
                 Button("Show Recording in Finder") {
                     NSWorkspace.shared.selectFile(show.show_recording_path,
                                                   inFileViewerRootedAtPath: "")
                 }
             }
-            Button("Edit…") { editShow(show) }
+            Divider()
+            menuInfo("Paused until next airing", font: .footnote, secondary: true)
+            Button("Stop & Skip This Airing", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
+            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
         }
+        .accessibilityLabel("Recording: \(show.show_title)")
+        .accessibilityIdentifier("menu.show.\(show.show_id)")
     }
 
     @ViewBuilder
@@ -579,9 +599,8 @@ struct MenuContent: View {
         let prefix    = (timePrefix.map { "\($0)  " } ?? "") + (conflict ? "⚠️ " : "")
         let schEntry  = state.menuScheduledEntry[show.show_id]
         let schEp     = schEntry.flatMap { $0.episodeInfoLabel }
-        let chSuffix  = showChannel ? "  ch \(show.show_channel)" : ""
-        let schLabel  = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)\(chSuffix)" }
-                    ?? "\(prefix)\(stateIcon(show)) \(show.show_title)\(chSuffix)"
+        let chSuffix  = showChannel ? "  Ch \(show.show_channel)" : ""
+        let schLabel  = rowLabel(prefix: prefix, icon: stateIcon(show), title: show.show_title, ep: schEp, suffix: chSuffix)
 
         Menu(schLabel) {
             let next = show.show_next ?? .distantFuture
@@ -594,7 +613,7 @@ struct MenuContent: View {
                 let conflictMsg = state.showRuntime[show.show_id]?.conflictBeatenByFavorite == true
                     ? "⚠️ Conflict — a favorited channel has priority for this tuner"
                     : "⚠️ Conflict — all tuners busy at this time"
-                menuInfo(conflictMsg, font: .footnote, secondary: true)
+                menuInfo(conflictMsg, font: .footnote, secondary: true, maxWidth: 460, lines: 3)
 
                 let others = state.conflictingShows(for: show)
                 if !others.isEmpty {
@@ -603,13 +622,13 @@ struct MenuContent: View {
                     ForEach(others, id: \.show_id) { other in
                         let otherEp = state.menuScheduledEntry[other.show_id]?.episodeInfoLabel
                         menuInfo("Ch \(other.show_channel) — \(other.show_title)" +
-                                 (otherEp.map { " · \($0)" } ?? ""), font: .footnote)
+                                 (otherEp.map { " · \($0)" } ?? ""), font: .footnote, maxWidth: 460, lines: 3)
                     }
                 }
             }
 
             // Timing: start time · duration
-            menuInfo("\(Self.timeFormatter.string(from: next)) · \(show.show_length) min", font: .footnote, secondary: true)
+            menuInfo("\(dayTime(next)) · \(show.show_length) min", font: .footnote, secondary: true)
 
             // Upcoming recording slots — source depends on show type
             let upcoming: [(channel: String, date: Date)] = {
@@ -628,20 +647,23 @@ struct MenuContent: View {
                 if upcoming.count > 1 {
                     menuInfo("Upcoming", font: .caption, secondary: true)
                 }
-                ForEach(upcoming, id: \.date) { slot in
+                ForEach(Array(upcoming.enumerated()), id: \.offset) { _, slot in
                     menuInfo(upcomingLabel(channel: slot.channel, date: slot.date), font: .footnote)
                 }
             }
 
             if show.show_fail_count > 0 {
                 Divider()
-                menuInfo("⚠️ \(show.show_fail_count) failure(s): \(show.show_fail_reason)", font: .footnote)
+                menuInfo("⚠️ \(show.show_fail_count) \(plural(show.show_fail_count, "failure")): \(show.show_fail_reason)", font: .footnote, maxWidth: 460, lines: 3)
             }
             Divider()
-            Button("Edit…")      { editShow(show) }
             Button("Pause") { state.pauseShow(show) }
+            Button("Edit…")      { editShow(show) }
+            Divider()
             Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
         }
+        .accessibilityLabel(scheduledAccessibilityLabel(show, timePrefix: timePrefix))
+        .accessibilityIdentifier("menu.show.\(show.show_id)")
     }
 
     @ViewBuilder
@@ -655,16 +677,19 @@ struct MenuContent: View {
             Divider()
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote, secondary: true)
             if !show.show_fail_reason.isEmpty {
-                menuInfo("Reason: \(show.show_fail_reason)", font: .footnote, secondary: true)
+                menuInfo("Reason: \(show.show_fail_reason)", font: .footnote, secondary: true, maxWidth: 460, lines: 3)
             }
             if let next = show.show_next, next > Date() {
-                menuInfo("Next attempt: \(Self.timeFormatter.string(from: next))", font: .footnote, secondary: true)
+                menuInfo("Next attempt: \(dayTime(next))", font: .footnote, secondary: true)
             }
             Divider()
             Button("Resume Now") { state.resumeShow(show) }
             Button("Edit…") { editShow(show) }
+            Divider()
             Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
         }
+        .accessibilityLabel("Paused: \(show.show_title)")
+        .accessibilityIdentifier("menu.show.\(show.show_id)")
     }
 
     // MARK: ── Helpers ────────────────────────────────────────────────────
@@ -683,11 +708,39 @@ struct MenuContent: View {
         }
     }
 
-    // "ch 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
+    /// Time only when today, "Tomorrow 8:00 PM" when tomorrow, else "Thu 8:00 PM".
+    private func dayTime(_ d: Date) -> String {
+        let t = Self.timeFormatter.string(from: d)
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return t }
+        if cal.isDateInTomorrow(d) { return "Tomorrow \(t)" }
+        return "\(Self.shortWeekdayFormatter.string(from: d)) \(t)"
+    }
+
+    /// Row label for a show submenu: `prefix icon title · episode suffix`. The episode is dropped
+    /// (it stays in the submenu header) when the whole label would pass ~60 characters, so a long
+    /// episode title can't widen the menu; the time prefix, icon, title and suffix are always kept.
+    private func rowLabel(prefix: String, icon: String, title: String, ep: String?, suffix: String) -> String {
+        let base = "\(prefix)\(icon) \(title)"
+        let full = base + (ep.map { " · \($0)" } ?? "") + suffix
+        return full.count > 60 ? base + suffix : full
+    }
+
+    private func scheduledAccessibilityLabel(_ show: Show, timePrefix: String?) -> String {
+        let kind: String
+        switch show.state {
+        case .seriesAll:     kind = "Series, every episode"
+        case .seriesChannel: kind = "Series, this channel"
+        default:             kind = "Scheduled"
+        }
+        return "\(kind): \(show.show_title)" + (timePrefix.map { ", at \($0)" } ?? "")
+    }
+
+    private func pipAccessibilityLabel(_ title: String) -> String { "Watch \(title) as Picture-in-Picture" }
+
+    // "Channel 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
     private func upcomingLabel(channel: String, date: Date) -> String {
-        let t = Self.timeFormatter.string(from: date)
-        if Calendar.current.isDateInToday(date) { return "Channel \(channel) · \(t)" }
-        return "Channel \(channel) · \(Self.shortWeekdayFormatter.string(from: date)) \(t)"
+        "Channel \(channel) · \(dayTime(date))"
     }
 
     // Shared show-info panel used by recordingMenu, scheduledMenu, and pausedMenu.
@@ -710,13 +763,13 @@ struct MenuContent: View {
     // Universal helper: wraps info text in a no-op Button so AppKit renders it at full
     // brightness. Plain Text views in Menu {} blocks are auto-disabled by NSMenu and drawn
     // at ~50% opacity regardless of the foreground color — Button avoids that treatment.
-    // Pass maxWidth to constrain width and allow the text to wrap (up to 4 lines).
+    // Pass maxWidth to constrain width and allow the text to wrap (up to `lines`, default 4).
     @ViewBuilder
-    private func menuInfo(_ string: String, font: Font = .body, secondary: Bool = false, maxWidth: CGFloat? = nil) -> some View {
+    private func menuInfo(_ string: String, font: Font = .body, secondary: Bool = false, maxWidth: CGFloat? = nil, lines: Int = 4) -> some View {
         Button(action: {}) {
             Text(string).font(font)
                 .foregroundColor(secondary ? Color(NSColor.secondaryLabelColor) : Color(NSColor.labelColor))
-                .lineLimit(maxWidth == nil ? nil : 4)
+                .lineLimit(maxWidth == nil ? nil : lines)
                 // Fixed width (not maxWidth) forces NSMenu items to wrap rather than
                 // expanding the menu horizontally to fit a single long line.
                 .frame(width: maxWidth, alignment: .leading)
@@ -758,4 +811,3 @@ private struct MenuPosterImage: View {
         }
     }
 }
-

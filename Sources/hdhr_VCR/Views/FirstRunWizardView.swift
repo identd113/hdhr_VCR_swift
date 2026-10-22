@@ -11,6 +11,7 @@ struct FirstRunWizardView: View {
     /// Non-nil when this wizard is a card inside the launch splash's window (first run): closes the card, and the window
     /// setup below is skipped — that window belongs to the splash.
     @Environment(\.embeddedCardClose) private var embeddedClose
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Plain local @State, NOT @AppStorage — every other field here only commits on Finish (see
     // finish()/onDisappear below), and binding this directly to UserDefaults would silently break
     // that: Choose…/Reset would persist immediately regardless of Escape/close-without-Finish.
@@ -174,6 +175,7 @@ struct FirstRunWizardView: View {
                 Spacer()
                 if step != .notificationTiming {
                     Button("Next") { goNext() }
+                        .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("wizard-next")
                 } else {
@@ -275,7 +277,8 @@ struct FirstRunWizardView: View {
                                                   center: .center, startRadius: 1, endRadius: 26))
                             .frame(width: 52, height: 52)
                             .keyframeAnimator(initialValue: FinishGlowValues(), trigger: finishGlowTrigger) { view, v in
-                                view.scaleEffect(v.scale).opacity(v.opacity)
+                                // Reduce Motion: no glow pulse at all (the circle stays at its hidden rest state).
+                                if reduceMotion { view.opacity(0) } else { view.scaleEffect(v.scale).opacity(v.opacity) }
                             } keyframes: { _ in
                                 KeyframeTrack(\.scale) { CubicKeyframe(1.3, duration: 0.35) }
                                 KeyframeTrack(\.opacity) {
@@ -328,7 +331,13 @@ struct FirstRunWizardView: View {
     private var recordingDefaultsScreen: some View {
         Form {
             Section {
-                TunerDiscoveryCard(status: discoveryStatus, onOpenPrivacySettings: openPrivacySettings)
+                TunerDiscoveryCard(status: discoveryStatus, onOpenPrivacySettings: openPrivacySettings,
+                                   onCheckAgain: {
+                                       // Reset the checked-guard and re-run discovery from scratch.
+                                       hasCheckedNetwork = false
+                                       networkStatus = .checking
+                                       Task { await checkNetworkAccessIfNeeded(force: true) }
+                                   })
             }
 
             Section {
@@ -364,15 +373,6 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    // Added 2026-09-12, same day the external "Open in VLC" feature (Watch_in_VLC config setting,
-    // AppState.watchInVLC/watchRecordingInVLC) was removed — that removal didn't reduce the VLC
-    // *dependency* at all, since the in-app player itself dynamically loads libvlc from an
-    // installed VLC.app (VLCBridge.locateApp()/isAvailable, docs/VLCBridge.md) for every watching
-    // feature in the app, in-app player included. Every watch-triggering surface elsewhere
-    // (MenuContent, WatchNowView, SettingsView's FEED transcode picker) already dims/labels itself
-    // "(Requires VLC)" via VLCBridge.shared.isAvailable/gatedLabel when VLC is missing — this step
-    // is what makes that requirement visible up front, with an actual path to fix it, instead of a
-    // new user discovering it only once they click a dimmed button somewhere later.
     /// Step 2 (added 2026-10-21): a quick scan that reads the channel list the stations broadcast, so a backup channel list exists
     /// from day one. Optional and non-blocking; see AirChannelsCard.
     private var airChannelsScreen: some View {
@@ -403,6 +403,15 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    // Step 3. Added 2026-09-12, same day the external "Open in VLC" feature (Watch_in_VLC config setting,
+    // AppState.watchInVLC/watchRecordingInVLC) was removed — that removal didn't reduce the VLC
+    // *dependency* at all, since the in-app player itself dynamically loads libvlc from an
+    // installed VLC.app (VLCBridge.locateApp()/isAvailable, docs/VLCBridge.md) for every watching
+    // feature in the app, in-app player included. Every watch-triggering surface elsewhere
+    // (MenuContent, WatchNowView, SettingsView's FEED transcode picker) already dims/labels itself
+    // "(Requires VLC)" via VLCBridge.shared.isAvailable/gatedLabel when VLC is missing — this step
+    // is what makes that requirement visible up front, with an actual path to fix it, instead of a
+    // new user discovering it only once they click a dimmed button somewhere later.
     private var vlcRequiredScreen: some View {
         Form {
             Section {
@@ -423,9 +432,8 @@ struct FirstRunWizardView: View {
                             .font(.callout.bold())
                         Spacer()
                         Button("Check Again") { recheckVLCInstalled() }
-                            .buttonStyle(.plain)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                             .accessibilityIdentifier("wizard-vlc-recheck")
                     }
 
@@ -437,7 +445,7 @@ struct FirstRunWizardView: View {
                                 Button {
                                     installVLCViaHomebrew()
                                 } label: {
-                                    Label("Install VLC via Homebrew", systemImage: "terminal")
+                                    Label("Copy Install Command & Open Terminal", systemImage: "terminal")
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("wizard-vlc-brew-install")
@@ -476,6 +484,11 @@ struct FirstRunWizardView: View {
         // come back and click Next/Back past this step and back again (or just re-open the wizard)
         // to confirm before moving on. A one-shot check at wizard launch would never reflect that.
         .onAppear { vlcInstalled = VLCBridge.locateApp() != nil }
+        // Coming back from Terminal/the browser after installing: AppState only posts a relaunch notification for a
+        // fresh install, it doesn't touch this step's own state, so refresh the checklist whenever the app is re-activated.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            recheckVLCInstalled()
+        }
     }
 
     private static let vlcDownloadURL = URL(string: "https://www.videolan.org/vlc/download-macosx.html")!
@@ -567,23 +580,14 @@ struct FirstRunWizardView: View {
     }
 
     // Was the tallest wizard step — an extra Label plus a third, separate Section just for the
-    // toggle (webLANScreen/terminalGuideScreen fold their toggle into the diagram/text Section
-    // instead) pushed this past what the other steps need, and that extra height was enough on at
-    // least one real machine to crash the app outright (see issues_resolved.md's "First-Run
-    // Wizard's Recording FEED step crashed the app outright" entry for the full investigation,
-    // including two other fix attempts — a ScrollView wrapper, and removing NetworkFlowDiagram's
-    // animation — that both turned out NOT to be the actual cause: the crash reproduced identically,
-    // at the identical window size, even after each). The ScrollView wrapper in particular is now
-    // suspected as having been its own contributing cause, not a fix — a ScrollView has no
-    // well-defined "ideal height" the way a plain Form/VStack does, which is a bad combination with
-    // this wizard's own `.frame(height: nil)` content-fit window sizing (this file's body property,
-    // ~line 171): SwiftUI/AppKit can end up repeatedly re-negotiating between candidate heights
-    // rather than ever settling on one, tripping the same "Update Constraints" safety limit.
-    // Resolution: back to a plain Form, structurally matching every sibling step exactly (no
-    // ScrollView, ending in the same `.fixedSize(vertical: true)`) — content shortened instead
-    // (toggle folded into the single diagram/text Section, the separate "Watch-only" Label folded
-    // into the toggle's own InfoButton) so the natural height comes down without ever introducing a
-    // ScrollView into this fragile hosting context.
+    // toggle pushed it past what the other steps need, and on at least one real machine that extra
+    // height crashed the app outright (see issues_resolved.md's "First-Run Wizard's Recording FEED
+    // step crashed the app outright" entry for the investigation; neither a ScrollView wrapper nor
+    // removing NetworkFlowDiagram's animation was the cause). Resolution: a plain Form structurally
+    // matching every sibling step (ending in the same `.fixedSize(vertical: true)`), with the content
+    // shortened — toggle folded into the single diagram/text Section, the "Watch-only" Label folded into
+    // the toggle's InfoButton. The one ScrollView is the shared `stepScroll` wrapper in `body`, which sits
+    // inside a fixed-height frame and so has a well-defined size.
     private var recordingRelayScreen: some View {
         Form {
             Section {
@@ -663,11 +667,13 @@ struct FirstRunWizardView: View {
         Button(action: finish) {
             if hasFinished {
                 Image(systemName: "checkmark")
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                    .accessibilityLabel("Finished")
             } else {
                 Text("Finish")
             }
         }
+        .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
         .disabled(hasFinished)
         .accessibilityIdentifier("wizard-finish")
@@ -677,6 +683,7 @@ struct FirstRunWizardView: View {
     // MARK: - Navigation
 
     private var slideTransition: AnyTransition {
+        reduceMotion ? .opacity :   // Reduce Motion: cross-fade instead of sliding
         goingForward
             ? .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                            removal:   .move(edge: .leading).combined(with: .opacity))
@@ -721,13 +728,13 @@ struct FirstRunWizardView: View {
     private func goNext() {
         goingForward = true
         guard let i = orderedSteps.firstIndex(of: step), i + 1 < orderedSteps.count else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { step = orderedSteps[i + 1] }
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 0.25)) { step = orderedSteps[i + 1] }
     }
 
     private func goBack() {
         goingForward = false
         guard let i = orderedSteps.firstIndex(of: step), i > 0 else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { step = orderedSteps[i - 1] }
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 0.25)) { step = orderedSteps[i - 1] }
     }
 
     // MARK: - Local Network permission
@@ -736,10 +743,10 @@ struct FirstRunWizardView: View {
     // relying purely on AppState's own launch-time discovery — see the @State declarations above
     // for why. Safe to call more than once: discoverDevices()/ensureLineupLoaded(for:) are already
     // used this way from Settings' "Rediscover Devices" button and AddShowView.
-    private func checkNetworkAccessIfNeeded() async {
+    private func checkNetworkAccessIfNeeded(force: Bool = false) async {
         guard !hasCheckedNetwork else { return }
         hasCheckedNetwork = true
-        if state.config.Local_network_confirmed {
+        if state.config.Local_network_confirmed && !force {
             networkStatus = .confirmed
             return
         }
@@ -805,7 +812,8 @@ struct FirstRunWizardView: View {
         state.config.Notify_recording       = recordingSoonMinutes
         let webServerChanged = sharingEnabled != state.config.Web_server_enabled
         state.config.Web_server_enabled     = sharingEnabled
-        state.config.Terminal_guide_enabled = terminalGuideEnabled
+        // The terminal client rides on the Web LAN server, so it is only saved on when Web LAN is on too.
+        state.config.Terminal_guide_enabled = terminalGuideEnabled && sharingEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
         state.config.OTA_lineup_hour         = airScanHour

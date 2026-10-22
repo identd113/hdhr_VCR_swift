@@ -17,6 +17,9 @@ struct AddShowView: View {
     @AppStorage("addShowGuideHeight") private var savedGuideHeight: Double = 820
 
     @State private var step: Step = .guide
+    // Embedded-guide load failure (shown as an overlay with a Reload button) and the token that triggers the reload.
+    @State private var guideLoadError: String? = nil
+    @State private var guideReloadToken = 0
     @State private var show = Show.blank()   // transcode overridden in onAppear
 
     // Tuner chosen in the guide
@@ -110,6 +113,9 @@ struct AddShowView: View {
             if state.webServerRunning && state.guidePageCacheWarm {
                 AddShowWebView(port: state.config.Web_server_port,
                                appearanceMode: state.config.Appearance_mode,
+                               reloadToken: guideReloadToken,
+                               onLoadFailed: { guideLoadError = $0 },
+                               onLoadSucceeded: { guideLoadError = nil },
                                onAppearanceChanged: { mode in
                                    // The embedded guide's own theme switcher is "this app's own
                                    // setting" here (unlike a real LAN browser hitting the same
@@ -142,9 +148,27 @@ struct AddShowView: View {
                                        genre: genre, imageURL: imageURL)
                     go(.details)
                 }
+                .overlay {
+                    if let error = guideLoadError {
+                        VStack(spacing: 12) {
+                            CaveatBanner(text: "The guide didn't load (\(error)).")
+                            Button("Reload") { guideLoadError = nil; guideReloadToken += 1 }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 480)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
             } else {
-                ProgressView("Starting guide…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                GuideStartingView(onRetry: {
+                    // Re-run the same web-server claim/cache steps a fresh open does.
+                    state.ensureWebServerRunning()
+                    state.releaseInternalWebServer()
+                    if state.webServerRunning && !state.guidePageCacheWarm {
+                        state.webServer.prebuildPageHTML(state: state)
+                    }
+                })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         // Ensure the lineup is present before the user can click Record in the web guide.
@@ -175,7 +199,7 @@ struct AddShowView: View {
                 Text("Recording Details").font(.title2)
 
                 if show.show_url.isEmpty {
-                    CaveatBanner(text: "Stream URL not found — lineup may not be loaded yet. Go back and reselect the channel.")
+                    CaveatBanner(text: "Stream URL not found — lineup may not be loaded yet. Cancel and pick the channel again.")
                 }
 
                 ShowFormSection(
@@ -185,7 +209,10 @@ struct AddShowView: View {
                     recordFolder: $recordFolder,
                     folderButtonLabel: "Choose…",
                     onSeriesTypeChange: { /* no-op: series flags applied at save() */ },
-                    onChooseFolder: { chooseFolder() }
+                    onChooseFolder: { chooseFolder() },
+                    titleError: show.show_title.isEmpty ? "Title is required." : nil,
+                    daysError: (seriesType == .single || seriesType == .dateTime) && airDays.isEmpty
+                        ? "Pick at least one day." : nil
                 )
 
                 otherAiringsSection
@@ -315,6 +342,7 @@ struct AddShowView: View {
                     Button("Record") {
                         save()
                     }
+                        .keyboardShortcut(.defaultAction)
                         .disabled(!canAdvance)
                         .buttonStyle(.borderedProminent)
                         .tint(recordRed)
@@ -331,10 +359,10 @@ struct AddShowView: View {
         case .guide:   return false  // web guide advances via its own Record button
         case .details:
             guard !show.show_title.isEmpty, recordFolder != nil, !show.show_url.isEmpty else { return false }
-            // A recurring DateTime show with every day deselected saves and then never fires —
-            // single/seriesChannel/seriesAll shows don't use airDays this way (series types
+            // A DateTime or Single show with every day deselected saves and then never fires —
+            // seriesChannel/seriesAll shows don't use airDays this way (series types
             // override show_air_date to all 7 days at save regardless of this UI state).
-            if seriesType == .dateTime { return !airDays.isEmpty }
+            if seriesType == .dateTime || seriesType == .single { return !airDays.isEmpty }
             return true
         }
     }
@@ -442,7 +470,7 @@ struct AddShowView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
-        Dialogs.choose(panel) { url in
+        Dialogs.choose(panel, on: sheetWindow()) { url in
             guard let url else { return }
             recordFolder = url
             UserDefaults.standard.set(url.path, forKey: "defaultSaveDirectory")
@@ -508,7 +536,40 @@ struct AddShowView: View {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        Dialogs.show(alert)
+        Dialogs.show(alert, on: sheetWindow())
+    }
+
+    /// The Details sheet's own window while it is up (the key window then), so pickers/alerts nest on the sheet
+    /// instead of falling back to a detached panel; nil lets Dialogs pick its usual host.
+    private func sheetWindow() -> NSWindow? {
+        guard let key = NSApp.keyWindow, key.isSheet else { return nil }
+        return key
+    }
+}
+
+// "Starting guide…" spinner; if the guide server still isn't ready after 15 s, swaps to a caveat with Retry.
+private struct GuideStartingView: View {
+    let onRetry: () -> Void
+    @State private var timedOut = false
+
+    var body: some View {
+        Group {
+            if timedOut {
+                VStack(spacing: 12) {
+                    CaveatBanner(text: "The guide server isn't responding.")
+                    Button("Retry") { timedOut = false; onRetry() }
+                }
+                .frame(maxWidth: 420)
+            } else {
+                ProgressView("Starting guide…")
+            }
+        }
+        // Re-armed on every Retry (timedOut flips back to false).
+        .task(id: timedOut) {
+            guard !timedOut else { return }
+            try? await Task.sleep(for: .seconds(15))
+            if !Task.isCancelled { timedOut = true }
+        }
     }
 }
 
@@ -530,6 +591,9 @@ struct AddShowView: View {
 private struct AddShowWebView: NSViewRepresentable {
     let port: Int
     let appearanceMode: String   // "auto" | "dark" | "light" — mirrors AppConfig.Appearance_mode
+    let reloadToken: Int         // bump to reload the guide after a load failure
+    let onLoadFailed: (String) -> Void
+    let onLoadSucceeded: () -> Void
     let onAppearanceChanged: (String) -> Void
     let onRecord: ([String: Any]) -> Void
 
@@ -561,6 +625,12 @@ private struct AddShowWebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         context.coordinator.onRecord = onRecord   // the coordinator is made once; keep its callbacks current
         context.coordinator.onAppearanceChanged = onAppearanceChanged
+        context.coordinator.onLoadFailed = onLoadFailed
+        context.coordinator.onLoadSucceeded = onLoadSucceeded
+        if context.coordinator.reloadToken != reloadToken {
+            context.coordinator.reloadToken = reloadToken
+            nsView.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
+        }
         guard context.coordinator.appearanceMode != appearanceMode else { return }
         context.coordinator.appearanceMode = appearanceMode
         context.coordinator.pushAppearance(to: nsView)
@@ -572,13 +642,20 @@ private struct AddShowWebView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(appearanceMode: appearanceMode, onRecord: onRecord, onAppearanceChanged: onAppearanceChanged)
+        let c = Coordinator(appearanceMode: appearanceMode, onRecord: onRecord, onAppearanceChanged: onAppearanceChanged)
+        c.reloadToken = reloadToken
+        c.onLoadFailed = onLoadFailed
+        c.onLoadSucceeded = onLoadSucceeded
+        return c
     }
 
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var appearanceMode: String
         var onRecord: ([String: Any]) -> Void
         var onAppearanceChanged: (String) -> Void
+        var reloadToken = 0
+        var onLoadFailed: (String) -> Void = { _ in }
+        var onLoadSucceeded: () -> Void = {}
 
         init(appearanceMode: String, onRecord: @escaping ([String: Any]) -> Void,
              onAppearanceChanged: @escaping (String) -> Void) {
@@ -606,6 +683,23 @@ private struct AddShowWebView: NSViewRepresentable {
 
         func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
             pushAppearance(to: wv)
+            DispatchQueue.main.async { self.onLoadSucceeded() }
+        }
+
+        func webView(_ wv: WKWebView, didFailProvisionalNavigation _: WKNavigation!, withError error: Error) {
+            reportLoadFailure(error)
+        }
+
+        func webView(_ wv: WKWebView, didFail _: WKNavigation!, withError error: Error) {
+            reportLoadFailure(error)
+        }
+
+        private func reportLoadFailure(_ error: Error) {
+            let ns = error as NSError
+            if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }   // a superseded load, not a failure
+            glog("[AddShow] embedded guide failed to load: \(ns.localizedDescription)", level: .warning)
+            let message = ns.localizedDescription
+            DispatchQueue.main.async { self.onLoadFailed(message) }
         }
 
         // "auto" resolves against the current system appearance here (same as this file's

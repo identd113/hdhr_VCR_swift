@@ -40,8 +40,11 @@ struct MultiDeviceTests {
         var ids: [String] = []
         for line in raw.split(separator: "\n") {
             let s = String(line)
-            guard let m = s.range(of: #"^[0-9A-F]{8}\s+\d+/\d+"#, options: .regularExpression) else { continue }
-            let id = String(s[m].prefix(8))
+            // The row reads "105404BE  2/2 …"; with its VoiceOver label the name may instead be "Tuner 105404BE, 2 of 2 in use".
+            let plain = s.range(of: #"^[0-9A-F]{8}\s+\d+/\d+"#, options: .regularExpression)
+            let spoken = s.range(of: #"^Tuner [0-9A-F]{8}, \d+ of \d+ in use"#, options: .regularExpression)
+            guard let m = plain ?? spoken else { continue }
+            let id = String(s[m].dropFirst(plain != nil ? 0 : "Tuner ".count).prefix(8))
             if id.hasPrefix("FEED") || id.hasPrefix("FFFF") { continue }
             ids.append(id)
         }

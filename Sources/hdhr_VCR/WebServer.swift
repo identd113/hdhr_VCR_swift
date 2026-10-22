@@ -3308,12 +3308,12 @@ final class WebServer: @unchecked Sendable {
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
                 : "Ch \(he(s.show_channel)) · \(chDetail)"
-            return "<div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\">"
+            return "<div class=\"sp-row\" role=\"button\" tabindex=\"0\" \(da) onclick=\"openEditShow(this)\">"
                  + "<div class=\"sp-info\">"
                  + "<div class=\"sp-t\">\(prefix)\(he(s.show_title))</div>"
                  + "<div class=\"sp-ch\">\(chLine)</div>"
                  + "</div>"
-                 + "<button class=\"sp-jump\" onclick=\"event.stopPropagation();jumpToGuide(this.closest('.sp-row'))\" title=\"Jump to guide\">→</button>"
+                 + "<button class=\"sp-jump\" onclick=\"event.stopPropagation();jumpToGuide(this.closest('.sp-row'))\" title=\"Jump to guide\" aria-label=\"Jump to guide\">→</button>"
                  + "</div>"
         }
 
@@ -3439,11 +3439,17 @@ final class WebServer: @unchecked Sendable {
             s += "<div class=\"tuner-row\">"
             if active {
                 let countSpan = tunerCountSpan(devId, devTuners[devId])
-                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"handleDevClick(this.dataset.dev,this)\" aria-label=\"Switch guide to tuner \(label); click again to see tuner details\" title=\"Click to select this tuner; click again for tuner details\">\(label) \(countSpan)</button>"
+                // Occupancy is part of the accessible name (the visible "a/t — FULL" span is inside the button);
+                // guide.js's devAriaLabel() rebuilds the same string when a tuner_update push changes the count.
+                var occLabel = ""
+                if let dt = devTuners[devId], dt.total > 0 {
+                    occLabel = ", \(dt.active) of \(dt.total) tuners in use\(dt.isFull ? ", FULL" : "")"
+                }
+                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"handleDevClick(this.dataset.dev,this)\" aria-label=\"Switch guide to tuner \(label)\(occLabel); click again to see tuner details\" title=\"Click to select this tuner; click again for tuner details\">\(label) \(countSpan)</button>"
             } else {
                 s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
             }
-            s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on this tuner\" title=\"Shows on this tuner\">▾</button>"
+            s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on \(label)\" aria-expanded=\"false\" aria-controls=\"tdrop-\(he(devId))\" title=\"Shows on this tuner\">▾</button>"
             s += "</div>"
             s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">"
             s += "<div class=\"tdrop-hdr\">"
@@ -3966,7 +3972,7 @@ final class WebServer: @unchecked Sendable {
             rowParts.append(contentsOf: otherRows)
         }
         let rowsHTML = rowParts.isEmpty
-            ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
+            ? "<div role=\"status\" style=\"padding:24px;color:var(--t4);text-align:center;font-size:.85rem\">\(state.recordableDevices.isEmpty ? "No tuners found — check that your HDHomeRun is powered on and on this network." : "No guide data yet — loading…")<br><button type=\"button\" class=\"g-retry\" onclick=\"refreshGuide()\">Retry</button></div>"
             : rowParts.joined()
 
         let hdr = "<div class=\"g-hdr\" data-winstart=\"\(winStart)\" data-winsec=\"\(winSec)\"><div class=\"g-hdr-ch\"><span class=\"g-hdr-ch-lbl\">Ch</span><div class=\"g-hdr-btns\"><button id=\"g-now-btn\" class=\"g-hdr-btn g-hdr-btn-now\" onclick=\"scrollToNow()\" title=\"Jump to now\">▶ Now</button><button class=\"g-hdr-btn\" onclick=\"refreshGuide()\" title=\"Refresh guide\">↺</button></div></div><div class=\"g-hdr-tl\">\(ticksHTML)</div></div>"

@@ -2002,7 +2002,7 @@ struct WindowNavigationTests {
     /// Shared helper for the simple single-instance windows (Add Show, Watch Now) that open
     /// directly from a flat top-level menu item with no per-show submenu to navigate.
     /// Last test of the run (declaration order — the suite is `.serialized`): stops the shared `[MOCK]` recording the
-    /// way a user does — the recording's own submenu in the menu bar → "Skip" — and checks it really stops. Needs a
+    /// way a user does — the recording's own submenu in the menu bar → "Stop & Skip This Airing" — and checks it really stops. Needs a
     /// recording, so it starts one itself if an earlier skip/stop left none (stopping and starting are both fair game).
     /// Always cleans the `[MOCK]` show up afterwards.
     @Test func stopRecordingFromTheMenu() throws {
@@ -2029,7 +2029,7 @@ struct WindowNavigationTests {
                 click mi
                 delay 0.6
                 try
-                    click menu item "Skip" of menu 1 of menu item nm of menu 1 of menu bar item 1 of menu bar 2
+                    click menu item "Stop & Skip This Airing" of menu 1 of menu item nm of menu 1 of menu bar item 1 of menu bar 2
                 on error
                     key code 53
                     key code 53
@@ -2043,7 +2043,7 @@ struct WindowNavigationTests {
             Issue.record("stop-recording menu script failed to run")
             return
         }
-        #expect(result == "CLICKED", "couldn't reach the recording's Skip item: \(result)")
+        #expect(result == "CLICKED", "couldn't reach the recording's Stop & Skip item: \(result)")
         guard result == "CLICKED" else { return }
 
         var stopped = false
@@ -2051,7 +2051,7 @@ struct WindowNavigationTests {
             Thread.sleep(forTimeInterval: 1)
             if !MockRecording.isRecording { stopped = true; break }
         }
-        #expect(stopped, "the recording was still running 20 s after choosing Skip")
+        #expect(stopped, "the recording was still running 20 s after choosing Stop & Skip")
     }
 
     private func openAndCloseTopLevelWindow(menuItemName: String) throws -> (title: String, windowCountAfter: Int) {

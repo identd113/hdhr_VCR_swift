@@ -31,7 +31,20 @@ struct KeyboardShortcutsOverlay: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
 
-            VStack(alignment: .leading, spacing: 18) {
+            // In a window too short for the card, the same card scrolls instead of clipping (no change when it fits).
+            ViewThatFits(in: .vertical) {
+                panel
+                ScrollView { panel }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityLabel(title)
+        .accessibilityAction(.escape) { onDismiss() }
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
                     Capsule().fill(Color(white: 0.85).opacity(0.9)).frame(width: 3, height: 26)
                     Text(title)
@@ -72,9 +85,6 @@ struct KeyboardShortcutsOverlay: View {
             }
             .shadow(color: .black.opacity(0.5), radius: 24, y: 8)
             .padding(24)
-        }
-        .accessibilityAddTraits(.isModal)
-        .accessibilityLabel(title)
     }
 }
 

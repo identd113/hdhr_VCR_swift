@@ -215,20 +215,26 @@ struct VLCPlayerWindowAspectLockTests {
         #expect(r.width == 1200)
         #expect(abs(r.height - 944) < 0.001)
     }
+    @Test func minimumWidth_isTheResponsiveToolbarFloor() {
+        // 2026-10-22: lowered from 640 so the window can shrink; the toolbar folds its controls into "…" to fit.
+        #expect(VLCPlayerWindowManager.playerMinContentWidth == 420)
+        #expect(VLCPlayerWindowManager.playerMinContentHeight == VLCPlayerWindowManager.playerToolbarHeight + 120)
+    }
     @Test func clampsToMinimumWidth() {
         let r = VLCPlayerWindowManager.aspectLockedContentSize(proposed: CGSize(width: 300, height: 200),
                                                                current: current, nativePixelSize: hd)
         #expect(r.width == VLCPlayerWindowManager.playerMinContentWidth)
     }
     @Test func narrowScreen_beatsTheMinimumWidth() {
-        // A display (or visible area) narrower than the 640 minimum used to get a 640-wide window anyway.
+        // A display (or visible area) narrower than the minimum content width used to get a minimum-wide window anyway.
         let r = VLCPlayerWindowManager.contentSize(width: 900, nativePixelSize: hd, maxContent: CGSize(width: 500, height: 900))
         #expect(r.width == 500)
     }
     @Test func shortScreen_beatsTheMinimumWidth() {
-        // 16:9 at 640 wide needs 360+44 high; a 300-high area caps the width at (300-44)*16/9.
-        let r = VLCPlayerWindowManager.contentSize(width: 900, nativePixelSize: hd, maxContent: CGSize(width: 2000, height: 300))
-        #expect(r.height <= 300)
+        // 16:9 at the 420 minimum needs 236+44 high; a 200-high area caps the width at (200-44)*16/9 = 277. (Was a
+        // 300-high area when the minimum was 640; the lower minimum made 300 no longer short enough to matter.)
+        let r = VLCPlayerWindowManager.contentSize(width: 900, nativePixelSize: hd, maxContent: CGSize(width: 2000, height: 200))
+        #expect(r.height <= 200)
         #expect(r.width < VLCPlayerWindowManager.playerMinContentWidth)
     }
     @Test func roomyScreen_stillEnforcesTheMinimum() {

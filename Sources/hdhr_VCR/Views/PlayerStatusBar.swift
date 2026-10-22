@@ -168,6 +168,7 @@ struct PlayerStatusBar: View {
     let canRecordUpcoming: Bool
     var shimmerToken = 0                     // bumped each time the bar opens; runs one shimmer wave across the current show's block
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var logo: NSImage?
     @State private var shine: CGFloat = -1   // -1...1.6, the wave's position, animated here so nothing else interferes
     @State private var leadingID: Int?        // StartTime of the card at the left of the strip
@@ -206,6 +207,7 @@ struct PlayerStatusBar: View {
         .onChange(of: upcoming.first?.StartTime) { _, _ in leadingID = nil }
         .task(id: shimmerToken) {
             guard shimmerToken > 0 else { return }
+            guard !reduceMotion else { return }   // Reduce Motion: no sweeping band
             shine = -1
             try? await Task.sleep(for: .milliseconds(900))   // let the bar drop and settle first
             guard !Task.isCancelled else { return }
@@ -355,15 +357,19 @@ struct PlayerStatusBar: View {
 
     private func step(_ delta: Int) {
         let target = min(max(leadingIndex + delta, 0), upcoming.count - 1)
-        withAnimation(.easeOut(duration: 0.25)) { leadingID = upcoming[target].StartTime }
+        if reduceMotion { leadingID = upcoming[target].StartTime }
+        else { withAnimation(.easeOut(duration: 0.25)) { leadingID = upcoming[target].StartTime } }
     }
 
     private func stepButton(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // Same 18x16 look; the transparent 22x22 frame is the (larger) click target.
             Image(systemName: symbol).font(.system(size: 8, weight: .bold)).frame(width: 18, height: 16)
+                .background(Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
         .opacity(enabled ? 1 : 0.35)
         .disabled(!enabled)
         .accessibilityLabel(label)

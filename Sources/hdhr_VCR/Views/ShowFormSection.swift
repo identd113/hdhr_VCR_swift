@@ -11,6 +11,11 @@ struct ShowFormSection: View {
     var folderButtonLabel: String
     var onSeriesTypeChange: () -> Void
     var onChooseFolder: () -> Void
+    /// Red caption shown under the Title / Day(s) rows when the host form's primary button is disabled because of them.
+    var titleError: String? = nil
+    var daysError: String? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let weekdays = Show.weekdayNames
 
@@ -96,6 +101,7 @@ struct ShowFormSection: View {
             LabeledContent("Title") {
                 TextField("Title", text: $show.show_title)
             }
+            if let titleError { FormErrorCaption(text: titleError) }
 
             if let sig = channelSignal, sig.bucket != .noData {
                 if sig.bucket == .poor {
@@ -108,19 +114,20 @@ struct ShowFormSection: View {
             }
 
             LabeledContent("Type") {
-                Picker("", selection: topType) {
+                Picker("Type", selection: topType) {
                     ForEach(TopType.allCases, id: \.self) { type in
                         Text(type.rawValue).tag(type)
                             .disabled(type == .seriesID && seriesIDUnavailable && !seriesType.isSeries)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. SeriesID: records new episodes automatically via SeriesID matching — pick Channel or All scope below.")
             }
 
             if seriesType.isSeries {
                 LabeledContent("Scope") {
-                    Picker("", selection: Binding(
+                    Picker("Scope", selection: Binding(
                         get: { seriesType == .seriesAll },
                         set: { isAll in seriesType = isAll ? .seriesAll : .seriesChannel }
                     )) {
@@ -128,18 +135,25 @@ struct ShowFormSection: View {
                         Text("All").tag(true)
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
                 .help("Channel: records new episodes only on the channel you picked. All: records new episodes on any channel this tuner receives.")
             }
 
             LabeledContent("Transcode") {
-                Picker("", selection: $show.show_transcode) {
+                Picker("Transcode", selection: $show.show_transcode) {
                     Text("None").tag("none")
                     Text("Heavy").tag("heavy")
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
                 }
+                .labelsHidden()
                 .help("None keeps the raw MPEG stream (recommended). Heavy, Mobile, and Internet 720 transcode the stream to reduce file size or target a specific playback device. Not all tuner models support transcoding — on an unsupported tuner this is silently ignored and recorded as None, with no error.")
+            }
+
+            if seriesIDUnavailable {
+                Text("Over-the-air guides have no SeriesIDs.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             if show.show_transcode != "none", !selectedDeviceSupportsTranscode {
@@ -154,7 +168,7 @@ struct ShowFormSection: View {
                            isOn: Binding(
                         get: { show.show_bonus_time },
                         set: { val in
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.65)) {
                                 show.show_bonus_time = val
                             }
                         }
@@ -180,12 +194,14 @@ struct ShowFormSection: View {
                             )) { Text(abbr).font(.caption) }
                             .toggleStyle(.button)
                             .buttonStyle(.bordered)
+                            .accessibilityLabel(day)
                         }
                     }
                 }
                 .help(seriesType == .single
                       ? "The day of the week this one-time recording will air."
                       : "All days of the week this show airs — select every applicable day.")
+                if let daysError { FormErrorCaption(text: daysError) }
             }
 
             if seriesType != .single {
@@ -228,5 +244,16 @@ struct ShowFormSection: View {
             duplicateTag = await state.duplicateEpisodeTag(for: show, isSeries: seriesType.isSeries,
                                                             baseDir: recordFolder?.path ?? "")
         }
+    }
+}
+
+/// One-line red validation caption used under a form field (Add/Edit Show).
+struct FormErrorCaption: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.red)
+            .accessibilityIdentifier("form-error-caption")
     }
 }

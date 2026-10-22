@@ -17,9 +17,17 @@ Signal       — SignalBarsView for the selected channel + a "weak signal" Cavea
                when the channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
                channel has signal history (bucket != .noData). Reuses signalBucket(guideName:) via
                state.lineups[show.hdhr_record] → GuideName. Appears in both Add and Edit.
+Title error  — Optional red caption (FormErrorCaption, defined in ShowFormSection.swift) under Title,
+               passed in by the host via `titleError` ("Title is required."). Same for `daysError`
+               under Day/Days ("Pick at least one day."). nil by default = nothing shown.
 Type         — Segmented Picker over 3 collapsed top-level choices: Single | DateTime | SeriesID
                (private TopType enum, computed from/written back to seriesType via the `topType`
                Binding — see "Type/Scope split" below). Tooltip: explains each mode.
+               The pickers (Type, Scope, Transcode) are given real accessibility labels
+               (`Picker("Type", …).labelsHidden()`) instead of empty titles; visually unchanged.
+               When the tuner's guide is over-the-air (`seriesIDUnavailable`, SeriesID segment
+               dimmed) a secondary caption under the Type row reads "Over-the-air guides have no
+               SeriesIDs."
 Scope        — Only when seriesType.isSeries. A 2-segment Picker — Channel | All — bound to a
                derived Bool (seriesType == .seriesAll) that writes seriesType as .seriesChannel/
                .seriesAll. See "Type/Scope split" below.
@@ -43,7 +51,8 @@ Transcode    — Picker: None | Heavy | Mobile | Internet 720
                "unknown ⇒ force None" posture. (Fixed 2026-08-28, commit 919a045 — an earlier
                version of this code defaulted true for both cases.)
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
-Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
+Day/Days     — Weekday toggle buttons (only for .single and .dateTime); each toggle's VoiceOver label
+               is the full weekday name ("Monday"), the visible text stays the two-letter abbreviation
                Tooltip: single-day vs. multi-day selection intent
 New Only     — Only when seriesType != .single. A "Skip reruns" toggle bound to show.show_new_only —
                at record time, skips an airing the guide doesn't mark as new (isNewEpisode, keyed off
@@ -80,7 +89,7 @@ success) can reuse it instead of duplicating the pattern again.
 
 ## Bonus Time Toggle
 
-Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the `StarburstBadge` in the parent's ZStack animate in/out when the toggle changes.
+Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the `StarburstBadge` in the parent's ZStack animate in/out when the toggle changes (no animation when Reduce Motion is on: `@Environment(\.accessibilityReduceMotion)`).
 
 ---
 

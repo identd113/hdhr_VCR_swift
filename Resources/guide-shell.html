@@ -1,14 +1,17 @@
 <div id="splash" style="position:fixed;inset:0;z-index:9999;background:rgba(17,17,17,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;pointer-events:none">
   <img src="/api/icon" width="72" height="72" style="border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.6)" onerror="this.style.display='none'">
   <div style="color:#fff;font-size:1.1rem;font-weight:700;letter-spacing:.01em">hdhrVCRplus</div>
-  <div style="color:#555;font-size:.72rem">{{APP_VERSION}}</div>
+  <div style="color:#aaa;font-size:.72rem">{{APP_VERSION}}</div>
 </div>
+<div id="splash-fail" role="alert">Guide failed to load. Check the connection and reload the page.</div>
+<div id="net-banner" role="status" aria-live="polite" style="display:none">Disconnected &ndash; retrying&hellip;</div>
+<div id="g-toast" role="status" aria-live="polite" style="display:none"></div>
 <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
   {{HEADER_HTML}}
   {{DEVICE_BAR_HTML}}
   <div id="toolbar-right" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto">
     <div id="genre-bar" style="display:none">
-      <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
+      <select id="genre-sel" aria-label="Filter by genre" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
     </div>
     <div id="search-bar">
       <button id="search-icon-btn" type="button" title="Search shows" aria-label="Search shows" aria-controls="search-in" aria-expanded="false" onclick="expandSearch()">⌕</button>
@@ -29,17 +32,17 @@
       </div>
     </div>
     <div id="theme-sw">
-      <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
-      <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
-      <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+      <button data-m="dark"  onclick="setTheme('dark')"  title="Dark" aria-label="Dark theme" aria-pressed="false">◗</button>
+      <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)" aria-label="Automatic theme (follow system)" aria-pressed="false">◐</button>
+      <button data-m="light" onclick="setTheme('light')" title="Light" aria-label="Light theme" aria-pressed="false">◖</button>
     </div>
   </div>
 </div>
 <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
-  <div id="t-pop-c" style="position:absolute;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
+  <div id="t-pop-c" role="dialog" aria-modal="true" aria-labelledby="t-pop-hdr" style="position:absolute;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span id="t-pop-hdr" style="font-size:.82rem;font-weight:600"></span>
-      <button onclick="closeTunerPop()" style="background:none;border:none;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
+      <button type="button" onclick="closeTunerPop()" aria-label="Close tuner details" style="background:none;border:none;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
     </div>
     <div id="t-pop-list" style="display:flex;flex-direction:column;gap:1px"></div>
     <div id="t-pop-src" style="display:none;margin-top:8px;border-top:1px solid #2e2e2e;padding-top:6px"></div>
@@ -57,7 +60,7 @@
       <div id="sum-date" style="display:none;font-size:.68rem"></div>
       <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;line-height:1.35"></div>
       <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
-        <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
+        <span id="sum-note" role="status" aria-live="polite" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
         <button id="sum-watch" onclick="watchNowFromSummary()" title="Watch this recording in your browser" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#2f7de1;color:#fff">&#9654; Watch Now!</button>
         <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
         <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
@@ -69,13 +72,13 @@
       </div>
     </div>
     <span id="sum-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
-    <button onclick="closeSummary()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
+    <button id="sum-close" type="button" onclick="closeSummary()" aria-label="Close" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
   </div>
 </div>
 <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:100;align-items:center;justify-content:center;padding:20px">
-  <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+  <div class="mac-sheet sheet-cap" role="dialog" aria-modal="true" aria-labelledby="rm-heading" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);overflow-y:auto;position:relative">
     <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
-    <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
+    <div id="rm-heading" style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
     <div class="em-row">
       <div class="em-lbl">Title</div>
       <div class="em-content">
@@ -105,9 +108,9 @@
   </div>
 </div>
 <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:201;align-items:center;justify-content:center;padding:20px">
-  <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+  <div class="mac-sheet sheet-cap" role="dialog" aria-modal="true" aria-labelledby="em-heading" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);overflow-y:auto;position:relative">
     <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
-    <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
+    <div id="em-heading" style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
     <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
     <div id="em-sig-row" class="em-row" style="display:none"><div class="em-lbl">Signal</div><div class="em-content"><div id="em-sig" style="min-height:12px"></div></div></div>
     <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div></div>
@@ -139,9 +142,9 @@
   </div>
 </div>
 <div id="del-confirm-modal" onclick="if(event.target===this)cancelDeleteConfirm()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:202;align-items:center;justify-content:center;padding:20px">
-  <div class="mac-sheet" style="padding:20px 22px;width:340px;max-width:calc(100vw - 32px);position:relative;text-align:center">
+  <div class="mac-sheet" role="alertdialog" aria-modal="true" aria-labelledby="dc-title" aria-describedby="dc-warn" style="padding:20px 22px;width:340px;max-width:calc(100vw - 32px);position:relative;text-align:center">
     <img id="dc-poster" src="" alt="" style="width:96px;height:96px;object-fit:cover;border-radius:8px;margin:0 auto 14px;display:none;background:#888">
-    <div id="dc-title" style="font-weight:600;font-size:.98rem;color:var(--t0);margin-bottom:6px"></div>
+    <div id="dc-title" style="overflow-wrap:anywhere;font-weight:600;font-size:.98rem;color:var(--t0);margin-bottom:6px"></div>
     <div id="dc-type" style="font-size:.76rem;color:var(--t3);margin-bottom:4px"></div>
     <div id="dc-warn" style="font-size:.76rem;color:var(--t3);margin-bottom:16px"></div>
     <div style="display:flex;justify-content:center;gap:8px">
@@ -158,7 +161,7 @@
     </div>
     <div class="wn-stage"><video id="wn-video" playsinline controls></video><div id="wn-msg" class="wn-msg"></div></div>
     <div class="wn-bar">
-      <span id="wn-state" class="wn-state"></span>
+      <span id="wn-state" class="wn-state" role="status" aria-live="polite"></span>
       <span class="wn-grow"></span>
       <button id="wn-live" onclick="watchNowGoLive()" class="mac-btn mac-btn-plain" title="Jump to the newest picture (L)">Live Edge</button>
       <button onclick="watchNowFullscreen()" class="mac-btn mac-btn-plain" title="Fullscreen (F)">Fullscreen</button>

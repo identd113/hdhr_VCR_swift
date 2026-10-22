@@ -54,11 +54,31 @@ struct SettingsView: View {
     @State private var loginItemError: String          = ""
     @State private var terminalGuideOpenError: String  = ""
 
-    private var launchAtLoginRegistered: Bool {
+    // Cached: SMAppService.status, the interface walk, the VLC lookup and the helper stat are all
+    // syscalls, and SettingsView re-renders on every AppState publish (isDirty alone read the login
+    // status each time). Refreshed in refreshSystemCaches() — onAppear, window refocus, after Save.
+    @State private var launchAtLoginRegistered: Bool = SettingsView.readLaunchAtLoginRegistered()
+    @State private var netInterfaces: [NetworkInterfaceInfo] = []
+    @State private var vlcInstalled: Bool = false
+    @State private var terminalGuideExists: Bool = false
+    @State private var settingsWindow: NSWindow?
+
+    private static func readLaunchAtLoginRegistered() -> Bool {
         // .requiresApproval = register() succeeded and macOS is waiting on the user (System Settings
         // → Login Items); counting it as not-registered left the draft permanently "dirty".
         let s = SMAppService.mainApp.status
         return s == .enabled || s == .requiresApproval
+    }
+
+    private static var terminalGuideURL: URL {
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide")
+    }
+
+    private func refreshSystemCaches() {
+        launchAtLoginRegistered = Self.readLaunchAtLoginRegistered()
+        netInterfaces = availableNetworkInterfaces()
+        vlcInstalled = VLCBridge.locateApp() != nil
+        terminalGuideExists = FileManager.default.fileExists(atPath: Self.terminalGuideURL.path)
     }
     @State private var changelogHeight: CGFloat = 0
     @State private var currentChangelogHeight: CGFloat = 0
@@ -78,7 +98,8 @@ struct SettingsView: View {
     // sections never change after launch (found in code review 2026-09-25).
     private static let parsedChangelogSections: [String] = parseChangelog(changelogText).sections
     @State private var maintenanceStatus: String = ""
-    @State private var maintenanceBusy: Bool = false
+    @State private var maintenanceBusy: Bool = false     // Developer tab's Purges Run button
+    @State private var busyRow: String?                  // title of the maintenance row currently running
     @State private var purgeMemory = true
     @State private var purgeSDCache = false
     @State private var purgeAirGuide = false
@@ -110,7 +131,12 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Computed once per render (each reads draft/state.config comparisons).
+        let dirty = isDirty
+        let needsTest = webhookNeedsTest
+        let portBad = webPortInvalid
+        let savesPaused = state.configManager.savesSuppressedAfterImport
+        return VStack(spacing: 0) {
             NavigationSplitView {
                 List(SettingsCategory.allCases, selection: $selection) { cat in
                     Label(cat.rawValue, systemImage: cat.icon)
@@ -130,21 +156,34 @@ struct SettingsView: View {
 
             // ── Persistent save bar ────────────────────────────────────────
             HStack {
-                if webhookNeedsTest {
+                if savesPaused {
+                    // After Import Config every save is suppressed until restart (ConfigManager) — say so here
+                    // instead of letting Save look like it worked.
+                    Label("Import pending — restart to apply; saving is paused", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("settings-import-pending")
+                } else if needsTest {
                     Label("Test the webhook before saving", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                    Button("Show") { selection = .notifications }
+                        .controlSize(.small)
+                        .accessibilityIdentifier("settings-show-webhook")
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("settings-discard")
-                } else if webPortInvalid {
+                } else if portBad {
                     Label("Fix the web server port before saving", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                    Button("Show") { selection = .sharing }
+                        .controlSize(.small)
+                        .accessibilityIdentifier("settings-show-port")
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("settings-discard")
-                } else if isDirty {
+                } else if dirty {
                     Text("Unsaved changes")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -153,27 +192,32 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings-discard")
                 }
                 Spacer()
-                let canSave = isDirty && !webhookNeedsTest && !webPortInvalid
+                let canSave = dirty && !needsTest && !portBad && !savesPaused
                 Button("Save") { applyAndSave() }
                     .disabled(!canSave)
                     .keyboardShortcut("s", modifiers: .command)
                     .accessibilityIdentifier("settings-save")
                 Button("Save & Close") {
                     if canSave { applyAndSave() }
-                    NSApp.keyWindow?.close()
+                    // This window, not NSApp.keyWindow — a sheet (open/save panel, alert) may be key.
+                    (settingsWindow ?? NSApp.keyWindow)?.close()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(canSave ? .orange : .accentColor)
                 .keyboardShortcut(.defaultAction)
-                .disabled(webhookNeedsTest || webPortInvalid)
+                .disabled(needsTest || portBad || savesPaused)
                 .accessibilityIdentifier("settings-save-close")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
         .frame(width: 560, height: 520)
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest && !webPortInvalid, onSave: applyAndSave, onBecomeKey: resyncIfUntouched))
+        .onChange(of: selection) { maintenanceStatus = "" }   // a result from one tab shouldn't linger on another
+        .background(WindowCloseInterceptor(isDirty: dirty, canSave: !needsTest && !portBad && !savesPaused, onSave: applyAndSave,
+                                           onBecomeKey: { refreshSystemCaches(); resyncIfUntouched() },
+                                           onWindow: { settingsWindow = $0 }))
         .onAppear {
+            refreshSystemCaches()
             resetDrafts()
             // A saved interface that isn't connected right now (VPN down, adapter unplugged) is NO LONGER
             // cleared here: merely opening Settings used to wipe the user's choice from the saved config,
@@ -272,6 +316,7 @@ struct SettingsView: View {
                 draftLaunchAtLogin = launchAtLoginRegistered
                 loginItemError = error.localizedDescription
             }
+            launchAtLoginRegistered = Self.readLaunchAtLoginRegistered()
         }
         // Changing the network interface requires fresh device discovery and guide data
         // so curl and UDP both bind to the correct NIC immediately.
@@ -323,31 +368,34 @@ struct SettingsView: View {
         Form {
             Section("System") {
                 Toggle(isOn: $draftLaunchAtLogin) {
-                    HStack { Text("Launch at Login"); InfoButton("Start hdhr_VCR automatically when you log in, so scheduled recordings are never missed while the app is closed.") }
+                    HStack { Text("Launch at Login"); InfoButton("Start hdhr_VCR automatically when you log in, so scheduled recordings are never missed while the app is closed.", about: "Launch at Login") }
                 }
+                .accessibilityIdentifier("settings-launch-at-login")
                 if !loginItemError.isEmpty {
                     Label(loginItemError, systemImage: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Toggle(isOn: $draft.Status_light_blink_enabled) {
-                    HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.") }
+                    HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.", about: "Blink menu bar icon") }
                 }
+                .accessibilityIdentifier("settings-blink-icon")
                 Toggle(isOn: $draft.Show_launch_splash) {
-                    HStack { Text("Show launch splash"); InfoButton("Show a brief logo screen when the app starts, while it finds your tuner and loads the guide. It ends by pointing at the menu bar icon — or, on a first run, by flowing into the setup wizard.") }
+                    HStack { Text("Show launch splash"); InfoButton("Show a brief logo screen when the app starts, while it finds your tuner and loads the guide. It ends by pointing at the menu bar icon — or, on a first run, by flowing into the setup wizard.", about: "Show launch splash") }
                 }
+                .accessibilityIdentifier("settings-launch-splash")
                 Picker(selection: $draft.Appearance_mode) {
                     Text("Auto").tag("auto")
                     Text("Light").tag("light")
                     Text("Dark").tag("dark")
                 } label: {
-                    HStack { Text("Appearance"); InfoButton("Controls the look of this app's own windows, and the web guide when it's shown inside one of them (e.g. Add Show). \"Auto\" follows macOS. A browser connecting to Web LAN over your network keeps its own independent light/dark choice — this setting has no effect on it.") }
+                    HStack { Text("Appearance"); InfoButton("Controls the look of this app's own windows, and the web guide when it's shown inside one of them (e.g. Add Show). \"Auto\" follows macOS. A browser connecting to Web LAN over your network keeps its own independent light/dark choice — this setting has no effect on it.", about: "Appearance") }
                 }
             }
 
             Section("Guide") {
                 Toggle(isOn: $draft.Guide_use_xml) {
-                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.") }
+                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.", about: "Use XMLTV guide format") }
                 }
                 if draft.Guide_use_xml {
                     CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
@@ -364,7 +412,7 @@ struct SettingsView: View {
 
     private var recordingView: some View {
         Form {
-            Section("Recording") {
+            Section("Defaults") {
                 RecordingDefaultsFields(
                     folderLabel: saveDirLabel,
                     onChooseFolder: { chooseFolder() },
@@ -373,30 +421,35 @@ struct SettingsView: View {
                     minFreeDiskGB: $draft.Min_disk_free_gb,
                     failThreshold: $draft.Fail_count_setting,
                     timeMachineExcludeMode: $draft.TimeMachine_exclude_mode,
-                    idPrefix: "settings-recording"
+                    idPrefix: "settings-recording",
+                    folderPath: draftSaveDirectory.isEmpty ? state.config.Hdhr_setup_folder : draftSaveDirectory
                 )
 
                 Toggle(isOn: $draft.Sports_padding_enabled) {
-                    HStack { Text("Bonus Time"); InfoButton("Lets recordings extend past the guide's listed end time. Sports shows opt into this by default — covers live events that run long.") }
+                    HStack { Text("Bonus Time"); InfoButton("Lets recordings extend past the guide's listed end time. Sports shows opt into this by default — covers live events that run long.", about: "Bonus Time") }
                 }
                 if draft.Sports_padding_enabled {
-                    Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",
+                    Stepper("Bonus Time: \(draft.Sports_padding_minutes) min past guide end",
                             value: $draft.Sports_padding_minutes, in: 10...60, step: 5)
                 }
             }
 
             Section("Post-Processing") {
                 Toggle(isOn: $draft.Series_subfolder_enabled) {
-                    HStack { Text("Series subfolders"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.") }
+                    HStack { Text("Series subfolders"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.", about: "Series subfolders") }
                 }
 
                 Toggle(isOn: $draft.Skip_recorded_episodes) {
-                    HStack { Text("Skip already-recorded episodes"); InfoButton("Before recording a series episode, skip it if a file with the same season/episode (e.g. S02E04) already exists in the show's folder. Advances to the next airing without a failure. Requires Series subfolders and season/episode data from the guide.") }
+                    HStack { Text("Skip already-recorded episodes"); InfoButton("Before recording a series episode, skip it if a file with the same season/episode (e.g. S02E04) already exists in the show's folder. Advances to the next airing without a failure. Requires Series subfolders and season/episode data from the guide.", about: "Skip already-recorded episodes") }
                 }
                 .disabled(!draft.Series_subfolder_enabled)
+                if !draft.Series_subfolder_enabled {
+                    Text("Requires Series subfolders")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
 
                 Toggle(isOn: $draft.Write_metadata_sidecar) {
-                    HStack { Text("Write metadata sidecar"); InfoButton("Saves a Kodi-style .nfo file alongside each recording (same folder, same name) with the guide's synopsis, season/episode, air date, and genre — lets a media server show real episode info instead of just the filename.") }
+                    HStack { Text("Write metadata sidecar"); InfoButton("Saves a Kodi-style .nfo file alongside each recording (same folder, same name) with the guide's synopsis, season/episode, air date, and genre — lets a media server show real episode info instead of just the filename.", about: "Write metadata sidecar") }
                 }
 
                 LabeledContent {
@@ -414,7 +467,7 @@ struct SettingsView: View {
                         }
                     }
                 } label: {
-                    HStack { Text("Post-recording script"); InfoButton("Shell script run after each successful recording. File path is $1; env vars: HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE. Example scripts are in tools/post_recording/.") }
+                    HStack { Text("Post-recording script"); InfoButton("Shell script run after each successful recording. File path is $1; env vars: HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE. Example scripts are in tools/post_recording/.", about: "Post-recording script") }
                 }
                 if !draft.Post_recording_script.isEmpty {
                     Text("$1 · HDHR_PATH · HDHR_TITLE · HDHR_CHANNEL · HDHR_TRANSCODE · HDHR_EPISODE · HDHR_DEVICE · HDHR_SERIES · HDHR_FILESIZE")
@@ -443,7 +496,7 @@ struct SettingsView: View {
                     Text("1/4 (~\(formattedGuideRefreshInterval(divisor: 4)))").tag(4)
                     Text("1/8 (~\(formattedGuideRefreshInterval(divisor: 8)))").tag(8)
                 } label: {
-                    HStack { Text("Auto-refresh"); InfoButton("How often guide data is automatically re-fetched in the background, as a fraction of the window size above — e.g. 1/8 of a 24-hour window refreshes roughly every 3 hours. A wider window can afford to refresh less often before running dry; a narrower one refreshes more often. The exact timing is randomized within the final hour of that window (or, for a window an hour or shorter, sometime within the whole window) each time, rather than always landing at the same predictable offset. \"Update Guides Now\" always refreshes immediately regardless of this setting.") }
+                    HStack { Text("Auto-refresh"); InfoButton("How often guide data is automatically re-fetched in the background, as a fraction of the window size above — e.g. 1/8 of a 24-hour window refreshes roughly every 3 hours. A wider window can afford to refresh less often before running dry; a narrower one refreshes more often. The exact timing is randomized within the final hour of that window (or, for a window an hour or shorter, sometime within the whole window) each time, rather than always landing at the same predictable offset. \"Update Guides Now\" always refreshes immediately regardless of this setting.", about: "Auto-refresh") }
                 }
                 Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
@@ -474,7 +527,7 @@ struct SettingsView: View {
 
     private var notificationsView: some View {
         Form {
-            Section("Notifications") {
+            Section("Reminders") {
                 Stepper(value: Binding(get: { Int(draft.Notify_upnext) }, set: { draft.Notify_upnext = Double($0) }), in: 5...120, step: 5) {
                     HStack { Text("Up Next: \(Int(draft.Notify_upnext)) min before"); InfoButton("Early heads-up notification sent this many minutes before a show's scheduled start time.") }
                 }
@@ -490,13 +543,16 @@ struct SettingsView: View {
 
             Section("Discord") {
                 Toggle(isOn: $draft.Discord_enabled) {
-                    HStack { Text("Enable Discord notifications"); InfoButton("Post recording status updates to a Discord channel via webhook. Requires a webhook URL from your server's channel settings.") }
+                    HStack { Text("Enable Discord notifications"); InfoButton("Post recording status updates to a Discord channel via webhook. Requires a webhook URL from your server's channel settings.", about: "Enable Discord notifications") }
                 }
+                .accessibilityIdentifier("settings-discord-enabled")
 
                 if draft.Discord_enabled {
                     HStack(spacing: 8) {
-                        TextField("Webhook URL", text: $draft.Discord_webhook_url)
+                        TextField("https://discord.com/api/webhooks/…", text: $draft.Discord_webhook_url)
                             .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Webhook URL")
+                            .accessibilityIdentifier("settings-discord-url")
                             .font(.system(.body, design: .monospaced))
                             .onChange(of: draft.Discord_webhook_url) {
                                 if draft.Discord_webhook_url != state.config.Discord_webhook_url {
@@ -527,7 +583,12 @@ struct SettingsView: View {
                             .buttonStyle(.bordered)
                             .disabled(draft.Discord_webhook_url.isEmpty)
                             .frame(width: 60)
+                            .accessibilityIdentifier("settings-discord-test")
                         }
+                    }
+                    if draft.Discord_webhook_url.isEmpty {
+                        Text("Paste a webhook URL to enable notifications")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
 
                     switch webhookTestStatus {
@@ -578,7 +639,7 @@ struct SettingsView: View {
             get: { fields.allSatisfy { draft[keyPath: $0] } },
             set: { newValue in for f in fields { draft[keyPath: f] = newValue } }
         )) {
-            HStack { Text(label); InfoButton(info) }
+            HStack { Text(label); InfoButton(info, about: label) }
         }
     }
 
@@ -589,7 +650,7 @@ struct SettingsView: View {
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
                     Text("Auto").tag("")
-                    let available = availableNetworkInterfaces()
+                    let available = netInterfaces
                     // The saved interface isn't connected right now: keep it selectable (so the Picker has a
                     // matching tag and the choice isn't lost) and say it is currently falling back to Auto.
                     if !draft.Network_interface.isEmpty, !available.contains(where: { $0.name == draft.Network_interface }) {
@@ -599,14 +660,14 @@ struct SettingsView: View {
                         Text(iface.displayLabel).tag(iface.name)
                     }
                 } label: {
-                    HStack { Text("Discovery & recording interface"); InfoButton("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.") }
+                    HStack { Text("Discovery & recording interface"); InfoButton("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.", about: "Discovery & recording interface") }
                 }
                 Picker(selection: $draft.Dock_icon_mode) {
                     Text("Auto").tag("auto")
                     Text("Always").tag("always")
                     Text("Never").tag("never")
                 } label: {
-                    HStack { Text("Dock icon"); InfoButton("\"Auto\" shows a Dock icon only until the app has successfully reached your tuner once — a workaround for a macOS bug where background-only apps can fail to ever receive the Local Network permission prompt — then hides it. \"Always\"/\"Never\" override this permanently.") }
+                    HStack { Text("Dock icon"); InfoButton("\"Auto\" shows a Dock icon only until the app has successfully reached your tuner once — a workaround for a macOS bug where background-only apps can fail to ever receive the Local Network permission prompt — then hides it. \"Always\"/\"Never\" override this permanently.", about: "Dock icon") }
                 }
             }
 
@@ -626,7 +687,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
 
                 Toggle(isOn: $draft.Verbose_curl) {
-                    HStack { Text("Verbose curl logging"); InfoButton("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.") }
+                    HStack { Text("Verbose curl logging"); InfoButton("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.", about: "Verbose curl logging") }
                 }
                 if draft.Verbose_curl {
                     Text("curl stderr → \(RecordingManager.curlLogPath)")
@@ -662,16 +723,16 @@ struct SettingsView: View {
 
             Section("Updates") {
                 Toggle(isOn: $draft.Check_for_updates) {
-                    HStack { Text("Check for updates automatically"); InfoButton("Once a day, checks GitHub for a newer release and shows a link here and in the menu bar. Read-only — never downloads or installs anything.") }
+                    HStack { Text("Check for updates automatically"); InfoButton("Once a day, checks GitHub for a newer release and shows a link here and in the menu bar. Read-only — never downloads or installs anything.", about: "Check for updates automatically") }
                 }
             }
 
             Section("Signal Quality") {
                 Toggle(isOn: $draft.Signal_quality_enabled) {
-                    HStack { Text("Show signal bars in guide"); InfoButton("Display signal strength bars in the guide grid and Watch Now view. Signal data is always collected during recordings regardless of this toggle.") }
+                    HStack { Text("Show signal bars in guide"); InfoButton("Display signal strength bars in the guide grid and Watch Now view. Signal data is always collected during recordings regardless of this toggle.", about: "Show signal bars in guide") }
                 }
                 Toggle(isOn: $draft.Signal_quality_alert_notify) {
-                    HStack { Text("Send alerts on signal dropout"); InfoButton("Send a notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always active.") }
+                    HStack { Text("Send alerts on signal dropout"); InfoButton("Send a notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always active.", about: "Send alerts on signal dropout") }
                 }
             }
 
@@ -701,37 +762,39 @@ struct SettingsView: View {
                             .disabled(state.recordableDevices.isEmpty)
                     }
                 }
-                Section("Over-the-Air Guide") {
-                    Picker(selection: $draft.OTA_lineup_hour) {
-                        Text("Never").tag(-1)
-                        ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
-                    } label: {
-                        HStack { Text("Rescan the channel list from the air"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.") }
-                    }
-                    .accessibilityIdentifier("settings-ota-lineup-hour")
-                    Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
+            }
+
+            Section("Over-the-Air Guide") {
+                Picker(selection: $draft.OTA_lineup_hour) {
+                    Text("Never").tag(-1)
+                    ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
+                } label: {
+                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
+                }
+                .accessibilityIdentifier("settings-ota-lineup-hour")
+                Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                AirLastScanLines(progress: state.otaProgress)
+                if state.otaScanTask != nil {
+                    Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                    AirLastScanLines(progress: state.otaProgress)
-                    if state.otaScanTask != nil {
-                        Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
-                            .font(.caption)
-                        Button("Cancel Scan") { state.cancelOTAScan() }
-                            .foregroundStyle(.red)
-                            .accessibilityIdentifier("settings-ota-cancel")
-                    } else {
-                        if !state.otaScanStatus.isEmpty {
-                            Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
-                                .disabled(state.recordableDevices.isEmpty)
-                                .accessibilityIdentifier("settings-ota-lineup-scan")
-                            InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.")
-                            Button("Scan the Air Now") { state.startOTAScan() }
-                                .disabled(state.recordableDevices.isEmpty)
-                                .accessibilityIdentifier("settings-ota-scan")
-                        }
+                    Button("Cancel Scan") { state.cancelOTAScan() }
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("settings-ota-cancel")
+                } else {
+                    if !state.otaScanStatus.isEmpty {
+                        Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
+                            .disabled(state.recordableDevices.isEmpty)
+                            .accessibilityIdentifier("settings-ota-lineup-scan")
+                        InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.", about: "Scan Channel List Only")
+                        Button("Scan the Air Now") { state.startOTAScan() }
+                            .disabled(state.recordableDevices.isEmpty)
+                            .accessibilityIdentifier("settings-ota-scan")
+                        InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
                     }
                 }
             }
@@ -746,17 +809,19 @@ struct SettingsView: View {
         Form {
             Section("Web LAN") {
                 Toggle(isOn: $draft.Web_server_enabled) {
-                    HStack { Text("Enable Web LAN"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
+                    HStack { Text("Enable Web LAN"); InfoButton("Serve the channel guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.", about: "Enable Web LAN") }
                 }
                 if draft.Web_server_enabled {
                     LabeledContent {
-                        TextField("", value: $draft.Web_server_port, format: .number.grouping(.never))
+                        TextField("Port", value: $draft.Web_server_port, format: .number.grouping(.never))
+                            .labelsHidden()
+                            .accessibilityIdentifier("settings-web-port")
                             .frame(width: 80)
                             .multilineTextAlignment(.trailing)
                     } label: {
-                        HStack { Text("Port"); InfoButton("Port number (1025–65534). macOS requires root for ports below 1024. Default: 1980. Changes and mDNS registration update immediately on Save.") }
+                        HStack { Text("Port"); InfoButton("Port number (1025–65534). macOS requires root for ports below 1024. Default: 1980. Changes and mDNS registration update immediately on Save.", about: "Port") }
                     }
-                    if draft.Web_server_port < 1025 || draft.Web_server_port > 65534 {
+                    if webPortInvalid {
                         Label("Port must be between 1025 and 65534", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
@@ -764,13 +829,7 @@ struct SettingsView: View {
                 }
                 if state.config.Web_server_enabled && state.webServerRunning {
                     let urlStr = "http://\(lanIP()):\(state.config.Web_server_port)"
-                    HStack {
-                        Text(urlStr)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                        Spacer()
-                        if let url = URL(string: urlStr) { Link("Open", destination: url) }
-                    }
+                    urlRow(urlStr)
                 }
             }
 
@@ -810,17 +869,23 @@ struct SettingsView: View {
                         // hdhr_guide (docs/TUIGuide.md) only works while the web server it's
                         // showing above is actually running — same gate as the Access section, so
                         // this row can never point someone at a tool that will just fail to connect.
-                        let guideURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide")
-                        // Checked once per body render (cheap: a single stat call), not cached —
+                        let guideURL = Self.terminalGuideURL
+                        // Existence is cached (terminalGuideExists, refreshed on appear/refocus):
                         // deploy.sh always copies this file, so it's only ever missing via an
                         // unsupported dev flow (plain `swift build` + direct binary, no .app bundle)
                         // or a corrupted install; in either case the button should say so rather
                         // than silently no-op on click.
-                        let guideExists = FileManager.default.fileExists(atPath: guideURL.path)
-                        Text(guideURL.path)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                        if guideExists {
+                        HStack {
+                            Text(guideURL.path)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .layoutPriority(1)
+                            Spacer()
+                            copyButton(guideURL.path)
+                        }
+                        if terminalGuideExists {
                             Button {
                                 terminalGuideOpenError = ""
                                 openInTerminal(guideURL) { errorMessage in
@@ -869,13 +934,7 @@ struct SettingsView: View {
                 if draft.Home_assistant_status_enabled && lanEnabled {
                     if state.config.Web_server_enabled && state.webServerRunning {
                         let urlStr = "http://\(lanIP()):\(state.config.Web_server_port)/api/tuner-status.json"
-                        HStack {
-                            Text(urlStr)
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                            Spacer()
-                            if let url = URL(string: urlStr) { Link("Open", destination: url) }
-                        }
+                        urlRow(urlStr)
                     } else {
                         Text("Save to activate — the endpoint responds once Web LAN is running.")
                             .font(.caption)
@@ -891,7 +950,7 @@ struct SettingsView: View {
             if state.config.FEED_feature_enabled {
             Section("Recording FEED (Beta)") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Web LAN above. Beta: occasional playback hiccups on the watching Mac, and switching audio tracks while watching, are known limitations still being worked on.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Web LAN above. Beta: occasional playback hiccups on the watching Mac, and switching audio tracks while watching, are known limitations still being worked on.", about: "Rebroadcast In-Progress Recordings") }
                 }
                 if draft.Virtual_tuner_relay_enabled {
                     Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {
@@ -953,6 +1012,31 @@ struct SettingsView: View {
         }
     }
 
+    // Long monospaced URL/path row: wraps to two lines, middle-truncates beyond that, keeps the
+    // Open link and Copy button at their natural size so they never get squeezed out.
+    @ViewBuilder
+    private func urlRow(_ urlStr: String) -> some View {
+        HStack {
+            Text(urlStr)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .layoutPriority(1)
+            Spacer()
+            if let url = URL(string: urlStr) { Link("Open", destination: url).fixedSize() }
+            copyButton(urlStr)
+        }
+    }
+
+    private func copyButton(_ string: String) -> some View {
+        Button("Copy") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
+        .fixedSize()
+    }
+
     // MARK: - Maintenance
 
     private var maintenanceView: some View {
@@ -992,7 +1076,7 @@ struct SettingsView: View {
                     return "Cleared fail counts on \(total) show(s)"
                 }
                 maintenanceRow("Organize Series Recordings",
-                               "Run after enabling Series Subfolders to sort existing flat recordings into Title/Season XX/ folders") {
+                               "Run after enabling Series subfolders to sort existing flat recordings into Title/Season XX/ folders") {
                     state.organizeSeriesRecordings()
                 }
             }
@@ -1145,36 +1229,34 @@ struct SettingsView: View {
             // Maintenance tab's info icons visibly closer to their labels than everywhere else.
             HStack {
                 Text(title).fontWeight(.medium)
-                InfoButton(description)
+                InfoButton(description, about: title)
             }
             Spacer()
-            if maintenanceBusy {
+            if busyRow == title {
                 ProgressView().controlSize(.small)
             } else {
                 Button("Run") {
-                    maintenanceBusy = true
+                    busyRow = title
                     maintenanceStatus = ""
                     Task { @MainActor in
                         do { maintenanceStatus = try await action() }
                         catch { maintenanceStatus = "Error: \(error.localizedDescription)" }
-                        maintenanceBusy = false
+                        if busyRow == title { busyRow = nil }
                     }
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Run \(title)")
+                .accessibilityIdentifier("settings-maint-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var vlcInstalled: Bool {
-        VLCBridge.locateApp() != nil
     }
 
     // Best-effort LAN IP for the Web LAN / Home Assistant "Open"/copy rows — shared so both agree
     // on the same address instead of each resolving it independently. Prefers the explicitly
     // configured interface, else physical Ethernet/Wi-Fi, else any non-VPN interface.
     private func lanIP() -> String {
-        let ifaces = availableNetworkInterfaces()
+        let ifaces = netInterfaces
         if !state.config.Network_interface.isEmpty,
            let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
             return match.ip
@@ -1242,7 +1324,7 @@ struct SettingsView: View {
                 from a simple macOS script.
 
                 This Swift/SwiftUI rewrite brings a native menu bar experience, a \
-                cable-guide grid, persistent settings, and modern macOS features like \
+                channel-guide grid, persistent settings, and modern macOS features like \
                 Launch at Login and user notifications, while staying fully compatible \
                 with the original AppleScript config format.
                 """)
@@ -1617,11 +1699,15 @@ struct WindowCloseInterceptor: NSViewRepresentable {
     // windowDidBecomeKey fires on every real refocus, not just creation — resyncing there closes
     // the gap .onAppear alone can't cover.
     let onBecomeKey: () -> Void
+    // Hands the hosting window back to the caller (SettingsView's Save & Close closes exactly this
+    // window rather than NSApp.keyWindow, which may be a sheet or panel).
+    var onWindow: ((NSWindow) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             view.window?.delegate = context.coordinator
+            if let w = view.window { onWindow?(w) }
         }
         return view
     }

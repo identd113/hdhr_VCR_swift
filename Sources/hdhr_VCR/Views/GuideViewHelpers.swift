@@ -291,7 +291,7 @@ func watchInAppH264Label(_ title: String) -> String { "Watch \(title) in H.264" 
 func watchInAppCodecLabel(_ title: String, codec: String) -> String { "Watch \(title) in \(codec)" }
 // Accessibility label for the "Watch alongside current (PiP)" rows (Recording Now and Recording
 // on Another Mac menus) — MenuContent.swift.
-func watchAlongsideLabel(_ title: String) -> String { "Watch \(title) alongside current playback" }
+func watchAlongsideLabel(_ title: String) -> String { "Watch \(title) as Picture-in-Picture" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
@@ -418,6 +418,7 @@ private struct PulseIfRecording: ViewModifier {
     let active: Bool
     let color: Color
     @State private var dimmed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
         content
             .opacity(active && dimmed ? 0.5 : 1)
@@ -430,7 +431,9 @@ private struct PulseIfRecording: ViewModifier {
     }
 
     private func syncAnimation() {
-        if active {
+        if active && reduceMotion {
+            dimmed = false   // Reduce Motion: hold the ring at full opacity, no pulse
+        } else if active {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 dimmed = true
             }
