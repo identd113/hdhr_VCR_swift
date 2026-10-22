@@ -57,6 +57,22 @@ struct OTAStoreTests {
         #expect(OTAStore.loadSummary(deviceId: "TEST", root: root) != nil)
     }
 
+    @Test func aGuideReadStopsOnceNothingNewArrives() {
+        var q = OTAReadQuiet()
+        let a = q.shouldStop(signature: 10, elapsed: 5)          // first look
+        let b = q.shouldStop(signature: 40, elapsed: 12)         // still growing
+        let c = q.shouldStop(signature: 40, elapsed: 30)         // quiet for 18 s: not yet
+        let d = q.shouldStop(signature: 40, elapsed: 38)         // quiet for 26 s and past the minimum
+        #expect(!a && !b && !c && d)
+        var slow = OTAReadQuiet()
+        let e = slow.shouldStop(signature: 1, elapsed: 2)
+        let f = slow.shouldStop(signature: 1, elapsed: 20)       // past the minimum but only 18 s quiet
+        let g = slow.shouldStop(signature: 2, elapsed: 40)       // a late trickle resets the quiet timer
+        let h = slow.shouldStop(signature: 2, elapsed: 60)
+        let i = slow.shouldStop(signature: 2, elapsed: 66)
+        #expect(!e && !f && !g && !h && i)
+    }
+
     @Test func anEmptyScanNeverReplacesAnEarlierOne() throws {
         let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
         _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)

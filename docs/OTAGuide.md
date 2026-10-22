@@ -65,3 +65,9 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
   lineup-only scan (a few minutes, no window) once the hour has passed and the saved list is older than today's mark, at most one try a day
   (`AppState.lineupScanDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
 - **Guide failure** (`AppState.offerAirGuideFallback`, called once per outage from `handleGuideLoadFailure`, only when no saved air guide under 36 h exists and no scan is running): an in-app alert (Scan Now / Not Now) and a Discord message (honors the Guide-error Discord toggle). Scan Now starts a full scan (list, then guide); Not Now ends the offer for this outage; with no answer for an hour the full scan starts by itself. The guide loading again cancels the offer (`endAirGuideFallbackOffer`). The Discord message is one-way: the answer is given in the app.
+
+## Adaptive guide reads (2026-10-22)
+A guide read (`OTAScanner.capture`, not the quick channel-list read) ends before its time cap once the picture has stopped growing: at least `OTAReadQuiet.minimum` (20 s) have passed
+and the count of channels, listings and descriptions (`OTAReadQuiet.signature`) has not changed for `OTAReadQuiet.quiet` (25 s). The cap (90 s by default) still applies, so a station that keeps
+trickling in listings uses all of it. Why: a station's near-term listings come round within seconds and its channel/program tables many times a second, so most stations are done long before the cap
+(longer reads rarely add services or reach further; the reach is set by what the station transmits). Unit-tested as `aGuideReadStopsOnceNothingNewArrives`.

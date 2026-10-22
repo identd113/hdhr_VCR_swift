@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **The air scan finishes sooner.** A station's guide is now read only until nothing new has arrived for 25 seconds (at least 20 seconds), instead of always the full 90. A station that keeps sending listings still gets the full time.
+
 - *Added* — **The scan window shows hidden and unusual services.** A multiplex's channel list now tags hidden channels, encrypted ones, data services, programs the channel table never names, and services that are announced but not actually transmitting.
 
 - *Added* — **Refresh one station's guide from the web guide.** Select a channel in the Air Only section and press **Refresh this multiplex's guide**: the app scans just that station off the air (about a minute) and the rows update. The saved air guide is replaced with that station's listings; the saved channel list is kept.

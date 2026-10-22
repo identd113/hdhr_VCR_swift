@@ -239,6 +239,7 @@ actor OTAScanner {
         var bytes = 0
         var lastYieldCheck = started
         var lastUpdate = started
+        var quiet = OTAReadQuiet()
         let outcome: CaptureOutcome = await withTaskCancellationHandler {
             for await event in reader.events {
                 switch event {
@@ -258,6 +259,8 @@ actor OTAScanner {
                     await onUpdate(snapshot, bytes, elapsed)
                     if elapsed >= 15, snapshot.announcedEITCount == 0 { break }   // names only: a guide is never coming
                     if lineupOnly, !snapshot.channels.isEmpty { break }           // the channel list repeats several times a second
+                    // A guide read ends once nothing new has arrived for a while (the near-term listings come round quickly, the rest only trickles in).
+                    if !lineupOnly, quiet.shouldStop(signature: OTAReadQuiet.signature(of: snapshot), elapsed: elapsed) { break }
                 }
                 if elapsed >= seconds { break }
                 if Date().timeIntervalSince(lastYieldCheck) >= 1 {
@@ -270,6 +273,25 @@ actor OTAScanner {
         reader.cancel()   // closing the stream releases the tuner
         if case .decoded(let result, let n) = outcome, result.channels.isEmpty { return .skipped(n < 100_000 ? "no signal" : "no guide tables") }
         return outcome
+    }
+}
+
+/// When a guide read has gone quiet: at least `minimum` seconds have passed and the picture (channels, listings, descriptions) has not grown for `quiet` seconds.
+/// The `seconds` cap still applies; a station that keeps trickling in listings simply uses all of it.
+struct OTAReadQuiet {
+    static let minimum: TimeInterval = 20
+    static let quiet: TimeInterval = 25
+    private var lastSignature = -1
+    private var lastChange: TimeInterval = 0
+
+    /// Everything that can still grow: channels, listings and the descriptions that arrive after them.
+    static func signature(of r: OTADecodeResult) -> Int {
+        r.channels.count + r.events.count * 4 + r.events.filter { !$0.description.isEmpty }.count
+    }
+
+    mutating func shouldStop(signature: Int, elapsed: TimeInterval) -> Bool {
+        if signature != lastSignature { lastSignature = signature; lastChange = elapsed; return false }
+        return elapsed >= Self.minimum && elapsed - lastChange >= Self.quiet
     }
 }
 
