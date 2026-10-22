@@ -50,7 +50,7 @@ enum OTAStore {
     static func muxRecords(deviceId: String, root: URL = OTAStore.root) -> [Int: MuxRecord] {
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         if let data = try? Data(contentsOf: muxFile(deviceId: deviceId, root: root)), let list = try? decoder.decode([MuxRecord].self, from: data) {
-            return Dictionary(uniqueKeysWithValues: list.map { ($0.rf, $0) })
+            return Dictionary(list.map { ($0.rf, $0) }, uniquingKeysWith: { first, _ in first })
         }
         guard let lineup = allSavedLineup(deviceId: deviceId, root: root), let date = lineupDate(deviceId: deviceId, root: root) else { return [:] }
         return Dictionary(grouping: lineup, by: \.RF).mapValues { MuxRecord(rf: $0[0].RF, lineupDate: date, guideDate: nil, channels: $0.count, events: 0) }
@@ -94,36 +94,38 @@ enum OTAStore {
 
             // Which RF channels this scan speaks for: the ones it read, and the ones that now have nothing on them.
             let read = Set(results.map(\.rf))
+            // Of those, the ones whose guide this scan really read (a channel-list-only read of a station, e.g. one whose guide read failed in a full scan, never replaces listings).
+            let guideRead = Set(results.filter { !lineupOnly && $0.guideRead }.map(\.rf))
             let gone = Set(outcome.skipped.filter { $0.value == "no signal" }.keys).subtracting(read)
             let replaced = read.union(gone)
 
+            var records = muxRecords(deviceId: deviceId, root: root)   // before lineup.json is rewritten: an old save without mux.json takes its dates from the file
             let oldLineup = allSavedLineup(deviceId: deviceId, root: root) ?? []
-            let oldNumbers = Set(oldLineup.filter { replaced.contains($0.RF) }.map(\.GuideNumber))
+            let oldNumbers = Set(oldLineup.filter { guideRead.union(gone).contains($0.RF) }.map(\.GuideNumber))
+            let goneNumbers = Set(oldLineup.filter { gone.contains($0.RF) }.map(\.GuideNumber))
             let lineup = sortedByNumber(oldLineup.filter { !replaced.contains($0.RF) } + lineupNew, { $0.GuideNumber })
             try encoder.encode(lineup).write(to: dir.appendingPathComponent("lineup.json"), options: .atomic)
 
             let oldGuide = (try? decoder.decode([GuideChannel].self, from: Data(contentsOf: guideFile(deviceId: deviceId, root: root)))) ?? []
-            let newNumbers = Set(guideNew.map(\.GuideNumber))
-            var guide: [GuideChannel]
-            if lineupOnly {
-                // No listings in this read: keep the earlier guide, and only add channels that had none at all.
-                let have = Set(oldGuide.map(\.GuideNumber))
-                guide = oldGuide + guideNew.filter { !have.contains($0.GuideNumber) }
-            } else {
-                guide = oldGuide.filter { !oldNumbers.contains($0.GuideNumber) && !newNumbers.contains($0.GuideNumber) } + guideNew
-            }
+            // Listings are replaced only for stations whose guide was read; everything else keeps what it had, and a channel with no listings yet is just added.
+            let readNumbers = Set(OTAGuideConverter.guideChannels(from: results.filter { guideRead.contains($0.rf) }.map(\.result)).map(\.GuideNumber))
+            let have = Set(oldGuide.map(\.GuideNumber)).subtracting(oldNumbers)
+            var guide = oldGuide.filter { !oldNumbers.contains($0.GuideNumber) && !readNumbers.contains($0.GuideNumber) && !goneNumbers.contains($0.GuideNumber) }
+            guide += guideNew.filter { readNumbers.contains($0.GuideNumber) || !have.contains($0.GuideNumber) }
             guide = sortedByNumber(guide, { $0.GuideNumber })
-            try encoder.encode(guide).write(to: guideFile(deviceId: deviceId, root: root), options: .atomic)
+            // A channel-list-only save that changed nothing leaves guide.json (and its date, which the 36-hour freshness test reads) alone.
+            if !lineupOnly || guide.count != oldGuide.count || Set(guide.map(\.GuideNumber)) != Set(oldGuide.map(\.GuideNumber)) {
+                try encoder.encode(guide).write(to: guideFile(deviceId: deviceId, root: root), options: .atomic)
+            }
 
             // Per-multiplex dates: this scan completed these RF channels now.
-            var records = muxRecords(deviceId: deviceId, root: root)
             for rf in gone { records[rf] = nil }
             for m in results {
                 let numbers = Set(m.result.channels.map(\.number))
                 var rec = records[m.rf] ?? MuxRecord(rf: m.rf, lineupDate: nil, guideDate: nil, channels: 0, events: 0)
                 rec.lineupDate = now
                 rec.channels = numbers.count
-                if !lineupOnly {
+                if !lineupOnly, m.guideRead {
                     rec.guideDate = now
                     rec.events = m.result.events.count
                 }

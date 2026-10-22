@@ -29,13 +29,20 @@ struct OTAScanView: View {
         .padding(16)
         .frame(minWidth: 540, idealWidth: 540, maxWidth: 540, minHeight: 700, idealHeight: 840, maxHeight: .infinity)   // taller shows more channels; the list scrolls either way
         .onAppear(perform: reloadMuxRecords)
-        .onChange(of: progress.running) { _, _ in reloadMuxRecords() }
+        .onChange(of: progress.running) { _, running in
+            reloadMuxRecords()
+            if running { pinnedRF = nil; followedRF = nil }   // a new scan starts with nothing pinned from the last one
+        }
+        .onChange(of: progress.currentRF) { _, rf in
+            if let rf, progress.rows.contains(where: { $0.rf == rf }) { followedRF = rf }   // empty channels have no tab: stay on the last station that did
+        }
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
 
     private func reloadMuxRecords() {
-        muxRecords = state.recordableDevices.first.map { OTAStore.muxRecords(deviceId: $0.DeviceID) } ?? [:]
+        let id = state.otaScanDeviceId ?? state.recordableDevices.first(where: \.isAvailable)?.DeviceID ?? state.recordableDevices.first?.DeviceID
+        muxRecords = id.map { OTAStore.muxRecords(deviceId: $0) } ?? [:]
     }
 
     /// "Channel list read Oct 22, 1:14 AM · Guide read Oct 22, 1:14 AM" for a multiplex (what is saved on disk, independent of the scan in progress).
@@ -50,7 +57,7 @@ struct OTAScanView: View {
     private var overview: some View {
         TimelineView(.periodic(from: .now, by: 2)) { context in
             let now = context.date
-            let value = progress.running ? progress.fraction(now: now) : (progress.total > 0 ? 1 : 0)
+            let value = progress.running ? progress.fraction(now: now) : (progress.total > 0 && !progress.cancelled ? 1 : progress.fraction(now: now))
             VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title).font(.title3.bold())

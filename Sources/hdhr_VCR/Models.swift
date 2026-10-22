@@ -750,7 +750,7 @@ extension AppConfig: Codable {
         Guide_use_ota         = (try? c.decode(Bool.self,   forKey: .Guide_use_ota))         ?? false
         OTA_scan_hour         = (try? c.decode(Int.self,    forKey: .OTA_scan_hour))         ?? -1
         OTA_lineup_auto       = (try? c.decode(Bool.self,   forKey: .OTA_lineup_auto))       ?? true
-        OTA_lineup_hour       = (try? c.decode(Int.self,    forKey: .OTA_lineup_hour))       ?? (OTA_lineup_auto ? 3 : -1)
+        OTA_lineup_hour       = (try? c.decode(Int.self,    forKey: .OTA_lineup_hour)).map { (0...23).contains($0) ? $0 : -1 } ?? (OTA_lineup_auto ? 3 : -1)
         Dev_lineup_source     = (try? c.decode(String.self, forKey: .Dev_lineup_source))     ?? "tuner"
         // Only 2/4/8 are ever offered in the UI — a corrupt/hand-edited value outside that set falls
         // back to the default (8) rather than being clamped into it, since there's no sensible

@@ -4,6 +4,11 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **Safer air scans.** Cancelling a scan, or a tuner that is taken by another device for a moment, no longer deletes a saved station: a cut-off read is thrown away instead of being saved as "no signal", and a busy tuner is tried twice first. A station whose guide could not be read in the second pass of a full scan keeps its earlier listings and its earlier "guide read" date. A channel-list-only scan no longer makes an old guide look fresh. Some stations' episode descriptions that were skipped are now read.
+- *Updated* — **Live TV in the browser is better behaved.** A scheduled recording now stops a browser's live TV if it needs the tuner; live TV stops when the app quits, ends after about 3 hours or when the disk runs low, and one viewer closing the player no longer stops it for another. It also asks a running air scan to step aside first.
+- *Updated* — **Web streaming only converts recordings in progress.** A finished recording can no longer be converted whole by requesting its stream address.
+- *Updated* — **Scan window and setup fixes.** The scan window no longer jumps between stations, a cancelled scan says so (in the window and the setup wizard) instead of "no stations found" or a full bar, and the Developer Run button waits while a scan is running. Sample rates read "44.1 kHz".
+
 - *Added* — **Each multiplex is tracked on its own.** The air scan now remembers, for every RF channel, when its channel list and its guide were last read to the end. The scan window shows it under the selected multiplex and the web guide shows it for an air-only channel. A scan only replaces the multiplexes it actually read.
 
 - *Updated* — **The air scan finishes sooner.** A station's guide is now read only until nothing new has arrived for 25 seconds (at least 20 seconds), instead of always the full 90. A station that keeps sending listings still gets the full time.

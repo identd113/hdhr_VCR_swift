@@ -92,8 +92,11 @@ final class ConfigManager {
             return
         }
         let backup = configURL.appendingPathExtension("bak")
-        try? FileManager.default.removeItem(at: backup)
-        try? FileManager.default.copyItem(at: configURL, to: backup)
+        // Only a main file that still reads back becomes the backup; a damaged one must not replace the last good .bak.
+        if let current = try? Data(contentsOf: configURL), (try? Self.makeDecoder().decode(ConfigFile.self, from: current)) != nil {
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.copyItem(at: configURL, to: backup)
+        }
         let data = try Self.makeEncoder().encode(file)
         try data.write(to: configURL, options: .atomic)
         glog("[Config] Saved \(configURL.lastPathComponent)")

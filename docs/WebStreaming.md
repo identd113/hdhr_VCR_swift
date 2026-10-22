@@ -48,7 +48,7 @@ So AVFoundation **deinterlaces 1080i/480i automatically** (the earlier "deinterl
 | **Live tuner stream** (`http://<EXTEND>:5004/auto/v9.1`) | **Fails** (`byte range and no content length`): AVFoundation cannot read an unbounded stream. Tuner was released immediately (0/2). |
 | macOS 15 | **Untestable here** (both Macs run 27.0.1). Needs a macOS 15 machine/VM before the app's minimum can be claimed. |
 
-So the AVFoundation pipeline must read from a **local growing file**, not a URL. Live TV works the same way: spool the tuner stream into a rolling temp `.ts` (a recording that is never saved) and treat it like a growing recording. (Alternative: an `AVAssetResourceLoader` delegate that answers `Range` requests from a buffer.)
+So the AVFoundation pipeline must read from a **local growing file**, not a URL. Live TV works the same way: spool the tuner stream into a temp `.ts` (bounded at 6 GB / low disk, see "Live TV") (a recording that is never saved) and treat it like a growing recording. (Alternative: an `AVAssetResourceLoader` delegate that answers `Range` requests from a buffer.)
 
 Implication: a native AVAssetReader → AVAssetWriter (H.264 hardware + AAC, HLS segment output) pipeline needs no VLC.app and is ~15× cheaper than x264, but it is file-based and must be proven for growing recordings and on older macOS. VLC remains the fallback for sources AVFoundation cannot read.
 
@@ -130,12 +130,11 @@ Chrome on the laptop played streams served by the Mini (the laptop's Chrome firs
 8. **Chrome's built-in HLS player rejected the first live playlist** (found through the real Watch Now! button; intermittent, about 3 of 5 cold starts): a live playlist with fewer than 3 segments gives `DEMUXER_ERROR_COULD_NOT_PARSE` after about 30 ms. Segment bytes were complete and decodable, and every offline variant (7 join points of a 1080i capture, 6 of 720p60 football) played. The cause was found by serving hand-made playlists with 1, 2 and 3 segments (1 and 2 fail, 3 plays; `EXT-X-START` does not help). A live playlist is now withheld until it lists 3 segments (`HLSPlaylist.minLiveSegments`); three cold starts since: 8.7 s, 4.1 s and 3.5 s to first picture, no errors. Chrome 149 reports `maybe` for native HLS on desktop, so the Watch Now! player uses the native path there.
 
 ### Scope (decided 2026-10-20)
-Watch Now! is for **shows recording right now**. Finished recordings, live TV from a tuner, a quality picker, the status bar and a Record menu are out of scope for this branch (the finished-recording stream itself still works at `/api/hls/<show>/index.m3u8`).
+Watch Now! is for **shows recording right now** (a finished recording is no longer converted: the stream only starts while the recording is in progress), plus **live TV from a tuner** (below). A quality picker, the status bar and a Record menu are out of scope for this branch.
 
 ### Open / not built
-- **Live TV from a tuner** is not wired into the app: only tested by spooling to a file and following it (rows 7–8).
 - **Hardware-transcode input is re-encoded**: the tuner already gives H.264, so the cheapest path is copying that video and converting only AC-3 to AAC. The AVAssetWriter route always encodes video.
-- **Watch Now! (web guide)** now exists for a recording in progress: button in the summary panel, player modal, `/api/hls-status`. The show editor (tuner dropdown → a show recording now) has the same button, reusing the row's `data-recording`. Watch Now! is for shows airing right now only; a finished recording is not offered. Still to do: a quality choice, the status bar and Record menu of the native player, live TV from a tuner.
+- **Watch Now! (web guide)** now exists for a recording in progress: button in the summary panel, player modal, `/api/hls-status`. The show editor (tuner dropdown → a show recording now) has the same button, reusing the row's `data-recording`. Watch Now! is for shows airing right now only; a finished recording is not offered. Still to do: a quality choice, the status bar and Record menu of the native player.
 - **Late joiners start 2 minutes behind live** and cannot seek earlier; a finished recording is only reachable once converted (about 11× real time).
 - **Not tested**: audible audio, Safari/Firefox/Edge/phones on this build, macOS 15, a recording that ends while watched on the rolling-window build, two different shows at once under load.
 - **Audio-only twin (built 2026-10-20):** every session also writes `audio.m3u8` (`a-init.mp4`, `a-seg-NNNNN.m4s`): the same AAC audio, no picture (about 115 kb/s), made by a second writer fed the same samples; the recording on disk is unchanged. The player registers the show name, episode and art with the Media Session API; when the page is hidden it warms up the audio stream, and Play on the iOS lock screen / Control Center starts it (coming back to the page returns to the picture). Checked on the Mini with `ffprobe` (AAC stereo 48 kHz); **not yet tested on an iPhone**. Control Center details (2026-10-20): the player builds a square 512 px JPEG data URL for the artwork itself (poster fetched through `GET /api/art?u=`, which only allows `https://img.hdhomerun.com/…`, so iOS never fetches an image), and sets `mediaSession.setPositionState` from the show's own start and end (a timeline of the show, refreshed every 5 s; from the guide tile's start/end, or from the editor row's `data-next` + `data-length` while it is airing). Still not built: audio-only *sources* (radio channels), because the converter needs a video track.
@@ -144,3 +143,9 @@ Watch Now! is for **shows recording right now**. Finished recordings, live TV fr
 ## Decision
 
 Build the web stream on **AVFoundation (AVAssetReader → hardware H.264 + AAC → HLS segments)**, reading from a local growing file (a recording, or a rolling temp spool of a live tuner stream). VLC x264 stays as the fallback for sources AVFoundation cannot read, and for macOS versions where it cannot (macOS 15 unverified). Tuner hardware transcode (H.264 from the tuner, AC-3→AAC only) remains a possible live-TV shortcut, but the spool-and-convert path works for every tuner, so it is not required.
+
+
+## Live TV
+A lineup or air-only channel can be watched in the browser: `POST /api/live-start` spools the tuner stream (FEED-cache puller) into a temp `.ts` that the same HLS converter follows like a recording that is never saved.
+It occupies a tuner (counted in `activeTunerCount`), yields to a running air scan and to a scheduled recording, is limited to about 3 hours / 6 GB per session, ends when the last viewer closes the player
+(`/api/live-stop`) or 45 s after the stream goes quiet, and is stopped when the app quits. Details and the routes: `docs/WebServer.md` "Live TV in the browser".

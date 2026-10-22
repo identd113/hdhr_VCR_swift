@@ -107,6 +107,8 @@ final class OTAScanProgress: ObservableObject {
     @Published var note: String?
     /// When a scan that has ended finished (nil while running).
     @Published var endedAt: Date?
+    /// The person cancelled this scan (so the wizard and the window say "cancelled", not "no stations found" / 100 %).
+    @Published var cancelled = false
     @Published var rows: [OTAMultiplexRow] = []
     /// RF channels a tuner is on right now, before or while they are read.
     @Published var tuning: Set<Int> = []
@@ -136,7 +138,7 @@ final class OTAScanProgress: ObservableObject {
 
     func reset(lineupOnly: Bool, twoPass: Bool = false) {
         rows = []; tuning = []; currentRF = nil; signals = [:]; lastUpdateApplied = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""; listenedRF = []; emptyRF = []
-        lanes = [:]; note = nil; endedAt = nil
+        lanes = [:]; note = nil; endedAt = nil; cancelled = false
         running = true
         startedAt = Date()
         self.lineupOnly = lineupOnly

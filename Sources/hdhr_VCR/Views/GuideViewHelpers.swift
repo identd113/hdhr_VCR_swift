@@ -535,6 +535,8 @@ struct SignalBarsView: View {
         HStack(alignment: .bottom, spacing: 1) {
             bar(4); bar(7, bucket != .poor); bar(10, bucket == .good)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Signal \(bucket == .good ? "good" : bucket == .poor ? "poor" : "fair")")
     }
 
     private func bar(_ h: CGFloat, _ filled: Bool = true) -> some View {

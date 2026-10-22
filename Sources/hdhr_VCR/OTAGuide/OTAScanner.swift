@@ -44,6 +44,8 @@ struct OTAMultiplex: Sendable, Equatable {
     var result: OTADecodeResult
     var bytes: Int
     var seconds: Double = 0   // how long it was read
+    /// False for a channel-list-only read: it carries no listings, so a guide save must not treat it as a finished guide (no empty listings, no "guide read" date).
+    var guideRead = true
 }
 
 struct OTAScanOutcome: Sendable {
@@ -152,7 +154,7 @@ actor OTAScanner {
                                       }) { [self] in await self.shouldYield(env: env) }
         switch capture {
         case .decoded(let result, let bytes):
-            record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes, seconds: Date().timeIntervalSince(started)), skipped: nil, progress: progress)
+            record(rf: rf, multiplex: OTAMultiplex(rf: rf, frequencyHz: hz, result: result, bytes: bytes, seconds: Date().timeIntervalSince(started), guideRead: !lineupOnly), skipped: nil, progress: progress)
         case .skipped("tuner needed"):
             requeue(rf, why: "a tuner is needed", progress: progress); return 2
         case .skipped(let why):
@@ -232,6 +234,20 @@ actor OTAScanner {
     static func capture(host: String, tuner: String, hz: Int, seconds: TimeInterval, lineupOnly: Bool = false,
                         onUpdate: @escaping @Sendable (OTADecodeResult, Int, TimeInterval) async -> Void = { _, _, _ in },
                         shouldYield: @escaping @Sendable () async -> Bool) async -> CaptureOutcome {
+        // A 503 means the channel will not lock, but also that another client took the tuner between our status check and the tune. Only a
+        // second 503 counts as "no signal" (which makes the store drop that station), so a passing race never deletes saved channels.
+        let first = await captureOnce(host: host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly, onUpdate: onUpdate, shouldYield: shouldYield)
+        guard case .skipped("tuner busy") = first else { return first }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        if Task.isCancelled { return .skipped("cancelled") }
+        let second = await captureOnce(host: host, tuner: tuner, hz: hz, seconds: seconds, lineupOnly: lineupOnly, onUpdate: onUpdate, shouldYield: shouldYield)
+        if case .skipped("tuner busy") = second { return .skipped("no signal") }
+        return second
+    }
+
+    private static func captureOnce(host: String, tuner: String, hz: Int, seconds: TimeInterval, lineupOnly: Bool,
+                                    onUpdate: @escaping @Sendable (OTADecodeResult, Int, TimeInterval) async -> Void,
+                                    shouldYield: @escaping @Sendable () async -> Bool) async -> CaptureOutcome {
         guard let url = URL(string: "http://\(host):5004/\(tuner)/ch\(hz)") else { return .skipped("bad address") }
         let reader = StreamReader(url: url)
         let decoder = PSIPDecoder()
@@ -243,7 +259,7 @@ actor OTAScanner {
         let outcome: CaptureOutcome = await withTaskCancellationHandler {
             for await event in reader.events {
                 switch event {
-                case .busy: return .skipped("no signal")   // the tuner answers 503 when a channel will not lock (we only claim idle tuners)
+                case .busy: return .skipped("tuner busy")   // the tuner answers 503 when a channel will not lock (we only claim idle tuners)
                 case .failed(let why): return .skipped(why)
                 case .data(let chunk):
                     bytes += chunk.count
@@ -271,6 +287,7 @@ actor OTAScanner {
             return .decoded(decoder.result(), bytes: bytes)
         } onCancel: { reader.cancel() }
         reader.cancel()   // closing the stream releases the tuner
+        if Task.isCancelled { return .skipped("cancelled") }   // a half-read multiplex is not a result (and a cut-off one must never read as "no signal")
         if case .decoded(let result, let n) = outcome, result.channels.isEmpty { return .skipped(n < 100_000 ? "no signal" : "no guide tables") }
         return outcome
     }

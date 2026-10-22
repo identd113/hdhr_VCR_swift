@@ -76,7 +76,7 @@ struct OTAChannelRow: View {
                 }
             }
             ForEach(Array(sub.streams.filter(\.isAudio).enumerated()), id: \.offset) { _, st in
-                Text(audioText(st)).font(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 46)
+                Text(audioText(st)).font(.caption).foregroundStyle(.secondary).lineLimit(2).padding(.leading, 46)
             }
             if let video = sub.streams.first(where: \.isVideo) {
                 Text([video.codec, video.kbps.map { String(format: "%.1f Mbit/s", $0 / 1000) }].compactMap { $0 }.joined(separator: " · "))
@@ -103,7 +103,7 @@ struct OTAChannelRow: View {
         if !st.languageName.isEmpty { parts.append(st.languageName) }
         if let f = st.audio {
             if f.bsmod != 0 { parts.append(f.serviceText) }
-            parts.append("\(f.sampleRate / 1000) kHz")
+            parts.append(String(format: "%g kHz", Double(f.sampleRate) / 1000))
             parts.append("\(f.kbps) kbit/s")
             parts.append("dialogue \(f.dialnorm) dB")
         } else if let k = st.kbps { parts.append(String(format: "%.0f kbit/s", k)) }

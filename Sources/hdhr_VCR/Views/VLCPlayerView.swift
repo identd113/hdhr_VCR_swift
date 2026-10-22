@@ -3724,6 +3724,7 @@ final class VLCPlayerWindowManager {
             }
             return event
         }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
             guard let self, let win, event.window === win else { return event }
             // "?" help card: while it is showing, ANY key press closes it and is consumed (so Esc doesn't also

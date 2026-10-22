@@ -91,7 +91,11 @@ struct AirChannelsCard: View {
 
     private func outcomeView(_ o: (stations: Int, channels: Int)) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if o.channels > 0 {
+            if progress.cancelled && o.channels == 0 {
+                Label("Scan cancelled.", systemImage: "xmark.circle")
+                    .foregroundStyle(.secondary).font(.callout.bold())
+                    .accessibilityIdentifier("wizard-air-cancelled")
+            } else if o.channels > 0 {
                 Label("Found \(o.stations) stations with \(o.channels) channels.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout.bold())
                     .accessibilityIdentifier("wizard-air-found")

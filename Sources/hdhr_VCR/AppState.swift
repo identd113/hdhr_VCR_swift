@@ -1070,6 +1070,7 @@ final class AppState: ObservableObject {
                 // recording curl deliberately does — see RecordingManager.feedCachePullPids' own
                 // doc comment.
                 self.stopAllFeedCacheSessions()
+                self.stopAllWebLive(reason: "app exit")
                 self.saveConfig()
                 // saveConfig() now dispatches its actual disk write to ConfigManager's own
                 // background queue (see its doc comment) — block here until that write actually
@@ -3534,6 +3535,13 @@ final class AppState: ObservableObject {
         // ahead by warnOfLiveWatchPreemptionIfNeeded). The device's status.json lags the dropped
         // connection, so this tick still reads full; later ticks retry, and the conflict notice
         // below is held back for liveWatchPreemptGraceSeconds while that catches up.
+        // A browser's live TV on this device yields to the recording just like the in-app player does.
+        if tunersFull(for: show.hdhr_record), webLiveSessions.values.contains(where: { $0.deviceId == show.hdhr_record }) {
+            glog("[WebLive] stopping browser live TV on \(show.hdhr_record) — tuner needed to record '\(show.show_title)'")
+            for s in webLiveSessions.values where s.deviceId == show.hdhr_record { stopWebLive(id: s.id, reason: "tuner needed for a recording") }
+            preemptedLiveWatch = (show.hdhr_record, Date())   // status.json lags the dropped connection: hold the conflict notice back
+            refreshTunerOccupancy()
+        }
         if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
             preemptOwnLiveWatch(for: show)
         }
@@ -7019,6 +7027,7 @@ final class AppState: ObservableObject {
         // comment): once this process's WebServer is gone, nothing can ever serve its cache file
         // again.
         stopAllFeedCacheSessions()
+        stopAllWebLive(reason: "app exit")
         // webServer.stop() before saveConfig() — matches quit()'s pre-consolidation order. Inert
         // either way today (webServer.stop() touches no AppConfig-persisted state), but keeping the
         // original sequence avoids an unannounced ordering change for whatever a future field adds.

@@ -52,7 +52,7 @@ struct OTAStoreTests {
         var other = try Self.outcome()
         other.multiplexes[0].rf = 19                                                                // a one-station refresh of RF 19
         other.skipped = [:]
-        Thread.sleep(forTimeInterval: 0.05)
+        Thread.sleep(forTimeInterval: 1.1)   // dates are saved to the second
         _ = OTAStore.save(other, deviceId: "TEST", partial: true, root: root)
         let lineup = try #require(OTAStore.allSavedLineup(deviceId: "TEST", root: root))
         #expect(Set(lineup.map(\.RF)) == [19, 32])                                                  // RF 32 was kept, RF 19 added
@@ -71,6 +71,33 @@ struct OTAStoreTests {
         #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[19] == nil)
         // The "a full scan ran" record belongs to full scans only.
         #expect(OTAStore.loadSummary(deviceId: "TEST", root: root)?.multiplexes == 1)
+    }
+
+    @Test func aChannelListOnlyReadNeverReplacesListingsOrStampsAGuideDate() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        let date = try #require(OTAStore.muxRecords(deviceId: "TEST", root: root)[32]?.guideDate)
+        // The second pass of a full scan failed for RF 32: only its channel-list read is left, saved alongside a full read of another station.
+        var again = try Self.outcome()
+        again.multiplexes[0].guideRead = false
+        again.multiplexes[0].result.events = []
+        again.multiplexes[0].result.announcedEITCount = 0
+        again.skipped = [:]
+        Thread.sleep(forTimeInterval: 1.1)   // dates are saved to the second
+        _ = OTAStore.save(again, deviceId: "TEST", root: root)
+        let guide = try JSONDecoder().decode([GuideChannel].self, from: Data(contentsOf: OTAStore.guideFile(deviceId: "TEST", root: root)))
+        #expect(guide.first?.Guide?.count == 105)                                                    // the listings survived
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32]?.guideDate == date)            // and no new "guide read" date
+    }
+
+    @Test func aCancelledReadIsNotNoSignal() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        var cut = try Self.outcome()
+        cut.multiplexes = []; cut.skipped = [32: "cancelled"]; cut.cancelled = true
+        _ = OTAStore.save(cut, deviceId: "TEST", root: root)   // nothing usable: nil, and nothing deleted
+        #expect(OTAStore.allSavedLineup(deviceId: "TEST", root: root)?.count == 7)
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32] != nil)
     }
 
     @Test func anEmptyScanNeverReplacesAnEarlierOne() throws {

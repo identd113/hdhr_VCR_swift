@@ -589,6 +589,8 @@ function applyGuidePayload(d,selOverride){
   var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
   var prev=document.querySelector('.g-prog.g-sel');
   var prevStart=prev?prev.dataset.start:null,prevNum=prev?prev.dataset.num:null,prevDev=prev?prev.dataset.device:null;
+  var pa=document.querySelector('.g-air-blk.g-sel');   // an air-only block selected before the refresh
+  var prevAir=pa?{dev:pa.dataset.dev,ch:pa.dataset.ch,start:pa.dataset.start}:null;
   var oldGi=document.querySelector('.gi');
   if(oldGi)oldGi.innerHTML=d.grid;
   // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
@@ -615,6 +617,10 @@ function applyGuidePayload(d,selOverride){
     // scanning it — lets the browser's native selector engine find the match directly.
     var match=document.querySelector('.g-prog[data-start="'+cq(prevStart)+'"][data-num="'+cq(prevNum)+'"][data-device="'+cq(prevDev)+'"]');
     if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
+  }
+  else if(prevAir){   // keep the air-only selection (and its Watch / Refresh buttons) across a refresh, e.g. when the multiplex scan it asked for finishes
+    var am=document.querySelector('.g-air-blk[data-dev="'+cq(prevAir.dev)+'"][data-ch="'+cq(prevAir.ch)+'"][data-start="'+cq(prevAir.start)+'"]');
+    if(am)showAirInfo(am);
   }
 }
 function refreshGuide(selOverride){

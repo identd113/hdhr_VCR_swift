@@ -1098,6 +1098,10 @@ struct SettingsView: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Button("Run") {
+                            if state.otaScanTask != nil {   // a running scan would save straight over whatever was just purged
+                                maintenanceStatus = "An air scan is running — cancel it first (Over-the-Air Guide)."
+                                return
+                            }
                             maintenanceBusy = true
                             maintenanceStatus = ""
                             Task { @MainActor in

@@ -28,6 +28,7 @@ extension AppState {
                     // This app's own recordings and in-app player on this device (hardware occupancy is read by the scanner itself).
                     return self.recordingShows.filter { $0.hdhr_record == id }.count
                         + (self.vlcOccupiesTuner(for: id) ? 1 : 0) + (self.secondaryVlcOccupiesTuner(for: id) ? 1 : 0)
+                        + self.webLiveSessions.values.filter { $0.deviceId == id }.count
                 }
             },
             secondsUntilNextRecording: { [weak self] in
@@ -129,6 +130,7 @@ extension AppState {
         let hwAll = deviceTunerOccupancy[deviceId]?.filter { $0.isInUse }.count ?? 0
         let app = recordingShows.filter { $0.hdhr_record == deviceId }.count
             + (vlcOccupiesTuner(for: deviceId) ? 1 : 0) + (secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
+            + webLiveSessions.values.filter { $0.deviceId == deviceId }.count
         return max(hwAll, app + otaHeldResources.count) >= tunerCount
     }
 
@@ -153,6 +155,8 @@ extension AppState {
     func cancelOTAScan() {
         otaScanTask?.cancel()
         otaScanTask = nil
+        otaScanGeneration += 1   // the cancelled task's late events and status line no longer touch the window
+        otaProgress.cancelled = true
         otaProgress.running = false
         otaProgress.endedAt = Date(); otaProgress.lanes = [:]; otaProgress.note = nil
         otaHeldResources = []

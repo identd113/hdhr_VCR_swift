@@ -403,7 +403,8 @@ final class WebServer: @unchecked Sendable {
                         continue
                     }
                     guard let show = appState.shows.first(where: { $0.show_id == id }),
-                          !show.show_recording_path.isEmpty else { continue }   // active or last recording; the manager checks the file exists
+                          !show.show_recording_path.isEmpty,
+                          appState.recordingIsWatchable(show) else { continue }   // only a recording in progress (or just dropped): a finished file is never converted whole for a LAN client
                     sources[id] = StreamSource(path: show.show_recording_path, isRecording: appState.recordingManager.isRunning(showId: id))
                 }
                 return StreamSnapshot(enabled: appState.config.Web_streaming_enabled, sources: sources)
@@ -2416,7 +2417,7 @@ final class WebServer: @unchecked Sendable {
                 let id = (self.parseJSONBody(body)?["id"] as? String) ?? ""
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    if StreamSessions.isValidShowId(id) { self.appState?.stopWebLive(id: id, reason: "viewer left") }
+                    if StreamSessions.isValidShowId(id) { self.appState?.releaseWebLiveViewer(id: id) }
                     self.queue.async { self.send(self.jsonResponse(["ok": true]), on: conn) }
                 }
                 return
@@ -2630,14 +2631,16 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
-            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true,"deviceId":"…","window":false} (all optional; an rf list replaces the saved guide with just those stations and keeps the saved channel list), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
+            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true,"deviceId":"…","window":false} (all optional; an rf list refreshes just those multiplexes and keeps every other saved one), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
                 if let n = params["tuners"] as? Int, state.otaScanTask != nil {
                     state.otaTunerLimit = min(max(1, n), state.otaTunerMax)
                     return jsonResponse(["status": state.otaScanStatus, "tuners": state.otaTunerLimit])
                 }
+                if let raw = params["rf"], !(raw is [Int]) { return .badRequest("rf must be a list of numbers, e.g. [31, 32]") }
                 let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
+                if let rf, rf.isEmpty { return .badRequest("rf lists no valid RF channel (2-36, 38-51); omit it to scan them all") }
                 let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
                 return jsonResponse(["status": state.startOTAScan(deviceId: params["deviceId"] as? String, rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false, showWindow: params["window"] as? Bool ?? true)])
             }

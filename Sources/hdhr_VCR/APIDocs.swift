@@ -75,7 +75,7 @@ enum APIDocs {
                  body: #"{"force":false}"#, changesState: true),
         // — Over-the-air guide
         APIRoute(method: "POST", path: "/api/ota-scan", group: "Over-the-air guide",
-                 summary: "Start a scan of the air, change the running scan's tuner count, or cancel it. Everything optional.",
+                 summary: "Start a scan of the air, change the running scan's tuner count, or cancel it. Everything optional; \"rf\":[31] refreshes just those multiplexes.",
                  body: #"{"lineupOnly":true}"#, response: #"{"status":"…"}"#, changesState: true),
         APIRoute(method: "POST", path: "/api/ota-scan", group: "Over-the-air guide", summary: "Allow the running scan N tuners.",
                  body: #"{"tuners":1}"#, changesState: true),
@@ -83,6 +83,12 @@ enum APIDocs {
                  body: #"{"cancel":true}"#, changesState: true),
         APIRoute(method: "GET", path: "/api/ota-status", group: "Over-the-air guide",
                  summary: "Scan progress: status, running, finished/total, multiplexes, channels, listings, tuners, secondsLeft (-1 unknown)."),
+        APIRoute(method: "POST", path: "/api/live-start", group: "Playback",
+                 summary: "Start live TV for a lineup or air-only channel in the browser (spools the tuner stream; play /api/hls/{id}/index.m3u8). Needs Web Streaming on and a free tuner.",
+                 body: #"{"deviceId":"105404BE","guideNumber":"19.1"}"#, response: #"{"ok":true,"id":"live-…","title":"…"}"#, changesState: true),
+        APIRoute(method: "POST", path: "/api/live-stop", group: "Playback",
+                 summary: "A browser closed its live player; the tuner is freed when the last viewer of that channel is gone.",
+                 body: #"{"id":"live-…"}"#, changesState: true),
         // — Playback
         APIRoute(method: "GET", path: "/api/watch-recording?show={showId}&start={offset}", group: "Playback",
                  summary: "Play a recording in progress from disk (the local relay).", response: "video/mp2t", streaming: true),

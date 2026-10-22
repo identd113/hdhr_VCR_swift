@@ -150,7 +150,9 @@ final class PSIPDecoder {
     private func handle(section s: [UInt8], pid: Int) {
         guard s.count >= 12 else { return }
         let table = Int(s[0])
-        let key = SectionKey(pid: pid, table: table, extra: (Int(s[3]) << 8) | Int(s[4]), version: Int(s[5] & 0x3E), number: Int(s[6]))
+        // An ETT's table_id_extension is 0 on many stations; what tells one description from the next is its ETM_id (bytes 9-12).
+        let extra = (table == 0xCC && s.count >= 13) ? (Int(s[9]) << 24) | (Int(s[10]) << 16) | (Int(s[11]) << 8) | Int(s[12]) : (Int(s[3]) << 8) | Int(s[4])
+        let key = SectionKey(pid: pid, table: table, extra: extra, version: Int(s[5] & 0x3E), number: Int(s[6]))
         switch table {
         case 0x00: parsePAT(s)
         case 0x02: if let p = OTAElementaryStream.programMap(s), pmtByPID[pid] != nil { programMaps[p.number] = p }

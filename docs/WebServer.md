@@ -1369,8 +1369,11 @@ Kept light by reusing the web-streaming pieces (`docs/WebStreaming.md`): `POST /
 channel's URL, or an air-only one's `ch<Hz>-<program>` URL, and spools it into a temp `.ts` under the FEED cache folder with the existing puller (`RecordingManager.startFeedCachePull`,
 curl); `StreamSessions` then converts that growing file like a recording that is never saved (the snapshot closure maps the id `live-<device>-<8 hex>` to the spool file), and the guide opens
 its Watch Now! player on `/api/hls/<id>/index.m3u8`. It answers once the first bytes arrive (up to 6 s). A tuner must be free (`tunersFull`; live sessions count in `activeTunerCount`), a second
-viewer of the same channel joins the same spool. `POST /api/live-stop {id}` (sent when the player closes) frees the tuner at once; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
-after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The spool is rolled into HLS and deleted on stop.
+viewer of the same channel joins the same spool (each viewer is counted). Before checking for a free tuner it asks a running air scan to step aside (`yieldOTAScan`). `POST /api/live-stop {id}` (sent when the player closes) frees the tuner when the **last** viewer has gone; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
+after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The HLS side keeps the last half hour, but **the spool file itself is the whole stream from the first byte**, so `reapWebLiveSessions` ends a session past 6 GB
+(about 3 hours) or when free space drops under the FEED cache's stop floor; the file is deleted on stop. **A scheduled recording wins:** when it needs the tuner, `startRecording` stops the browser's live sessions on that
+device first (same grace as the in-app Watch Now preemption). Live sessions are also stopped on quit, relaunch and SIGTERM (`stopAllWebLive`) so no puller outlives the app. A finished recording is never converted for the web:
+`/api/hls/<showId>/…` only starts for a recording in progress (`recordingIsWatchable`).
 
 ### Refreshing one multiplex's guide (2026-10-22, per-multiplex since the same day)
 Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`): `POST /api/ota-scan {"rf":[<RF>],"seconds":90,"deviceId":…,"window":false}`

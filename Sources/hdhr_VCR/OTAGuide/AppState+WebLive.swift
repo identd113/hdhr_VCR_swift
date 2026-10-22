@@ -12,11 +12,14 @@ struct WebLiveSession {
     let cachePath: String
     let startedAt: Date
     var lastActive: Date
+    var viewers = 1   // browsers that started or joined it and have not asked to stop; the last one out frees the tuner
 }
 
 extension AppState {
     /// How long a live spool lives after the last browser stopped fetching its stream (the HLS session itself ends after 30 s).
     static let webLiveIdleSeconds: TimeInterval = 45
+    /// A live spool is ended past this size (about 3 hours at 4 Mb/s; the viewer simply presses Watch again).
+    static let webLiveMaxSpoolBytes = 6_000_000_000
 
     /// Starts (or joins) live TV for a channel: a lineup channel, or one only the air scan found. Returns the stream id for `/api/hls/<id>/…`, or why not.
     func startWebLive(deviceId: String, guideNumber: String) async -> Result<WebLiveSession, WebLiveError> {
@@ -29,11 +32,15 @@ extension AppState {
         } else if let air = airOnlyChannels(deviceId: deviceId).first(where: { $0.GuideNumber == guideNumber }) {
             url = "http://\(device.LocalIP):5004/auto/ch\(air.Frequency)-\(air.ProgramNumber)"; title = air.GuideName
         } else { return .failure(.init("Channel not found")) }
-        if var existing = webLiveSessions.values.first(where: { $0.deviceId == deviceId && $0.guideNumber == guideNumber }),
-           recordingManager.isFeedCachePullRunning(sessionId: existing.id) {
-            existing.lastActive = Date(); webLiveSessions[existing.id] = existing
-            return .success(existing)   // a second viewer joins the same spool and the same tuner
+        if var existing = webLiveSessions.values.first(where: { $0.deviceId == deviceId && $0.guideNumber == guideNumber }) {
+            if recordingManager.isFeedCachePullRunning(sessionId: existing.id) {
+                existing.lastActive = Date(); existing.viewers += 1; webLiveSessions[existing.id] = existing
+                await waitForFirstBytes(of: existing)   // the first viewer may still be waiting for the tuner
+                return .success(existing)   // a second viewer joins the same spool and the same tuner
+            }
+            stopWebLive(id: existing.id, reason: "the tuner stream ended")   // dead but not reaped yet: it would count against the tuner we are about to use
         }
+        await yieldOTAScan(for: device)   // an air scan holding the tuners steps aside first
         guard !tunersFull(for: deviceId) else { return .failure(.init("All tuners are in use")) }
         guard !feedCacheDiskLow(minFreeGB: Self.feedCacheStartMinFreeGB) else { return .failure(.init("Not enough free disk space for live TV")) }
         let id = "live-\(deviceId.safeFileComponent)-\(UUID().uuidString.prefix(8))"
@@ -45,21 +52,35 @@ extension AppState {
         let session = WebLiveSession(id: id, deviceId: deviceId, guideNumber: guideNumber, title: title, cachePath: path, startedAt: Date(), lastActive: Date().addingTimeInterval(30))
         webLiveSessions[id] = session
         glog("[WebLive] started \(guideNumber) \(title) on \(deviceId) as \(id)")
-        // Wait for the first bytes (a channel that will not tune ends the puller at once).
-        var waited = 0.0
-        while waited < 6 {
-            let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-            if size > 0 { break }
-            guard recordingManager.isFeedCachePullRunning(sessionId: id) else { break }
-            try? await Task.sleep(nanoseconds: 150_000_000); waited += 0.15
-        }
-        let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-        guard size > 0 else {
+        guard await waitForFirstBytes(of: session) else {
             stopWebLive(id: id, reason: "no signal")
             return .failure(.init("The channel did not tune (no signal or no free tuner)"))
         }
         await broadcastTunerOccupancyChange(deviceId: deviceId)
         return .success(session)
+    }
+
+    /// Waits (up to ~6 s) for the spool's first bytes; a channel that will not tune ends the puller at once.
+    @discardableResult
+    private func waitForFirstBytes(of session: WebLiveSession) async -> Bool {
+        var waited = 0.0
+        func size() -> Int { (try? FileManager.default.attributesOfItem(atPath: session.cachePath))?[.size] as? Int ?? 0 }
+        while size() == 0, waited < 6, recordingManager.isFeedCachePullRunning(sessionId: session.id) {
+            try? await Task.sleep(nanoseconds: 150_000_000); waited += 0.15
+        }
+        return size() > 0
+    }
+
+    /// A browser closed its player. The tuner is freed only when the last viewer of the channel has gone.
+    func releaseWebLiveViewer(id: String) {
+        guard var s = webLiveSessions[id] else { return }
+        s.viewers -= 1
+        if s.viewers > 0 { webLiveSessions[id] = s; return }
+        stopWebLive(id: id, reason: "viewer closed it")
+    }
+
+    func stopAllWebLive(reason: String) {
+        for id in Array(webLiveSessions.keys) { stopWebLive(id: id, reason: reason) }
     }
 
     func stopWebLive(id: String, reason: String) {
@@ -80,6 +101,11 @@ extension AppState {
             for (id, s) in self.webLiveSessions {
                 if !self.config.Web_streaming_enabled { self.stopWebLive(id: id, reason: "web streaming turned off"); continue }
                 if !self.recordingManager.isFeedCachePullRunning(sessionId: id) { self.stopWebLive(id: id, reason: "the tuner stream ended"); continue }
+                // The spool is the whole stream from the first byte (the HLS side keeps only the last half hour), so it is bounded here.
+                let spool = (try? FileManager.default.attributesOfItem(atPath: s.cachePath))?[.size] as? Int ?? 0
+                if spool > Self.webLiveMaxSpoolBytes || self.feedCacheDiskLow(minFreeGB: Self.feedCacheStopMinFreeGB) {
+                    self.stopWebLive(id: id, reason: "spool limit or low disk space"); continue
+                }
                 if await self.webServer.isStreamActive(id: id) { self.webLiveSessions[id]?.lastActive = Date(); continue }
                 if Date().timeIntervalSince(s.lastActive) > Self.webLiveIdleSeconds { self.stopWebLive(id: id, reason: "no viewers") }
             }

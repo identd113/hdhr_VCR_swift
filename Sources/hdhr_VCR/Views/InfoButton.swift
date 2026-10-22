@@ -11,6 +11,8 @@ struct InfoButton: View {
                 .foregroundStyle(.tertiary)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("More information")
+        .accessibilityHint(text)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             // Explicit foreground rather than relying on .popover's own default Text color —
             // reported blank (unreadable) in dark mode: NSPopover's content view doesn't reliably
