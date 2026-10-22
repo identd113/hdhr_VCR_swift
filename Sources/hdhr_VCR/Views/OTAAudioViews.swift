@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The scan window's sound details (docs/OTAScanView.md "Sound"): a stream-budget bar for a whole multiplex, and for each channel its language,
-// codec, a small drawing of the speaker layout, the bit rate as a bar and the dialogue level on a gauge.
+// The scan window's sound details (docs/OTAScanView.md "Sound"): a stream-budget bar for a whole multiplex, and for each channel a compact
+// text line per sound stream (layout, codec, language, sample rate, bit rate, dialogue level) and one for the picture.
 
 /// How a multiplex spends its data rate: one bar split into video, sound, guide data, padding and other, with a legend.
 struct OTAStreamBudgetBar: View {
@@ -49,51 +49,6 @@ struct OTAStreamBudgetBar: View {
     }
 }
 
-/// A channel's speaker layout drawn as dots: the front speakers in a row, the surrounds behind them, a square for the subwoofer.
-struct OTASpeakerLayout: View {
-    let format: OTAAudioFormat
-
-    var body: some View {
-        let (front, rear) = format.speakers
-        Canvas { ctx, size in
-            let r: CGFloat = 3.2
-            func dots(_ n: Int, y: CGFloat, margin: CGFloat) {
-                for i in 0..<n {
-                    let x = n == 1 ? size.width / 2 : margin + (size.width - 2 * margin) * CGFloat(i) / CGFloat(n - 1)
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)), with: .color(.accentColor))
-                }
-            }
-            dots(front, y: 6, margin: 5)
-            if rear > 0 { dots(rear, y: size.height - 6, margin: 9) }
-            if format.lfe {
-                ctx.fill(Path(roundedRect: CGRect(x: size.width - 10, y: size.height / 2 - 3, width: 7, height: 7), cornerRadius: 1.5), with: .color(.orange))
-            }
-        }
-        .frame(width: 40, height: 28)
-        .accessibilityHidden(true)
-    }
-}
-
-/// Dialogue level (-31…-1 dB) on a small scale: a quieter mix sits to the left.
-struct OTALevelGauge: View {
-    let dialnorm: Int
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.secondary.opacity(0.2))
-                    Circle().fill(Color.accentColor).frame(width: 7, height: 7)
-                        .offset(x: max(0, (geo.size.width - 7) * CGFloat(dialnorm + 31) / 30))
-                }
-            }
-            .frame(width: 56, height: 7)
-            Text("dialogue \(dialnorm) dB").font(.system(size: 9)).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Dialogue level \(dialnorm) decibels")
-    }
-}
-
 /// One channel: number, name, what it is (radio, language), its listings, then a line for each sound stream (and one for the picture).
 struct OTAChannelRow: View {
     let sub: OTASubChannelRow
@@ -114,16 +69,15 @@ struct OTAChannelRow: View {
                     }
                 }
             }
-            ForEach(Array(sub.streams.filter(\.isAudio).enumerated()), id: \.offset) { _, st in audioLine(st) }
+            ForEach(Array(sub.streams.filter(\.isAudio).enumerated()), id: \.offset) { _, st in
+                Text(audioText(st)).font(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 46)
+            }
             if let video = sub.streams.first(where: \.isVideo) {
-                HStack(spacing: 6) {
-                    Image(systemName: "film").font(.caption2).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
-                    Text(video.codec).font(.caption2).foregroundStyle(.secondary)
-                    if let k = video.kbps { Text(String(format: "%.1f Mbit/s", k / 1000)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary) }
-                }
+                Text([video.codec, video.kbps.map { String(format: "%.1f Mbit/s", $0 / 1000) }].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.tertiary).lineLimit(1).padding(.leading, 46)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
     }
@@ -137,24 +91,16 @@ struct OTAChannelRow: View {
         .background(Capsule().fill(Color.accentColor.opacity(0.15)))
     }
 
-    private func audioLine(_ st: OTAElementaryStream) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            if let f = st.audio { OTASpeakerLayout(format: f).frame(width: 40) } else {
-                Image(systemName: "speaker.wave.2").font(.caption).foregroundStyle(.secondary).frame(width: 40)
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text([st.audio?.layout, st.codec].compactMap { $0 }.joined(separator: " ")).font(.caption.bold())
-                    if !st.languageName.isEmpty { tag(st.languageName) }
-                    if let f = st.audio, f.bsmod != 0 { tag(f.serviceText) }
-                }
-                if let f = st.audio {
-                    Text("\(f.sampleRate / 1000) kHz · \(f.kbps) kbit/s\(st.kbps.map { String(format: " (%.0f measured)", $0) } ?? "")")
-                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 4)
-            if let f = st.audio { OTALevelGauge(dialnorm: f.dialnorm) }
-        }
+    /// "5.1 AC-3 · English · 48 kHz · 384 kbit/s · dialogue -24 dB", plus the service type when it is not the main audio.
+    private func audioText(_ st: OTAElementaryStream) -> String {
+        var parts = [[st.audio?.layout, st.codec].compactMap { $0 }.joined(separator: " ")]
+        if !st.languageName.isEmpty { parts.append(st.languageName) }
+        if let f = st.audio {
+            if f.bsmod != 0 { parts.append(f.serviceText) }
+            parts.append("\(f.sampleRate / 1000) kHz")
+            parts.append("\(f.kbps) kbit/s")
+            parts.append("dialogue \(f.dialnorm) dB")
+        } else if let k = st.kbps { parts.append(String(format: "%.0f kbit/s", k)) }
+        return parts.joined(separator: " · ")
     }
 }

@@ -36,10 +36,10 @@ No ticking clock while a scan runs (the time left is rounded to whole minutes; "
    Header: RF number, frequency, state chip, a **Follow** button when you picked one yourself while a scan runs (`ota-scan-follow`), signal bars (`ota-scan-signal`).
    Then **How the stream is used** (`OTAStreamBudgetBar`, `ota-scan-budget`, with an (i)): one bar split into video, sound, guide data, other and padding (null packets), each
    with its Mbit/s, measured from the packets counted per PID over the read (`OTAStreamBudget`, from `OTADecodeResult.pidPackets`). Then **Channels (N)** with an (i):
-   every channel as a row (`OTAChannelRow`, `ota-scan-sub-<number>`): number, name, a *radio* tag for audio-only services, episodes and how far the guide reaches; then a line
-   per **sound stream** — a drawing of the speaker layout (`OTASpeakerLayout`: front speakers on top, surrounds below, an orange square for the subwoofer), "5.1 AC-3" with a
-   language tag ("English", "Spanish") and a tag when it is not the main audio (visually impaired, commentary…), "48 kHz · 384 kbit/s (211 measured)" and a **dialogue-level gauge**
-   (`OTALevelGauge`, the dialnorm, -31…-1 dB, a lower number is a quieter mix) — and one for the video (codec and measured rate).
+   every channel as a compact row (`OTAChannelRow`, `ota-scan-sub-<number>`): number, name, a *radio* tag for audio-only services, episodes and how far the guide reaches; under it one
+   text line per **sound stream** — "5.1 AC-3 · English · 48 kHz · 384 kbit/s · dialogue -24 dB" (plus the service type when it is not the main audio: visually impaired, commentary…; the
+   dialogue level is the dialnorm, -31…-1 dB, a lower number is a quieter mix) — and one for the video ("MPEG-2 video · 2.1 Mbit/s", measured). No drawings: the speaker-layout dots and
+   level gauge were dropped as too busy.
    With nothing found yet it says "Listening for stations…".
 5. **Footer.** Count of RF channels with no signal; Cancel Scan while running, Close when done.
 

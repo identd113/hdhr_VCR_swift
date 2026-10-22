@@ -19,10 +19,6 @@ struct OTAAudioFormat: Equatable, Sendable {
     var channelCount: Int { Self.channelsForMode[acmod & 7] + (lfe ? 1 : 0) }
     /// "5.1", "2.0", "1.0" …
     var layout: String { "\(Self.channelsForMode[acmod & 7]).\(lfe ? 1 : 0)" }
-    /// Speakers present, as (front, rear) counts, for drawing a layout: 3/2 = left, centre, right in front and two surrounds.
-    var speakers: (front: Int, rear: Int) {
-        switch acmod & 7 { case 0, 2: return (2, 0); case 1: return (1, 0); case 3: return (3, 0); case 4: return (2, 1); case 5: return (3, 1); case 6: return (2, 2); default: return (3, 2) }
-    }
     var serviceText: String {
         switch bsmod { case 0: return "main audio"; case 1: return "music and effects"; case 2: return "for the visually impaired"
         case 3: return "for the hearing impaired"; case 4: return "dialogue"; case 5: return "commentary"; case 6: return "emergency"; default: return "voice-over" }

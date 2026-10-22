@@ -29,7 +29,6 @@ struct OTAAudioTests {
         #expect(f.sampleRate == 48_000 && f.kbps == 384)
         #expect(f.layout == "5.1" && f.channelCount == 6 && f.lfe)
         #expect(f.dialnorm == -24 && f.bsmod == 0)
-        #expect(f.speakers == (3, 2))
         #expect(OTAAudioFormat.parseAC3([0x0B, 0x78, 0, 0, 0, 0, 0, 0]) == nil)       // not a sync word
     }
 

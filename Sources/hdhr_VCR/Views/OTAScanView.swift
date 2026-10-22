@@ -284,7 +284,7 @@ struct OTAScanView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("Channels (\(row.subChannels.count))").font(.subheadline.bold())
-                InfoButton("Every channel this multiplex carries. For each: its language, the sound format read from the stream (speaker layout, sample rate, bit rate), the dialogue level the broadcaster set (a lower number is a quieter mix, so the TV turns it up), whether it is a radio-style audio-only service, and its guide. Layout dots: front speakers on top, surrounds below, the orange square is the subwoofer.")
+                InfoButton("Every channel this multiplex carries. For each: its language, the sound format read from the stream (speaker layout, sample rate, bit rate), the dialogue level the broadcaster set (a lower number is a quieter mix, so the TV turns it up), whether it is a radio-style audio-only service, and its guide.")
                 Spacer()
             }
             .padding(.bottom, 4)
