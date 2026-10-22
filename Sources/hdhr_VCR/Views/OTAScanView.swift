@@ -10,7 +10,8 @@ struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
     @State private var pinnedRF: Int?       // a tab the person clicked: the selection stays there instead of following the scan
-    @State private var followedRF: Int?     // the last station the scan was working on that has a tab
+    @State private var followedRF: Int?
+    @State private var muxRecords: [Int: OTAStore.MuxRecord] = [:]   // when each multiplex was last read to the end (OTAStore.muxRecords)     // the last station the scan was working on that has a tab
     @Environment(\.dismissWindow) private var dismissWindow
 
     /// One colour per tuner, used for its light, its progress bar and the dot on the tab of the station it is reading.
@@ -27,8 +28,21 @@ struct OTAScanView: View {
         }
         .padding(16)
         .frame(minWidth: 540, idealWidth: 540, maxWidth: 540, minHeight: 700, idealHeight: 840, maxHeight: .infinity)   // taller shows more channels; the list scrolls either way
+        .onAppear(perform: reloadMuxRecords)
+        .onChange(of: progress.running) { _, _ in reloadMuxRecords() }
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
+    }
+
+    private func reloadMuxRecords() {
+        muxRecords = state.recordableDevices.first.map { OTAStore.muxRecords(deviceId: $0.DeviceID) } ?? [:]
+    }
+
+    /// "Channel list read Oct 22, 1:14 AM · Guide read Oct 22, 1:14 AM" for a multiplex (what is saved on disk, independent of the scan in progress).
+    private func readText(_ rf: Int) -> String? {
+        guard let r = muxRecords[rf] else { return nil }
+        func when(_ d: Date?) -> String { d.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "not yet" }
+        return "Channel list read \(when(r.lineupDate)) · Guide read \(when(r.guideDate))"
     }
 
     // MARK: 1. overview
@@ -263,6 +277,9 @@ struct OTAScanView: View {
                     .accessibilityValue([i.strength.map { "strength \($0) percent" }, i.quality.map { "quality \($0) percent" }].compactMap { $0 }.joined(separator: ", "))
                     .accessibilityIdentifier("ota-scan-signal")
                 }
+            }
+            if let text = readText(row.rf), !progress.running {
+                Text(text).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("ota-scan-mux-read")
             }
             if let budget = i.budget {
                 VStack(alignment: .leading, spacing: 4) {

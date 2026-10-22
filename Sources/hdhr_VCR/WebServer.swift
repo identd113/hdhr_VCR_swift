@@ -3926,10 +3926,11 @@ final class WebServer: @unchecked Sendable {
             let devId = he(device.DeviceID)
             // Air only: channels seen on the air (saved scan) that this tuner's own lineup lacks. Watch-only, never recordable (docs/WebServer.md).
             var airRows: [String] = []
+            let airMux = OTAStore.muxRecords(deviceId: device.DeviceID)   // when each multiplex was last read to the end
             for air in state.airOnlyChannels(deviceId: device.DeviceID) {
                 // What the saved scan knows is on this channel; with no listings the row falls back to plain 4-hour blocks.
                 let listings = state.airListings(deviceId: device.DeviceID, channel: air.GuideNumber).filter { $0.EndTime > winStart && $0.StartTime < winEnd }
-                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-rf=\"\(air.RF)\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
+                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-rf=\"\(air.RF)\" data-gread=\"\(airMux[air.RF]?.guideDate.map { Int($0.timeIntervalSince1970) } ?? 0)\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
                 var blocks: [String] = []
                 if !listings.isEmpty {
                     for e in listings {

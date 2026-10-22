@@ -1857,6 +1857,8 @@ function showAirInfo(el){
   so('sum-ep',d.ep||'');
   var sy=document.getElementById('sum-syn');if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
   document.getElementById('sum-ct').textContent='Ch '+d.ch+' · '+(d.gname||'')+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
+  var gr=+d.gread;   // when this multiplex's guide was last read to the end (0 = never)
+  var grText=gr?'Guide read '+new Date(gr*1000).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Guide not read yet';
   ['sum-btn','sum-edit','sum-del','sum-bonus-star'].forEach(function(i){document.getElementById(i).style.display='none';});
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
   watch.style.display='none';note.style.color='var(--t2)';
@@ -1864,12 +1866,12 @@ function showAirInfo(el){
   if(d.rf){rb.textContent='Refresh this multiplex\'s guide';rb.title='Scans RF '+d.rf+' (about a minute, one idle tuner) and replaces the saved air guide with it';rb.style.background='var(--air)';rb.style.color='#fff';rb.style.display='inline-block';rb.disabled=false;rb.onclick=function(){airRefresh(el);};}
   var nowTs=Math.floor(Date.now()/1000);
   if(_s<=nowTs&&_e>nowTs){
-    note.textContent='Seen on the air, not in your tuner\'s lineup · watch only';note.style.display='inline';
+    note.textContent='Seen on the air, not in your tuner\'s lineup · watch only · '+grText;note.style.display='inline';
     streamingEnabled(function(on){
       if(document.querySelector('.g-air-blk.g-sel')!==el)return;
       if(on)watch.style.display='inline-block';else{note.textContent='Turn on Web Streaming in Settings to watch live';}
     });
-  }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched';note.style.display='inline';}
+  }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched · '+grText;note.style.display='inline';}
 }
 function airRefresh(el){
   var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');

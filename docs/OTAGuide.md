@@ -71,3 +71,11 @@ A guide read (`OTAScanner.capture`, not the quick channel-list read) ends before
 and the count of channels, listings and descriptions (`OTAReadQuiet.signature`) has not changed for `OTAReadQuiet.quiet` (25 s). The cap (90 s by default) still applies, so a station that keeps
 trickling in listings uses all of it. Why: a station's near-term listings come round within seconds and its channel/program tables many times a second, so most stations are done long before the cap
 (longer reads rarely add services or reach further; the reach is set by what the station transmits). Unit-tested as `aGuideReadStopsOnceNothingNewArrives`.
+
+## Each multiplex is saved and dated on its own (2026-10-22)
+`OTAStore.save` merges per RF channel instead of rewriting the whole saved scan. A scan **replaces** the channels (`lineup.json`) and listings (`guide.json`) of every RF channel it read, **drops** every RF channel it found
+with "no signal", and leaves all other multiplexes untouched, so one station can be refreshed alone (the web guide's *Refresh this multiplex's guide*, `POST /api/ota-scan {"rf":[19]}`) and a full scan is just every RF at once.
+A lineup-only scan updates channel lists only (it seeds listings for channels that have none and never replaces an earlier guide). **`mux.json`** keeps `[{rf, lineupDate, guideDate, channels, events}]`: the date each multiplex's channel list
+and guide were last read to the end (`OTAStore.muxRecords`; a saved scan from before it existed gets the channel-list date from `lineup.json` and no guide date). The scan window shows them under the selected multiplex's header and
+the web guide's summary shows "Guide read <date>". `scan.json` (the "a full scan ran" record the wizard lines and schedule read) is still written only by a full scan. The Developer purges clear the matching dates.
+Caveat: the fallback guide's 36 h age test (`GuideStore.loadOTA`, `hasFreshGuide`) looks at `guide.json`'s file date, which a one-station refresh also moves, so other multiplexes can be older than that date suggests.

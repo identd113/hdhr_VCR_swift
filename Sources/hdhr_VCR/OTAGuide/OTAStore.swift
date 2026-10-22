@@ -35,35 +35,104 @@ enum OTAStore {
     static func folder(deviceId: String, root: URL = OTAStore.root) -> URL { root.appendingPathComponent(deviceId, isDirectory: true) }
     static func guideFile(deviceId: String, root: URL = OTAStore.root) -> URL { folder(deviceId: deviceId, root: root).appendingPathComponent("guide.json") }
 
-    /// Builds and saves the guide, lineup and summary for a finished scan. Returns the summary, or nil if nothing usable was found
-    /// (an empty scan never replaces a good earlier one). A `partial` scan (an explicit list of RF channels, e.g. one multiplex refreshed from the web guide)
-    /// replaces the saved guide with just what it read, and leaves the saved channel list alone: the list is a whole-band fact and a one-station scan must not shrink it.
+    /// Per-multiplex bookkeeping: when each RF channel's channel list and guide were last read to the end (`mux.json`).
+    struct MuxRecord: Codable, Equatable, Sendable {
+        var rf: Int
+        var lineupDate: Date?
+        var guideDate: Date?
+        var channels: Int
+        var events: Int
+    }
+
+    static func muxFile(deviceId: String, root: URL = OTAStore.root) -> URL { folder(deviceId: deviceId, root: root).appendingPathComponent("mux.json") }
+
+    /// What is known per multiplex. A saved scan from before `mux.json` existed gets its channel-list date from `lineup.json`'s own date.
+    static func muxRecords(deviceId: String, root: URL = OTAStore.root) -> [Int: MuxRecord] {
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        if let data = try? Data(contentsOf: muxFile(deviceId: deviceId, root: root)), let list = try? decoder.decode([MuxRecord].self, from: data) {
+            return Dictionary(uniqueKeysWithValues: list.map { ($0.rf, $0) })
+        }
+        guard let lineup = allSavedLineup(deviceId: deviceId, root: root), let date = lineupDate(deviceId: deviceId, root: root) else { return [:] }
+        return Dictionary(grouping: lineup, by: \.RF).mapValues { MuxRecord(rf: $0[0].RF, lineupDate: date, guideDate: nil, channels: $0.count, events: 0) }
+    }
+
+    /// The saved channel list as written, hidden and protected services included.
+    static func allSavedLineup(deviceId: String, root: URL = OTAStore.root) -> [OTALineupEntry]? {
+        guard let data = try? Data(contentsOf: folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json")) else { return nil }
+        return try? JSONDecoder().decode([OTALineupEntry].self, from: data)
+    }
+
+    private static func sortedByNumber<T>(_ items: [T], _ number: (T) -> String) -> [T] {
+        items.sorted { (number($0).split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes(number($1).split(separator: ".").compactMap { Int($0) }) }
+    }
+
+    /// Saves what a finished scan read, **per multiplex**: every RF channel the scan read replaces that RF's channels and listings (and its record in `mux.json`), and every RF
+    /// it found with no signal is dropped; the other multiplexes keep what they had, so one station can be refreshed on its own. A lineup-only scan updates only channel lists (it
+    /// seeds listings for channels that have none, never replacing an earlier guide). Returns the summary of what this scan read, or nil if it found nothing usable (an empty scan
+    /// never replaces a good earlier one). `scan.json` (the "a full scan ran" record) is written only by a full scan, not by a one-station refresh (`partial`).
     @discardableResult
     static func save(_ outcome: OTAScanOutcome, deviceId: String, lineupOnly: Bool = false, partial: Bool = false, root: URL = OTAStore.root) -> OTAScanSummary? {
         let results = outcome.multiplexes.sorted { $0.rf < $1.rf }
-        let guide = OTAGuideConverter.guideChannels(from: results.map(\.result))
-        guard !guide.isEmpty else { return nil }
-        let lineup: [OTALineupEntry] = results.flatMap { m in
+        let guideNew = OTAGuideConverter.guideChannels(from: results.map(\.result))
+        guard !guideNew.isEmpty else { return nil }
+        let lineupNew: [OTALineupEntry] = results.flatMap { m in
             m.result.channels.map { c in
                 OTALineupEntry(GuideNumber: c.number, GuideName: c.name, RF: m.rf, Frequency: m.frequencyHz, ProgramNumber: c.program,
                                ServiceType: c.serviceType, Hidden: c.hidden, Protected: c.accessControlled)
             }
         }
+        let now = Date()
         let summary = OTAScanSummary(
-            date: Date(), deviceId: deviceId, multiplexes: results.count, channels: guide.count,
-            events: guide.reduce(0) { $0 + ($1.Guide?.count ?? 0) },
+            date: now, deviceId: deviceId, multiplexes: results.count, channels: guideNew.count,
+            events: guideNew.reduce(0) { $0 + ($1.Guide?.count ?? 0) },
             skipped: Dictionary(uniqueKeysWithValues: outcome.skipped.map { ("RF \($0.key)", $0.value) }), cancelled: outcome.cancelled)
         let dir = folder(deviceId: deviceId, root: root)
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            if !partial { try encoder.encode(lineup).write(to: dir.appendingPathComponent("lineup.json"), options: .atomic) }
-            // A lineup-only scan carries no listings: it never replaces an earlier guide or its scan record, it only seeds a guide when none exists.
-            let hasGuide = FileManager.default.fileExists(atPath: dir.appendingPathComponent("guide.json").path)
-            if !lineupOnly || !hasGuide { try encoder.encode(guide).write(to: dir.appendingPathComponent("guide.json"), options: .atomic) }
-            // The scan record means "a full scan ran" (the schedule reads its date), so a lineup-only scan never writes it.
-            if !lineupOnly { try encoder.encode(summary).write(to: dir.appendingPathComponent("scan.json"), options: .atomic) }
+            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+
+            // Which RF channels this scan speaks for: the ones it read, and the ones that now have nothing on them.
+            let read = Set(results.map(\.rf))
+            let gone = Set(outcome.skipped.filter { $0.value == "no signal" }.keys).subtracting(read)
+            let replaced = read.union(gone)
+
+            let oldLineup = allSavedLineup(deviceId: deviceId, root: root) ?? []
+            let oldNumbers = Set(oldLineup.filter { replaced.contains($0.RF) }.map(\.GuideNumber))
+            let lineup = sortedByNumber(oldLineup.filter { !replaced.contains($0.RF) } + lineupNew, { $0.GuideNumber })
+            try encoder.encode(lineup).write(to: dir.appendingPathComponent("lineup.json"), options: .atomic)
+
+            let oldGuide = (try? decoder.decode([GuideChannel].self, from: Data(contentsOf: guideFile(deviceId: deviceId, root: root)))) ?? []
+            let newNumbers = Set(guideNew.map(\.GuideNumber))
+            var guide: [GuideChannel]
+            if lineupOnly {
+                // No listings in this read: keep the earlier guide, and only add channels that had none at all.
+                let have = Set(oldGuide.map(\.GuideNumber))
+                guide = oldGuide + guideNew.filter { !have.contains($0.GuideNumber) }
+            } else {
+                guide = oldGuide.filter { !oldNumbers.contains($0.GuideNumber) && !newNumbers.contains($0.GuideNumber) } + guideNew
+            }
+            guide = sortedByNumber(guide, { $0.GuideNumber })
+            try encoder.encode(guide).write(to: guideFile(deviceId: deviceId, root: root), options: .atomic)
+
+            // Per-multiplex dates: this scan completed these RF channels now.
+            var records = muxRecords(deviceId: deviceId, root: root)
+            for rf in gone { records[rf] = nil }
+            for m in results {
+                let numbers = Set(m.result.channels.map(\.number))
+                var rec = records[m.rf] ?? MuxRecord(rf: m.rf, lineupDate: nil, guideDate: nil, channels: 0, events: 0)
+                rec.lineupDate = now
+                rec.channels = numbers.count
+                if !lineupOnly {
+                    rec.guideDate = now
+                    rec.events = m.result.events.count
+                }
+                records[m.rf] = rec
+            }
+            try encoder.encode(records.values.sorted { $0.rf < $1.rf }).write(to: muxFile(deviceId: deviceId, root: root), options: .atomic)
+
+            // The scan record means "a full scan ran" (the schedule reads its date): only a full scan writes it.
+            if !lineupOnly, !partial { try encoder.encode(summary).write(to: dir.appendingPathComponent("scan.json"), options: .atomic) }
             return summary
         } catch {
             glog("[OTA] could not save the scan: \(error.localizedDescription)", level: .warning)
@@ -98,8 +167,7 @@ enum OTAStore {
 
     /// Every real channel of the saved air lineup (video and audio services, no hidden or protected ones), whatever its age; nil when none is saved.
     static func savedLineup(deviceId: String, root: URL = OTAStore.root) -> [OTALineupEntry]? {
-        let file = folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json")
-        guard let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode([OTALineupEntry].self, from: data) else { return nil }
+        guard let saved = allSavedLineup(deviceId: deviceId, root: root) else { return nil }
         return saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }
     }
 
@@ -121,11 +189,21 @@ enum OTAStore {
         }
     }
 
-    /// Developer purge: removes a device's saved air data. `guide` = guide.json + scan.json, `lineup` = lineup.json.
+    /// Developer purge: removes a device's saved air data. `guide` = guide.json + scan.json, `lineup` = lineup.json; the per-multiplex dates follow.
     static func deleteSaved(deviceId: String, guide: Bool, lineup: Bool, root: URL = OTAStore.root) {
         let dir = folder(deviceId: deviceId, root: root)
         if guide { for f in ["guide.json", "scan.json"] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(f)) } }
         if lineup { try? FileManager.default.removeItem(at: dir.appendingPathComponent("lineup.json")) }
+        var records = muxRecords(deviceId: deviceId, root: root)
+        guard !records.isEmpty else { return }
+        for rf in records.keys {
+            if guide { records[rf]?.guideDate = nil; records[rf]?.events = 0 }
+            if lineup { records[rf]?.lineupDate = nil; records[rf]?.channels = 0 }
+        }
+        let kept = records.values.filter { $0.lineupDate != nil || $0.guideDate != nil }.sorted { $0.rf < $1.rf }
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        if kept.isEmpty { try? FileManager.default.removeItem(at: muxFile(deviceId: deviceId, root: root)) }
+        else { try? encoder.encode(kept).write(to: muxFile(deviceId: deviceId, root: root), options: .atomic) }
     }
 
     /// When this device's saved channel list was written, or nil when there is none.

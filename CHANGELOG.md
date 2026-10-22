@@ -4,11 +4,13 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Added* — **Each multiplex is tracked on its own.** The air scan now remembers, for every RF channel, when its channel list and its guide were last read to the end. The scan window shows it under the selected multiplex and the web guide shows it for an air-only channel. A scan only replaces the multiplexes it actually read.
+
 - *Updated* — **The air scan finishes sooner.** A station's guide is now read only until nothing new has arrived for 25 seconds (at least 20 seconds), instead of always the full 90. A station that keeps sending listings still gets the full time.
 
 - *Added* — **The scan window shows hidden and unusual services.** A multiplex's channel list now tags hidden channels, encrypted ones, data services, programs the channel table never names, and services that are announced but not actually transmitting.
 
-- *Added* — **Refresh one station's guide from the web guide.** Select a channel in the Air Only section and press **Refresh this multiplex's guide**: the app scans just that station off the air (about a minute) and the rows update. The saved air guide is replaced with that station's listings; the saved channel list is kept.
+- *Added* — **Refresh one station's guide from the web guide.** Select a channel in the Air Only section and press **Refresh this multiplex's guide**: the app scans just that station off the air (about a minute) and the rows update. Every multiplex is saved and dated on its own, so refreshing one leaves the others as they were.
 
 - *Added* — **Channels seen on the air but missing from your tuner now show in the web guide (beta).** A new **AIR ONLY · WATCH** section sits between Recording and Favorites with a row per channel found by the air scan that the HDHomeRun's own lineup doesn't carry. Each row shows the programs the air scan read for that channel (plain 4-hour blocks from midnight when it has none); click a block to see it in the summary panel, and its Watch Now! button plays the current block live in your browser (needs Web Streaming on). These channels can't be recorded.
 

@@ -1372,8 +1372,8 @@ its Watch Now! player on `/api/hls/<id>/index.m3u8`. It answers once the first b
 viewer of the same channel joins the same spool. `POST /api/live-stop {id}` (sent when the player closes) frees the tuner at once; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
 after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The spool is rolled into HLS and deleted on stop.
 
-### Refreshing one multiplex's guide (2026-10-22)
+### Refreshing one multiplex's guide (2026-10-22, per-multiplex since the same day)
 Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`): `POST /api/ota-scan {"rf":[<RF>],"seconds":90,"deviceId":…,"window":false}`
-reads just that station (about a minute, one idle tuner, no scan window on the Mac). A scan of an explicit RF list is a **partial** scan: `OTAStore.save(…, partial: true)` replaces the saved guide with just what
-it read (the rest is pulled down again by the next full scan, by design) and leaves `lineup.json` alone, so the Air Only list keeps all its channels. When it finishes the web guide is pushed a `guide_refreshed`
-event and the rows show the new listings.
+reads just that station (about a minute or less, one idle tuner, no scan window on the Mac). **Every multiplex is saved and dated on its own** (`OTAStore.save` merges per RF, `mux.json`, see docs/OTAGuide.md): the refresh
+replaces only that station's channels and listings, the others keep theirs, and the summary line shows "Guide read <date>" for the selected channel's multiplex (`data-gread` on the row's blocks). When the scan finishes the
+web guide is pushed a `guide_refreshed` event and the rows show the new listings.
