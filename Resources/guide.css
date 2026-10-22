@@ -333,14 +333,15 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-rec-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--vc-rec);font-size:.63rem;font-weight:700;letter-spacing:.07em}
 .g-rec-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--vc-rec) 13%,transparent)}
 /* Air only (watch-only): channels seen in the saved over-the-air scan that the tuner's own lineup lacks. Sits between Recording and Favorites.
-   Rows hold 4-hour blocks from local midnight; only the block in progress is live (click = play on the Mac running the app, never a recording). */
+   Rows hold 4-hour blocks from local midnight; only the block in progress is live (click selects it in the summary panel, whose Watch Now! plays it live in the browser; never a recording). */
 .g-air-sep{display:flex;border-bottom:1px solid var(--b0)}
 .g-air-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--air) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--air);font-size:.63rem;font-weight:700;letter-spacing:.07em}
 .g-air-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--air) 13%,transparent)}
 .g-air-blk{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:.62rem;color:var(--t4);border:1px dashed var(--b1);background:color-mix(in srgb,var(--air) 6%,transparent);user-select:none}
 .g-air-now{border:1px solid var(--air);background:color-mix(in srgb,var(--air) 24%,transparent);color:var(--t0);font-weight:700;cursor:pointer}
 .g-air-now:hover,.g-air-now:focus-visible{background:color-mix(in srgb,var(--air) 38%,transparent);outline:none}
-.g-air-err{border-color:#e53935;color:#e53935}
+.g-air-blk{cursor:pointer}
+.g-air-blk.g-sel{outline:2px solid var(--ac);outline-offset:-1px}
 .g-row[data-rec="1"] .g-ch{background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1))}
 .g-row[data-rec="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--vc-rec) 13%,transparent),color-mix(in srgb,var(--vc-rec) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 /* The 16% background tint above reads as a muddy olive/brown rather than a clear "this is

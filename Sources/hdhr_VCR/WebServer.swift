@@ -2943,15 +2943,15 @@ final class WebServer: @unchecked Sendable {
     }
 
     /// The 4-hour blocks (from local midnight: 12–4 AM, 4–8 AM …) that overlap the guide window; `isNow` marks the one in progress.
-    nonisolated static func airBlocks(winStart: Int, winEnd: Int, nowTs: Int, calendar: Calendar = .current) -> [(start: Int, end: Int, isNow: Bool, label: String)] {
+    nonisolated static func airBlocks(winStart: Int, winEnd: Int, nowTs: Int, calendar: Calendar = .current) -> [(start: Int, end: Int, isNow: Bool, label: String, slotStart: Int, slotEnd: Int)] {
         let fmt = DateFormatter(); fmt.calendar = calendar; fmt.timeZone = calendar.timeZone; fmt.dateFormat = "h a"
         func text(_ ts: Int) -> String { fmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))) }
         var slot = Int(calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(winStart))).timeIntervalSince1970)
-        var out: [(start: Int, end: Int, isNow: Bool, label: String)] = []
+        var out: [(start: Int, end: Int, isNow: Bool, label: String, slotStart: Int, slotEnd: Int)] = []
         while slot < winEnd {
             let next = Int(calendar.date(byAdding: .hour, value: 4, to: Date(timeIntervalSince1970: TimeInterval(slot)))!.timeIntervalSince1970)
             let s = max(slot, winStart), e = min(next, winEnd)
-            if e > s { out.append((s, e, slot <= nowTs && nowTs < next, "\(text(slot)) – \(text(next))")) }
+            if e > s { out.append((s, e, slot <= nowTs && nowTs < next, "\(text(slot)) – \(text(next))", slot, next)) }
             slot = next
         }
         return out
@@ -3929,9 +3929,8 @@ final class WebServer: @unchecked Sendable {
             for air in state.airOnlyChannels(deviceId: device.DeviceID) {
                 let blocks = Self.airBlocks(winStart: winStart, winEnd: winEnd, nowTs: nowTs).map { b -> String in
                     let cls = b.isNow ? "g-air-blk g-air-now" : "g-air-blk"
-                    let tip = b.isNow ? "Watch \(he(air.GuideName)) live on this Mac" : "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)"
-                    let act = b.isNow ? " role=\"button\" tabindex=\"0\" onclick=\"airWatch(this)\"" : ""
-                    return "<div class=\"\(cls)\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\"\(act)><span>\(he(b.label))</span></div>"
+                    let tip = "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)" + (b.isNow ? " — select, then Watch Now!" : "")
+                    return "<div class=\"\(cls)\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" role=\"button\" tabindex=\"0\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-start=\"\(b.slotStart)\" data-end=\"\(b.slotEnd)\" onclick=\"showAirInfo(this)\"><span>\(he(b.label))</span></div>"
                 }
                 airRows.append("<div class=\"g-row g-air-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-air=\"1\"><div class=\"g-ch\"><img class=\"g-logo\" src=\"\(Self.stationLogoFallbackPath)\" alt=\"\" style=\"background:#ddd\"><div class=\"g-cl\"><span class=\"g-cn\">\(he(air.GuideNumber))</span><span class=\"g-cname\">\(he(air.GuideName))</span></div></div><div class=\"g-tl\"><div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>\(blocks.joined())</div></div>")
             }

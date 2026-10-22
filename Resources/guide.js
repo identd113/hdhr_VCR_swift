@@ -95,7 +95,7 @@ function showInfo(el){
   // Mark the selection before renderHeavyFields() runs — paintHeavyFields() gates its
   // _poster update on '.g-sel' being present on el, and the synchronous cache-hit path
   // runs before this function would otherwise reach the old end-of-function assignment.
-  document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
+  document.querySelectorAll('.g-prog.g-sel,.g-air-blk.g-sel').forEach(function(b){b.classList.remove('g-sel');});
   el.classList.add('g-sel');
   _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';_title=d.title||'';_poster=d.poster||'';_logo=d.logo||'';_chname=d.chname||'';
   document.getElementById('sum-ph').style.display='none';
@@ -1520,6 +1520,8 @@ var _wn={posTick:0,startEpoch:0,endEpoch:0,open:false,id:'',gen:0,hls:null,timer
 function wnVideo(){return document.getElementById('wn-video');}
 function wnMsg(t){var m=document.getElementById('wn-msg');m.textContent=t||'';m.style.display=t?'flex':'none';}
 function watchNowFromSummary(){
+  var air=document.querySelector('.g-air-blk.g-sel');
+  if(air){airWatch(air);return;}
   var el=document.querySelector('.g-prog.g-sel');
   if(!el||!el.dataset.showId)return;
   openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'',_s,_e);
@@ -1838,22 +1840,45 @@ function toggleFav(evt,btn){
   postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
   .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
 }
-// Air only (watch-only): the in-progress block of an air-only channel starts live TV in the Watch Now! player (the app spools the tuner stream and converts it
-// to HLS like a recording, docs/WebStreaming.md "Live TV"). Needs Web Streaming switched on; there is no recording path for these channels.
-// A failure is shown on the block itself (no dialogs).
+// Air only (watch-only): clicking a block of an air-only channel fills the summary panel like any other block, with a Watch Now! button when it is the block in
+// progress and web streaming is on. Watching starts live TV in the Watch Now! player (the app spools the tuner stream and converts it to HLS like a recording,
+// docs/WebStreaming.md "Live TV"). There is no Record button: these channels are never recorded.
+function showAirInfo(el){
+  var d=el.dataset;
+  document.querySelectorAll('.g-prog.g-sel,.g-air-blk.g-sel').forEach(function(b){b.classList.remove('g-sel');});
+  el.classList.add('g-sel');
+  _d=d.dev;_n=d.ch;_s=+d.start;_e=+d.end;_ser='';_genre='';_title=d.gname||'';_poster='';_logo='';_chname=d.gname||'';
+  document.getElementById('sum-ph').style.display='none';
+  var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background='color-mix(in srgb,var(--air) 22%,var(--s1))';
+  var li=document.getElementById('sum-logo');li.src='/api/icon';li.style.display='inline';
+  document.getElementById('sum-title').textContent=d.gname||('Channel '+d.ch);
+  ['sum-genre','sum-date','sum-syn','sum-poster'].forEach(function(i){document.getElementById(i).style.display='none';});
+  so('sum-ep','Seen on the air · not in your tuner\'s lineup');
+  document.getElementById('sum-ct').textContent='Ch '+d.ch+' · '+(d.gname||'')+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
+  ['sum-btn','sum-edit','sum-del','sum-bonus-star'].forEach(function(i){document.getElementById(i).style.display='none';});
+  var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
+  watch.style.display='none';note.style.color='var(--t2)';
+  var nowTs=Math.floor(Date.now()/1000);
+  if(_s<=nowTs&&_e>nowTs){
+    note.textContent='Watch only · cannot be recorded';note.style.display='inline';
+    streamingEnabled(function(on){
+      if(document.querySelector('.g-air-blk.g-sel')!==el)return;
+      if(on)watch.style.display='inline-block';else{note.textContent='Turn on Web Streaming in Settings to watch live';}
+    });
+  }else{note.textContent='Only the block in progress can be watched';note.style.display='inline';}
+}
 function airWatch(el){
-  var lbl=el.querySelector('span'),was=lbl?lbl.textContent:'';
-  function fail(msg){el.classList.add('g-air-err');el.title=msg;if(lbl)lbl.textContent=msg;setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);}
-  el.classList.remove('g-air-err');
-  if(lbl)lbl.textContent='Tuning…';
+  var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
+  function fail(msg){note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';watch.disabled=false;}
+  note.style.color='var(--t2)';note.textContent='Tuning…';note.style.display='inline';watch.disabled=true;
   postJSON('/api/live-start',{deviceId:el.dataset.dev,guideNumber:el.dataset.ch}).then(function(r){return r.json();}).then(function(d){
-    if(lbl)lbl.textContent=was;
-    if(d&&d.ok){openWatchNow(d.id,d.title||el.dataset.ch,'Live · '+el.dataset.ch,'','',0,0);_wn.liveId=d.id;}
+    watch.disabled=false;
+    if(d&&d.ok){note.textContent='Watch only · cannot be recorded';openWatchNow(d.id,d.title||el.dataset.ch,'Live · '+el.dataset.ch,'','',0,0);_wn.liveId=d.id;}
     else fail((d&&d.error)||'Could not start');
   }).catch(function(){fail('Could not reach the app');});
 }
 document.addEventListener('keydown',function(e){
-  if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('g-air-now')){e.preventDefault();airWatch(e.target);}
+  if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('g-air-blk')){e.preventDefault();showAirInfo(e.target);}
 });
 // Rebuilds the genre filter from whatever's actually on the currently-viewed tuner's guide right
 // now (scoped by data-device to curDev, so switching tuners shows that tuner's own genres — not a
