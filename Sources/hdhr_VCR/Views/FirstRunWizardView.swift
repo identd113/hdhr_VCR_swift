@@ -40,6 +40,7 @@ struct FirstRunWizardView: View {
     @State private var sharingEnabled: Bool = false
     @State private var terminalGuideEnabled: Bool = false
     @State private var relayEnabled: Bool = false
+    @State private var airScanHour: Int = 3   // hour of the daily air rescan, -1 = never (saved on Finish)
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
     @State private var failThreshold: Int = 3
@@ -386,6 +387,15 @@ struct FirstRunWizardView: View {
             }
             Section {
                 AirChannelsCard(progress: state.otaProgress)
+            }
+            Section {
+                Picker(selection: $airScanHour) {
+                    Text("Never").tag(-1)
+                    ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
+                } label: {
+                    HStack { Text("Rescan the air"); InfoButton("Once a day from this hour on, on idle tuners only, the app rescans the air: first the channel list, then the guide the stations broadcast. Both are a backup, used only if no other guide is available. The scan steps aside whenever a recording or a viewer needs a tuner. You can change this later in Settings → Advanced → Over-the-Air Guide.") }
+                }
+                .accessibilityIdentifier("wizard-air-schedule")
             }
         }
         .formStyle(.grouped)
@@ -772,6 +782,7 @@ struct FirstRunWizardView: View {
         sharingEnabled        = state.config.Web_server_enabled
         terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
+        airScanHour          = state.config.OTA_scan_hour >= 0 ? state.config.OTA_scan_hour : (state.config.First_run_wizard_shown ? -1 : 3)
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
         failThreshold         = state.config.Fail_count_setting
@@ -797,6 +808,7 @@ struct FirstRunWizardView: View {
         state.config.Terminal_guide_enabled = terminalGuideEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
+        state.config.OTA_scan_hour          = airScanHour
         state.config.First_run_wizard_shown = true
         state.saveConfig()
         // Same commit pattern as SettingsView.save(): only (re)start the listener if the toggle
