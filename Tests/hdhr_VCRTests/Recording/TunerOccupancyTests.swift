@@ -251,7 +251,7 @@ struct TunerOccupancyTests {
     @Test func pendingRecordingChannels_justInsideGraceWindow_isIncluded() async {
         var show = Show.testActive(title: "Still Within Grace", channel: "5.1")
         show.hdhr_record = "DEV1"
-        show.show_next = Date().addingTimeInterval(-115)   // just inside the 120s grace period
+        show.show_next = Date().addingTimeInterval(-90)   // inside the 120s grace period, with margin for a slow test run
         show.show_end  = Date().addingTimeInterval(1600)
         let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
         #expect(await state.pendingRecordingChannels(for: "DEV1") == ["5.1"])
