@@ -136,4 +136,73 @@ struct WebLiveTests {
         for _ in 0..<40 where await !state.webLiveSessions.isEmpty { try await Task.sleep(nanoseconds: 50_000_000) }
         #expect(await state.webLiveSessions.isEmpty)
     }
+
+    // MARK: a scheduled recording wins the tuner
+
+    private func dueShow(device: String) -> Show {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var show = Show.blank(channel: "5.1", device: device)
+        show.show_title = "Test Show"
+        show.show_active = true
+        show.show_next = Date().addingTimeInterval(-5)
+        show.show_end = Date().addingTimeInterval(1800)
+        show.show_dir = dir.path
+        show.show_url = "http://192.168.1.100:5004/auto/v5.1"
+        return show
+    }
+
+    @Test @MainActor func aRecordingDueOnAFullTunerEndsBrowserLiveTV_andKeepsOtherTunersAlone() async throws {
+        let script = try writeMockCurlScript(sleepSeconds: 30)
+        defer { try? FileManager.default.removeItem(atPath: script) }
+        let manager = RecordingManager(curlExecutablePath: script)
+        let show = dueShow(device: "DEV1")
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 1), .test(id: "DEV2", tuners: 1)], recordingManager: manager)
+        state.config.Min_disk_free_gb = 0
+        let mine = try session(id: "live-mine", device: "DEV1")
+        let other = try session(id: "live-other", device: "DEV2", channel: "7.1")
+        state.webLiveSessions = [mine.id: mine, other.id: other]
+
+        await state.startRecording(index: 0)
+
+        #expect(state.webLiveSessions[mine.id] == nil)
+        #expect(!FileManager.default.fileExists(atPath: mine.cachePath))
+        #expect(state.webLiveSessions[other.id] != nil)   // another tuner's viewer is not affected
+        manager.stop(showId: show.show_id)
+        state.stopAllWebLive(reason: "test")
+    }
+
+    @Test @MainActor func aRecordingWithATunerToSpareLeavesBrowserLiveTVRunning() async throws {
+        let script = try writeMockCurlScript(sleepSeconds: 30)
+        defer { try? FileManager.default.removeItem(atPath: script) }
+        let manager = RecordingManager(curlExecutablePath: script)
+        let show = dueShow(device: "DEV1")
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)], recordingManager: manager)
+        state.config.Min_disk_free_gb = 0
+        let mine = try session(id: "live-mine", device: "DEV1")
+        state.webLiveSessions = [mine.id: mine]
+
+        await state.startRecording(index: 0)
+
+        #expect(state.webLiveSessions[mine.id] != nil)
+        manager.stop(showId: show.show_id)
+        state.stopAllWebLive(reason: "test")
+    }
+
+    // MARK: the air scan steps aside
+
+    @Test @MainActor func theAirScanMustYieldWhenBrowserLiveTVAndTheScanTogetherHoldEveryTuner() async throws {
+        let state = makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        state.otaScanDeviceId = "DEV1"
+        state.otaScanTask = Task { try? await Task.sleep(nanoseconds: 5_000_000_000) }
+        state.otaHeldResources = ["tuner0"]
+        defer { state.otaScanTask?.cancel(); state.otaScanTask = nil }
+
+        #expect(!state.otaNeedsYield(for: "DEV1"))   // the scan has a spare tuner
+
+        let live = try session(device: "DEV1")
+        state.webLiveSessions[live.id] = live
+        #expect(state.otaNeedsYield(for: "DEV1"))    // live TV holds the other one: a new stream would find none free
+        state.stopAllWebLive(reason: "test")
+    }
 }
