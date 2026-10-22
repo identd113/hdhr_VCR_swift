@@ -3927,10 +3927,23 @@ final class WebServer: @unchecked Sendable {
             // Air only: channels seen on the air (saved scan) that this tuner's own lineup lacks. Watch-only, never recordable (docs/WebServer.md).
             var airRows: [String] = []
             for air in state.airOnlyChannels(deviceId: device.DeviceID) {
-                let blocks = Self.airBlocks(winStart: winStart, winEnd: winEnd, nowTs: nowTs).map { b -> String in
-                    let cls = b.isNow ? "g-air-blk g-air-now" : "g-air-blk"
-                    let tip = "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)" + (b.isNow ? " — select, then Watch Now!" : "")
-                    return "<div class=\"\(cls)\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" role=\"button\" tabindex=\"0\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-start=\"\(b.slotStart)\" data-end=\"\(b.slotEnd)\" onclick=\"showAirInfo(this)\"><span>\(he(b.label))</span></div>"
+                // What the saved scan knows is on this channel; with no listings the row falls back to plain 4-hour blocks.
+                let listings = state.airListings(deviceId: device.DeviceID, channel: air.GuideNumber).filter { $0.EndTime > winStart && $0.StartTime < winEnd }
+                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
+                var blocks: [String] = []
+                if !listings.isEmpty {
+                    for e in listings {
+                        let cs = max(e.StartTime, winStart) - winStart, ce = min(e.EndTime, winEnd) - winStart
+                        guard ce > cs else { continue }
+                        let isNow = e.StartTime <= nowTs && e.EndTime > nowTs
+                        let tip = "\(he(e.Title)) (\(he(guideTimeRange(e)))) · \(he(air.GuideName)) — seen on the air, not in the tuner's lineup" + (isNow ? " — select, then Watch Now!" : "")
+                        blocks.append("<div class=\"g-air-blk g-air-prog\(isNow ? " g-air-now" : "")\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\" title=\"\(tip)\" aria-label=\"\(tip)\" \(common) data-title=\"\(he(e.Title))\" data-ep=\"\(he(e.EpisodeTitle ?? ""))\" data-syn=\"\(he(e.Synopsis ?? ""))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\"><span>\(he(e.Title))</span></div>")
+                    }
+                } else {
+                    blocks = Self.airBlocks(winStart: winStart, winEnd: winEnd, nowTs: nowTs).map { b -> String in
+                        let tip = "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)" + (b.isNow ? " — select, then Watch Now!" : "")
+                        return "<div class=\"\(b.isNow ? "g-air-blk g-air-now" : "g-air-blk")\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" \(common) data-start=\"\(b.slotStart)\" data-end=\"\(b.slotEnd)\"><span>\(he(b.label))</span></div>"
+                    }
                 }
                 airRows.append("<div class=\"g-row g-air-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-air=\"1\"><div class=\"g-ch\"><img class=\"g-logo\" src=\"\(Self.stationLogoFallbackPath)\" alt=\"\" style=\"background:#ddd\"><div class=\"g-cl\"><span class=\"g-cn\">\(he(air.GuideNumber))</span><span class=\"g-cname\">\(he(air.GuideName))</span></div></div><div class=\"g-tl\"><div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>\(blocks.joined())</div></div>")
             }

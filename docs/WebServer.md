@@ -1358,7 +1358,7 @@ Every web API route is under `/api/` **except** the virtual tuner's HDHomeRun-pr
 ## Air only section (watch-only; 2026-10-22)
 Guide rows for channels the saved over-the-air scan found that the tuner's own lineup lacks (`AppState.airOnlyChannels(deviceId:)` → `OTAStore.airOnly`, matched by channel number;
 empty when no scan is saved or the Developer lineup source is "From the air", where they already are the lineup). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
-(`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row has no listings: it is made of **4-hour blocks from local
+(`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row shows **what the saved scan knows is on the channel**: its listings (`AppState.airListings` ← `OTAStore.savedListings`, the `guide.json` a full scan wrote; one block per program with its title, selecting it shows the episode title and synopsis). A channel with no listings falls back to **4-hour blocks from local
 midnight** (`WebServer.airBlocks`, 12–4 AM, 4–8 AM …, clipped to the guide window). Clicking any block (or Enter/Space) selects it in the summary panel (`showAirInfo`: channel, whole 4-hour slot, "Watch only · cannot be recorded", no Record button); for the block in progress,
 with web streaming on, the panel's **Watch Now!** button (`#sum-watch`, via `watchNowFromSummary` → `airWatch`) starts live TV in the browser (below), tuned by frequency and
 program (`http://<tuner>:5004/auto/ch<Hz>-<program>`). **Watching = live TV in the browser** (below). **There is no recording path**: these rows have no `.g-prog` blocks, so the schedule,

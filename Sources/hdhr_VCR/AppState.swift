@@ -250,6 +250,8 @@ final class AppState: ObservableObject {
     /// Live TV watched in a browser (AppState+WebLive.swift): session id → the tuner stream being spooled to a temp file that the HLS follower reads.
     var webLiveSessions: [String: WebLiveSession] = [:]
     /// Web guide "Air only" section: air channels the tuner lacks, cached per device by the saved lineup file's date and the tuner lineup size.
+    /// Listings the saved scan has for the air-only channels, cached like `airOnlyCache` by the saved guide file's date.
+    var airListingsCache: [String: (stamp: String, listings: [String: [GuideEntry]])] = [:]
     var airOnlyCache: [String: (stamp: String, entries: [OTALineupEntry])] = [:]
     var airFallbackTask: Task<Void, Never>? = nil
     var otaScanGeneration = 0

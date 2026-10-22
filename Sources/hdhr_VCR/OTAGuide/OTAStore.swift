@@ -102,6 +102,15 @@ enum OTAStore {
         return saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }
     }
 
+    /// The listings a scan saved, by channel number (empty when none). Decodes the whole saved guide: callers cache it by the file's date.
+    static func savedListings(deviceId: String, only numbers: Set<String>, root: URL = OTAStore.root) -> [String: [GuideEntry]] {
+        guard !numbers.isEmpty, let data = try? Data(contentsOf: guideFile(deviceId: deviceId, root: root)),
+              let channels = try? JSONDecoder().decode([GuideChannel].self, from: data) else { return [:] }
+        var out: [String: [GuideEntry]] = [:]
+        for c in channels where numbers.contains(c.GuideNumber) { out[c.GuideNumber] = (c.Guide ?? []).sorted { $0.StartTime < $1.StartTime } }
+        return out
+    }
+
     /// The air channels the tuner's own lineup does not have (matched by channel number), sorted by number: what the web guide's "Air only" section lists.
     static func airOnly(saved: [OTALineupEntry], tunerLineup: [LineupEntry]) -> [OTALineupEntry] {
         let known = Set(tunerLineup.map(\.GuideNumber))

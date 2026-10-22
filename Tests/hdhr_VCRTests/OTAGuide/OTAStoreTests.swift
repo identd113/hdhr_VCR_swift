@@ -152,6 +152,18 @@ struct OTAStoreTests {
         #expect(only.map(\.GuideNumber) == ["4.2", "4.10", "23.3"])      // not on the tuner, once each, in numeric order
     }
 
+    @Test func savedListingsAreReadBackPerChannel() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        let lineup = try #require(OTAStore.savedLineup(deviceId: "TEST", root: root))
+        let some = try #require(lineup.first)
+        let listings = OTAStore.savedListings(deviceId: "TEST", only: [some.GuideNumber], root: root)
+        #expect(listings.keys.sorted() == [some.GuideNumber])
+        #expect(listings[some.GuideNumber]?.isEmpty == false)
+        #expect(zip(listings[some.GuideNumber]!, listings[some.GuideNumber]!.dropFirst()).allSatisfy { $0.StartTime <= $1.StartTime })
+        #expect(OTAStore.savedListings(deviceId: "TEST", only: [], root: root).isEmpty)
+    }
+
     @Test func theAirOnlyRowsAreFourHourBlocksFromMidnight() {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
         func ts(_ h: Int, _ m: Int = 0) -> Int { Int(cal.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: h, minute: m))!.timeIntervalSince1970) }

@@ -210,4 +210,16 @@ extension AppState {
         airOnlyCache[deviceId] = (stamp, entries)
         return entries
     }
+
+    /// What the saved scan knows is on each air-only channel (the web guide's Air Only rows show it instead of plain 4-hour blocks).
+    func airListings(deviceId: String, channel: String) -> [GuideEntry] {
+        let file = OTAStore.guideFile(deviceId: deviceId)
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date else { return [] }
+        let numbers = Set(airOnlyChannels(deviceId: deviceId).map(\.GuideNumber))
+        let stamp = "\(modified.timeIntervalSince1970)-\(numbers.count)"
+        if airListingsCache[deviceId]?.stamp != stamp {
+            airListingsCache[deviceId] = (stamp, OTAStore.savedListings(deviceId: deviceId, only: numbers))
+        }
+        return airListingsCache[deviceId]?.listings[channel] ?? []
+    }
 }

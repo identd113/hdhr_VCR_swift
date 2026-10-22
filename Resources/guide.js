@@ -1851,21 +1851,22 @@ function showAirInfo(el){
   document.getElementById('sum-ph').style.display='none';
   var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background='color-mix(in srgb,var(--air) 22%,var(--s1))';
   var li=document.getElementById('sum-logo');li.src='/api/icon';li.style.display='inline';
-  document.getElementById('sum-title').textContent=d.gname||('Channel '+d.ch);
-  ['sum-genre','sum-date','sum-syn','sum-poster'].forEach(function(i){document.getElementById(i).style.display='none';});
-  so('sum-ep','Seen on the air · not in your tuner\'s lineup');
+  document.getElementById('sum-title').textContent=d.title||d.gname||('Channel '+d.ch);
+  ['sum-genre','sum-date','sum-poster'].forEach(function(i){document.getElementById(i).style.display='none';});
+  so('sum-ep',d.ep||'');
+  var sy=document.getElementById('sum-syn');if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
   document.getElementById('sum-ct').textContent='Ch '+d.ch+' · '+(d.gname||'')+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
   ['sum-btn','sum-edit','sum-del','sum-bonus-star'].forEach(function(i){document.getElementById(i).style.display='none';});
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
   watch.style.display='none';note.style.color='var(--t2)';
   var nowTs=Math.floor(Date.now()/1000);
   if(_s<=nowTs&&_e>nowTs){
-    note.textContent='Watch only · cannot be recorded';note.style.display='inline';
+    note.textContent='Seen on the air, not in your tuner\'s lineup · watch only';note.style.display='inline';
     streamingEnabled(function(on){
       if(document.querySelector('.g-air-blk.g-sel')!==el)return;
       if(on)watch.style.display='inline-block';else{note.textContent='Turn on Web Streaming in Settings to watch live';}
     });
-  }else{note.textContent='Only the block in progress can be watched';note.style.display='inline';}
+  }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched';note.style.display='inline';}
 }
 function airWatch(el){
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
