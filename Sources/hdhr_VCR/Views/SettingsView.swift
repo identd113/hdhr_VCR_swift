@@ -717,6 +717,7 @@ struct SettingsView: View {
                     Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    AirLastScanLines(progress: state.otaProgress)
                     if state.otaScanTask != nil {
                         Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
                             .font(.caption)

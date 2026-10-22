@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Added* — **The air scan says when it last finished.** The first-run wizard's "Channels from the Air" step shows when the channel list was last scanned, and Settings → Advanced → Over-the-Air Guide shows it for both the channel list and the guide, or "scanning now…" while a scan runs. A cancelled scan does not count.
+
 - *Info* — **Developer (debug builds only): the purges are one group.** Tick what to remove (guide in memory, cached SiliconDust guide files, saved air guide, saved air lineup), press Run once, and it clears them, reloads the guide and starts an air scan with its scan window.
 
 - *Updated* — **The web guide's Watch Now! button is easier to see.** A catch-all style rule was turning its text grey on the summary panel; it now uses the same accent button as the app's other prominent buttons.

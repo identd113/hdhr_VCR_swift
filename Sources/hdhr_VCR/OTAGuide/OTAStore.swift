@@ -107,6 +107,12 @@ enum OTAStore {
         (try? FileManager.default.attributesOfItem(atPath: folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json").path))?[.modificationDate] as? Date
     }
 
+    /// When this device's channel list and guide were last scanned to the end (nil = never, or the scan was cancelled before it finished).
+    static func lastCompletedScans(deviceId: String, root: URL = OTAStore.root) -> (lineup: Date?, guide: Date?) {
+        let guide = loadSummary(deviceId: deviceId, root: root).flatMap { $0.cancelled ? nil : $0.date }
+        return (lineupDate(deviceId: deviceId, root: root), guide)
+    }
+
     static func loadSummary(deviceId: String, root: URL = OTAStore.root) -> OTAScanSummary? {
         guard let data = try? Data(contentsOf: folder(deviceId: deviceId, root: root).appendingPathComponent("scan.json")) else { return nil }
         let decoder = JSONDecoder()

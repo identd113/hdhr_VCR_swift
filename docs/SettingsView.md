@@ -262,7 +262,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
 - At rest: a **Tuner** pulldown ("All Tuners", then each recordable device as `FriendlyName (DeviceID)`; a selection whose device has gone away behaves as "All Tuners") followed by one **Measure Signal** button (disabled with no devices). Calls `state.startSignalScan(force: true, deviceId:)` — `deviceId` is nil for "All Tuners", else only that device is scanned; `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
-**Over-the-Air Guide section** (Advanced, below Signal Strength Scan; `docs/OTAGuide.md`):
+**Over-the-Air Guide section** (Advanced, below Signal Strength Scan; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
 - Caption text, then: while scanning, a `Label` (`dot.radiowaves.left.and.right`) with `state.otaScanStatus` and a red **Cancel Scan** button (`settings-ota-cancel`); at rest the last status line (if any) and **Scan the Air Now** (`settings-ota-scan`, disabled with no recordable device). Calls `state.startOTAScan()` / `cancelOTAScan()`.
 
 ---

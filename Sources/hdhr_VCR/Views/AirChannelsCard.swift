@@ -3,6 +3,36 @@ import SwiftUI
 // The first-run wizard's "Channels from the Air" card (docs/FirstRunWizardView.md): starts a quick channel-list scan (no guide) and shows its
 // progress inline, instead of opening the scan window on top of the wizard. Optional: the same scan also runs by itself in the early
 // hours when no list exists yet (AppState.startScheduledOTALineupRefreshIfDue), so skipping this step still ends up with one.
+/// "Channel list: scanned Oct 21, 7:42 PM" / "Guide: never scanned" — when each saved over-the-air result was last completed. Shared by the wizard
+/// card and Settings → Advanced; re-reads the saved files only when a scan starts or ends, never on every redraw.
+struct AirLastScanLines: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject var progress: OTAScanProgress
+    var showGuide = true
+    @State private var dates: (lineup: Date?, guide: Date?) = (nil, nil)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            line("Channel list", dates.lineup, id: "ota-last-lineup")
+            if showGuide { line("Guide", dates.guide, id: "ota-last-guide") }
+        }
+        .font(.caption).foregroundStyle(.secondary)
+        .onAppear(perform: reload)
+        .onChange(of: progress.running) { _, _ in reload() }
+        .onChange(of: state.recordableDevices.map(\.DeviceID)) { _, _ in reload() }
+    }
+
+    private func line(_ name: String, _ date: Date?, id: String) -> some View {
+        Text("\(name): \(progress.running ? "scanning now…" : date.map { "last scanned \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "never scanned")")
+            .accessibilityIdentifier(id)
+    }
+
+    private func reload() {
+        guard let id = state.recordableDevices.first?.DeviceID else { dates = (nil, nil); return }
+        dates = OTAStore.lastCompletedScans(deviceId: id)
+    }
+}
+
 struct AirChannelsCard: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
@@ -25,6 +55,7 @@ struct AirChannelsCard: View {
                 .accessibilityIdentifier("wizard-air-scan")
                 Text("About three minutes. You can keep going through the setup while it runs.")
                     .font(.caption).foregroundStyle(.secondary)
+                AirLastScanLines(progress: progress, showGuide: false)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -73,6 +104,7 @@ struct AirChannelsCard: View {
                 Text("Is an antenna connected to the tuner? You can try again from Settings → Advanced → Over-the-Air Guide.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            AirLastScanLines(progress: progress, showGuide: false)
             Button("Scan again") { state.startOTAScan(lineupOnly: true, userInitiated: true, showWindow: false) }
                 .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
                 .accessibilityIdentifier("wizard-air-rescan")

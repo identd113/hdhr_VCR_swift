@@ -30,6 +30,20 @@ struct OTAStoreTests {
         #expect(OTAStore.loadSummary(deviceId: "TEST", root: root)?.channels == 7)
     }
 
+    @Test func theLastCompletedScansAreReported() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).lineup == nil)
+        #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).guide == nil)
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        let done = OTAStore.lastCompletedScans(deviceId: "TEST", root: root)
+        #expect(done.lineup != nil)
+        #expect(done.guide != nil)
+        // Removing the guide leaves the channel list's date alone.
+        OTAStore.deleteSaved(deviceId: "TEST", guide: true, lineup: false, root: root)
+        #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).guide == nil)
+        #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).lineup != nil)
+    }
+
     @Test func anEmptyScanNeverReplacesAnEarlierOne() throws {
         let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
         _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)

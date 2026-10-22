@@ -469,6 +469,6 @@ about once a week in the early hours) and `AirChannelsCard` (`Views/AirChannelsC
 OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindow: false)`: the wizard shows the progress itself); while it runs, a bar with
 "N of 49 RF channels · M stations · K channels" and Cancel (`wizard-air-progress`, `wizard-air-cancel`, plus the "stepped aside" note if the scan yields); afterwards
 "Found 18 stations with 118 channels." (`wizard-air-found`) or "No stations found" with an antenna hint (`wizard-air-none`), and "Scan again". With no tuner found yet the
-card says so (`wizard-air-no-tuner`). Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
+card says so (`wizard-air-no-tuner`). Below the button (and under the found/none result) a caption line `AirLastScanLines` says "Channel list: last scanned Oct 21, 7:42 PM", "never scanned" or "scanning now…" (`ota-last-lineup`). Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
 Skipping it still ends up with a list: `AppState.startScheduledOTALineupRefreshIfDue` runs the same scan in the early hours when none exists.
 (The step dots and "Step N of M" labels derive from `Step.allCases`, so they now count one more step; the numbered sections above predate this step.)
