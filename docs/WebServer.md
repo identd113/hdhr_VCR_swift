@@ -1371,3 +1371,9 @@ curl); `StreamSessions` then converts that growing file like a recording that is
 its Watch Now! player on `/api/hls/<id>/index.m3u8`. It answers once the first bytes arrive (up to 6 s). A tuner must be free (`tunersFull`; live sessions count in `activeTunerCount`), a second
 viewer of the same channel joins the same spool. `POST /api/live-stop {id}` (sent when the player closes) frees the tuner at once; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
 after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The spool is rolled into HLS and deleted on stop.
+
+### Refreshing one multiplex's guide (2026-10-22)
+Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`): `POST /api/ota-scan {"rf":[<RF>],"seconds":90,"deviceId":…,"window":false}`
+reads just that station (about a minute, one idle tuner, no scan window on the Mac). A scan of an explicit RF list is a **partial** scan: `OTAStore.save(…, partial: true)` replaces the saved guide with just what
+it read (the rest is pulled down again by the next full scan, by design) and leaves `lineup.json` alone, so the Air Only list keeps all its channels. When it finishes the web guide is pushed a `guide_refreshed`
+event and the rows show the new listings.

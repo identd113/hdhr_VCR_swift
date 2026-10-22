@@ -82,7 +82,8 @@ extension AppState {
                 let current = self.otaScanGeneration == generation
                 if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaProgress.endedAt = Date(); self.otaProgress.lanes = [:]; self.otaProgress.note = nil; self.otaHeldResources = [] }
                 // A cancelled full scan saved its channel lists already; its half-read guide must not replace an earlier complete one.
-                let saved = (twoPass && outcome.cancelled) ? nil : OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly)
+                let saved = (twoPass && outcome.cancelled) ? nil : OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly, partial: rfChannels != nil)
+                if saved != nil, rfChannels != nil, !lineupOnly { self.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self) }   // the web guide's Air Only rows show the new listings
                 if let summary = saved {
                     let done = "Done: \(summary.channels) channels, \(summary.events) events from \(summary.multiplexes) multiplexes"
                     if current { self.otaScanStatus = done }

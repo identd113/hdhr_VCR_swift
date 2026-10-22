@@ -2630,7 +2630,7 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
-            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true} (all optional), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
+            if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true,"deviceId":"…","window":false} (all optional; an rf list replaces the saved guide with just those stations and keeps the saved channel list), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
                 if let n = params["tuners"] as? Int, state.otaScanTask != nil {
@@ -2639,7 +2639,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
                 let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
-                return jsonResponse(["status": state.startOTAScan(rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false)])
+                return jsonResponse(["status": state.startOTAScan(deviceId: params["deviceId"] as? String, rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false, showWindow: params["window"] as? Bool ?? true)])
             }
             if path == "/api/signal-scan"  {
                 let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
@@ -3929,7 +3929,7 @@ final class WebServer: @unchecked Sendable {
             for air in state.airOnlyChannels(deviceId: device.DeviceID) {
                 // What the saved scan knows is on this channel; with no listings the row falls back to plain 4-hour blocks.
                 let listings = state.airListings(deviceId: device.DeviceID, channel: air.GuideNumber).filter { $0.EndTime > winStart && $0.StartTime < winEnd }
-                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
+                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-rf=\"\(air.RF)\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
                 var blocks: [String] = []
                 if !listings.isEmpty {
                     for e in listings {

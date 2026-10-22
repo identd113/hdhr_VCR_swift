@@ -114,6 +114,7 @@ function showInfo(el){
   var note=document.getElementById('sum-note');
   // Reset all action elements first
   var edit=document.getElementById('sum-edit');
+  btn.onclick=function(){doRecord();};btn.title='';   // an air-only selection (showAirInfo) reuses this button as "Refresh this multiplex's guide"
   btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
   var watch=document.getElementById('sum-watch');watch.style.display='none';
   del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
@@ -1859,6 +1860,8 @@ function showAirInfo(el){
   ['sum-btn','sum-edit','sum-del','sum-bonus-star'].forEach(function(i){document.getElementById(i).style.display='none';});
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
   watch.style.display='none';note.style.color='var(--t2)';
+  var rb=document.getElementById('sum-btn');   // the Record button slot becomes "Refresh guide" here: reads just this multiplex off the air
+  if(d.rf){rb.textContent='Refresh this multiplex\'s guide';rb.title='Scans RF '+d.rf+' (about a minute, one idle tuner) and replaces the saved air guide with it';rb.style.background='var(--air)';rb.style.color='#fff';rb.style.display='inline-block';rb.disabled=false;rb.onclick=function(){airRefresh(el);};}
   var nowTs=Math.floor(Date.now()/1000);
   if(_s<=nowTs&&_e>nowTs){
     note.textContent='Seen on the air, not in your tuner\'s lineup · watch only';note.style.display='inline';
@@ -1867,6 +1870,13 @@ function showAirInfo(el){
       if(on)watch.style.display='inline-block';else{note.textContent='Turn on Web Streaming in Settings to watch live';}
     });
   }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched';note.style.display='inline';}
+}
+function airRefresh(el){
+  var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');
+  rb.disabled=true;note.style.color='var(--t2)';note.style.display='inline';note.textContent='Scanning RF '+el.dataset.rf+'… the guide updates here when it is done';
+  postJSON('/api/ota-scan',{rf:[+el.dataset.rf],seconds:90,deviceId:el.dataset.dev,window:false}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.status&&/already|No tuner/.test(d.status)){note.textContent=d.status;rb.disabled=false;}
+  }).catch(function(){note.textContent='Could not reach the app';rb.disabled=false;});
 }
 function airWatch(el){
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');

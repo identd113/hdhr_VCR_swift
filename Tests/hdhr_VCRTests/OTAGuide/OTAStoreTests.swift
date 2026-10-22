@@ -44,6 +44,19 @@ struct OTAStoreTests {
         #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).lineup != nil)
     }
 
+    @Test func aPartialScanReplacesTheGuideButKeepsTheChannelList() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)
+        let before = try #require(OTAStore.savedLineup(deviceId: "TEST", root: root)).count
+        var other = try Self.outcome()
+        other.multiplexes[0].rf = 19                          // a one-station refresh of another station
+        _ = OTAStore.save(other, deviceId: "TEST", partial: true, root: root)
+        #expect(OTAStore.savedLineup(deviceId: "TEST", root: root)?.count == before)            // the list was not rewritten from the partial scan
+        let lineupRFs = Set(try #require(OTAStore.savedLineup(deviceId: "TEST", root: root)).map(\.RF))
+        #expect(lineupRFs == [32])
+        #expect(OTAStore.loadSummary(deviceId: "TEST", root: root) != nil)
+    }
+
     @Test func anEmptyScanNeverReplacesAnEarlierOne() throws {
         let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
         _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)

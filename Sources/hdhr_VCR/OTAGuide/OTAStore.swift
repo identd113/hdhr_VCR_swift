@@ -36,9 +36,10 @@ enum OTAStore {
     static func guideFile(deviceId: String, root: URL = OTAStore.root) -> URL { folder(deviceId: deviceId, root: root).appendingPathComponent("guide.json") }
 
     /// Builds and saves the guide, lineup and summary for a finished scan. Returns the summary, or nil if nothing usable was found
-    /// (an empty scan never replaces a good earlier one).
+    /// (an empty scan never replaces a good earlier one). A `partial` scan (an explicit list of RF channels, e.g. one multiplex refreshed from the web guide)
+    /// replaces the saved guide with just what it read, and leaves the saved channel list alone: the list is a whole-band fact and a one-station scan must not shrink it.
     @discardableResult
-    static func save(_ outcome: OTAScanOutcome, deviceId: String, lineupOnly: Bool = false, root: URL = OTAStore.root) -> OTAScanSummary? {
+    static func save(_ outcome: OTAScanOutcome, deviceId: String, lineupOnly: Bool = false, partial: Bool = false, root: URL = OTAStore.root) -> OTAScanSummary? {
         let results = outcome.multiplexes.sorted { $0.rf < $1.rf }
         let guide = OTAGuideConverter.guideChannels(from: results.map(\.result))
         guard !guide.isEmpty else { return nil }
@@ -57,7 +58,7 @@ enum OTAStore {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(lineup).write(to: dir.appendingPathComponent("lineup.json"), options: .atomic)
+            if !partial { try encoder.encode(lineup).write(to: dir.appendingPathComponent("lineup.json"), options: .atomic) }
             // A lineup-only scan carries no listings: it never replaces an earlier guide or its scan record, it only seeds a guide when none exists.
             let hasGuide = FileManager.default.fileExists(atPath: dir.appendingPathComponent("guide.json").path)
             if !lineupOnly || !hasGuide { try encoder.encode(guide).write(to: dir.appendingPathComponent("guide.json"), options: .atomic) }
