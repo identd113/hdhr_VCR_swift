@@ -606,6 +606,23 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start (capped ~29h per call) |
 | `api.hdhomerun.com/api/xmltv` | Cloud guide as XMLTV XML (DeviceAuth gated); no Start/Duration — server controls the window; enabled by `Guide_use_xml = true` |
 
+## Over-the-Air Capture and Live Streaming (live-tested 2026-10-20 on an EXTEND `HDTC-2US`)
+
+Full research, band sweep and decoder results: [`overtime/README.md`](../overtime/README.md). App use: [`OTAGuide.md`](OTAGuide.md), [`WebStreaming.md`](WebStreaming.md) "Live TV". What the device itself was seen to do:
+
+| Finding | Detail |
+|---|---|
+| Raw frequency tuning works | `http://<ip>:5004/tunerN/ch<Hz>` tunes a frequency directly (581 and 587 MHz tried on the idle tuner while the other recorded). `tunerN` must name a tuner; the scanner takes idle ones only. |
+| One tuner delivers the whole multiplex | One 6 MHz RF channel arrives as a single transport stream of about 19.4 Mb/s carrying every sub-channel (7–16 programs seen). Roughly 8.7 GB an hour if spooled. |
+| A single program by frequency | `/auto/ch<Hz>-<program>` tunes one program of a multiplex. This is how air-only channels (not in `lineup.json`) are tuned for live TV and the developer-only air lineup. |
+| The lineup hides nothing | `lineup.json` and `lineup.json?show=found` both listed 112 channels, none flagged audio-only. Air scanning found 19 services (RF 19, a low-power multiplex) the tuner's own lineup lacks, and some lineup channels the air did not carry. |
+| PSIP is in the raw stream | MGT, TVCT and STT repeat on PID `0x1FFB` (40 MGT, 15 TVCT, 6 STT in 6 s). EIT/ETT sit on PIDs the MGT names and repeat slowly: allow a minute or two per multiplex for a deep guide (about 3 days ahead for some stations, a median of 22 hours across the sample). |
+| Stations that cannot be read | All-null stream (off air); real video/audio with no PSIP (tunable only by program number); EIT PIDs announced but never sent; no EIT announced at all (names but no guide). Program numbers on some multiplexes are the tuner's own (1001…), not the station's. |
+| A busy tuner answers `503` | Requesting a tuner another client holds returns `503` ("tuner in use"). The scanner treats it as "busy", retries once, then skips the channel as `tuner in use`, never as "no signal" (so a busy tuner can never delete a saved station). |
+| Signal check by size | A tuned channel with almost no bytes in the first seconds has no signal; the scanner gives up at about 100 KB in 3 s. |
+| The air guide lacks the cloud guide's extras | No SeriesID, genre tags, episode titles/numbers or images; it adds ratings. |
+| One program split from a multiplex is playable | A pure-Python PAT/PMT filter split a 25 s capture into standalone single-program streams that ffprobe/ffmpeg read (parked idea, `overtime/README.md` "Parked"). |
+
 ## Endpoints Not Yet Used (candidates)
 
 | Endpoint | Why it could help |
