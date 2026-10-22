@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **A simpler, livelier scan window.** The airwaves are now one dial: a bar for every RF channel from RF 2 to 51 under the three bands (VHF low, VHF high, UHF); a bar springs up when a station is found, taller with more channels, and a coloured arrow bobs over the channel each tuner is reading. Tap a bar to see that multiplex: its channels drawn as blocks sharing one stream, then a list with episodes and how far ahead each guide reaches. (i) buttons explain the spectrum, RF channels and multiplexes. The per-tuner cards became slim chips, and the tabs, summary tiles and technical footnote are gone. Reduce Motion turns the bobbing and sliding off.
+
 - *Updated* — **The channel list from the air is rescanned daily, and the guide only when the SiliconDust guide fails.** The first-run wizard and Settings → Advanced → Over-the-Air Guide have one time for the daily channel-list scan (default 3:00 AM, or Never); the old weekly early-hours rule and "Rescan the backup guide daily" are gone. When the guide can't be loaded, the app asks (Scan Now / Not Now), posts to Discord, and with no answer in an hour scans the air for a backup guide (channel list first, then guide).
 
 - *Added* — **The air scan says when it last finished.** The first-run wizard's "Channels from the Air" step shows when the channel list was last scanned, and Settings → Advanced → Over-the-Air Guide shows it for both the channel list and the guide, or "scanning now…" while a scan runs. A cancelled scan does not count.

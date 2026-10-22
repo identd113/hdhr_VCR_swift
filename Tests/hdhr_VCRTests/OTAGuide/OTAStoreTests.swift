@@ -127,6 +127,22 @@ struct OTAStoreTests {
         #expect(OTAScanView.mhz(581) == "581 MHz")
     }
 
+    @Test func theDialRemembersWhichRFChannelsWereHeardAndWhichWereEmpty() throws {
+        let progress = OTAScanProgress()
+        progress.reset(lineupOnly: false)
+        let data = try Data(contentsOf: PSIPDecoderTests.fixture)
+        let decoder = PSIPDecoder(); decoder.ingest(data)
+        progress.apply(.queued(total: 4))
+        progress.apply(.skipped(rf: 5, why: "no signal"))
+        progress.apply(.skipped(rf: 6, why: "tuner needed"))          // interrupted: goes back in the queue, not heard yet
+        progress.apply(.started(rf: 32, tuner: "tuner0", expectedSeconds: 10))
+        progress.apply(.finished(rf: 32, result: decoder.result(), bytes: 1_000_000, seconds: 10))
+        #expect(progress.listenedRF == [5, 32])
+        #expect(progress.emptyRF == [5])
+        progress.reset(lineupOnly: false)
+        #expect(progress.listenedRF.isEmpty && progress.emptyRF.isEmpty)
+    }
+
     @Test func theScanWindowFollowsTheStationBeingRead() throws {
         let progress = OTAScanProgress()
         progress.reset(lineupOnly: false)

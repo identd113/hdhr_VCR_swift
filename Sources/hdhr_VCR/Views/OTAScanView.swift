@@ -1,11 +1,11 @@
 import SwiftUI
 
-// Over-the-air scan dashboard (docs/OTAScanView.md): a floating window that opens when a scan starts.
-//   1. Overview: what the scan is doing, one smooth progress bar for the whole scan, a time estimate and running totals.
-//   2. One lane per tuner: a light (reading / tuning / idle / stepped aside / off), the station it is on, a progress bar for that read
-//      (time so far against the longest it can take) and live readings. Each tuner has its own colour, repeated on the station tabs.
-//   3. The stations found, as tabs: the one being read is selected automatically (until you click another), with its guide reach,
-//      its channels and how many episodes each has.
+// Over-the-air scan window (docs/OTAScanView.md): a floating window that opens when a scan starts.
+//   1. Overview: what the scan is doing, one progress bar for the whole scan, a time estimate and running totals.
+//   2. The dial: the airwaves as one bar per RF channel (OTASpectrumDial); a station springs up when it is found, an arrow in the reading
+//      tuner's colour bobs over the channel being read. Tap a bar to see that multiplex.
+//   3. The tuners, one slim chip each.
+//   4. The selected multiplex: its channels drawn as chips sharing one stream, then a list of them with their guide.
 struct OTAScanView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
@@ -20,12 +20,13 @@ struct OTAScanView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             overview
-            lanesSection
-            stationsSection
+            dialCard
+            tunersSection
+            multiplexSection
             footer
         }
         .padding(16)
-        .frame(width: 520, height: 700)
+        .frame(width: 540, height: 760)
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
@@ -97,11 +98,28 @@ struct OTAScanView: View {
         .accessibilityIdentifier(id)
     }
 
-    // MARK: 2. tuner lanes
+    // MARK: 2. the dial
 
-    private var lanesSection: some View {
+    private var dialCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
+                Text("The airwaves").font(.subheadline.bold())
+                InfoButton("TV stations share the air like lanes on a road. The spectrum is cut into numbered slices called RF channels (2 to 13 in the VHF bands, 14 to 51 in UHF), each 6 MHz wide, and each bar here is one slice. A station uses one slice and fits several channels into it: that is a multiplex. The 5.1, 5.2 and 5.3 you tune are separate programs riding one shared stream of about 19.4 Mbit/s. The scan tunes every slice in turn; a tall bar is a slice with channels on it, and the more channels it carries, the taller the bar.")
+                Spacer()
+                Text(progress.running ? "Tuning…" : "\(progress.rows.count) multiplexes found")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            OTASpectrumDial(progress: progress, selectedRF: selectedRF, laneColor: laneColor) { pinnedRF = $0 }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.07)))
+    }
+
+    // MARK: 3. tuners
+
+    private var tunersSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
                 Text("Tuners").font(.subheadline.bold())
                 Picker("Tuners", selection: $state.otaTunerLimit) {
                     ForEach(1...max(1, state.otaTunerMax), id: \.self) { Text("use \($0)").tag($0) }
@@ -120,7 +138,7 @@ struct OTAScanView: View {
             }
             TimelineView(.periodic(from: .now, by: 2)) { context in
                 HStack(spacing: 10) {
-                    ForEach(0..<max(1, state.otaTunerMax), id: \.self) { i in laneCard(i, now: context.date) }
+                    ForEach(0..<max(1, state.otaTunerMax), id: \.self) { i in laneChip(i, now: context.date) }
                 }
             }
         }
@@ -136,36 +154,27 @@ struct OTAScanView: View {
         return .tuning
     }
 
-    private func laneCard(_ index: Int, now: Date) -> some View {
-        let tuner = "tuner\(index)"
-        let lane = progress.lanes[tuner]
+    private func laneChip(_ index: Int, now: Date) -> some View {
+        let lane = progress.lanes["tuner\(index)"]
         let st = laneState(index, lane: lane)
         let color = laneColor(index)
-        let info = lane.flatMap { l in progress.rows.first(where: { $0.rf == l.rf })?.info }
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                light(st, color: color)
+                Circle().fill(laneLight(st)).frame(width: 9, height: 9)
+                    .overlay(Circle().stroke(color, lineWidth: 1.5).frame(width: 14, height: 14))
                 Text("Tuner \(index)").font(.caption.bold())
                 Spacer(minLength: 0)
-                Text(laneStateWord(st)).font(.caption2).foregroundStyle(laneStateColor(st))
+                Text(lane.map { "RF \($0.rf) · \(Self.mhz(Double(OTAScanner.frequencyHz(rf: $0.rf) ?? 0) / 1_000_000))" } ?? laneStateWord(st))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            if let lane {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("RF \(lane.rf)").font(.title3.bold())
-                    Text(Self.mhz(Double(OTAScanner.frequencyHz(rf: lane.rf) ?? 0) / 1_000_000)).font(.caption).foregroundStyle(.secondary)
-                }
-                ProgressView(value: lane.fraction(now: now)).tint(color)
-                    .animation(.linear(duration: 2), value: lane.fraction(now: now))
-                    .accessibilityLabel("Tuner \(index) progress")
-                    .accessibilityIdentifier("ota-scan-lane-progress-\(index)")
-                Text(laneReadings(info, lane: lane)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            } else {
-                Text(laneIdleText(st)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                Spacer(minLength: 0)
-            }
+            ProgressView(value: lane?.fraction(now: now) ?? 0).tint(color)
+                .animation(.linear(duration: 2), value: lane?.fraction(now: now))
+                .opacity(lane == nil ? 0.25 : 1)
+                .accessibilityLabel("Tuner \(index) progress")
+                .accessibilityIdentifier("ota-scan-lane-progress-\(index)")
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: 112, alignment: .topLeading)
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(lane == nil ? 0.04 : 0.10)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(lane == nil ? 0.15 : 0.45), lineWidth: 1))
         .accessibilityElement(children: .contain)
@@ -175,18 +184,12 @@ struct OTAScanView: View {
     }
 
     /// The tuner's light: green while reading, yellow while locking on, orange while stepped aside, grey otherwise.
-    @ViewBuilder private func light(_ st: LaneState, color: Color) -> some View {
-        let lit: Color = {
-            switch st {
-            case .reading: return .green
-            case .tuning: return .yellow
-            case .steppedAside: return .orange
-            case .idle, .off, .ended: return .gray.opacity(0.5)
-            }
-        }()
-        ZStack {
-            Circle().stroke(color.opacity(0.6), lineWidth: 1.5).frame(width: 14, height: 14)
-            Image(systemName: "circle.fill").font(.system(size: 8)).foregroundStyle(lit)
+    private func laneLight(_ st: LaneState) -> Color {
+        switch st {
+        case .reading: return .green
+        case .tuning: return .yellow
+        case .steppedAside: return .orange
+        case .idle, .off, .ended: return .gray.opacity(0.5)
         }
     }
 
@@ -200,42 +203,32 @@ struct OTAScanView: View {
         case .ended: return "done"
         }
     }
-    private func laneStateColor(_ s: LaneState) -> Color {
-        switch s { case .reading: return .green; case .tuning: return .yellow; case .steppedAside: return .orange; default: return .secondary }
-    }
-    private func laneIdleText(_ s: LaneState) -> String {
-        switch s {
-        case .off: return "Left out: the scan is using \(state.otaTunerLimit) of \(state.otaTunerMax) tuners."
-        case .steppedAside: return progress.note ?? "Stepped aside."
-        case .ended: return "Finished."
-        default: return "Waiting for the next station."
-        }
-    }
-    /// A quiet line under the bar: how long the read can take, and the tuner's signal once it has been read (a fixed reading, not a live one).
-    private func laneReadings(_ info: OTAMuxInfo?, lane: OTAScanLane) -> String {
-        var parts = ["up to \(Int(lane.expectedSeconds)) s"]
-        if let q = info?.quality { parts.append("signal \(q)%") } else if info == nil || info?.bytes == 0 { parts.append("locking on") }
-        return parts.joined(separator: " · ")
-    }
 
-    // MARK: 3. stations
+    // MARK: 4. the selected multiplex
 
-    private var stationsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Stations").font(.subheadline.bold())
-                if !progress.rows.isEmpty { Text("\(progress.rows.count)").font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-            }
-            if progress.rows.isEmpty {
-                Text(progress.running ? "Looking for stations…" : "No stations found.").foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
-                Spacer(minLength: 0)
+    fileprivate static let chipColors: [Color] = [.blue, .teal, .green, .orange, .pink, .purple, .indigo, .mint]
+
+    private var multiplexSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let row = selectedRow {
+                multiplexPanel(row)
             } else {
-                tabStrip
-                if let row = selectedRow { panel(row) }
+                VStack(spacing: 6) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.largeTitle).foregroundStyle(.tertiary)
+                    Text(progress.running ? "Listening for stations…" : "No stations found.").foregroundStyle(.secondary)
+                    if progress.running {
+                        Text("Each bar above rises as a station is found. Tap one to see the channels it carries.")
+                            .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.07)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(selectedRF.map { "ota-scan-mux-\($0)" } ?? "ota-scan-mux-none")
     }
 
     private var selectedRF: Int? {
@@ -245,58 +238,7 @@ struct OTAScanView: View {
     }
     private var selectedRow: OTAMultiplexRow? { selectedRF.flatMap { rf in progress.rows.first { $0.rf == rf } } }
 
-    private var tabStrip: some View {
-        HStack(spacing: 6) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: 6) {
-                        ForEach(progress.rows) { row in tab(row).id(row.rf) }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .onChange(of: selectedRF) { _, rf in
-                    if let rf { proxy.scrollTo(rf, anchor: .center) }
-                    if pinnedRF == nil, let rf { followedRF = rf }
-                }
-            }
-            if pinnedRF != nil, progress.running {
-                Button("Follow") { pinnedRF = nil }
-                    .controlSize(.small)
-                    .help("Go back to the station being read")
-                    .accessibilityIdentifier("ota-scan-follow")
-            }
-        }
-    }
-
-    private func tab(_ row: OTAMultiplexRow) -> some View {
-        let selected = row.rf == selectedRF
-        let readingOn = progress.lanes.filter { $0.value.rf == row.rf }.keys.compactMap { Int($0.dropFirst("tuner".count)) }.sorted()
-        return Button { pinnedRF = row.rf } label: {
-            HStack(spacing: 5) {
-                marker(row.state)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("RF \(row.rf)").font(.callout.bold())
-                    Text("\(row.subChannels.count) ch").font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.22) : Color.secondary.opacity(0.10)))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? Color.accentColor : .clear, lineWidth: 1.5))
-            // A dot in each reading tuner's colour, so a lane above and the tab it is working on match.
-            .overlay(alignment: .topTrailing) {
-                HStack(spacing: 2) { ForEach(readingOn, id: \.self) { Circle().fill(laneColor($0)).frame(width: 7, height: 7) } }
-                    .padding(3)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("ota-scan-tab-\(row.rf)")
-    }
-
-    // MARK: the selected station
-
-    private func panel(_ row: OTAMultiplexRow) -> some View {
+    private func multiplexPanel(_ row: OTAMultiplexRow) -> some View {
         let i = row.info
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -306,6 +248,12 @@ struct OTAScanView: View {
                 Text(stateWord(row.state)).font(.caption).padding(.horizontal, 6).padding(.vertical, 1)
                     .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 Spacer(minLength: 0)
+                if pinnedRF != nil, progress.running {
+                    Button("Follow") { pinnedRF = nil }
+                        .controlSize(.small)
+                        .help("Go back to the station being read")
+                        .accessibilityIdentifier("ota-scan-follow")
+                }
                 if let q = i.quality ?? i.strength {
                     HStack(spacing: 4) {
                         SignalBarsView(bucket: SignalBucket(Double(q) / 100))
@@ -318,44 +266,20 @@ struct OTAScanView: View {
                     .accessibilityIdentifier("ota-scan-signal")
                 }
             }
-            HStack(spacing: 8) {
-                tile("\(row.subChannels.count)", "channels", id: "channels")
-                if !progress.lineupOnly {
-                    tile(i.episodes > 0 ? "\(i.episodes)" : "–", "episodes", id: "episodes")
-                    tile(guideTileValue(row), "guide ahead", id: "guide")
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("One stream, shared by \(row.subChannels.count) channel\(row.subChannels.count == 1 ? "" : "s")").font(.subheadline.bold())
+                    InfoButton("A multiplex is one transmitter on one slice of the spectrum. Its stream of about 19.4 Mbit/s is divided between the channels it carries, shown here as one block each. A channel number such as 5.2 reads station 5, sub-channel 2. Several stations' worth of channels can share a slice, which is why numbers from different networks can sit side by side. Tuning any one of these channels tunes the whole slice.")
+                    Spacer(minLength: 0)
+                    if let mbps = i.mbps { Text(String(format: "%.1f Mbit/s", mbps)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
                 }
+                ChannelChips(row: row)
+                    .id(row.rf)   // a different multiplex rebuilds the chips, so they slide in again
             }
             channelTable(row)
-            Text(footnote(row)).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-                .accessibilityIdentifier("ota-scan-facts")
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.07)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RF \(row.rf), \(row.subChannels.count) channels, \(stateWord(row.state))")
-        .accessibilityIdentifier("ota-scan-mux-\(row.rf)")
-    }
-
-    private func tile(_ value: String, _ label: String, id: String) -> some View {
-        VStack(spacing: 1) {
-            Text(value).font(.title3.monospacedDigit().bold()).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.10)))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue(value)
-        .accessibilityIdentifier("ota-scan-tile-\(id)")
-    }
-
-    /// How far ahead the station's guide reaches, or why there is none.
-    private func guideTileValue(_ row: OTAMultiplexRow) -> String {
-        let i = row.info
-        if let hours = i.guideHoursAhead() { return Self.hoursText(hours) }
-        if i.guideTablesAnnounced == 0, row.state != .scanning { return "none sent" }
-        return "reading…"
     }
 
     private func channelTable(_ row: OTAMultiplexRow) -> some View {
@@ -374,6 +298,8 @@ struct OTAScanView: View {
                 VStack(spacing: 0) {
                     ForEach(row.subChannels) { sub in
                         HStack(spacing: 6) {
+                            Circle().fill(Self.chipColors[(row.subChannels.firstIndex(where: { $0.id == sub.id }) ?? 0) % Self.chipColors.count])
+                                .frame(width: 7, height: 7)
                             Text(sub.number).font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
                             Text(sub.name).font(.callout).lineLimit(1)
                             if sub.audioOnly {
@@ -397,16 +323,6 @@ struct OTAScanView: View {
                 }
             }
         }
-    }
-
-    /// The technical readings, kept small: data rate, listing tables announced, the station's clock against this Mac's.
-    private func footnote(_ row: OTAMultiplexRow) -> String {
-        let i = row.info
-        var parts: [String] = []
-        if let mbps = i.mbps { parts.append(String(format: "%.1f Mbit/s over %d s", mbps, Int(i.seconds.rounded()))) }
-        if i.guideTablesAnnounced > 0, !progress.lineupOnly { parts.append("\(i.guideTablesAnnounced) listing tables") }
-        if let off = i.clockOffset() { parts.append(abs(off) <= 2 ? "clock in step with this Mac" : "clock \(off > 0 ? "+" : "")\(off) s vs this Mac") }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: footer
@@ -443,5 +359,34 @@ struct OTAScanView: View {
         case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .noGuide: Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
         }
+    }
+}
+
+
+/// The channels of one multiplex drawn as blocks of one shared stream, each in its own colour (the same colour as the dot in the list below),
+/// sliding in one after the other when a multiplex is shown.
+private struct ChannelChips: View {
+    let row: OTAMultiplexRow
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(row.subChannels.enumerated()), id: \.element.id) { i, sub in
+                let color = OTAScanView.chipColors[i % OTAScanView.chipColors.count]
+                VStack(spacing: 1) {
+                    Text(sub.number).font(.caption.monospacedDigit().bold())
+                    if sub.audioOnly { Image(systemName: "speaker.wave.2").font(.system(size: 9)) }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .background(RoundedRectangle(cornerRadius: 6).fill(color.gradient))
+                .scaleEffect(reduceMotion || shown ? 1 : 0.4)
+                .opacity(reduceMotion || shown ? 1 : 0)
+                .animation(.spring(response: 0.45, dampingFraction: 0.65).delay(Double(i) * 0.06), value: shown)
+            }
+        }
+        .onAppear { shown = true }
+        .accessibilityHidden(true)
     }
 }

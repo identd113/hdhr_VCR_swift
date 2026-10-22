@@ -81,6 +81,9 @@ final class OTAScanProgress: ObservableObject {
     @Published var finished = 0
     @Published var total = 0
     @Published var withoutSignal = 0
+    /// RF channels already listened to and RF channels that had nothing on them: what the scan window's dial of the airwaves draws.
+    @Published var listenedRF: Set<Int> = []
+    @Published var emptyRF: Set<Int> = []
     @Published var running = false
     @Published var lineupOnly = false
     /// A full scan reads the channel list of every RF channel first (pass 1), then the guide of the stations it found (pass 2).
@@ -98,7 +101,7 @@ final class OTAScanProgress: ObservableObject {
     var listingCount: Int { rows.reduce(0) { $0 + $1.listings } }
 
     func reset(lineupOnly: Bool, twoPass: Bool = false) {
-        rows = []; tuning = []; currentRF = nil; signals = [:]; lastUpdateApplied = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""
+        rows = []; tuning = []; currentRF = nil; signals = [:]; lastUpdateApplied = [:]; finished = 0; total = 0; withoutSignal = 0; summary = ""; listenedRF = []; emptyRF = []
         lanes = [:]; note = nil; endedAt = nil
         running = true
         startedAt = Date()
@@ -163,11 +166,15 @@ final class OTAScanProgress: ObservableObject {
             tuning.remove(rf)
             freeLane(rf)
             finished += 1
+            listenedRF.insert(rf)
             upsert(rf: rf, result: result, bytes: bytes, seconds: seconds, done: true)
         case .skipped(let rf, let why):
             tuning.remove(rf)
             freeLane(rf)
             finished += 1
+            let interrupted = why == "tuner needed" || why == "no free tuner" || why == "cancelled" || why.hasPrefix("a recording")
+            if !interrupted { listenedRF.insert(rf) }
+            if pass == 1, !interrupted, !rows.contains(where: { $0.rf == rf }) { emptyRF.insert(rf) }   // nothing on it: a dim tick on the dial
             if pass == 2 {
                 if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i].state = .noGuide(why) }   // keeps its channel list from pass 1
             } else if why == "no signal" || why == "no free tuner" || why == "cancelled" || why.hasPrefix("a recording") || why == "tuner needed" {
