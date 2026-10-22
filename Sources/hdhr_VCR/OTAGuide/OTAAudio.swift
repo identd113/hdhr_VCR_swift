@@ -114,3 +114,37 @@ struct OTAElementaryStream: Equatable, Sendable {
         return []
     }
 }
+
+/// One program of the multiplex's Program Map Table: every program the transmitter really carries, listed in the channel table or not.
+struct OTAProgram: Equatable, Sendable {
+    var number: Int
+    var pcrPID: Int
+    var streams: [OTAElementaryStream]
+}
+
+extension OTAElementaryStream {
+    /// The streams of a PMT section (stream type, PID and, from the ISO 639 descriptor, language), or nil when it is not a valid PMT.
+    static func programMap(_ s: [UInt8]) -> OTAProgram? {
+        guard s.count >= 16, s[0] == 0x02 else { return nil }
+        let number = (Int(s[3]) << 8) | Int(s[4])
+        let pcr = (Int(s[8] & 0x1F) << 8) | Int(s[9])
+        var pos = 12 + ((Int(s[10] & 0x0F) << 8) | Int(s[11]))
+        let end = s.count - 4   // the CRC
+        var streams: [OTAElementaryStream] = []
+        while pos + 5 <= end {
+            let type = Int(s[pos]), pid = (Int(s[pos + 1] & 0x1F) << 8) | Int(s[pos + 2])
+            let infoLength = (Int(s[pos + 3] & 0x0F) << 8) | Int(s[pos + 4])
+            var language = ""
+            var d = pos + 5
+            let infoEnd = min(end, pos + 5 + infoLength)
+            while d + 2 <= infoEnd {
+                let tag = s[d], len = Int(s[d + 1])
+                if tag == 0x0A, len >= 3, d + 5 <= infoEnd { language = String(bytes: s[(d + 2)..<(d + 5)], encoding: .ascii) ?? "" }
+                d += 2 + len
+            }
+            streams.append(OTAElementaryStream(pid: pid, streamType: type, language: language))
+            pos += 5 + infoLength
+        }
+        return OTAProgram(number: number, pcrPID: pcr, streams: streams)
+    }
+}

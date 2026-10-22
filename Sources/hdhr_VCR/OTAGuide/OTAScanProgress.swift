@@ -11,6 +11,12 @@ struct OTASubChannelRow: Identifiable, Equatable {
     var listings: Int
     var done: Bool
     var audioOnly = false
+    /// What kind of service it is beyond plain TV: left out of the channel list on purpose (`hidden`), scrambled (`protected`), a data service,
+    /// or a program the transmitter carries that the channel table never names (`unlisted`).
+    var hidden = false
+    var protected = false
+    var isData = false
+    var unlisted = false
     /// Its video and audio streams with what was learned about them (format, language, measured bit rate).
     var streams: [OTAElementaryStream] = []
     /// End of the last program listed for this channel: how far ahead its guide reaches.
@@ -216,16 +222,25 @@ final class OTAScanProgress: ObservableObject {
     private func upsert(rf: Int, result: OTADecodeResult, bytes: Int, seconds: Double, done: Bool) {
         let bySource = Dictionary(grouping: result.events, by: \.sourceId)
         let counts = bySource.mapValues(\.count)
-        let carried = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }
-        let subs = carried.map { c -> OTASubChannelRow in
-            let streams = c.streams.map { st -> OTAElementaryStream in
+        let carried = result.channels.filter { (2...5).contains($0.serviceType) }
+        func measured(_ streams: [OTAElementaryStream]) -> [OTAElementaryStream] {
+            streams.map { st -> OTAElementaryStream in
                 var st = st
                 if seconds >= 1, let n = result.pidPackets[st.pid] { st.kbps = Double(n) * 188 * 8 / seconds / 1000 }
                 return st
             }
-            return OTASubChannelRow(sourceId: c.sourceId, number: c.number, name: c.name, listings: counts[c.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
-                              audioOnly: c.serviceType == 3, streams: streams, latestEnd: bySource[c.sourceId]?.map(\.end).max())
+        }
+        var subs = carried.map { c -> OTASubChannelRow in
+            OTASubChannelRow(sourceId: c.sourceId, number: c.number, name: c.name, listings: counts[c.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
+                              audioOnly: c.serviceType == 3, hidden: c.hidden, protected: c.accessControlled, isData: c.serviceType >= 4,
+                              streams: measured(c.streams), latestEnd: bySource[c.sourceId]?.map(\.end).max())
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
+        // Programs the transmitter really carries (Program Map Table) that the channel table never names: the unlisted ones.
+        let named = Set(result.channels.map(\.program))
+        subs += result.programs.filter { !named.contains($0.number) && !$0.streams.isEmpty }.map { p in
+            OTASubChannelRow(sourceId: -p.number, number: "·", name: "Program \(p.number)", listings: 0, done: done && !(twoPass && pass == 1),
+                              audioOnly: !p.streams.contains(where: \.isVideo), unlisted: true, streams: measured(p.streams))
+        }
         guard !subs.isEmpty else { return }
         var info = OTAMuxInfo(frequencyMHz: Double(OTAScanner.frequencyHz(rf: rf) ?? 0) / 1_000_000)
         info.bytes = bytes; info.seconds = seconds

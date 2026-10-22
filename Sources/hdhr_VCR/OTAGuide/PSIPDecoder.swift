@@ -46,6 +46,8 @@ struct OTADecodeResult: Equatable, Sendable {
     /// that is video, sound, guide data or padding (PID 0x1FFF).
     var pidPackets: [Int: Int] = [:]
     var psipPIDs: Set<Int> = []
+    /// Every program in the Program Map Table(s), listed in the channel table or not (nil of them means none was seen in the read).
+    var programs: [OTAProgram] = []
 }
 
 /// Streaming PSIP decoder. Feed it transport-stream bytes in any chunk size with `ingest(_:)`; read the picture so far with
@@ -65,6 +67,9 @@ final class PSIPDecoder {
     private var descriptions: [EventKey: String] = [:]
     private var seenSections: Set<SectionKey> = []
     private var packetCounts: [Int: Int] = [:]
+    private var programPIDs: Set<Int> = [0]                 // the PAT, then each program's PMT
+    private var pmtByPID: [Int: Int] = [:]                    // PMT PID -> program number
+    private var programMaps: [Int: OTAProgram] = [:]
     private var streamsBySource: [Int: [OTAElementaryStream]] = [:]
     private var audioByPID: [Int: OTAAudioFormat] = [:]
 
@@ -101,12 +106,12 @@ final class PSIPDecoder {
         let pid = (Int(carry[i + 1] & 0x1F) << 8) | Int(carry[i + 2])
         packetCounts[pid, default: 0] += 1
         // The first AC-3 frame of each sound stream tells its format (a PES packet starts here when the start flag is set).
-        if carry[i + 1] & 0x40 != 0, carry[i + 3] & 0x10 != 0, audioByPID[pid] == nil, !wanted.contains(pid), pid != 0x1FFF {
+        if carry[i + 1] & 0x40 != 0, carry[i + 3] & 0x10 != 0, audioByPID[pid] == nil, !wanted.contains(pid), !programPIDs.contains(pid), pid != 0x1FFF {
             var q = i + 4
             if carry[i + 3] & 0x20 != 0 { q += 1 + Int(carry[i + 4]) }
             if q < i + 188, let format = OTAAudioFormat.sniffPES(carry[q..<(i + 188)]) { audioByPID[pid] = format }
         }
-        guard wanted.contains(pid), carry[i + 3] & 0x10 != 0 else { return }   // not ours, or no payload
+        guard wanted.contains(pid) || programPIDs.contains(pid), carry[i + 3] & 0x10 != 0 else { return }   // not ours, or no payload
         var p = i + 4
         if carry[i + 3] & 0x20 != 0 { p += 1 + Int(carry[i + 4]) }              // adaptation field
         guard p < i + 188 else { return }
@@ -147,6 +152,8 @@ final class PSIPDecoder {
         let table = Int(s[0])
         let key = SectionKey(pid: pid, table: table, extra: (Int(s[3]) << 8) | Int(s[4]), version: Int(s[5] & 0x3E), number: Int(s[6]))
         switch table {
+        case 0x00: parsePAT(s)
+        case 0x02: if let p = OTAElementaryStream.programMap(s), pmtByPID[pid] != nil { programMaps[p.number] = p }
         case 0xC7: parseMGT(s)
         case 0xC8: parseTVCT(s)
         case 0xCD: parseSTT(s)
@@ -154,6 +161,17 @@ final class PSIPDecoder {
             guard seenSections.insert(key).inserted else { return }   // a table repeats every second or so: decode each version once
             if table == 0xCB { parseEIT(s) } else { parseETT(s) }
         default: break
+        }
+    }
+
+    /// The PAT lists the PID of each program's PMT (program 0 is the network table, not a program).
+    private func parsePAT(_ s: [UInt8]) {
+        var pos = 8
+        while pos + 4 <= s.count - 4 {
+            let number = (Int(s[pos]) << 8) | Int(s[pos + 1])
+            let pid = (Int(s[pos + 2] & 0x1F) << 8) | Int(s[pos + 3])
+            if number != 0, pmtByPID[pid] == nil { pmtByPID[pid] = number; programPIDs.insert(pid) }
+            pos += 4
         }
     }
 
@@ -300,12 +318,14 @@ final class PSIPDecoder {
         }.sorted { ($0.sourceId, $0.start) < ($1.sourceId, $1.start) }
         let channels = channelsBySource.values.map { c -> OTAChannel in
             var c = c
-            c.streams = (streamsBySource[c.sourceId] ?? []).map { st in var st = st; st.audio = audioByPID[st.pid]; return st }
+            c.streams = (streamsBySource[c.sourceId] ?? programMaps[c.program]?.streams ?? []).map { st in var st = st; st.audio = audioByPID[st.pid]; return st }
             return c
         }.sorted { ($0.major, $0.minor) < ($1.major, $1.minor) }
         return OTADecodeResult(broadcastTime: gps.map { date($0.seconds) }, gpsUTCOffset: leap,
                                channels: channels, events: out, announcedEITCount: announcedEIT,
-                               pidPackets: packetCounts, psipPIDs: wanted)
+                               pidPackets: packetCounts, psipPIDs: wanted,
+                               programs: programMaps.values.sorted { $0.number < $1.number }.map { p in
+                                   var p = p; p.streams = p.streams.map { st in var st = st; st.audio = audioByPID[st.pid]; return st }; return p })
     }
 
     // MARK: CRC-32/MPEG-2

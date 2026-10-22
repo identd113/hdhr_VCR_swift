@@ -60,9 +60,15 @@ struct OTAChannelRow: View {
             HStack(spacing: 6) {
                 Text(sub.number).font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
                 Text(sub.name).font(.callout.bold()).lineLimit(1)
-                if sub.audioOnly { tag("radio", systemImage: "radio") }
+                if sub.audioOnly, !sub.unlisted { tag("radio", systemImage: "radio") }
+                if sub.hidden { tag("hidden", systemImage: "eye.slash") }
+                if sub.protected { tag("encrypted", systemImage: "lock.fill") }
+                if sub.isData { tag("data service", systemImage: "externaldrive") }
+                if sub.unlisted { tag("not in the channel list", systemImage: "questionmark.circle") }
+                // Announced in the tables but not a single packet arrived for it over the read: a placeholder that is not on the air.
+                if !sub.streams.isEmpty, sub.streams.allSatisfy({ ($0.kbps ?? 1) == 0 }) { tag("not transmitting", systemImage: "antenna.radiowaves.left.and.right.slash") }
                 Spacer(minLength: 4)
-                if showListings {
+                if showListings, !sub.unlisted {
                     VStack(alignment: .trailing, spacing: 0) {
                         Text(sub.listings > 0 ? "\(sub.listings) episodes" : "no episodes").font(.caption.monospacedDigit())
                         Text(sub.reachText() ?? (waiting ? "" : "no guide")).font(.caption2).foregroundStyle(.secondary)

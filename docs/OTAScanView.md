@@ -40,6 +40,8 @@ No ticking clock while a scan runs (the time left is rounded to whole minutes; "
    text line per **sound stream** — "5.1 AC-3 · English · 48 kHz · 384 kbit/s · dialogue -24 dB" (plus the service type when it is not the main audio: visually impaired, commentary…; the
    dialogue level is the dialnorm, -31…-1 dB, a lower number is a quieter mix) — and one for the video ("MPEG-2 video · 2.1 Mbit/s", measured). No drawings: the speaker-layout dots and
    level gauge were dropped as too busy.
+   **Hidden and unusual services** get a tag: *hidden* (left out of the channel list on purpose, e.g. 11.7 OPEN), *encrypted*, *data service*, *not in the channel list* (a program the Program Map Table
+   carries that the channel table never names; listed as "Program N") and *not transmitting* (announced, but no packet arrived for it over the read — on the Twin Cities test RF 31's hidden 11.7 OPEN is exactly that).
    With nothing found yet it says "Listening for stations…".
 5. **Footer.** Count of RF channels with no signal; Cancel Scan while running, Close when done.
 
@@ -51,6 +53,8 @@ Where it comes from (`OTAGuide/OTAAudio.swift`, `PSIPDecoder`): the TVCT's **Ser
 the decoder counts every transport packet per PID (`pidPackets`) and, on the first PES packet of each non-guide PID, reads an **AC-3 frame header** (A/52: sample rate, bit rate,
 `acmod` speaker layout, LFE, dialnorm, `bsmod` service type). E-AC-3, AAC and MPEG audio are named from the stream type but not opened. Measured rates are packets × 188 × 8 over
 the read, so they are approximate on the quick channel-list read (a second or two).
+
+The Program Map Table (`PSIPDecoder.parsePAT` + `OTAElementaryStream.programMap`) also supplies a channel's streams when the channel table has no Service Location Descriptor.
 
 ## Data
 `OTAScanEvent`: `queued`, `started(rf, tuner, expectedSeconds)` (puts a station on a tuner's lane), `update` / `finished` (the decode so far, bytes, seconds),

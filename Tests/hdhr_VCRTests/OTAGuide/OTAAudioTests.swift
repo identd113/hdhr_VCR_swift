@@ -75,4 +75,35 @@ struct OTAAudioTests {
         #expect((b?.audio ?? 0) > 0.14 && (b?.guide ?? 0) > 0.01 && (b?.other ?? 0) > 0)
         #expect(OTAStreamBudget(result: r, seconds: 0.2) == nil)
     }
+
+    @Test func theProgramMapListsEveryProgram() throws {
+        let decoder = PSIPDecoder()
+        decoder.ingest(try Data(contentsOf: Self.sample))
+        let programs = decoder.result().programs
+        let p = try #require(programs.first)
+        #expect(p.streams.contains { $0.pid == 256 && $0.isVideo })
+        #expect(p.streams.contains { $0.pid == 257 && $0.isAudio })
+        #expect(p.number > 0)
+    }
+
+    @MainActor
+    @Test func aProgramNobodyNamedShowsAsUnlistedAndFlagsAreKept() {
+        var r = OTADecodeResult(broadcastTime: nil, gpsUTCOffset: 18, channels: [
+            OTAChannel(name: "OPEN", major: 11, minor: 7, program: 7, sourceId: 7, serviceType: 2, hidden: true, accessControlled: false),
+            OTAChannel(name: "SCRAMBLED", major: 11, minor: 8, program: 8, sourceId: 8, serviceType: 2, hidden: false, accessControlled: true),
+            OTAChannel(name: "WEATHER", major: 11, minor: 9, program: 9, sourceId: 9, serviceType: 4, hidden: false, accessControlled: false)],
+                                events: [], announcedEITCount: 0)
+        r.programs = [OTAProgram(number: 7, pcrPID: 0x31, streams: [OTAElementaryStream(pid: 0x31, streamType: 0x02, language: "")]),
+                      OTAProgram(number: 12, pcrPID: 0x50, streams: [OTAElementaryStream(pid: 0x51, streamType: 0x81, language: "eng")])]
+        let progress = OTAScanProgress()
+        progress.reset(lineupOnly: true)
+        progress.apply(.finished(rf: 31, result: r, bytes: 1_000_000, seconds: 5))
+        let subs = progress.rows.first?.subChannels ?? []
+        #expect(subs.count == 4)
+        #expect(subs.first { $0.number == "11.7" }?.hidden == true)
+        #expect(subs.first { $0.number == "11.8" }?.protected == true)
+        #expect(subs.first { $0.number == "11.9" }?.isData == true)
+        let extra = subs.first { $0.unlisted }
+        #expect(extra?.name == "Program 12" && extra?.audioOnly == true)       // a sound-only program the channel table never mentions
+    }
 }
