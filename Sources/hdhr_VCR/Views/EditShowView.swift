@@ -61,32 +61,27 @@ struct EditShowView: View {
             if let s = show {
                 VStack(alignment: .leading, spacing: 0) {
                     form(for: s)
-                        .overlay(alignment: .topTrailing) {
-                            if show?.show_bonus_time == true && state.config.Sports_padding_enabled {
-                                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 48)
-                                    .padding(.trailing, 16).padding(.top, 10)
-                                    .transition(.asymmetric(
-                                        insertion: .identity,
-                                        removal: .scale(scale: 0.05).combined(with: .opacity)
-                                    ))
-                            }
-                        }
                     Divider()
                     navBar
                 }
-                .frame(width: 480, height: 520)
+                .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
+                       minHeight: 380, idealHeight: 520, maxHeight: .infinity)
             } else if showMissing {
                 VStack(spacing: 12) {
                     Text("This show no longer exists.").font(.title3)
                     Button("Close") { dismiss() }
                         .keyboardShortcut(.defaultAction)
                 }
-                .frame(width: 480, height: 520)
+                .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
+                       minHeight: 380, idealHeight: 520, maxHeight: .infinity)
             } else {
                 ProgressView("Loading…")
-                    .frame(width: 480, height: 520)
+                    .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
+                           minHeight: 380, idealHeight: 520, maxHeight: .infinity)
             }
         }
+        // Remember the user's chosen size across opens and restarts.
+        .background(WindowAction(trigger: true) { $0.setFrameAutosaveName("EditShowWindow") })
         .onExitCommand {
             guard isDirty else { dismiss(); return }
             Task { @MainActor in

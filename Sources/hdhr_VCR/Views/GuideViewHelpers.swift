@@ -291,7 +291,7 @@ func watchInAppH264Label(_ title: String) -> String { "Watch \(title) in H.264" 
 func watchInAppCodecLabel(_ title: String, codec: String) -> String { "Watch \(title) in \(codec)" }
 // Accessibility label for the "Watch alongside current (PiP)" rows (Recording Now and Recording
 // on Another Mac menus) — MenuContent.swift.
-func watchAlongsideLabel(_ title: String) -> String { "Watch \(title) as Picture-in-Picture" }
+func watchAlongsideLabel(_ title: String) -> String { "Watch \(title) as PiP" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"

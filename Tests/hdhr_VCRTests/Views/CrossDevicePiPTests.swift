@@ -74,7 +74,7 @@ struct CrossDevicePiPTests {
             repeat with w in windows
                 try
                     set n to name of w
-                    if n is not "Watch Now" and n is not "Add Picture-in-Picture" and n is not "Support hdhrVCRplus" and n is not "Add Show" then return w
+                    if n is not "Watch Now" and n is not "Add PiP" and n is not "Support hdhrVCRplus" and n is not "Add Show" then return w
                 end try
             end repeat
         end tell

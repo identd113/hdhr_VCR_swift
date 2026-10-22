@@ -44,14 +44,6 @@ struct AddShowView: View {
         .sheet(isPresented: Binding(get: { step == .details }, set: { if !$0 { step = .guide } })) {
             VStack(spacing: 0) {
                 detailsStep
-                    .overlay(alignment: .bottomTrailing) {
-                        if show.show_bonus_time && state.config.Sports_padding_enabled {
-                            StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 65)
-                                .padding(.trailing, 12).padding(.bottom, 12)
-                                .transition(.asymmetric(insertion: .identity,
-                                                        removal: .scale(scale: 0.05).combined(with: .opacity)))
-                        }
-                    }
                 Divider()
                 navBar
             }

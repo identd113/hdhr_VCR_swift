@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **480×520**. Standard macOS window chrome. Title: `"Edit Show"`. While loading (`show == nil`): centered `ProgressView("Loading…")` fills the window. If `loadShow()` finds no show for `editingShowId` (deleted since the window was targeted), it shows "This show no longer exists." with a **Close** button instead (`showMissing`); the next successful `loadShow()` clears it.
+Resizable: min **420×380**, ideal **480×520** (content frame min/ideal/max-infinity under `windowResizability(.contentSize)`; the form `ScrollView` absorbs extra/missing space; the chosen size is remembered via `setFrameAutosaveName("EditShowWindow")` through `WindowAction`). Standard macOS window chrome. Title: `"Edit Show"`. While loading (`show == nil`): centered `ProgressView("Loading…")` fills the window. If `loadShow()` finds no show for `editingShowId` (deleted since the window was targeted), it shows "This show no longer exists." with a **Close** button instead (`showMissing`); the next successful `loadShow()` clears it.
 
 ### Form area (ScrollView, fills window above nav bar)
 White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
@@ -16,7 +16,7 @@ White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 - **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty. Tooltip: HDHomeRun series identifier used for smart cross-channel matching.
 - **Stream URL row**: `LabeledContent("Stream URL")` — secondary-color caption, 1-line truncated; `"not set"` if empty. Tooltip: tuner stream URL, set automatically from the guide.
 
-**Bonus Time badge**: when `show_bonus_time == true` AND `Sports_padding_enabled`, an orange 48pt `StarburstBadge` floats at the **top-right** corner of the form via `.overlay(alignment: .topTrailing)`, 16pt from the trailing edge / 10pt from the top. Sized down from an earlier 150pt, which overlapped the Title field — see `docs/StarburstBadge.md`. It animates in on appear and out with a shrink-to-zero + fade on dismiss.
+**Bonus Time badge**: shown inline beside the Bonus Time toggle by `ShowFormSection` (60pt `StarburstBadge`, scrolls with the form, never overlays controls) — see `docs/StarburstBadge.md`. The old top-right `.overlay` was removed.
 
 ### Nav bar (bottom, ~52pt tall)
 `HStack` with 16pt padding. `Divider` above.

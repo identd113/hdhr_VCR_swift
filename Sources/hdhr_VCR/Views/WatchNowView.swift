@@ -603,9 +603,19 @@ struct WatchNowRow: View {
         }
     }
 
+    /// Why a live-tuner watch can't start right now (every tuner on this device busy), or nil. The window
+    /// itself always opens so users can browse info; only the start-watching buttons are disabled.
+    /// Not applied when this app's own player already holds the tuner (a channel switch reuses it).
+    private var liveBlockedReason: String? {
+        guard state.tunersFull(for: device.DeviceID),
+              !state.vlcOccupiesTuner(for: device.DeviceID) else { return nil }
+        return "All tuners on \(device.DeviceID) are busy"
+    }
+
     @ViewBuilder
     private func watchButtons(managed: Show?) -> some View {
         let vlcReady = VLCBridge.shared.isAvailable
+        let blocked = liveBlockedReason
         Group {
             // A currently-recording show is already on disk — offer beginning-vs-live instead
             // of the plain live-tuner Watch button, which would otherwise open a second,
@@ -668,11 +678,12 @@ struct WatchNowRow: View {
                     Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .accessibilityLabel(watchInAppLabel(entry.Title))
-                .help(vlcReady ? watchInAppLabel(entry.Title) : "Requires VLC to be installed")
+                .help(!vlcReady ? "Requires VLC to be installed" : (blocked ?? watchInAppLabel(entry.Title)))
                 .buttonStyle(.borderedProminent)
                 .tint(vlcReady ? watchNowBlue : .gray)
                 .controlSize(.small)
-                .disabled(!vlcReady)
+                .disabled(!vlcReady || blocked != nil)
+                .accessibilityIdentifier("watch-now-watch-\(channel.id)")
                 // Any live channel on any tuner/device can become the PiP secondary — this is the
                 // one entry point for that (Recording Now/FEED menu rows cover the no-tuner-cost
                 // sources; this covers a genuine live-tuner watch). watchAsSecondary itself runs
@@ -685,11 +696,12 @@ struct WatchNowRow: View {
                         Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .accessibilityLabel(watchAlongsideLabel(entry.Title))
-                    .help(vlcReady ? "Watch \(entry.Title) as a small muted thumbnail alongside what's already open" : "Requires VLC to be installed")
+                    .help(!vlcReady ? "Requires VLC to be installed" : (blocked ?? "Watch \(entry.Title) as a small muted thumbnail alongside what's already open"))
                     .buttonStyle(.bordered)
                     .tint(vlcReady ? watchNowBlue : .gray)
                     .controlSize(.small)
-                    .disabled(!vlcReady)
+                    .disabled(!vlcReady || blocked != nil)
+                    .accessibilityIdentifier("watch-now-pip-\(channel.id)")
                 }
             }
         }

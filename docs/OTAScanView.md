@@ -1,6 +1,6 @@
 # OTAScanView
 
-The over-the-air scan window ("Over-the-Air Scan", id `ota-scan`, 540 wide, 700 high minimum, 840 ideal, title bar, `.floating` level via `WindowAction`). It opens when an
+The over-the-air scan window ("Over-the-Air Scan", id `ota-scan`, 540 wide, 700 high minimum, 840 ideal, title bar, `.floating` level via `WindowAction` for a scan a person started; a scheduled/background scan (`AppState.otaWindowActivates == false`) leaves it at normal level and doesn't take focus). It opens when an
 OTA scan starts (`AppState.otaWindowRequest`; a scheduled or API-started scan opens it without taking focus). Deliberately not a modal: a
 blocking modal would stop the web server and recording start/stop (the "No blocking dialogs" invariant); a floating window stays in front
 but the app keeps running. Fed by `OTAScanEvent`s through `OTAScanProgress` (`OTAGuide/OTAScanProgress.swift`).

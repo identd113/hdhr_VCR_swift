@@ -20,6 +20,7 @@ checklist) → the **setup wizard** (`FirstRunWizardView`, only while first-run 
   are due, waiting for each to close (`closedCards`), then the panel glides to the menu-bar icon (see below). With **no** card due
   the splash card itself is the last panel and glides to the menu-bar icon. While cards are up the splash window takes input (`SplashWindow` can
   become key; level `.modalPanel`), is hidden and click-through while another app is frontmost, and the wall is frozen (≈0 % CPU).
+- **Settling to full size (wizard):** once the wizard has glided in (panel at the wall-relative display scale, ≈ 0.5-0.65), `settledFull` animates the panel to 100 % (`settledScale`: 1.0, shrunk only on screens shorter than 680 pt) over 0.7 s while the poster wall fades out and the dim goes away, so the wizard is used at its normal 520×600 size. It stays in this window (a borderless, screen-sized `.modalPanel` window) rather than a separate scene window, since the splash view has no `openWindow` access; later cards (donation) and the final glide start from that size.
 - The launch-time donation nag no longer opens its own window while the splash is playing (`openDonationNagIfNeeded` checks
   `LaunchSplashController.isPlaying`); later nags (after adding a show) and the Settings → Reset First-Run Setup wizard still open as
   their own windows.

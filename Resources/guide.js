@@ -55,10 +55,54 @@ document.addEventListener('keydown',function(e){
   if(e.shiftKey&&(!inside||ae===first||ae===top.firstElementChild)){e.preventDefault();last.focus();}
   else if(!e.shiftKey&&(!inside||ae===last)){e.preventDefault();first.focus();}
 });
+// Toolbar "⋯" overflow menu. CSS (guide.css, "Toolbar overflow") hides the low-priority controls as the viewport
+// narrows (theme switcher first, then the genre filter) and shows #tb-more; the same controls live in #tb-menu.
+// The menu is a non-modal popup: Escape / outside click / Tab close it, Escape returns focus to the button.
+function moreMenuOpen(){var m=document.getElementById('tb-menu');return !!m&&m.style.display!=='none';}
+function _moreItems(){var m=document.getElementById('tb-menu');return m?Array.prototype.filter.call(m.querySelectorAll('button,select'),function(el){return !el.disabled&&el.offsetParent!==null;}):[];}
+function syncMoreMenu(){
+  var src=document.getElementById('genre-sel'),dst=document.getElementById('genre-sel-m'),row=document.getElementById('tb-genre-row'),bar=document.getElementById('genre-bar');
+  if(!src||!dst||!row)return;
+  var has=!!bar&&bar.style.display!=='none';
+  row.style.display=has?'':'none';
+  if(!has)return;
+  while(dst.options.length)dst.remove(0);
+  Array.prototype.forEach.call(src.options,function(o){var n=document.createElement('option');n.value=o.value;n.textContent=o.textContent;dst.appendChild(n);});
+  dst.value=_genreFilter||'';
+}
+function syncMoreBtn(){var b=document.getElementById('tb-more');if(b)b.classList.toggle('tb-more-on',!!_genreFilter);}
+function closeMoreMenu(refocus){
+  var m=document.getElementById('tb-menu'),b=document.getElementById('tb-more');
+  if(m)m.style.display='none';
+  if(b){b.setAttribute('aria-expanded','false');if(refocus)try{b.focus({preventScroll:true});}catch(e){}}
+}
+function openMoreMenu(){
+  var m=document.getElementById('tb-menu'),b=document.getElementById('tb-more');if(!m||!b)return;
+  syncMoreMenu();
+  m.style.display='block';b.setAttribute('aria-expanded','true');
+  var sel=m.querySelector('[aria-checked="true"]')||_moreItems()[0];
+  if(sel)try{sel.focus({preventScroll:true});}catch(e){}
+}
+function toggleMoreMenu(evt){if(evt)evt.stopPropagation();if(moreMenuOpen())closeMoreMenu(true);else openMoreMenu();}
+function filterGenreFromMenu(v){var s=document.getElementById('genre-sel');if(s)s.value=v;filterGenre(v);}
+document.addEventListener('click',function(e){if(!moreMenuOpen())return;var w=document.getElementById('tb-more-wrap');if(w&&!w.contains(e.target))closeMoreMenu(false);});
+document.addEventListener('keydown',function(e){
+  if(!moreMenuOpen())return;
+  var m=document.getElementById('tb-menu');if(!m.contains(document.activeElement)&&document.activeElement!==document.getElementById('tb-more'))return;
+  if(e.key==='Tab'){closeMoreMenu(false);return;}
+  if(e.target&&e.target.tagName==='SELECT')return;   // let the genre <select> keep its own arrows
+  var k=e.key;if(k!=='ArrowDown'&&k!=='ArrowUp'&&k!=='Home'&&k!=='End')return;
+  var it=_moreItems();if(!it.length)return;
+  var i=it.indexOf(document.activeElement);
+  if(k==='ArrowDown')i=(i+1)%it.length;else if(k==='ArrowUp')i=(i<=0?it.length:i)-1;else if(k==='Home')i=0;else i=it.length-1;
+  it[i].focus();e.preventDefault();
+});
+// If the viewport widens past the fold breakpoint the button disappears — don't leave a hidden open menu behind.
+window.addEventListener('resize',function(){var b=document.getElementById('tb-more');if(moreMenuOpen()&&b&&b.offsetParent===null)closeMoreMenu(false);});
 // Theme: .lm class on <html> = light mode active
 var _mq=window.matchMedia('(prefers-color-scheme:light)');
 var _themeMode='dark';
-function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){var on=b.dataset.m===_themeMode;b.classList.toggle('th-sel',on);b.setAttribute('aria-pressed',on?'true':'false');});}
+function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){var on=b.dataset.m===_themeMode;b.classList.toggle('th-sel',on);b.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('#tb-menu [data-m]').forEach(function(b){b.setAttribute('aria-checked',b.dataset.m===_themeMode?'true':'false');});}
 function refreshSumTheme(){var sel=document.querySelector('.g-prog.g-sel');if(sel)showInfo(sel);}
 // Split from setTheme() below so a native-pushed theme (AddShowView's embedded WKWebView calling
 // this directly, never setTheme itself) can never loop back through the native bridge and get
@@ -791,8 +835,8 @@ function showTunerInfo(devId,anchor){
   // Where this tuner's guide and channel list come from (SiliconDust, the air, a saved copy) and how old the guide is.
   var srcEl=document.getElementById('t-pop-src');
   if(srcEl){
-    srcEl.innerHTML=dt.g?('<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">Guide</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.g)+'</span></div>'
-      +'<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">Lineup</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.l||'')+'</span></div>'):'';
+    srcEl.innerHTML=dt.g?('<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.6875rem;color:var(--t4);min-width:48px;flex-shrink:0">Guide</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.g)+'</span></div>'
+      +'<div style="display:flex;gap:8px;padding:3px 0"><span style="font-size:.6875rem;color:var(--t4);min-width:48px;flex-shrink:0">Lineup</span><span style="font-size:.78rem;color:var(--t1)">'+hej(dt.l||'')+'</span></div>'):'';
     srcEl.style.display=dt.g?'block':'none';
   }
   var list=document.getElementById('t-pop-list');
@@ -802,7 +846,7 @@ function showTunerInfo(devId,anchor){
     list.innerHTML=recs.map(function(r){
       if(r.idle==='1'){
         return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b0)">'
-          +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
+          +'<span style="font-size:.6875rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
           +'<span style="font-size:.78rem;color:var(--t4)">Idle</span>'
           +'</div>';
       }
@@ -810,7 +854,7 @@ function showTunerInfo(devId,anchor){
       // make explicit that this tuner isn't managed by this app — a bare title with no red dot
       // was too easy to misread as simply "not currently recording" rather than "not ours at all".
       var chLabel=hej(r.ch)+(r.chname?' · '+hej(r.chname):'')+(r.external==='1'?' · another tuner':'');
-      var ipHtml=r.ip?'<div style="font-size:.67rem;color:var(--t4);padding-left:56px">'+hej(r.ip)+'</div>':'';
+      var ipHtml=r.ip?'<div style="font-size:.6875rem;color:var(--t4);padding-left:56px">'+hej(r.ip)+'</div>':'';
       var recDot=r.rec==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
       var extDot=r.external==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9b59b6;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
       var etHtml='';
@@ -821,7 +865,7 @@ function showTunerInfo(devId,anchor){
       var rid='tnr-'+r.tuner.replace(/\W/g,'');
       return '<div id="'+rid+'" style="display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--b0)">'
         +'<div style="display:flex;align-items:center;gap:8px">'
-          +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
+          +'<span style="font-size:.6875rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
           +'<span style="font-size:.78rem;font-weight:600;color:var(--ac);white-space:nowrap">'+chLabel+'</span>'
         +'</div>'
         +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+recDot+extDot+hej(r.title)+'</div>'
@@ -893,7 +937,7 @@ function showTunerInfo(devId,anchor){
             ep.style.cssText='font-size:.75rem;color:var(--t2);font-style:italic;padding-left:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
             ep.textContent=g.epTitle;
             var last=row.lastElementChild;
-            row.insertBefore(ep,last&&last.style.fontSize==='.67rem'?last:null);
+            row.insertBefore(ep,last&&parseFloat(last.style.fontSize)<.7?last:null);
           }
           if(g.endTime){
             var et=new Date(parseInt(g.endTime,10)*1000);
@@ -902,7 +946,7 @@ function showTunerInfo(devId,anchor){
             etDiv.style.cssText='font-size:.72rem;color:var(--t3);padding-left:56px';
             etDiv.textContent='Ends '+etStr;
             var last=row.lastElementChild;
-            row.insertBefore(etDiv,last&&last.style.fontSize==='.67rem'?last:null);
+            row.insertBefore(etDiv,last&&parseFloat(last.style.fontSize)<.7?last:null);
           }
           if(g.poster){
             var chRow=row.children[0];
@@ -1311,7 +1355,7 @@ function setDev(id){
   if(switched)closeSummary();   // the selected airing belongs to the tuner we're leaving
   // Both filters are scoped to "the tuner you're viewing" (search explicitly, genre because
   // rebuildGenreFilter only offers genres seen on curDev) — a switch invalidates either.
-  if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';clearSearchFilter();}
+  if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';clearSearchFilter();if(typeof syncMoreBtn==='function')syncMoreBtn();}
   curDev=id;
   if(switched)rebuildGenreFilter();
   // Empty id means "no specific tuner filter" — only ever passed for a single-online-tuner setup
@@ -1359,6 +1403,7 @@ function handleDevClick(id,btn){
 }
 function filterGenre(g){
   _genreFilter=g;
+  if(typeof syncMoreBtn==='function')syncMoreBtn();
   // Mutually exclusive with show search — picking a genre while a show filter is active clears it.
   if(g&&_searchShow)clearSearchFilter();
   applyFilterDim();
@@ -1848,6 +1893,7 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape'||e.defaultPrevented||e.isComposing)return;
   if(_wn.open||_kbCardOpen)return;
+  if(moreMenuOpen()){closeMoreMenu(true);e.preventDefault();return;}
   var sd=document.getElementById('search-drop'),sh=document.getElementById('search-help');
   if((sd&&sd.style.display!=='none')||(sh&&sh.style.display!=='none'))return;
   if(modalIsOpen('del-confirm-modal')){cancelDeleteConfirm();}

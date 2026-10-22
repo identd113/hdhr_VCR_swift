@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // A muted informational/caveat banner — soft-tinted background rather than the solid saturated
 // orange fill + white text this used to be everywhere (transcode-mismatch warnings, the XMLTV
@@ -16,10 +17,26 @@ struct CaveatBanner: View {
     var systemImage: String = "exclamationmark.triangle.fill"
     var tint: Color = .orange
 
+    // Text/icon colour: the system tint itself fails WCAG AA (4.5:1) on its own 12% wash in light
+    // mode (system orange is ~2.2:1), so light appearance blends it 45% toward black (orange -> ~5.6:1);
+    // dark appearance keeps the tint unchanged. Resolved per appearance by a dynamic NSColor.
+    private var textColor: Color {
+        let base = NSColor(tint)
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            var resolved = base
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = base.usingColorSpace(.sRGB) ?? base
+            }
+            guard !isDark else { return resolved }
+            return resolved.blended(withFraction: 0.45, of: .black) ?? resolved
+        })
+    }
+
     var body: some View {
         Label(text, systemImage: systemImage)
             .font(.callout)
-            .foregroundStyle(tint)
+            .foregroundStyle(textColor)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(tint.opacity(0.12))

@@ -140,7 +140,7 @@ html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;bor
 /* Watch Now!: the panel's primary action for a show airing now — the accent button the app's own Watch Now buttons use (.mac-btn-prom), not the catch-all grey above */
 #sum-watch{background:var(--ac)!important;color:#fff!important;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 1px 2px rgba(0,0,0,.25)}
 #sum-watch:hover{filter:brightness(1.08)}
-.sum-tag{border-radius:999px;padding:2px 8px;font-size:.58rem;font-weight:700;letter-spacing:.06em;color:rgba(255,255,255,.92);background:rgba(255,255,255,.18)}
+.sum-tag{border-radius:999px;padding:2px 8px;font-size:.6875rem;font-weight:700;letter-spacing:.06em;color:rgba(255,255,255,.92);background:rgba(255,255,255,.18)}
 html.lm .sum-tag{color:rgba(0,0,0,.7)}
 #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
 html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
@@ -198,8 +198,8 @@ html.lm #sum-poster{background:#ccc}
   #toolbar{gap:8px!important;margin-bottom:8px!important}
   h1{font-size:1rem}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
-  .t-info{padding:2px 6px;font-size:.66rem}
-  .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
+  .t-info{padding:2px 6px;font-size:.6875rem}
+  .t-info-inline{padding:1px 4px;font-size:.6875rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
   /* font-size applies even while collapsed (harmless — width:0 hides it); width/padding must
@@ -213,7 +213,7 @@ html.lm #sum-poster{background:#ccc}
   .g-hdr-tl{height:24px}
   .g-hdr-ch{padding:2px 6px}
   .g-hdr-btn{padding:1px 4px;font-size:.7rem}
-  .g-tick{font-size:.6rem}
+  .g-tick{font-size:.6875rem}
 }
 /* ── Small-screen compaction (phones) — shrinks the toolbar controls, the sticky
    channel column (--ch-w, also read by guide.js's nowPx calc — never resize .g-ch/
@@ -225,8 +225,8 @@ html.lm #sum-poster{background:#ccc}
   h1{font-size:1rem}
   :root{--ch-w:100px}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
-  .t-info{padding:2px 6px;font-size:.66rem}
-  .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
+  .t-info{padding:2px 6px;font-size:.6875rem}
+  .t-info-inline{padding:1px 4px;font-size:.6875rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
   /* font-size applies even while collapsed (harmless — width:0 hides it); width/padding must
@@ -236,20 +236,20 @@ html.lm #sum-poster{background:#ccc}
   #search-in{font-size:.72rem}
   #search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{width:110px;padding:3px 6px}
   .g-hdr-tl{height:28px}
-  .g-hdr-ch-lbl{font-size:.58rem}
+  .g-hdr-ch-lbl{font-size:.6875rem}
   .g-hdr-btn{padding:1px 4px;font-size:.72rem}
-  .g-tick{font-size:.6rem}
+  .g-tick{font-size:.6875rem}
   .g-logo{width:18px;height:18px}
-  .g-cn{font-size:.56rem}
-  .g-cname{font-size:.6rem}
+  .g-cn{font-size:.6875rem}
+  .g-cname{font-size:.6875rem}
   .g-tl{min-height:44px}
   .g-row{contain-intrinsic-size:auto 45px}
   .g-prog{top:3px;bottom:3px}
   .g-pi{padding:2px 5px}
   .g-ti{font-size:.7rem}
-  .g-sub{font-size:.58rem}
+  .g-sub{font-size:.6875rem}
   .g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after,.g-prog.g-st-inuse::after{
-    top:3px;right:3px;width:15px;height:15px;font-size:9px
+    top:3px;right:3px;width:15px;height:15px;font-size:11px
   }
   .mac-sheet{padding:14px 16px!important}
   .em-row{gap:8px;margin-bottom:10px}
@@ -305,7 +305,7 @@ html.lm #g-hscroll-thumb:hover,html.lm #g-hscroll-thumb.g-dragging{background:rg
 .gw.pull-snap{transition:transform .2s ease}
 .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
 .g-hdr-ch{width:var(--ch-w);min-width:var(--ch-w);position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
-.g-hdr-ch-lbl{font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
+.g-hdr-ch-lbl{font-size:.6875rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
 .g-hdr-btns{display:flex;gap:3px}
 .g-hdr-btn{background:none;border:1px solid var(--b3);color:var(--t4);border-radius:3px;padding:2px 5px;font-size:.8rem;cursor:pointer;line-height:1;transition:border-color .15s,color .15s,background .15s}
 .g-hdr-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
@@ -318,7 +318,7 @@ html.lm .g-hdr-btn:hover{border-color:#888;color:#111;background:#e8e8e8}
 html.lm .g-hdr-btn-now{border-color:rgba(180,40,40,.5);color:#b02020}
 html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important;background:#c03030!important}
 .g-hdr-tl{flex:1;position:relative;height:32px}
-.g-tick{position:absolute;left:var(--gs);top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
+.g-tick{position:absolute;left:var(--gs);top:50%;transform:translate(-50%,-50%);font-size:.6875rem;color:var(--t4);white-space:nowrap;pointer-events:none}
 .g-now-tick{position:absolute;left:var(--gs);top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
 /* content-visibility:auto lets the browser skip layout/paint for rows scrolled out of
    view — only on-screen rows (plus a small buffer) are rendered, so the initial paint
@@ -328,20 +328,20 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-row{display:flex;border-bottom:1px solid var(--b0);content-visibility:auto;contain-intrinsic-size:auto 55px}
 .g-row:last-child{border-bottom:none}
 .g-fav-sep{display:flex;border-bottom:1px solid var(--b0)}
-.g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+.g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.6875rem;font-weight:700;letter-spacing:.07em}
 .g-fav-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--fav) 13%,transparent)}
 /* Recording sits above Favorites — a channel already recording is a stronger claim on
    attention than a merely-favorited one. Same shape as .g-fav-sep, in --vc-rec (the same
    red as each row's own recording ring, guide.css ~line 269) instead of --fav. */
 .g-rec-sep{display:flex;border-bottom:1px solid var(--b0)}
-.g-rec-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--vc-rec);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+.g-rec-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--vc-rec);font-size:.6875rem;font-weight:700;letter-spacing:.07em}
 .g-rec-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--vc-rec) 13%,transparent)}
 /* Air only (watch-only): channels seen in the saved over-the-air scan that the tuner's own lineup lacks. Sits between Recording and Favorites.
    Rows hold 4-hour blocks from local midnight; only the block in progress is live (click selects it in the summary panel, whose Watch Now! plays it live in the browser; never a recording). */
 .g-air-sep{display:flex;border-bottom:1px solid var(--b0)}
-.g-air-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--air) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--air);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+.g-air-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--air) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--air);font-size:.6875rem;font-weight:700;letter-spacing:.07em}
 .g-air-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--air) 13%,transparent)}
-.g-air-blk{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:.62rem;color:var(--t4);border:1px dashed var(--b1);background:color-mix(in srgb,var(--air) 6%,transparent);user-select:none}
+.g-air-blk{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:.6875rem;color:var(--t4);border:1px dashed var(--b1);background:color-mix(in srgb,var(--air) 6%,transparent);user-select:none}
 .g-air-now{border:1px solid var(--air);background:color-mix(in srgb,var(--air) 24%,transparent);color:var(--t0);font-weight:700;cursor:pointer}
 .g-air-now:hover,.g-air-now:focus-visible{background:color-mix(in srgb,var(--air) 38%,transparent);outline:none}
 .g-air-blk{cursor:pointer}
@@ -365,7 +365,7 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-ch{width:var(--ch-w);min-width:var(--ch-w);display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
 .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
 .g-cl{flex:1;min-width:0}
-.g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.g-cn{display:block;font-size:.6875rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g-sig{vertical-align:middle;margin-left:2px}
 /* 30-min gridlines */
@@ -383,7 +383,7 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-bonus-overlay{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:0 5px 5px 0;z-index:2;pointer-events:none;
   background:repeating-linear-gradient(135deg,rgba(255,176,32,.30) 0 5px,rgba(255,176,32,.08) 5px 10px);
   border-left:1.5px dashed rgba(255,176,32,.7);overflow:hidden}
-.g-bonus-overlay span{position:absolute;right:3px;bottom:2px;font-size:.55rem;font-weight:700;color:#fff;background:rgba(0,0,0,.4);border-radius:3px;padding:0 3px;line-height:1.3;letter-spacing:.02em;opacity:.85}
+.g-bonus-overlay span{position:absolute;right:3px;bottom:2px;font-size:.6875rem;font-weight:700;color:#fff;background:rgba(0,0,0,.4);border-radius:3px;padding:0 3px;line-height:1.3;letter-spacing:.02em;opacity:.85}
 /* The overlay sits right after its show's block, so selecting the show lights it up as the same object. */
 .g-prog.g-sel + .g-bonus-overlay{background:repeating-linear-gradient(135deg,rgba(255,176,32,.6) 0 5px,rgba(255,176,32,.22) 5px 10px);
   border-left:2px solid #ffb020;box-shadow:0 0 0 1.5px var(--t0),0 0 10px rgba(255,176,32,.7)}
@@ -525,10 +525,10 @@ html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
 .g-prog-dim{opacity:.35;pointer-events:none}
 .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
 .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
-.g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.g-sub{font-size:.6875rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
 .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
 .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
-.g-new-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#1e8449;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
+.g-new-tag{display:inline-block;font-size:.6875rem;font-weight:800;background:#1e8449;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
 /* Vertical time-axis mode's rules live in a separate file, Resources/guide-vertical.css —
    loaded as its own <style> block after this one (see WebServer.swift buildHTML()) — so
    editing this file's horizontal-mode rules can't accidentally touch vertical mode, or vice
@@ -537,12 +537,12 @@ html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
 /* ── Starburst bonus badge ── */
 @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
 @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}
-.sb-web{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;clip-path:polygon(50% 0%,57.1% 23.4%,75% 6.7%,69.4% 30.6%,93.3% 25%,76.6% 42.9%,100% 50%,76.6% 57.1%,93.3% 75%,69.4% 69.4%,75% 93.3%,57.1% 76.6%,50% 100%,42.9% 76.6%,25% 93.3%,30.6% 69.4%,6.7% 75%,23.4% 57.1%,0% 50%,23.4% 42.9%,6.7% 25%,30.6% 30.6%,25% 6.7%,42.9% 23.4%);background:#e86e00;font-size:.5rem;font-weight:800;color:#fff;line-height:1;text-align:center}
-.sb-web-lg{position:absolute;top:6px;right:44px;width:56px;height:56px;font-size:.42rem;pointer-events:none;z-index:2}
+.sb-web{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;clip-path:polygon(50% 0%,57.1% 23.4%,75% 6.7%,69.4% 30.6%,93.3% 25%,76.6% 42.9%,100% 50%,76.6% 57.1%,93.3% 75%,69.4% 69.4%,75% 93.3%,57.1% 76.6%,50% 100%,42.9% 76.6%,25% 93.3%,30.6% 69.4%,6.7% 75%,23.4% 57.1%,0% 50%,23.4% 42.9%,6.7% 25%,30.6% 30.6%,25% 6.7%,42.9% 23.4%);background:#e86e00;font-size:.6875rem;font-weight:800;color:#fff;line-height:1;text-align:center}
+.sb-web-lg{position:absolute;top:6px;right:44px;width:56px;height:56px;font-size:.6875rem;pointer-events:none;z-index:2}
 .sb-anim{animation:sbPop .55s cubic-bezier(.22,1,.36,1) both,sbPulse 2.4s ease-in-out .6s infinite}
 /* ── Schedule popover ── */
 .sp-sec{padding:10px 14px}
-.sp-hdr{font-size:.68rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+.sp-hdr{font-size:.6875rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
 .sp-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--b0);cursor:pointer}
 .sp-row:last-child{border-bottom:none}
 .sp-row:hover .sp-t{color:var(--ac)}
@@ -661,7 +661,7 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 .wn-state{font-size:.76rem;color:var(--t2);font-variant-numeric:tabular-nums}
 .wn-state .wn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0;background:var(--t5)}
 .wn-state.wn-live .wn-dot{background:#d33}
-.wn-keys{font-size:.68rem;color:var(--t4)}
+.wn-keys{font-size:.6875rem;color:var(--t4)}
 @media (max-width:600px){.wn-keys{display:none}}
 /* Reduced motion, part 2 — kept at the end of the file so these win over the same-specificity rules defined above (sbPulse, searchIconPop, splash, pull-snap). */
 @media (prefers-reduced-motion: reduce){
@@ -670,4 +670,42 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   #splash{animation:splash-show .01s ease .3s forwards,splash-timeout .01s linear 8s forwards;transition:none!important}
   .gw.pull-snap{transition:none}
   .pull-spin.spinning{animation-duration:2.4s}
+}
+
+/* ── Toolbar overflow: below 700px the theme switcher folds into the "⋯" menu (#tb-menu); below 520px the
+   genre filter does too. Controls return as the viewport widens. The menu holds the same controls (JS keeps
+   them in sync), so nothing is lost; guide rows are untouched (the "rows are never hidden" invariant is about
+   the grid, not the toolbar). ── */
+#tb-more-wrap{display:none;position:relative}
+#tb-more{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:4px 10px;font-size:.9rem;line-height:1;cursor:pointer;position:relative}
+#tb-more:hover,#tb-more[aria-expanded="true"]{border-color:var(--b5);color:var(--t0);background:var(--s3)}
+#tb-more.tb-more-on::after{content:"";position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--ac)}
+#tb-menu{position:absolute;top:100%;right:0;margin-top:4px;min-width:190px;max-width:calc(100vw - 20px);background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:6px;z-index:150}
+.tb-mi-hdr{font-size:.6875rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;padding:4px 8px 2px}
+.tb-mi{display:block;width:100%;text-align:left;background:none;border:none;border-radius:6px;color:var(--t2);font-size:.82rem;padding:7px 10px;cursor:pointer}
+.tb-mi:hover,.tb-mi:focus-visible{background:var(--s4);color:var(--t0)}
+.tb-mi[aria-checked="true"]{color:var(--ac);font-weight:600}
+#tb-menu .genre-sel{width:100%;margin:2px 0 4px}
+@media(max-width:700px){
+  #tb-more-wrap{display:block}
+  #theme-sw{display:none}
+}
+@media(max-width:520px){
+  #genre-bar{display:none!important}
+}
+/* ── Touch targets: coarse pointers (phones/tablets) get a 44px minimum hit area; desktop (fine pointer) is unchanged. ── */
+@media(pointer:coarse){
+  .d-btn,.tdrop-btn,.t-info,.genre-sel,#tb-more,.tb-mi,#theme-sw button,#search-icon-btn,#search-info-btn,#search-clear,
+  .g-hdr-btn,#sum-actions button,#sum-close,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset,#t-pop-c button{min-height:44px;min-width:44px}
+  .d-btn,.tdrop-btn,.t-info,.genre-sel,.g-hdr-btn,#sum-actions button,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset{display:inline-flex;align-items:center;justify-content:center}
+  .tb-mi{display:flex;align-items:center}
+  .genre-sel,.em-input,select.em-input{min-height:44px}
+  .em-check{min-height:44px;align-items:center;padding-top:0}
+  .mac-check{width:22px;height:22px}
+  .mac-check:checked::after{left:7px;top:3px;width:5px;height:11px}
+  #search-in{min-height:44px}
+  .tdrop a,.tdrop button,.tdrop .tdrop-ui{min-height:44px;display:inline-flex;align-items:center}
+  .g-hdr-btns{gap:6px;flex-wrap:wrap}
+  .g-hdr-tl{height:auto;min-height:48px}
+  .g-hdr-ch{height:auto;min-height:48px}
 }

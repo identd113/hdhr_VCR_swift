@@ -85,7 +85,7 @@ card (logo, version, checklist) slides out to the left, the wizard slides in fro
 frozen), and when the wizard closes the next card (the donation card, if due) slides in the same way — exactly one card visible at a
 time. The view reads `\.embeddedCardClose` (`Views/EmbeddedCard.swift`): when set it calls that instead of `dismiss()` (Finish,
 Escape) and skips its `WindowAction` block (size/centre/clear background — the splash window is not its to configure).
-`AppState.launchSplashHandsOffToWizard` (set just before the splash opens) tells the splash to host it. The logo-glide into the
+`AppState.launchSplashHandsOffToWizard` (set just before the splash opens) tells the splash to host it. After the card slides in the splash grows the panel to 100 % scale and fades the wall (`LaunchSplashView.settledFull`, docs/LaunchSplash.md "Settling to full size"). The logo-glide into the
 header icon and `firstRunWizardEntrance` were removed with this change. Full sequence: `docs/LaunchSplash.md`. If the splash never
 runs (Reduce Motion, "Show launch splash" off, tests) the wizard opens directly at launch in its own window as before; so does
 Settings → Maintenance → "Reset First-Run Setup" (no splash, normal window level).

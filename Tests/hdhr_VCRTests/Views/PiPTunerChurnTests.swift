@@ -256,7 +256,7 @@ on playerWin()
         repeat with w in windows
             try
                 set n to name of w
-                if n is not "Watch Now" and n is not "Add Picture-in-Picture" and n is not "Support hdhrVCRplus" then return w
+                if n is not "Watch Now" and n is not "Add PiP" and n is not "Support hdhrVCRplus" then return w
             end try
         end repeat
     end tell
@@ -329,7 +329,7 @@ end findLastByIdSlow
 
 on closeExtraWindows()
     tell application "System Events" to tell process "hdhr_VCR"
-        repeat with nm in {"Add Picture-in-Picture", "Watch Now"}
+        repeat with nm in {"Add PiP", "Watch Now"}
             try
                 click (first button of window (nm as string) whose description is "close button")
             end try
@@ -466,7 +466,7 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         return "OK"
         """#)
     case .addLivePip:
-        // The player's right-click "Add Picture-in-Picture…" (a real right-click + Down/Return via ui_events), then the
+        // The player's right-click "Add PiP…" (a real right-click + Down/Return via ui_events), then the
         // picker's last add button (the Live TV section). Watch Now's per-row PiP buttons aren't used: on the laptop
         // the Watch Now window doesn't reliably open while a player is up.
         return wrap(uiEvents, #"""
@@ -482,7 +482,7 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         set pipWin to missing value
         repeat 12 times
             delay 0.5
-            set pipWin to my windowNamed("Add Picture-in-Picture")
+            set pipWin to my windowNamed("Add PiP")
             if pipWin is not missing value then exit repeat
         end repeat
         if pipWin is missing value then
@@ -513,7 +513,7 @@ private func script(for op: Op, uiEvents: String, rng: inout SplitMix64, world: 
         end if
         set addBtn to missing value
         repeat 20 times
-            set addBtn to my findLastById(my windowNamed("Add Picture-in-Picture"), "pip-picker-add-button")
+            set addBtn to my findLastById(my windowNamed("Add PiP"), "pip-picker-add-button")
             if addBtn is not missing value then exit repeat
             delay 0.5
         end repeat
@@ -746,9 +746,9 @@ private func run(phase: String, feedPhase: Bool, deviceID: String, base: Int, ta
                     if !onScreen { problems.append("step \(n) \(op.rawValue): player window \(win) is entirely off-screen") }
                 }
             }
-            let extra = names.split(separator: "|").map(String.init).filter { !["Watch Now", "Add Picture-in-Picture", "Support hdhrVCRplus"].contains($0) }
+            let extra = names.split(separator: "|").map(String.init).filter { !["Watch Now", "Add PiP", "Support hdhrVCRplus"].contains($0) }
             if extra.count > 1 { problems.append("step \(n) \(op.rawValue): \(extra.count) player windows open (\(extra))") }
-            if names.contains("Add Picture-in-Picture") { problems.append("step \(n) \(op.rawValue): the PiP picker window was left open") }
+            if names.contains("Add PiP") { problems.append("step \(n) \(op.rawValue): the PiP picker window was left open") }
         }
         trail.append(Step(n: n, op: op, result: result, world: world, settle: settled, tuners: snap, note: note))
     }

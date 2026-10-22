@@ -118,6 +118,6 @@ html #g-hscroll{display:none}
    the same variable, rather than relying on source order alone. ── */
 @media (orientation: portrait) and (max-width: 600px) {
 html:root{--ch-w:108px}
-html .g-cn,html .g-cname{font-size:.6rem;overflow:hidden;text-overflow:ellipsis}
+html .g-cn,html .g-cname{font-size:.6875rem;overflow:hidden;text-overflow:ellipsis}
 }
 html .g-prog.g-sel + .g-bonus-overlay{border-left:0;border-top:2px solid #ffb020}

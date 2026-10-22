@@ -114,6 +114,7 @@ struct ShowFormSection: View {
             }
 
             LabeledContent("Type") {
+              HStack(spacing: 6) {
                 Picker("Type", selection: topType) {
                     ForEach(TopType.allCases, id: \.self) { type in
                         Text(type.rawValue).tag(type)
@@ -123,6 +124,9 @@ struct ShowFormSection: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. SeriesID: records new episodes automatically via SeriesID matching — pick Channel or All scope below.")
+                InfoButton("SeriesID is the guide's identifier for a TV series. It links every airing of the same series, so the app can find new episodes on its own, match a recording to its series, and skip repeats of an episode it already has.", about: "SeriesID")
+                    .accessibilityIdentifier("show-form-seriesid-info")
+              }
             }
 
             if seriesType.isSeries {
@@ -164,15 +168,26 @@ struct ShowFormSection: View {
 
             if state.config.Sports_padding_enabled {
                 LabeledContent("Bonus Time") {
-                    Toggle("+\(state.config.Sports_padding_minutes) min past guide end",
-                           isOn: Binding(
-                        get: { show.show_bonus_time },
-                        set: { val in
-                            withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.65)) {
-                                show.show_bonus_time = val
+                    // The badge sits inline beside the toggle (it used to float over the form and
+                    // cover controls) and scrolls with the form.
+                    HStack(spacing: 8) {
+                        Toggle("+\(state.config.Sports_padding_minutes) min past guide end",
+                               isOn: Binding(
+                            get: { show.show_bonus_time },
+                            set: { val in
+                                withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.65)) {
+                                    show.show_bonus_time = val
+                                }
                             }
+                        ))
+                        .accessibilityIdentifier("show-form-bonus-toggle")
+                        if show.show_bonus_time {
+                            StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 60)
+                                .transition(.asymmetric(insertion: .identity,
+                                                        removal: .scale(scale: 0.05).combined(with: .opacity)))
+                                .accessibilityIdentifier("show-form-bonus-badge")
                         }
-                    ))
+                    }
                 }
             }
 

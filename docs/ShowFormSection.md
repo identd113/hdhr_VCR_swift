@@ -89,7 +89,7 @@ success) can reuse it instead of duplicating the pattern again.
 
 ## Bonus Time Toggle
 
-Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the `StarburstBadge` in the parent's ZStack animate in/out when the toggle changes (no animation when Reduce Motion is on: `@Environment(\.accessibilityReduceMotion)`).
+Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the inline `StarburstBadge` (60pt, `show-form-bonus-badge`, shown right of the toggle while it is on, scrolls with the form, never covers controls; toggle id `show-form-bonus-toggle`) animate in/out when the toggle changes (no animation when Reduce Motion is on: `@Environment(\.accessibilityReduceMotion)`).
 
 ---
 
@@ -122,3 +122,9 @@ This keeps the component free of direct `AppState` mutations and makes it testab
 ## Adding New Fields
 
 When adding a new field to `Show` that should appear in both Add and Edit flows, add it here. The field will automatically appear in both views. If the field is only relevant to one flow (e.g., a field that only makes sense on first-add), put it directly in the parent view instead.
+
+
+## Additions (2026-10-22)
+
+- **SeriesID (i) help** — an `InfoButton` (`show-form-seriesid-info`) sits right of the Type picker. The segment label stays "SeriesID"; the popover explains it is the guide's identifier that links every airing of the same series, used to match recordings and skip repeats.
+- **CaveatBanner contrast** — in light appearance the text/icon colour is the tint blended 45% toward black (system orange on its 12% wash was ~2.2:1; now about 5.6:1, WCAG AA); dark appearance keeps the tint unchanged. Resolved by a dynamic `NSColor`.

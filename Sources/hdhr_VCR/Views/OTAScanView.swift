@@ -37,7 +37,9 @@ struct OTAScanView: View {
             if let rf, progress.rows.contains(where: { $0.rf == rf }) { followedRF = rf }   // empty channels have no tab: stay on the last station that did
         }
         .accessibilityIdentifier("ota-scan-window")
-        .background(WindowAction(trigger: true) { $0.level = .floating })
+        // Floating only for a scan a person started; a scheduled/background scan opens at normal window level (and, per
+        // hdhr_VCRApp, without taking focus), so it never sits on top of whatever they are doing.
+        .background(WindowAction(trigger: state.otaWindowActivates) { [manual = state.otaWindowActivates] in $0.level = manual ? .floating : .normal })
     }
 
     /// Redraw every 2 s while a scan runs; effectively a single static render (daily tick) otherwise.

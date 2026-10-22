@@ -4,7 +4,7 @@
 
 **Location**: `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`  
 **Hostname changes**: the file is keyed by `ProcessInfo.processInfo.hostName`, which isn't stable (DHCP-assigned name, `.local` vs `.lan`, a rename, a VPN). `ConfigManager.load()` tries, in order: the current host's file, its `.bak`, `~/Documents/hdhr_VCR-{hostname}.json` (the last-ever migration from the old TCC-protected location), and then — new 2026-10-09 — the **newest other** `hdhr_VCR-*.json` in the folder that decodes as a `ConfigFile` (never a `.bak`, never an undecodable file), adopted as a *copy* under the current name (the original stays) with a `[ConfigManager] No config for hostname … — adopting …` warning. Only when none of those exist is it a fresh install. The folder is per-user and per-machine, so any other such file there is this install's config under an earlier name.  
-**Backup**: `.json.bak` written before each save.
+**Backup**: `.json.bak` written before each save. Import Config also keeps a permanent timestamped copy (`…json.pre-import-YYYYMMDD-HHmmss.bak`) of the config it replaces.
 
 **Format versions**:
 - v2 (current): dates encoded as ISO8601 strings (`"2026-05-30T21:00:00Z"`), top-level shows key is `"shows"`.

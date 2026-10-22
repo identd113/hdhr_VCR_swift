@@ -75,6 +75,7 @@ struct LaunchSplashView: View {
     @State private var phase: Phase = .showing
     @State private var card: Card = .splash
     @State private var closedCards = 0              // bumped by a hosted card's close action; the flow waits on it
+    @State private var settledFull = false          // the wizard has glided in: panel at 100 % scale, wall faded out
     @State private var assembled = false            // tiles have locked into the window: chrome, logo and text fade in
     @State private var started = Date()
     @State private var tilesReady = false   // the wall isn't drawn until posters are loaded — no placeholder flash
@@ -92,6 +93,11 @@ struct LaunchSplashView: View {
     /// The panel and everything in it is designed at 520×600 and scaled with the display so it takes about 42 % of the screen's
     /// height (and at most 30 % of its width) — a modest card on the wall, the same proportion on any screen. The wall fills
     /// the screen (its tiles scale with it).
+    /// The scale the panel settles at once the setup wizard has glided in: 100 % (the wizard is a normal-size window's worth of
+    /// content, not a miniature), shrunk only if the screen is too short to fit it.
+    private func settledScale(_ screen: CGSize) -> CGFloat {
+        min(1, max(0.5, (screen.height - 80) / cardSize.height))
+    }
     private func displayScale(_ screen: CGSize) -> CGFloat {
         min(1.6, max(0.5, min(0.42 * screen.height / cardSize.height, 0.30 * screen.width / cardSize.width)))
     }
@@ -122,7 +128,7 @@ struct LaunchSplashView: View {
                 // loose wall (centre posters dimmed) with the splash card on a dark panel that sits in it.
                 if tilesReady {
                     MosaicTiles(images: tiles, started: started, screen: full, scale: scale, frozen: frozen)
-                        .opacity(phase == .showing ? 1 : 0)
+                        .opacity(phase == .showing && !settledFull ? 1 : 0)
                         .accessibilityHidden(true)   // decorative wall of posters
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads — over the wall's own
                     // area only, so the rest of the screen (the desktop and your other windows) is not darkened.
@@ -156,7 +162,8 @@ struct LaunchSplashView: View {
                 .blendedLaunchPanel(accent: accent)
                 .animation(.easeInOut(duration: 0.55), value: card)
                 // The ending: the last panel glides up to the menu-bar icon, shrinking to icon size, while the wall fades away.
-                .scaleEffect(phase == .showing ? scale : 24 / cardSize.width)
+                .scaleEffect(phase == .showing ? (settledFull ? settledScale(full) : scale) : 24 / cardSize.width)
+                .animation(.easeInOut(duration: 0.7), value: settledFull)
                 .opacity(assembled && phase != .arrived ? 1 : 0)
                 .position(phase == .showing ? center : target)
 
@@ -363,7 +370,7 @@ struct LaunchSplashView: View {
         // A re-opened Window scene can keep this view's @State from the previous run (phase stuck at .arrived =
         // invisible), so every run starts from a clean slate — this is what makes "Preview Launch Splash" replayable.
         var reset = Transaction(); reset.disablesAnimations = true
-        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; cardsActive = false; card = .splash; closedCards = 0; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
+        withTransaction(reset) { phase = .showing; assembled = false; pulse = false; frozen = false; cardsActive = false; card = .splash; closedCards = 0; settledFull = false; wallHasPosters = false; ended = false; tiles = []; tilesReady = false }
         let loaded = await loadPosters()
         tiles = loaded.images
         wallHasPosters = loaded.real
@@ -410,6 +417,12 @@ extension LaunchSplashView {
         if wizardDue {
             let before = closedCards                    // taken before the slide, so a close during it still counts
             await slide(to: .wizard)
+            // The glide is done: hand off to a normal-size wizard — the panel grows from the wall-sized card to 100 % while the
+            // poster wall fades out behind it (docs/LaunchSplash.md "Settling to full size").
+            LaunchSplashController.shared.motionActive = true
+            settledFull = true
+            try? await Task.sleep(for: .milliseconds(900))
+            LaunchSplashController.shared.motionActive = false
             guard await waitForCardClose(after: before) else { return }
             // Finish, Escape and the close button all count as "dismissed". The wizard marks that itself as it leaves the
             // screen, but with no card sliding in after it nothing removes it before the panel glides away — so make sure here.

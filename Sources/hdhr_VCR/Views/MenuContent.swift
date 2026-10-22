@@ -322,7 +322,7 @@ struct MenuContent: View {
                             Button {
                                 state.watchRemoteRelayAsSecondary(url: pair.entry.URL ?? "", title: title, device: pair.device)
                             } label: {
-                                Label(gatedLabel("Watch as Picture-in-Picture", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
+                                Label(gatedLabel("Watch as PiP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
                             }
                             .disabled(!vlcReady)
                             .accessibilityLabel(gatedLabel(pipAccessibilityLabel(title), met: vlcReady, requirement: "VLC"))
@@ -568,7 +568,7 @@ struct MenuContent: View {
             .accessibilityLabel(gatedLabel(watchFromBeginningLabel(show.show_title), met: vlcReady, requirement: "VLC"))
             if state.hasPlayablePrimarySession {
                 Button(action: { state.watchRecordingInAppAsSecondary(show) }) {
-                    Label { Text(gatedLabel("Watch as Picture-in-Picture", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                    Label { Text(gatedLabel("Watch as PiP", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                           icon: { Image(systemName: "pip.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                 }
                 .disabled(!vlcReady)
@@ -736,7 +736,7 @@ struct MenuContent: View {
         return "\(kind): \(show.show_title)" + (timePrefix.map { ", at \($0)" } ?? "")
     }
 
-    private func pipAccessibilityLabel(_ title: String) -> String { "Watch \(title) as Picture-in-Picture" }
+    private func pipAccessibilityLabel(_ title: String) -> String { "Watch \(title) as PiP" }
 
     // "Channel 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
     private func upcomingLabel(channel: String, date: Date) -> String {

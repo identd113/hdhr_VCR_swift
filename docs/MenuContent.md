@@ -210,7 +210,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 9. `"Paused until next airing"` info row, then **Stop & Skip This Airing** (destructive; no confirmation) — `state.skipRecording(showId:)`: stops the recording and sets `show_paused = true` with `show_fail_reason = "Skipped"` (it does not advance the schedule itself; the show shows up under Paused), no fail-count increment
 10. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
 
-"Watch as Picture-in-Picture" (was "Watch alongside current (PiP)") appears after the Watch items when a playable primary session exists; its VoiceOver text is `"Watch <title> as Picture-in-Picture"`.
+"Watch as PiP" (was "Watch alongside current (PiP)") appears after the Watch items when a playable primary session exists; its VoiceOver text is `"Watch <title> as PiP"`.
 
 ---
 

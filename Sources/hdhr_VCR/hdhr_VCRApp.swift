@@ -269,7 +269,7 @@ struct hdhr_VCRApp: App {
         // thumbnail directly (Live TV or a discovered FEED source), without anything already
         // playing in the primary pane. Opened from MenuContent's "Add Picture-in-Picture…" button
         // and from VLCPlayerView's right-click context menu on the main video pane.
-        Window("Add Picture-in-Picture", id: "pip-picker") {
+        Window("Add PiP", id: "pip-picker") {
             PiPPickerView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)

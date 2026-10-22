@@ -257,7 +257,7 @@ delay 0.5
 /// Continuation of `openRecordingRelayPlayerSnippet` — assumes `playerWin` is already set. Opens
 /// the PiP picker via the player's right-click context menu (the *only* entry point since
 /// MenuContent's redundant menu-bar button was removed 2026-09-19 — see VLCPlayerView.swift's own
-/// `.contextMenu` doc comment) and waits for the resulting "Add Picture-in-Picture" window.
+/// `.contextMenu` doc comment) and waits for the resulting "Add PiP" window.
 ///
 /// Confirmed live 2026-09-19: `perform action "AXShowMenu" of playerWin` does land the SwiftUI
 /// `.contextMenu` and does expose it as `menu 1 of playerWin` right after, same "the menu that
@@ -274,7 +274,7 @@ end try
 set pipMenuItem to missing value
 repeat 8 times
     try
-        set pipMenuItem to menu item "Add Picture-in-Picture…" of menu 1 of playerWin
+        set pipMenuItem to menu item "Add PiP…" of menu 1 of playerWin
         exit repeat
     end try
     delay 0.25
@@ -297,8 +297,8 @@ end if
 repeat 24 times
     delay 0.25
     try
-        if (do shell script (quoted form of "\(axQueryPath)") & " windows") contains "Add Picture-in-Picture" then
-            set pipWin to window "Add Picture-in-Picture"
+        if (do shell script (quoted form of "\(axQueryPath)") & " windows") contains "Add PiP" then
+            set pipWin to window "Add PiP"
             exit repeat
         end if
     end try
@@ -310,7 +310,7 @@ delay 0.5
 """
 
 /// Continuation of the above two snippets — assumes both `playerWin` and `pipWin` are set. Clicks
-/// the first available `pip-picker-add-button` (the shared identifier every "Add as PIP" row uses —
+/// the first available `pip-picker-add-button` (the shared identifier every "Add PiP" row uses —
 /// see PiPPickerView.swift's own doc comment on why it's shared, not per-row) to add a live-channel
 /// secondary, which also dismisses `pipWin` itself (PiPPickerView's own `dismiss()` call after the
 /// action — see `pipActionTrailing`). Returns "NO_PIP_TARGET_AVAILABLE" when nothing is addable
@@ -322,7 +322,7 @@ private let addFirstLiveTVSecondarySnippet = """
 set addBtn to missing value
 repeat 10 times
     try
-        \(axShell("find", window: "Add Picture-in-Picture", match: "id=pip-picker-add-button", last: true, press: true))
+        \(axShell("find", window: "Add PiP", match: "id=pip-picker-add-button", last: true, press: true))
         set addBtn to true
     end try
     if addBtn is not missing value then exit repeat
@@ -1421,11 +1421,11 @@ struct WindowNavigationTests {
                 set sawNoTuners to false
                 repeat 10 times
                     try
-                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'Live TV'"
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add PiP' 'Live TV'"
                         set sawLiveTV to true
                     end try
                     try
-                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'No tuners available'"
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add PiP' 'No tuners available'"
                         set sawNoTuners to true
                     end try
                     if sawLiveTV or sawNoTuners then exit repeat
@@ -1462,11 +1462,11 @@ struct WindowNavigationTests {
             return
         }
         if result == "NO_PIP_CONTEXT_MENU_ITEM" {
-            Issue.record("Right-clicking the player's video area didn't surface an 'Add Picture-in-Picture…' context menu item — see openPipPickerFromPlayerContextMenuSnippet's own doc comment on the AXShowMenu approach this test relies on")
+            Issue.record("Right-clicking the player's video area didn't surface an 'Add PiP…' context menu item — see openPipPickerFromPlayerContextMenuSnippet's own doc comment on the AXShowMenu approach this test relies on")
             return
         }
         if result == "NO_PIP_PICKER_WINDOW" {
-            Issue.record("Clicking 'Add Picture-in-Picture…' didn't open the 'Add Picture-in-Picture' window")
+            Issue.record("Clicking 'Add PiP…' didn't open the 'Add PiP' window")
             return
         }
         let parts = result.split(separator: "|").map(String.init)
@@ -1575,9 +1575,9 @@ struct WindowNavigationTests {
         guard halves.count == 2 else { return }
         let idsAfterAdd = Set(halves[0].split(separator: ",").map(String.init))
         #expect(idsAfterAdd.contains("vlc-pip-thumbnail"),
-            "clicking 'Add as PIP' did not make the pip thumbnail (vlc-pip-thumbnail) appear")
+            "clicking 'Add PiP' did not make the pip thumbnail (vlc-pip-thumbnail) appear")
         #expect(idsAfterAdd.contains("vlc-pip-close-button"),
-            "clicking 'Add as PIP' did not make the pip close button (vlc-pip-close-button) appear")
+            "clicking 'Add PiP' did not make the pip close button (vlc-pip-close-button) appear")
         #expect(halves[1] == "0",
             "clicking vlc-pip-close-button did not remove the PiP secondary — \(halves[1]) vlc-pip-* elements still present")
     }
@@ -1585,7 +1585,7 @@ struct WindowNavigationTests {
     /// Live counterpart to the pure-function coverage in PiPDuplicatePrimaryCombinationTests —
     /// confirms the *actual rendered UI* refuses a duplicate the same way those functions predict:
     /// with the recording-relay show already primary, the PiP picker's own "Recording Now" row for
-    /// that exact show must show "Now Playing" (a plain label), never an "Add as PIP" button
+    /// that exact show must show "Now Playing" (a plain label), never an "Add PiP" button
     /// (isCurrentRecording(recordingShowId:showId:) — see PiPPickerView.swift's own
     /// pipActionTrailing). Doesn't add anything; a pure observation test.
     @Test func pipPickerShowsNowPlayingForTheAlreadyPrimaryRecording() throws {
@@ -1605,7 +1605,7 @@ struct WindowNavigationTests {
                     set sawNowPlaying to false
                     set sawMatchingAddButton to false
                     try
-                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add Picture-in-Picture' 'Now Playing'"
+                        do shell script (quoted form of "\#(axQueryPath)") & " text 'Add PiP' 'Now Playing'"
                         set sawNowPlaying to true
                     end try
                     if sawNowPlaying then exit repeat
@@ -1747,7 +1747,7 @@ struct WindowNavigationTests {
     ///   1. start a real recording (`tools/mock_scenario.py start` — a tagged `[MOCK]` single on a
     ///      now-airing guide entry; removed again via `mock_scenario.py clean` in a `defer`),
     ///   2. Watch Now → open the in-progress recording as the primary,
-    ///   3. add an OTA live channel as the PiP via the player's right-click "Add Picture-in-Picture…",
+    ///   3. add an OTA live channel as the PiP via the player's right-click "Add PiP…",
     ///   4. move the PiP through all four corners (distinct on-screen positions asserted),
     ///   5. change the PiP's source via its right-click Channel submenu,
     ///   6. swap primary ↔ PiP (title must change),
@@ -1845,7 +1845,7 @@ struct WindowNavigationTests {
                 delay 1
 
                 -- Add the first live channel as PiP from Watch Now's per-channel "Watch alongside
-                -- (PiP)" button (the player's right-click "Add Picture-in-Picture…" can't be
+                -- (PiP)" button (the player's right-click "Add PiP…" can't be
                 -- triggered reliably through AX — the video pane isn't exposed with AXShowMenu).
                 -- Those buttons' help reads "Watch <title> as a small muted thumbnail alongside
                 -- what's already open"; the recording's own row says "Play the in-progress…".

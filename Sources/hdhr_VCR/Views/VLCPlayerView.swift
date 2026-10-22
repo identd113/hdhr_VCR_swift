@@ -162,6 +162,9 @@ struct VLCPlayerView: View {
     // channel's explicit choice forever.
     @State private var spuChoiceIsExplicit:  Bool  = false
     @AppStorage("vlcVolume") private var volume: Double = 50
+    // Level to restore when the folded Volume menu's Mute item is toggled back off (Unmute). Saved at mute time
+    // and kept current by volume changes; falls back to 50 if the volume was already 0 with nothing remembered.
+    @State private var volumeBeforeMute: Double = 0
     // PiP thumbnail's pinned corner — set via its own right-click menu (makePipNSMenu).
     @AppStorage("vlcPipCorner") private var pipCorner: PipCorner = .bottomTrailing
     // Bumped per live channel pick so a switch still waiting on a tuner can tell a newer pick replaced it.
@@ -875,13 +878,13 @@ struct VLCPlayerView: View {
                         // manual choice; the thumbnail's own right-click menu can still move it.
                         if let corner = VLCPlayerWindowManager.shared.lastRightClickCorner { pipCorner = corner }
                         NSApp.activate(ignoringOtherApps: true)
-                        if let w = NSApp.windows.first(where: { $0.title == "Add Picture-in-Picture" }) {
+                        if let w = NSApp.windows.first(where: { $0.title == "Add PiP" || $0.title == "Add Picture-in-Picture" }) {
                             w.makeKeyAndOrderFront(nil)
                         } else {
                             openWindow(id: "pip-picker")
                         }
                     } label: {
-                        Label("Add Picture-in-Picture…", systemImage: "pip.fill")
+                        Label("Add PiP…", systemImage: "pip.fill")
                     }
                 }
             }
@@ -1626,7 +1629,7 @@ struct VLCPlayerView: View {
                         // bridge.isPlaying can never become true — without this branch the plain
                         // Button below would show a permanently-disabled "Connecting…" spinner,
                         // reading as stuck rather than intentionally idle.
-                        Text("Nothing playing — pick something from the menu bar, or right-click for Picture-in-Picture")
+                        Text("Nothing playing — pick something from the menu bar, or right-click for PiP")
                             .font(.title3.bold())
                             .padding(.horizontal, 22)
                             .padding(.vertical, 12)
@@ -1863,8 +1866,8 @@ struct VLCPlayerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("vlc-pip-thumbnail")
-                    .accessibilityLabel("Swap to picture-in-picture stream")
-                    .help(VLCPlayerWindowManager.shared.secondaryTitle.map { "\($0) (picture-in-picture)" } ?? "Picture-in-picture")
+                    .accessibilityLabel("Swap to PiP stream")
+                    .help(VLCPlayerWindowManager.shared.secondaryTitle.map { "\($0) (PiP)" } ?? "PiP")
                     // Native NSMenu, not .contextMenu — see NativeContextMenuHost (a SwiftUI context
                     // menu reloaded every few seconds while open, on VLCBridge/AppState publishes).
                     .overlay { NativeContextMenuHost { makePipNSMenu() } }
@@ -1891,7 +1894,7 @@ struct VLCPlayerView: View {
                     .buttonStyle(.plain)
                     .padding(4)
                     .accessibilityIdentifier("vlc-pip-close-button")
-                    .accessibilityLabel("Close picture-in-picture")
+                    .accessibilityLabel("Close PiP")
                     .animation(.easeInOut(duration: 0.2), value: pipHovered)
                 }
                 .overlay(alignment: pipResizeHandleAlignment) {
@@ -1966,7 +1969,7 @@ struct VLCPlayerView: View {
             .pointerStyle(.frameResize(position: pipResizePointerPosition))
             .accessibilityElement()
             .accessibilityIdentifier("vlc-pip-resize-handle")
-            .accessibilityLabel("Resize picture-in-picture")
+            .accessibilityLabel("Resize PiP")
             .help("Drag to resize (keeps the stream's aspect ratio) — double-click to reset")
             // Double first so it wins over the single (swallow-only) tap below.
             .onTapGesture(count: 2) { pipWidthFraction = 0; commitPipWidthFraction() }
@@ -2072,7 +2075,7 @@ struct VLCPlayerView: View {
         menu.addItem(.separator())
         // A second, always-discoverable way to close the secondary — the "×" button itself is
         // hover-revealed, so this covers anyone who right-clicks before hovering long enough to see it.
-        menu.addItem(ClosureMenuItem(title: "Close Picture-in-Picture") { VLCPlayerWindowManager.shared.closeSecondary() })
+        menu.addItem(ClosureMenuItem(title: "Close PiP") { VLCPlayerWindowManager.shared.closeSecondary() })
         return menu
     }
 
@@ -2542,7 +2545,10 @@ struct VLCPlayerView: View {
             }
         }
         .padding(.horizontal, ToolbarOverflowPlanner.horizontalPadding / 2)
-        .onChange(of: volume) { _, v in VLCBridge.shared.setVolume(Int(v)) }   // here, not on the slider: the slider may be folded
+        .onChange(of: volume) { _, v in
+            if v > 0 { volumeBeforeMute = v }
+            VLCBridge.shared.setVolume(Int(v))
+        }   // here, not on the slider: the slider may be folded
     }
 
     /// "5 seconds to live" with a fast-forward chevron, shown on the picture for a moment when Live Edge is clicked.
@@ -2683,9 +2689,17 @@ struct VLCPlayerView: View {
                 .accessibilityIdentifier("vlc-catch-up-button")
             case PlayerToolbarItem.volume:
                 Menu {
-                    Button { volume = 0 } label: {
-                        if Int(volume) == 0 { Label("Mute", systemImage: "checkmark") } else { Text("Mute") }
+                    Button {
+                        if Int(volume) == 0 {
+                            volume = volumeBeforeMute > 0 ? volumeBeforeMute : 50   // Unmute
+                        } else {
+                            volumeBeforeMute = volume
+                            volume = 0
+                        }
+                    } label: {
+                        if Int(volume) == 0 { Text("Unmute") } else { Text("Mute") }
                     }
+                    .accessibilityIdentifier("vlc-volume-mute-toggle")
                     ForEach([25, 50, 75, 100], id: \.self) { preset in
                         Button { volume = Double(preset) } label: {
                             if Int(volume.rounded()) == preset { Label("\(preset)%", systemImage: "checkmark") } else { Text("\(preset)%") }

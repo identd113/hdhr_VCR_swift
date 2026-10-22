@@ -144,7 +144,7 @@ struct PiPPickerView: View {
                 .foregroundStyle(watchNowBlue)
                 .font(.title3)
                 .accessibilityHidden(true)
-            Text("Add Picture-in-Picture")
+            Text("Add PiP")
                 .font(.headline)
             Spacer()
         }

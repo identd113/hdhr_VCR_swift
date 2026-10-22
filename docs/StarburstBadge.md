@@ -3,11 +3,11 @@
 ## Visual Appearance
 
 ### At rest
-A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 48pt in EditShowView, 65pt in AddShowView details — sized down from 150pt/115pt so the badge no longer overlaps the form's field rows — true only when the form is scrolled to offset 0: the badge is an overlay on the `ScrollView`, not part of its content, so scrolled content passes underneath it). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape. The badge is a single accessibility element labelled "Bonus time, plus N minutes". With Reduce Motion on, the pop-in spin/overshoot and the 5-tap celebration are skipped (the badge just appears; `@Environment(\.accessibilityReduceMotion)` makes both keyframe animators ignore their values).
+A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 60pt where it is used inline in `ShowFormSection` — it sits beside the Bonus Time toggle as part of the form's own content, scrolls with the form and never covers a control). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape. The badge is a single accessibility element labelled "Bonus time, plus N minutes". With Reduce Motion on, the pop-in spin/overshoot and the 5-tap celebration are skipped (the badge just appears; `@Environment(\.accessibilityReduceMotion)` makes both keyframe animators ignore their values).
 
 Centered inside the starburst: `"+N min"` in white `.caption` bold. At 100pt size this text is ~12pt, clearly legible. At the default orange color (SwiftUI `Color.orange`) the badge reads as warm and energetic.
 
-No border, no shadow, no background behind the badge — it floats directly over whatever is behind it (form background, summary panel, etc.).
+No border, no shadow, no background behind the badge — it sits directly on the form background.
 
 ### Pop-in animation (on appear)
 The badge slams in over ~0.4 seconds:
@@ -25,13 +25,11 @@ When Bonus Time is toggled off (badge removed from the hierarchy): `.scale(scale
 
 ## Intent
 
-`StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears in exactly two places (`AddShowView` step 2's `WKWebView`-based guide browsing has no SwiftUI overlay of its own to host it):
-- In `AddShowView` step 3 (Details), overlaid at the **bottom-right** corner of the form (65pt)
-- In `EditShowView`, overlaid at the **top-right** corner of the form (48pt — the Title field sits closer to the top edge here than in AddShowView's taller layout, so it needed a smaller size than AddShowView's to fully clear it)
+`StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears in one place: inline in `ShowFormSection`'s Bonus Time row (60pt, `show-form-bonus-badge`), next to the toggle, in both the Add Show details sheet and Edit Show. It used to be a corner `.overlay` on each host form; that floated over scrolled content and could cover controls.
 
 It has a pop-in animation on appear and a 5-tap celebration spin easter egg.
 
-Both are `.overlay`s pinned to a form corner with no reserved space of their own — earlier, larger sizes (150pt/115pt) sat on top of the Title/Type/Bonus Time/Folder rows underneath. The current sizes were chosen to stay in the corner without covering any field content.
+The badge is ordinary row content (no overlay), so it takes layout space and cannot cover a field.
 
 ---
 

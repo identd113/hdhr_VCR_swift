@@ -211,7 +211,10 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(width: 560, height: 520)
+        .frame(minWidth: 560, idealWidth: 560, maxWidth: .infinity,
+               minHeight: 420, idealHeight: 520, maxHeight: .infinity)
+        // Remember the user's chosen size across opens and restarts.
+        .background(WindowAction(trigger: true) { $0.setFrameAutosaveName("SettingsWindow") })
         .onChange(of: selection) { maintenanceStatus = "" }   // a result from one tab shouldn't linger on another
         .background(WindowCloseInterceptor(isDirty: dirty, canSave: !needsTest && !portBad && !savesPaused, onSave: applyAndSave,
                                            onBecomeKey: { refreshSystemCaches(); resyncIfUntouched() },
@@ -238,6 +241,14 @@ struct SettingsView: View {
     }
 
     private func discardDraft() { resetDrafts() }
+
+    /// Short hint shown beside a button that acts on SAVED values while there are unsaved edits (the button is disabled).
+    @ViewBuilder private var saveFirstHint: some View {
+        if isDirty {
+            Text("Save first").font(.caption).foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings-save-first-hint")
+        }
+    }
 
     // Called from WindowCloseInterceptor's windowDidBecomeKey — fires on every real refocus of the
     // Settings window, not just its original creation (see WindowCloseInterceptor's doc comment for
@@ -504,6 +515,9 @@ struct SettingsView: View {
                 HStack {
                     busyButton("Update Guides Now", isBusy: $guideRefreshInProgress) { await state.refreshAll() }
                         .buttonStyle(.borderedProminent)
+                        .disabled(isDirty)
+                        .accessibilityIdentifier("settings-update-guides")
+                    saveFirstHint
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
                 }
             }
@@ -712,7 +726,12 @@ struct SettingsView: View {
                 }
                 HStack {
                     Button("Export Config…") { exportConfig() }
+                        .disabled(isDirty)   // exports the saved file, not the unsaved draft
+                        .accessibilityIdentifier("settings-export-config")
                     Button("Import Config…") { importConfig() }
+                        .disabled(isDirty)
+                        .accessibilityIdentifier("settings-import-config")
+                    saveFirstHint
                 }
                 if !configIOStatus.isEmpty {
                     Label(configIOStatus, systemImage: configIOStatus.hasPrefix("Error") ? "xmark.circle.fill" : "checkmark.circle.fill")
@@ -758,8 +777,12 @@ struct SettingsView: View {
                             }
                         }
                         // force=true: manual scan always re-measures, even channels with fresh data
-                        Button("Measure Signal") { state.startSignalScan(force: true, deviceId: scanTarget.isEmpty ? nil : scanTarget) }
-                            .disabled(state.recordableDevices.isEmpty)
+                        HStack {
+                            Button("Measure Signal") { state.startSignalScan(force: true, deviceId: scanTarget.isEmpty ? nil : scanTarget) }
+                                .disabled(state.recordableDevices.isEmpty || isDirty)
+                                .accessibilityIdentifier("settings-measure-signal")
+                            saveFirstHint
+                        }
                     }
                 }
             }
@@ -788,13 +811,14 @@ struct SettingsView: View {
                     }
                     HStack {
                         Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
-                            .disabled(state.recordableDevices.isEmpty)
+                            .disabled(state.recordableDevices.isEmpty || isDirty)
                             .accessibilityIdentifier("settings-ota-lineup-scan")
                         InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.", about: "Scan Channel List Only")
                         Button("Scan the Air Now") { state.startOTAScan() }
-                            .disabled(state.recordableDevices.isEmpty)
+                            .disabled(state.recordableDevices.isEmpty || isDirty)
                             .accessibilityIdentifier("settings-ota-scan")
                         InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
+                        saveFirstHint
                     }
                 }
             }
@@ -1206,7 +1230,8 @@ struct SettingsView: View {
                             }
                         }
                         .buttonStyle(.bordered)
-                        .disabled(!(purgeMemory || purgeSDCache || purgeAirGuide || purgeAirLineup))
+                        .disabled(!(purgeMemory || purgeSDCache || purgeAirGuide || purgeAirLineup) || isDirty)
+                        saveFirstHint
                     }
                 }
             }
@@ -1232,6 +1257,7 @@ struct SettingsView: View {
                 InfoButton(description, about: title)
             }
             Spacer()
+            saveFirstHint
             if busyRow == title {
                 ProgressView().controlSize(.small)
             } else {
@@ -1245,6 +1271,7 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.bordered)
+                .disabled(isDirty)   // maintenance acts on saved settings
                 .accessibilityLabel("Run \(title)")
                 .accessibilityIdentifier("settings-maint-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
             }

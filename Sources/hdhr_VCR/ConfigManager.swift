@@ -166,6 +166,18 @@ final class ConfigManager {
             let backup = configURL.appendingPathExtension("bak")
             try? FileManager.default.removeItem(at: backup)
             try? FileManager.default.copyItem(at: configURL, to: backup)
+            // Permanent, timestamped copy of the config being replaced (the rolling .bak above gets
+            // overwritten by the next import). Failure to copy is logged, never blocks the import.
+            let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd-HHmmss"
+            let stamp = f.string(from: Date())
+            let stamped = configURL.deletingLastPathComponent()
+                .appendingPathComponent(configURL.lastPathComponent + ".pre-import-\(stamp).bak")
+            do {
+                try FileManager.default.copyItem(at: configURL, to: stamped)
+                glog("[Config] Backed up current config to \(stamped.lastPathComponent) before import")
+            } catch {
+                glog("[Config] Pre-import backup failed: \(error)", level: .warning)
+            }
             try data.write(to: configURL, options: .atomic)
             importLock.withLock { _savesSuppressedAfterImport = true }
         }

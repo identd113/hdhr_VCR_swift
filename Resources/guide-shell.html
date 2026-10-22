@@ -9,7 +9,7 @@
 <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
   {{HEADER_HTML}}
   {{DEVICE_BAR_HTML}}
-  <div id="toolbar-right" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto">
+  <div id="toolbar-right" style="position:relative;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto">
     <div id="genre-bar" style="display:none">
       <select id="genre-sel" aria-label="Filter by genre" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
     </div>
@@ -29,6 +29,19 @@
         <div><b>← / →</b> jump between that show's other airings.</div>
         <div>Type <b>#5.1</b> to jump straight to a channel.</div>
         <div><b>Esc</b> or <b>✕</b> clears the search.</div>
+      </div>
+    </div>
+    <div id="tb-more-wrap">
+      <button id="tb-more" type="button" title="More options" aria-label="More options" aria-haspopup="menu" aria-expanded="false" aria-controls="tb-menu" onclick="toggleMoreMenu(event)">⋯</button>
+      <div id="tb-menu" role="menu" aria-label="More options" style="display:none">
+        <div class="tb-mi-hdr" role="presentation">Theme</div>
+        <button type="button" class="tb-mi" role="menuitemradio" aria-checked="false" data-m="dark" onclick="setTheme('dark')">◗ Dark</button>
+        <button type="button" class="tb-mi" role="menuitemradio" aria-checked="false" data-m="auto" onclick="setTheme('auto')">◐ Auto (system)</button>
+        <button type="button" class="tb-mi" role="menuitemradio" aria-checked="false" data-m="light" onclick="setTheme('light')">◖ Light</button>
+        <div id="tb-genre-row" role="presentation" style="display:none">
+          <div class="tb-mi-hdr" role="presentation">Genre</div>
+          <select id="genre-sel-m" aria-label="Filter by genre" class="genre-sel" onchange="filterGenreFromMenu(this.value)"><option value="">All genres</option></select>
+        </div>
       </div>
     </div>
     <div id="theme-sw">
@@ -57,7 +70,7 @@
       <div id="sum-title" style="font-size:.92rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       <div id="sum-genre" style="display:none;align-self:flex-start;flex-wrap:wrap;gap:3px"></div>
       <div id="sum-ep"   style="display:none;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-      <div id="sum-date" style="display:none;font-size:.68rem"></div>
+      <div id="sum-date" style="display:none;font-size:.6875rem"></div>
       <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;line-height:1.35"></div>
       <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
         <span id="sum-note" role="status" aria-live="polite" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
@@ -68,7 +81,7 @@
       </div>
       <div id="sum-ch-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
         <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="if(this.getAttribute('src')!=='/api/icon'){this.src='/api/icon'}else{this.style.display='none'}">
-        <span id="sum-ct" style="font-size:.68rem"></span>
+        <span id="sum-ct" style="font-size:.6875rem"></span>
       </div>
     </div>
     <span id="sum-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
