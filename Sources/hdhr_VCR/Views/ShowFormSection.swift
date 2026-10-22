@@ -109,7 +109,12 @@ struct ShowFormSection: View {
                                  systemImage: "antenna.radiowaves.left.and.right.slash")
                 }
                 LabeledContent("Signal") {
-                    SignalBarsView(bucket: sig.bucket, guideName: sig.name)
+                    HStack(spacing: 6) {
+                        SignalBarsView(bucket: sig.bucket, guideName: sig.name)
+                        Text(sig.bucket == .good ? "Strong" : sig.bucket == .poor ? "Weak" : "Fair")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityHidden(true)   // the bars already carry the spoken label
+                    }
                 }
             }
 

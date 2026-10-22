@@ -12,7 +12,7 @@ The web guide's Record modal (`#rec-modal` in `WebServer.swift`, see `docs/WebSe
 
 ```
 Title        — TextField bound to show.show_title
-Signal       — SignalBarsView for the selected channel + a "weak signal" CaveatBanner (shared
+Signal       — SignalBarsView for the selected channel + a small caption (Strong / Fair / Weak, secondary caption text) + a "weak signal" CaveatBanner (shared
                soft-tinted warning component, Views/CaveatBanner.swift — see its own note below)
                when the channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
                channel has signal history (bucket != .noData). Reuses signalBucket(guideName:) via
