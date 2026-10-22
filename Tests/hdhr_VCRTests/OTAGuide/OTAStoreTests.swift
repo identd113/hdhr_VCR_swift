@@ -143,6 +143,25 @@ struct OTAStoreTests {
         #expect(progress.listenedRF.isEmpty && progress.emptyRF.isEmpty)
     }
 
+    @Test func airOnlyChannelsAreThoseTheTunerLacks() {
+        func air(_ n: String, hidden: Bool = false) -> OTALineupEntry {
+            OTALineupEntry(GuideNumber: n, GuideName: "C\(n)", RF: 32, Frequency: 581_000_000, ProgramNumber: 1, ServiceType: 2, Hidden: hidden, Protected: false)
+        }
+        let tuner = [LineupEntry(GuideNumber: "4.1", GuideName: "A", URL: nil, HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil)]
+        let only = OTAStore.airOnly(saved: [air("23.3"), air("4.1"), air("4.10"), air("4.2"), air("23.3")], tunerLineup: tuner)
+        #expect(only.map(\.GuideNumber) == ["4.2", "4.10", "23.3"])      // not on the tuner, once each, in numeric order
+    }
+
+    @Test func theAirOnlyRowsAreFourHourBlocksFromMidnight() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func ts(_ h: Int, _ m: Int = 0) -> Int { Int(cal.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: h, minute: m))!.timeIntervalSince1970) }
+        let blocks = WebServer.airBlocks(winStart: ts(1, 30), winEnd: ts(9), nowTs: ts(5), calendar: cal)
+        #expect(blocks.count == 3)
+        #expect(blocks[0].start == ts(1, 30) && blocks[0].end == ts(4) && blocks[0].label == "12 AM – 4 AM")   // clipped to the window, labelled by the whole slot
+        #expect(blocks[1].start == ts(4) && blocks[1].end == ts(8) && blocks[1].isNow)
+        #expect(blocks[2].end == ts(9) && !blocks[2].isNow)
+    }
+
     @Test func theScanWindowFollowsTheStationBeingRead() throws {
         let progress = OTAScanProgress()
         progress.reset(lineupOnly: false)

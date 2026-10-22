@@ -196,4 +196,28 @@ extension AppState {
         airFallbackTask?.cancel(); airFallbackTask = nil
         airFallbackOffered = false
     }
+
+    // MARK: air-only channels (web guide)
+
+    /// Channels the saved air lineup has and this tuner's own lineup does not (empty when no scan is saved).
+    func airOnlyChannels(deviceId: String) -> [OTALineupEntry] {
+        // With the Developer lineup source "From the air" the air channels ARE the lineup: nothing is left over to list separately.
+        guard !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
+        let tuner = lineups[deviceId] ?? []
+        let stamp = "\(date.timeIntervalSince1970)-\(tuner.count)"
+        if let hit = airOnlyCache[deviceId], hit.stamp == stamp { return hit.entries }
+        let entries = OTAStore.airOnly(saved: OTAStore.savedLineup(deviceId: deviceId) ?? [], tunerLineup: tuner)
+        airOnlyCache[deviceId] = (stamp, entries)
+        return entries
+    }
+
+    /// Plays an air-only channel in the app's own player on this Mac (never records it), tuned by frequency and program. Returns why not, or nil.
+    func watchAirOnly(deviceId: String, guideNumber: String) -> String? {
+        guard let device = recordableDevices.first(where: { $0.DeviceID == deviceId }) else { return "Tuner not found" }
+        guard let entry = airOnlyChannels(deviceId: deviceId).first(where: { $0.GuideNumber == guideNumber }) else { return "Channel not found" }
+        guard VLCBridge.shared.isAvailable else { return "VLC is not installed on this Mac" }
+        watchInApp(url: "http://\(device.LocalIP):5004/auto/ch\(entry.Frequency)-\(entry.ProgramNumber)", title: entry.GuideName,
+                   deviceId: deviceId, guideNumber: entry.GuideNumber)
+        return nil
+    }
 }

@@ -95,6 +95,22 @@ enum OTAStore {
         }
     }
 
+    /// Every real channel of the saved air lineup (video and audio services, no hidden or protected ones), whatever its age; nil when none is saved.
+    static func savedLineup(deviceId: String, root: URL = OTAStore.root) -> [OTALineupEntry]? {
+        let file = folder(deviceId: deviceId, root: root).appendingPathComponent("lineup.json")
+        guard let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode([OTALineupEntry].self, from: data) else { return nil }
+        return saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }
+    }
+
+    /// The air channels the tuner's own lineup does not have (matched by channel number), sorted by number: what the web guide's "Air only" section lists.
+    static func airOnly(saved: [OTALineupEntry], tunerLineup: [LineupEntry]) -> [OTALineupEntry] {
+        let known = Set(tunerLineup.map(\.GuideNumber))
+        var seen = Set<String>()
+        return saved.filter { !known.contains($0.GuideNumber) && seen.insert($0.GuideNumber).inserted }.sorted {
+            ($0.GuideNumber.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.GuideNumber.split(separator: ".").compactMap { Int($0) })
+        }
+    }
+
     /// Developer purge: removes a device's saved air data. `guide` = guide.json + scan.json, `lineup` = lineup.json.
     static func deleteSaved(deviceId: String, guide: Bool, lineup: Bool, root: URL = OTAStore.root) {
         let dir = folder(deviceId: deviceId, root: root)

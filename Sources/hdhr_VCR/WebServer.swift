@@ -2597,6 +2597,7 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
+            if path == "/api/watch-air"        { return handleWatchAir(state: state, body: body) }
             if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true} (all optional), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
@@ -2907,6 +2908,31 @@ final class WebServer: @unchecked Sendable {
         // Virtual relay tuners (VirtualTunerService.swift) are watch-only by design.
         guard !device.isVirtualRelay else { return .isVirtualRelay(device) }
         return .found(device, ch)
+    }
+
+    /// POST /api/watch-air {deviceId, guideNumber}: plays an air-only channel (seen in the saved scan, not in the tuner's lineup) in the app on this Mac.
+    /// Watch only: there is deliberately no recording path for these channels.
+    @MainActor
+    func handleWatchAir(state: AppState, body: Data?) -> WebResponse {
+        guard let obj = parseJSONBody(body), let deviceId = obj["deviceId"] as? String, let guideNumber = obj["guideNumber"] as? String
+        else { return .badRequest("Missing required fields: deviceId, guideNumber") }
+        if let why = state.watchAirOnly(deviceId: deviceId, guideNumber: guideNumber) { return jsonResponse(["ok": false, "error": why]) }
+        return jsonResponse(["ok": true])
+    }
+
+    /// The 4-hour blocks (from local midnight: 12–4 AM, 4–8 AM …) that overlap the guide window; `isNow` marks the one in progress.
+    nonisolated static func airBlocks(winStart: Int, winEnd: Int, nowTs: Int, calendar: Calendar = .current) -> [(start: Int, end: Int, isNow: Bool, label: String)] {
+        let fmt = DateFormatter(); fmt.calendar = calendar; fmt.timeZone = calendar.timeZone; fmt.dateFormat = "h a"
+        func text(_ ts: Int) -> String { fmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))) }
+        var slot = Int(calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(winStart))).timeIntervalSince1970)
+        var out: [(start: Int, end: Int, isNow: Bool, label: String)] = []
+        while slot < winEnd {
+            let next = Int(calendar.date(byAdding: .hour, value: 4, to: Date(timeIntervalSince1970: TimeInterval(slot)))!.timeIntervalSince1970)
+            let s = max(slot, winStart), e = min(next, winEnd)
+            if e > s { out.append((s, e, slot <= nowTs && nowTs < next, "\(text(slot)) – \(text(next))")) }
+            slot = next
+        }
+        return out
     }
 
     @MainActor
@@ -3876,9 +3902,24 @@ final class WebServer: @unchecked Sendable {
                 else { otherRows.append(rowHTML) }
             }
             let devId = he(device.DeviceID)
+            // Air only: channels seen on the air (saved scan) that this tuner's own lineup lacks. Watch-only, never recordable (docs/WebServer.md).
+            var airRows: [String] = []
+            for air in state.airOnlyChannels(deviceId: device.DeviceID) {
+                let blocks = Self.airBlocks(winStart: winStart, winEnd: winEnd, nowTs: nowTs).map { b -> String in
+                    let cls = b.isNow ? "g-air-blk g-air-now" : "g-air-blk"
+                    let tip = b.isNow ? "Watch \(he(air.GuideName)) live on this Mac" : "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)"
+                    let act = b.isNow ? " role=\"button\" tabindex=\"0\" onclick=\"airWatch(this)\"" : ""
+                    return "<div class=\"\(cls)\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\"\(act)><span>\(he(b.label))</span></div>"
+                }
+                airRows.append("<div class=\"g-row g-air-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-air=\"1\"><div class=\"g-ch\"><img class=\"g-logo\" src=\"\(Self.stationLogoFallbackPath)\" alt=\"\" style=\"background:#ddd\"><div class=\"g-cl\"><span class=\"g-cn\">\(he(air.GuideNumber))</span><span class=\"g-cname\">\(he(air.GuideName))</span></div></div><div class=\"g-tl\"><div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>\(blocks.joined())</div></div>")
+            }
             if !recRows.isEmpty {
                 rowParts.append("<div class=\"g-rec-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-rec-sep-dot\">●</span><span class=\"g-rec-sep-txt\"> RECORDING</span></div><div class=\"g-tl\"></div></div>")
                 rowParts.append(contentsOf: recRows)
+            }
+            if !airRows.isEmpty {
+                rowParts.append("<div class=\"g-air-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-air-sep-icon\">📡</span><span class=\"g-air-sep-txt\"> AIR ONLY · WATCH</span></div><div class=\"g-tl\"></div></div>")
+                rowParts.append(contentsOf: airRows)
             }
             if !favRows.isEmpty {
                 rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-fav-sep-star\">★</span><span class=\"g-fav-sep-txt\"> FAVORITES</span></div><div class=\"g-tl\"></div></div>")

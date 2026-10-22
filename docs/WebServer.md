@@ -1354,3 +1354,12 @@ Every station-logo `<img>` in the web guide — the grid's `.g-logo`, the Up Nex
 **API reference (debug builds only):** `GET /api/help` returns an OpenAPI-style JSON description of the web API and `GET /api/docs` a self-contained page built from it, with a Try-it form per route (path/query parameters, a JSON body prefilled with an example, status/time/response shown; routes that change state ask first). Both are compiled out of release builds (`#if DEBUG`, `APIDocs.swift`) and 404 there. `APIDocs.routes` is the single source; `APIDocsTests` fails when a route literal in `WebServer.swift` is neither documented nor on `APIDocs.internalPaths`, so a new route has to be added to the table. Same LAN-only rule and `Content-Type: application/json` requirement for POSTs as every other route.
 
 Every web API route is under `/api/` **except** the virtual tuner's HDHomeRun-protocol routes (`/discover.json`, `/lineup.json`, `/status.json`, `/auto/v<channel>`), which stay at the root on purpose: other hdhrVCRplus instances and HDHomeRun-style clients look for them there. `APIDocs` lists them in their own group saying so. (Pages and assets — `/`, `/vertical`, `/hls.min.js`, `/favicon.ico` — are not APIs.)
+
+## Air only section (watch-only; 2026-10-22)
+Guide rows for channels the saved over-the-air scan found that the tuner's own lineup lacks (`AppState.airOnlyChannels(deviceId:)` → `OTAStore.airOnly`, matched by channel number;
+empty when no scan is saved or the Developer lineup source is "From the air", where they already are the lineup). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
+(`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row has no listings: it is made of **4-hour blocks from local
+midnight** (`WebServer.airBlocks`, 12–4 AM, 4–8 AM …, clipped to the guide window). Only the block in progress (`.g-air-now`) is live: clicking it (or Enter/Space) calls
+`airWatch()` → `POST /api/watch-air {deviceId, guideNumber}` → `AppState.watchAirOnly`, which plays it in the app's own player on the Mac running hdhrVCRplus, tuned by frequency and
+program (`http://<tuner>:5004/auto/ch<Hz>-<program>`, one idle tuner, the usual `watchInApp` checks). **There is no recording path**: these rows have no `.g-prog` blocks, so the schedule,
+favorites, genre filter and search never see them, and `/api/record` rejects a channel that is not in the tuner lineup. Visible by default while the feature is built; a Ctrl+D toggle is planned.

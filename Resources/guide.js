@@ -1239,6 +1239,7 @@ function setDev(id){
   }
   toggleSectionSep('.g-fav-sep','fav');
   toggleSectionSep('.g-rec-sep','rec');
+  toggleSectionSep('.g-air-sep','air');
 }
 // First click on a tuner's name button switches the guide grid to that tuner (setDev);
 // a second click — the tuner is already selected — opens its hardware-occupancy popover
@@ -1835,6 +1836,20 @@ function toggleFav(evt,btn){
   postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
   .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
 }
+// Air only (watch-only): the in-progress block of an air-only channel plays it in the app on the Mac that runs hdhrVCRplus. There is no recording
+// path for these channels; a failure is shown on the block itself (no dialogs).
+function airWatch(el){
+  var lbl=el.querySelector('span'),was=lbl?lbl.textContent:'';
+  el.classList.remove('g-air-err');
+  if(lbl)lbl.textContent='Opening on the Mac…';
+  postJSON('/api/watch-air',{deviceId:el.dataset.dev,guideNumber:el.dataset.ch}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.ok){setTimeout(function(){if(lbl)lbl.textContent=was;},2500);}
+    else{el.classList.add('g-air-err');el.title=(d&&d.error)||'Could not open';if(lbl)lbl.textContent=(d&&d.error)||'Could not open';setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);}
+  }).catch(function(){el.classList.add('g-air-err');if(lbl)lbl.textContent='Could not reach the app';setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);});
+}
+document.addEventListener('keydown',function(e){
+  if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('g-air-now')){e.preventDefault();airWatch(e.target);}
+});
 // Rebuilds the genre filter from whatever's actually on the currently-viewed tuner's guide right
 // now (scoped by data-device to curDev, so switching tuners shows that tuner's own genres — not a
 // stale union from whichever tuner happened to be selected at page load). Re-run after every guide

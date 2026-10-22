@@ -247,6 +247,8 @@ final class AppState: ObservableObject {
     var lastOTALineupAttempt: Date? = nil
     /// Guide-failure fallback (AppState+OTA.swift): set once per outage when the person has been asked; the task is the one-hour wait.
     var airFallbackOffered = false
+    /// Web guide "Air only" section: air channels the tuner lacks, cached per device by the saved lineup file's date and the tuner lineup size.
+    var airOnlyCache: [String: (stamp: String, entries: [OTALineupEntry])] = [:]
     var airFallbackTask: Task<Void, Never>? = nil
     var otaScanGeneration = 0
     /// Tuners ("tuner0"…) the running OTA scan is holding right now. They are the app's to take back (the scan yields), so they do not
