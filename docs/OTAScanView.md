@@ -16,7 +16,7 @@ the blocks appear at once. The overall bar and each tuner's bar still fill linea
 4 s (`OTAScanProgress.updateEvery`); the selected multiplex changes only when a tuner **starts** on a station (an update from the other tuner never moves it).
 No ticking clock while a scan runs (the time left is rounded to whole minutes; "took 14:20" appears at the end).
 
-## Layout, top to bottom (540×760)
+## Layout, top to bottom (540 wide, resizable in height)
 1. **Overview card.** A title ("Scanning the air", "Reading the channel list" for a lineup-only scan; "Scan complete" / "Scan cancelled" afterwards),
    a *Pass 1 of 2 · channel lists* / *Pass 2 of 2 · guides* chip for a full scan, and the time estimate at the right ("about 6 min left";
    "estimating…" until there is something to go on; "took 14:20" afterwards). **One progress bar** (`ota-scan-progress`, value "N of M RF
@@ -32,15 +32,25 @@ No ticking clock while a scan runs (the time left is rounded to whole minutes; "
    (`ota-scan-lane-<n>`), each in its own colour (teal, indigo, pink, brown): a light (green reading, yellow locking on, orange stepped aside, grey idle/off/done), the RF
    channel and frequency it is on, and a **progress bar for that read** (`ota-scan-lane-progress-<n>`: time so far against the longest it can take; a read often
    ends sooner, so it may jump to full). The arrow on the dial has the same colour.
-4. **The selected multiplex** (`ota-scan-mux-<RF>`). Header: RF number, frequency, state chip, a **Follow** button when you picked one yourself while a scan runs
-   (`ota-scan-follow`), signal bars (`ota-scan-signal`). Then **"One stream, shared by N channels"** with an (i) explaining multiplexes and sub-channel numbers: one coloured
-   block per channel (`ChannelChips`, the colour repeated as the dot in the list below), and the stream's data rate. Then the **channel table**
-   (`ota-scan-sub-<number>`: number, name, a speaker icon for audio-only channels, episodes listed, how far ahead each reaches, "no guide" when it has none).
+4. **The selected multiplex** (`ota-scan-mux-<RF>`), one scrolling panel so every channel is reachable (the window can be dragged taller; default 540×840, minimum 700 high).
+   Header: RF number, frequency, state chip, a **Follow** button when you picked one yourself while a scan runs (`ota-scan-follow`), signal bars (`ota-scan-signal`).
+   Then **How the stream is used** (`OTAStreamBudgetBar`, `ota-scan-budget`, with an (i)): one bar split into video, sound, guide data, other and padding (null packets), each
+   with its Mbit/s, measured from the packets counted per PID over the read (`OTAStreamBudget`, from `OTADecodeResult.pidPackets`). Then **Channels (N)** with an (i):
+   every channel as a row (`OTAChannelRow`, `ota-scan-sub-<number>`): number, name, a *radio* tag for audio-only services, episodes and how far the guide reaches; then a line
+   per **sound stream** — a drawing of the speaker layout (`OTASpeakerLayout`: front speakers on top, surrounds below, an orange square for the subwoofer), "5.1 AC-3" with a
+   language tag ("English", "Spanish") and a tag when it is not the main audio (visually impaired, commentary…), "48 kHz · 384 kbit/s (211 measured)" and a **dialogue-level gauge**
+   (`OTALevelGauge`, the dialnorm, -31…-1 dB, a lower number is a quieter mix) — and one for the video (codec and measured rate).
    With nothing found yet it says "Listening for stations…".
 5. **Footer.** Count of RF channels with no signal; Cancel Scan while running, Close when done.
 
 Channels of one station are read together from one stream, so they finish together. (Removed in this rework: the per-tuner station cards, the station tabs strip, the three
-summary tiles and the technical footnote — data rate is now beside the stream, the clock comparison is gone.)
+summary tiles, the technical footnote and the coloured channel blocks — the clock comparison is gone.)
+
+## Sound
+Where it comes from (`OTAGuide/OTAAudio.swift`, `PSIPDecoder`): the TVCT's **Service Location Descriptor** (tag 0xA1) lists each channel's streams (type, PID, language);
+the decoder counts every transport packet per PID (`pidPackets`) and, on the first PES packet of each non-guide PID, reads an **AC-3 frame header** (A/52: sample rate, bit rate,
+`acmod` speaker layout, LFE, dialnorm, `bsmod` service type). E-AC-3, AAC and MPEG audio are named from the stream type but not opened. Measured rates are packets × 188 × 8 over
+the read, so they are approximate on the quick channel-list read (a second or two).
 
 ## Data
 `OTAScanEvent`: `queued`, `started(rf, tuner, expectedSeconds)` (puts a station on a tuner's lane), `update` / `finished` (the decode so far, bytes, seconds),
@@ -50,6 +60,6 @@ summary tiles and the technical footnote — data rate is now beside the stream,
 ## Automation
 Accessibility identifiers: `ota-scan-window`, `ota-scan-progress`, `ota-scan-count`, `ota-scan-time-left`, `ota-scan-status`, `ota-scan-tuners`,
 `ota-scan-lane-<n>` / `ota-scan-lane-progress-<n>`, `ota-scan-multiplexes` / `-channels` / `-listings` (label + value), `ota-scan-dial`, `ota-scan-tab-<RF>` (a dial bar),
-`ota-scan-mux-<RF>` (the selected multiplex's panel), `ota-scan-follow`, `ota-scan-signal`, `ota-scan-sub-<number>`,
+`ota-scan-mux-<RF>` (the selected multiplex's panel), `ota-scan-follow`, `ota-scan-signal`, `ota-scan-sub-<number>`, `ota-scan-budget`,
 `ota-scan-cancel`, `ota-scan-close`. Settings: `settings-ota-scan`, `settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-schedule`.
 Without the UI: `POST /api/ota-scan` / `GET /api/ota-status` (docs/OTAGuide.md).

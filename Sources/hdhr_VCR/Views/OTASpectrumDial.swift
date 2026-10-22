@@ -14,11 +14,11 @@ struct OTASpectrumDial: View {
 
     private let rfs = OTAScanner.allRFChannels
     private let gap: CGFloat = 2
-    private let dialHeight: CGFloat = 104
+    private let dialHeight: CGFloat = 96
 
     /// The three broadcast bands (RF channel ranges and the frequencies they cover), as drawn under the bars.
     static let bands: [(name: String, range: ClosedRange<Int>, mhz: String)] = [
-        ("VHF low", 2...6, "54–88 MHz"), ("VHF high", 7...13, "174–216 MHz"), ("UHF", 14...51, "470–698 MHz")]
+        ("VHF low", 2...6, "54–88"), ("VHF high", 7...13, "174–216"), ("UHF", 14...51, "470–698 MHz")]
 
     var body: some View {
         GeometryReader { geo in

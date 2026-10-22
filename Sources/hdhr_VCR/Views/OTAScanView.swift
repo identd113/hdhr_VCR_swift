@@ -26,7 +26,7 @@ struct OTAScanView: View {
             footer
         }
         .padding(16)
-        .frame(width: 540, height: 760)
+        .frame(minWidth: 540, idealWidth: 540, maxWidth: 540, minHeight: 700, idealHeight: 840, maxHeight: .infinity)   // taller shows more channels; the list scrolls either way
         .accessibilityIdentifier("ota-scan-window")
         .background(WindowAction(trigger: true) { $0.level = .floating })
     }
@@ -206,12 +206,10 @@ struct OTAScanView: View {
 
     // MARK: 4. the selected multiplex
 
-    fileprivate static let chipColors: [Color] = [.blue, .teal, .green, .orange, .pink, .purple, .indigo, .mint]
-
     private var multiplexSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let row = selectedRow {
-                multiplexPanel(row)
+                ScrollView { multiplexPanel(row).frame(maxWidth: .infinity, alignment: .leading) }   // scrolls as a whole: every channel is reachable
             } else {
                 VStack(spacing: 6) {
                     Image(systemName: "dot.radiowaves.left.and.right").font(.largeTitle).foregroundStyle(.tertiary)
@@ -266,15 +264,15 @@ struct OTAScanView: View {
                     .accessibilityIdentifier("ota-scan-signal")
                 }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("One stream, shared by \(row.subChannels.count) channel\(row.subChannels.count == 1 ? "" : "s")").font(.subheadline.bold())
-                    InfoButton("A multiplex is one transmitter on one slice of the spectrum. Its stream of about 19.4 Mbit/s is divided between the channels it carries, shown here as one block each. A channel number such as 5.2 reads station 5, sub-channel 2. Several stations' worth of channels can share a slice, which is why numbers from different networks can sit side by side. Tuning any one of these channels tunes the whole slice.")
-                    Spacer(minLength: 0)
-                    if let mbps = i.mbps { Text(String(format: "%.1f Mbit/s", mbps)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+            if let budget = i.budget {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text("How the stream is used").font(.subheadline.bold())
+                        InfoButton("A multiplex is one transmitter on one slice of the spectrum, sending about 19.4 Mbit/s that all its channels share: the video of each channel, its sound (usually Dolby AC-3), the guide tables, and padding when there is nothing to send. A channel number such as 5.2 reads station 5, sub-channel 2. Tuning any one channel tunes the whole slice. Rates are measured over the time the scan listened.")
+                        Spacer(minLength: 0)
+                    }
+                    OTAStreamBudgetBar(budget: budget).id(row.rf)
                 }
-                ChannelChips(row: row)
-                    .id(row.rf)   // a different multiplex rebuilds the chips, so they slide in again
             }
             channelTable(row)
         }
@@ -283,44 +281,17 @@ struct OTAScanView: View {
     }
 
     private func channelTable(_ row: OTAMultiplexRow) -> some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text("Channel").frame(maxWidth: .infinity, alignment: .leading)
-                if !progress.lineupOnly {
-                    Text("Episodes").frame(width: 64, alignment: .trailing)
-                    Text("Reaches").frame(width: 66, alignment: .trailing)
-                }
+                Text("Channels (\(row.subChannels.count))").font(.subheadline.bold())
+                InfoButton("Every channel this multiplex carries. For each: its language, the sound format read from the stream (speaker layout, sample rate, bit rate), the dialogue level the broadcaster set (a lower number is a quieter mix, so the TV turns it up), whether it is a radio-style audio-only service, and its guide. Layout dots: front speakers on top, surrounds below, the orange square is the subwoofer.")
+                Spacer()
             }
-            .font(.caption2).foregroundStyle(.secondary)
             .padding(.bottom, 4)
             Divider()
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(row.subChannels) { sub in
-                        HStack(spacing: 6) {
-                            Circle().fill(Self.chipColors[(row.subChannels.firstIndex(where: { $0.id == sub.id }) ?? 0) % Self.chipColors.count])
-                                .frame(width: 7, height: 7)
-                            Text(sub.number).font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
-                            Text(sub.name).font(.callout).lineLimit(1)
-                            if sub.audioOnly {
-                                Image(systemName: "speaker.wave.2").font(.caption).foregroundStyle(.secondary).help("Audio only")
-                                    .accessibilityLabel("audio only")
-                            }
-                            Spacer(minLength: 4)
-                            if !progress.lineupOnly {
-                                Text(sub.listings > 0 ? "\(sub.listings)" : "–").font(.callout.monospacedDigit())
-                                    .frame(width: 64, alignment: .trailing)
-                                Text(sub.reachText() ?? (row.state == .scanning || row.state == .waiting ? "" : "no guide"))
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .frame(width: 66, alignment: .trailing)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("ota-scan-sub-\(sub.number)")
-                        Divider().opacity(0.4)
-                    }
-                }
+            ForEach(row.subChannels) { sub in
+                OTAChannelRow(sub: sub, showListings: !progress.lineupOnly, waiting: row.state == .scanning || row.state == .waiting)
+                Divider().opacity(0.4)
             }
         }
     }
@@ -359,34 +330,5 @@ struct OTAScanView: View {
         case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .noGuide: Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
         }
-    }
-}
-
-
-/// The channels of one multiplex drawn as blocks of one shared stream, each in its own colour (the same colour as the dot in the list below),
-/// sliding in one after the other when a multiplex is shown.
-private struct ChannelChips: View {
-    let row: OTAMultiplexRow
-    @State private var shown = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(Array(row.subChannels.enumerated()), id: \.element.id) { i, sub in
-                let color = OTAScanView.chipColors[i % OTAScanView.chipColors.count]
-                VStack(spacing: 1) {
-                    Text(sub.number).font(.caption.monospacedDigit().bold())
-                    if sub.audioOnly { Image(systemName: "speaker.wave.2").font(.system(size: 9)) }
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 32)
-                .background(RoundedRectangle(cornerRadius: 6).fill(color.gradient))
-                .scaleEffect(reduceMotion || shown ? 1 : 0.4)
-                .opacity(reduceMotion || shown ? 1 : 0)
-                .animation(.spring(response: 0.45, dampingFraction: 0.65).delay(Double(i) * 0.06), value: shown)
-            }
-        }
-        .onAppear { shown = true }
-        .accessibilityHidden(true)
     }
 }

@@ -263,7 +263,7 @@ struct hdhr_VCRApp: App {
                 .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.titleBar)
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
 
         // Add Picture-in-Picture picker — single instance; lets the user start a PIP corner
         // thumbnail directly (Live TV or a discovered FEED source), without anything already

@@ -16,6 +16,8 @@ struct OTAChannel: Equatable, Sendable {
     var serviceType: Int
     var hidden: Bool
     var accessControlled: Bool
+    /// Its video and audio streams (TVCT Service Location Descriptor), with what reading them showed (OTAAudio.swift).
+    var streams: [OTAElementaryStream] = []
     var number: String { "\(major).\(minor)" }
 }
 
@@ -40,6 +42,10 @@ struct OTADecodeResult: Equatable, Sendable {
     var events: [OTAEvent]
     /// How many guide tables the Master Guide Table announced (0 = this station sends no guide).
     var announcedEITCount: Int
+    /// Transport-stream packets seen on each PID over the read, and the PIDs that carried the guide tables: the share of the stream
+    /// that is video, sound, guide data or padding (PID 0x1FFF).
+    var pidPackets: [Int: Int] = [:]
+    var psipPIDs: Set<Int> = []
 }
 
 /// Streaming PSIP decoder. Feed it transport-stream bytes in any chunk size with `ingest(_:)`; read the picture so far with
@@ -58,6 +64,9 @@ final class PSIPDecoder {
     private var events: [EventKey: Event] = [:]
     private var descriptions: [EventKey: String] = [:]
     private var seenSections: Set<SectionKey> = []
+    private var packetCounts: [Int: Int] = [:]
+    private var streamsBySource: [Int: [OTAElementaryStream]] = [:]
+    private var audioByPID: [Int: OTAAudioFormat] = [:]
 
     private struct EventKey: Hashable { let sourceId: Int; let eventId: Int }
     private struct SectionKey: Hashable { let pid: Int; let table: Int; let extra: Int; let version: Int; let number: Int }
@@ -90,6 +99,13 @@ final class PSIPDecoder {
 
     private func handlePacket(at i: Int) {
         let pid = (Int(carry[i + 1] & 0x1F) << 8) | Int(carry[i + 2])
+        packetCounts[pid, default: 0] += 1
+        // The first AC-3 frame of each sound stream tells its format (a PES packet starts here when the start flag is set).
+        if carry[i + 1] & 0x40 != 0, carry[i + 3] & 0x10 != 0, audioByPID[pid] == nil, !wanted.contains(pid), pid != 0x1FFF {
+            var q = i + 4
+            if carry[i + 3] & 0x20 != 0 { q += 1 + Int(carry[i + 4]) }
+            if q < i + 188, let format = OTAAudioFormat.sniffPES(carry[q..<(i + 188)]) { audioByPID[pid] = format }
+        }
         guard wanted.contains(pid), carry[i + 3] & 0x10 != 0 else { return }   // not ours, or no payload
         var p = i + 4
         if carry[i + 3] & 0x20 != 0 { p += 1 + Int(carry[i + 4]) }              // adaptation field
@@ -175,6 +191,8 @@ final class PSIPDecoder {
             let flags = (Int(s[pos + 26]) << 8) | Int(s[pos + 27])
             let sourceId = (Int(s[pos + 28]) << 8) | Int(s[pos + 29])
             let descriptorsLength = (Int(s[pos + 30] & 0x03) << 8) | Int(s[pos + 31])
+            let streams = OTAElementaryStream.serviceLocation(in: Array(s[(pos + 32)..<min(s.count, pos + 32 + descriptorsLength)]))
+            if !streams.isEmpty { streamsBySource[sourceId] = streams }
             channelsBySource[sourceId] = OTAChannel(
                 name: name, major: major, minor: minor, program: program, sourceId: sourceId,
                 serviceType: flags & 0x3F, hidden: flags & 0x1000 != 0, accessControlled: flags & 0x2000 != 0)
@@ -280,9 +298,14 @@ final class PSIPDecoder {
             OTAEvent(sourceId: key.sourceId, eventId: key.eventId, start: date(e.startGPS), lengthSeconds: e.length,
                      title: e.title, rating: e.rating, description: descriptions[key] ?? "")
         }.sorted { ($0.sourceId, $0.start) < ($1.sourceId, $1.start) }
-        let channels = channelsBySource.values.sorted { ($0.major, $0.minor) < ($1.major, $1.minor) }
+        let channels = channelsBySource.values.map { c -> OTAChannel in
+            var c = c
+            c.streams = (streamsBySource[c.sourceId] ?? []).map { st in var st = st; st.audio = audioByPID[st.pid]; return st }
+            return c
+        }.sorted { ($0.major, $0.minor) < ($1.major, $1.minor) }
         return OTADecodeResult(broadcastTime: gps.map { date($0.seconds) }, gpsUTCOffset: leap,
-                               channels: channels, events: out, announcedEITCount: announcedEIT)
+                               channels: channels, events: out, announcedEITCount: announcedEIT,
+                               pidPackets: packetCounts, psipPIDs: wanted)
     }
 
     // MARK: CRC-32/MPEG-2

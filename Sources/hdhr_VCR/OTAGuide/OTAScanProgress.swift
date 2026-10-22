@@ -11,6 +11,8 @@ struct OTASubChannelRow: Identifiable, Equatable {
     var listings: Int
     var done: Bool
     var audioOnly = false
+    /// Its video and audio streams with what was learned about them (format, language, measured bit rate).
+    var streams: [OTAElementaryStream] = []
     /// End of the last program listed for this channel: how far ahead its guide reaches.
     var latestEnd: Date?
 
@@ -35,6 +37,8 @@ struct OTAMuxInfo: Equatable {
     var majors: [Int] = []              // virtual channel numbers carried (4, 23…)
     var videoChannels = 0
     var audioChannels = 0
+    /// How the read stream's data rate was spent, in Mbit/s (nil until a read has lasted a second).
+    var budget: OTAStreamBudget?
 
     /// Average data rate of the stream while it was read (a full multiplex is about 19.4 Mbit/s).
     var mbps: Double? { seconds >= 1 && bytes > 0 ? Double(bytes) * 8 / seconds / 1_000_000 : nil }
@@ -42,6 +46,30 @@ struct OTAMuxInfo: Equatable {
     func guideHoursAhead(now: Date = Date()) -> Double? { latestEnd.map { max(0, $0.timeIntervalSince(now) / 3600) } }
     /// The station's clock minus this Mac's, in seconds (a stream that is behind or a wrong clock shows here).
     func clockOffset(now: Date = Date()) -> Int? { broadcastTime.map { Int($0.timeIntervalSince(now).rounded()) } }
+}
+
+/// Where a multiplex's data rate goes: video, sound, the guide tables, padding (null packets) and the rest (PAT/PMT, data services).
+struct OTAStreamBudget: Equatable {
+    var video = 0.0, audio = 0.0, guide = 0.0, padding = 0.0, other = 0.0
+    var total: Double { video + audio + guide + padding + other }
+
+    init(video: Double = 0, audio: Double = 0, guide: Double = 0, padding: Double = 0, other: Double = 0) {
+        self.video = video; self.audio = audio; self.guide = guide; self.padding = padding; self.other = other
+    }
+
+    init?(result: OTADecodeResult, seconds: Double) {
+        guard seconds >= 1, !result.pidPackets.isEmpty else { return nil }
+        let videoPIDs = Set(result.channels.flatMap { $0.streams.filter(\.isVideo).map(\.pid) })
+        let audioPIDs = Set(result.channels.flatMap { $0.streams.filter(\.isAudio).map(\.pid) })
+        func mbps(_ packets: Int) -> Double { Double(packets) * 188 * 8 / seconds / 1_000_000 }
+        for (pid, n) in result.pidPackets {
+            if pid == 0x1FFF { padding += mbps(n) }
+            else if videoPIDs.contains(pid) { video += mbps(n) }
+            else if audioPIDs.contains(pid) { audio += mbps(n) }
+            else if result.psipPIDs.contains(pid) { guide += mbps(n) }
+            else { other += mbps(n) }
+        }
+    }
 }
 
 struct OTAMultiplexRow: Identifiable, Equatable {
@@ -189,9 +217,14 @@ final class OTAScanProgress: ObservableObject {
         let bySource = Dictionary(grouping: result.events, by: \.sourceId)
         let counts = bySource.mapValues(\.count)
         let carried = result.channels.filter { $0.serviceType == 2 || $0.serviceType == 3 }
-        let subs = carried.map {
-            OTASubChannelRow(sourceId: $0.sourceId, number: $0.number, name: $0.name, listings: counts[$0.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
-                              audioOnly: $0.serviceType == 3, latestEnd: bySource[$0.sourceId]?.map(\.end).max())
+        let subs = carried.map { c -> OTASubChannelRow in
+            let streams = c.streams.map { st -> OTAElementaryStream in
+                var st = st
+                if seconds >= 1, let n = result.pidPackets[st.pid] { st.kbps = Double(n) * 188 * 8 / seconds / 1000 }
+                return st
+            }
+            return OTASubChannelRow(sourceId: c.sourceId, number: c.number, name: c.name, listings: counts[c.sourceId] ?? 0, done: done && !(twoPass && pass == 1),
+                              audioOnly: c.serviceType == 3, streams: streams, latestEnd: bySource[c.sourceId]?.map(\.end).max())
         }.sorted { ($0.number.split(separator: ".").compactMap { Int($0) }).lexicographicallyPrecedes($1.number.split(separator: ".").compactMap { Int($0) }) }
         guard !subs.isEmpty else { return }
         var info = OTAMuxInfo(frequencyMHz: Double(OTAScanner.frequencyHz(rf: rf) ?? 0) / 1_000_000)
@@ -204,8 +237,12 @@ final class OTAScanProgress: ObservableObject {
         info.videoChannels = carried.filter { $0.serviceType == 2 }.count
         info.audioChannels = carried.filter { $0.serviceType == 3 }.count
         info.strength = signals[rf]?.strength; info.quality = signals[rf]?.quality
+        info.budget = OTAStreamBudget(result: result, seconds: seconds)
         // A later pass reads for a different length of time: keep the figures from the longer, fuller read.
-        if let old = rows.first(where: { $0.rf == rf })?.info, old.seconds > info.seconds, old.bytes > 0 { info.bytes = old.bytes; info.seconds = old.seconds }
+        if let old = rows.first(where: { $0.rf == rf })?.info, old.seconds > info.seconds, old.bytes > 0 {
+            info.bytes = old.bytes; info.seconds = old.seconds
+            if info.budget == nil { info.budget = old.budget }
+        }
         let row = OTAMultiplexRow(rf: rf, state: !done ? .scanning : (twoPass && pass == 1 ? .waiting : .done), subChannels: subs, info: info)
         if let i = rows.firstIndex(where: { $0.rf == rf }) { rows[i] = row }
         else { rows.append(row); rows.sort { $0.rf < $1.rf } }
