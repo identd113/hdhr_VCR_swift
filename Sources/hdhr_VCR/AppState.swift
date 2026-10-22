@@ -386,6 +386,17 @@ final class AppState: ObservableObject {
     // instead of waiting for the much longer stale-device-forget prune (staleDeviceForgetAfter,
     // 1 hour) that only clears the underlying `lineups` cache — found live 2026-09-06 killing a
     // test mock relay and watching it stay listed.
+    /// A FEED already recording the program a guide row shows: same SeriesID, or (when either side has none) the
+    /// same title. Lets Watch Now offer it when no tuner is free. Nil when FEED is hidden or nothing matches.
+    func remoteRelayEntry(matching guide: GuideEntry) -> (device: HDHRDevice, entry: LineupEntry)? {
+        let sid = guide.SeriesID ?? ""
+        let title = guide.Title.trimmingCharacters(in: .whitespaces).lowercased()
+        return remoteRelayEntries.first { pair in
+            let theirs = pair.entry.virtualRelaySeriesID ?? ""
+            if !sid.isEmpty, !theirs.isEmpty { return sid == theirs }
+            return !title.isEmpty && (pair.entry.virtualRelayShowTitle ?? "").trimmingCharacters(in: .whitespaces).lowercased() == title
+        }
+    }
     var remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)] {
         // FEED_feature_enabled is the master hide switch (2026-09-10, config-file only, see its own
         // doc comment) — even if another Mac's relay is genuinely discovered on the LAN, this

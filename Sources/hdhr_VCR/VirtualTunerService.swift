@@ -71,6 +71,9 @@ final class VirtualTunerService {
     static let episodeNumberKey = "HdhrVCRplusEpisodeNumber"
     static let synopsisKey = "HdhrVCRplusSynopsis"
     static let imageURLKey = "HdhrVCRplusImageURL"
+    /// The recording show's guide SeriesID (omitted when it has none). Lets a discovering instance's Watch Now match a
+    /// FEED to the program a row is showing by identity instead of by channel number, which differs between Macs.
+    static let seriesIDKey = "HdhrVCRplusSeriesID"
     // Added 2026-09-25, explicit user request: only one hdhrVCRplus instance should ever have a
     // live FEED relay for a given source tuner on the network at a time. Device-level (set on
     // /discover.json, decoded onto HDHRDevice — see that property's own doc comment), not per-show

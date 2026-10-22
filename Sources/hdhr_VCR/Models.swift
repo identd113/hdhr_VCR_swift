@@ -1071,6 +1071,9 @@ struct LineupEntry: Codable, Identifiable {
     // recording file began (VirtualTunerService.fileStartedAtKey). nil for every real device and for a relay running an
     // older build; "Watch from Beginning" then falls back to the device-level recordingStartedAt.
     var virtualRelayFileStartedAt: TimeInterval?
+    // Non-standard — the relayed show's guide SeriesID (VirtualTunerService.seriesIDKey). nil for real devices, older relays
+    // and shows without one; Watch Now matches a FEED to a row by it (title as the fallback).
+    var virtualRelaySeriesID: String?
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
@@ -1084,6 +1087,7 @@ struct LineupEntry: Codable, Identifiable {
         case virtualRelaySynopsis = "HdhrVCRplusSynopsis"
         case virtualRelayImageURL = "HdhrVCRplusImageURL"
         case virtualRelayFileStartedAt = "HdhrVCRplusFileStartedAt"
+        case virtualRelaySeriesID = "HdhrVCRplusSeriesID"
     }
 }
 

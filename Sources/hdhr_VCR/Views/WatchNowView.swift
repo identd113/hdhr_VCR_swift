@@ -684,6 +684,21 @@ struct WatchNowRow: View {
                 .controlSize(.small)
                 .disabled(!vlcReady || blocked != nil)
                 .accessibilityIdentifier("watch-now-watch-\(channel.id)")
+                // The same program already recording on another Mac needs no tuner here.
+                if let feed = state.remoteRelayEntry(matching: entry) {
+                    Button {
+                        state.watchRemoteRelay(url: feed.entry.URL ?? "", title: entry.Title, device: feed.device)
+                    } label: {
+                        Label(gatedLabel("Watch FEED", met: vlcReady, requirement: "VLC"), systemImage: "dot.radiowaves.left.and.right").font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .accessibilityLabel("Watch \(entry.Title) from FEED\(feed.entry.virtualRelaySourceHostname.map { " on \($0)" } ?? "")")
+                    .help("Watch \(entry.Title) from \(feed.entry.virtualRelaySourceHostname ?? "another Mac")'s recording — uses no tuner")
+                    .buttonStyle(.bordered)
+                    .tint(vlcReady ? watchNowBlue : .gray)
+                    .controlSize(.small)
+                    .disabled(!vlcReady)
+                    .accessibilityIdentifier("watch-now-feed-\(channel.id)")
+                }
                 // Any live channel on any tuner/device can become the PiP secondary — this is the
                 // one entry point for that (Recording Now/FEED menu rows cover the no-tuner-cost
                 // sources; this covers a genuine live-tuner watch). watchAsSecondary itself runs

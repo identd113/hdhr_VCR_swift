@@ -203,3 +203,6 @@ A discovered relay device never gets a real EPG on the discovering instance — 
 ### FEED cache release rule (2026-10-06)
 
 `AppState.maintainFeedCacheSessions()` (idle loop) deletes a FEED cache session only when its puller is finished, the source relay is no longer advertising the stream (the show is over), **and** `AppState.shouldReleaseFeedCache` says so: no player slot is showing the session (window closed / moved to another stream), or the window has been sitting on the session's "Playback Ended" screen for `feedCacheEndedHoldSeconds` (30 min). Playback merely *reaching the end* no longer releases the cache while a window is still on it — the viewer can still scrub back or Retry/replay, instead of the stream being killed out from under them the moment the show finishes. `feedCachePlaybackEndedAt` records when the end was first seen; it is cleared if playback resumes (a seek/replay) and when the session stops.
+
+
+**`HdhrVCRplusSeriesID`** (lineup entry, optional) — the recording show's guide SeriesID, omitted when empty. Watch Now matches a FEED to a guide row by it (`AppState.remoteRelayEntry(matching:)`), falling back to title.

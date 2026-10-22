@@ -4540,6 +4540,7 @@ final class WebServer: @unchecked Sendable {
                 if !snapshot.synopsis.isEmpty { entry[VirtualTunerService.synopsisKey] = snapshot.synopsis }
             }
             if !show.show_logo_url.isEmpty { entry[VirtualTunerService.imageURLKey] = show.show_logo_url }
+            if !show.show_seriesid.isEmpty { entry[VirtualTunerService.seriesIDKey] = show.show_seriesid }
             return entry
         }
     }
