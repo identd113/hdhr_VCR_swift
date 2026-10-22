@@ -247,6 +247,8 @@ final class AppState: ObservableObject {
     var lastOTALineupAttempt: Date? = nil
     /// Guide-failure fallback (AppState+OTA.swift): set once per outage when the person has been asked; the task is the one-hour wait.
     var airFallbackOffered = false
+    /// Live TV watched in a browser (AppState+WebLive.swift): session id → the tuner stream being spooled to a temp file that the HLS follower reads.
+    var webLiveSessions: [String: WebLiveSession] = [:]
     /// Web guide "Air only" section: air channels the tuner lacks, cached per device by the saved lineup file's date and the tuner lineup size.
     var airOnlyCache: [String: (stamp: String, entries: [OTALineupEntry])] = [:]
     var airFallbackTask: Task<Void, Never>? = nil
@@ -2916,6 +2918,7 @@ final class AppState: ObservableObject {
         warnOfLiveWatchPreemptionIfNeeded()
         maintainFeedCacheSessions()
         startScheduledOTALineupRefreshIfDue()
+        reapWebLiveSessions()
         let now = Date()
         var dirty = false
 
@@ -5679,7 +5682,7 @@ final class AppState: ObservableObject {
 
     /// True when the volume holding the FEED cache has less than `minFreeGB` free. Unreadable stats
     /// → false (assume OK), matching diskOK's own fallback.
-    private func feedCacheDiskLow(minFreeGB: Double) -> Bool {
+    func feedCacheDiskLow(minFreeGB: Double) -> Bool {
         let dir = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus"
         let probe = FileManager.default.fileExists(atPath: dir) ? dir : NSHomeDirectory()
         guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: probe),
@@ -6904,7 +6907,8 @@ final class AppState: ObservableObject {
         // showing live channels in both primary and PiP secondary) — sum them; each is scoped to
         // this exact deviceId so a secondary elsewhere never leaks into this count.
         let vlc = (vlcOccupiesTuner(for: deviceId) ? 1 : 0) + (secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
-        return max(hw, rec + vlc)
+        let web = webLiveSessions.values.filter { $0.deviceId == deviceId }.count   // live TV spooled for a browser (AppState+WebLive.swift)
+        return max(hw, rec + vlc + web)
     }
 
     // Same overlap definition as hasConflict, but returns the other show(s) so the menu can

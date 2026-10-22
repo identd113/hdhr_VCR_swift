@@ -210,14 +210,4 @@ extension AppState {
         airOnlyCache[deviceId] = (stamp, entries)
         return entries
     }
-
-    /// Plays an air-only channel in the app's own player on this Mac (never records it), tuned by frequency and program. Returns why not, or nil.
-    func watchAirOnly(deviceId: String, guideNumber: String) -> String? {
-        guard let device = recordableDevices.first(where: { $0.DeviceID == deviceId }) else { return "Tuner not found" }
-        guard let entry = airOnlyChannels(deviceId: deviceId).first(where: { $0.GuideNumber == guideNumber }) else { return "Channel not found" }
-        guard VLCBridge.shared.isAvailable else { return "VLC is not installed on this Mac" }
-        watchInApp(url: "http://\(device.LocalIP):5004/auto/ch\(entry.Frequency)-\(entry.ProgramNumber)", title: entry.GuideName,
-                   deviceId: deviceId, guideNumber: entry.GuideNumber)
-        return nil
-    }
 }

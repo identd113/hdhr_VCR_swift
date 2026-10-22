@@ -4,7 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
-- *Added* — **Channels seen on the air but missing from your tuner now show in the web guide (beta).** A new **AIR ONLY · WATCH** section sits between Recording and Favorites with a row per channel found by the air scan that the HDHomeRun's own lineup doesn't carry. Each row is 4-hour blocks from midnight; click the block in progress to watch that channel in the app on the Mac. These channels can't be recorded.
+- *Added* — **Channels seen on the air but missing from your tuner now show in the web guide (beta).** A new **AIR ONLY · WATCH** section sits between Recording and Favorites with a row per channel found by the air scan that the HDHomeRun's own lineup doesn't carry. Each row is 4-hour blocks from midnight; click the block in progress to watch that channel live in your browser (needs Web Streaming on). These channels can't be recorded.
 
 - *Added* — **The scan window now shows the sound of every channel.** Each channel in a multiplex lists its audio streams: one compact text line each — layout (5.1, 2.0…), codec, language, sample rate, bit rate and dialogue level — and a *radio* tag for audio-only services. A bar shows how the multiplex spends its roughly 19.4 Mbit/s: video, sound, guide data and padding. The coloured channel blocks are gone, all channels are reachable by scrolling, and the window can be dragged taller.
 

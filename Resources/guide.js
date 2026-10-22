@@ -1688,6 +1688,8 @@ document.addEventListener('visibilitychange',function(){
 });
 function closeWatchNow(){
   if(!_wn.open&&!_wn.hls)return;
+  if(_wn.liveId){var lid=_wn.liveId;_wn.liveId='';   // live TV: give the tuner back at once instead of waiting for the idle timeout
+    try{fetch('/api/live-stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lid}),keepalive:true});}catch(e){}}
   _wn.open=false;_wn.gen++;
   clearInterval(_wn.timer);_wn.timer=null;
   if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
@@ -1836,16 +1838,19 @@ function toggleFav(evt,btn){
   postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
   .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
 }
-// Air only (watch-only): the in-progress block of an air-only channel plays it in the app on the Mac that runs hdhrVCRplus. There is no recording
-// path for these channels; a failure is shown on the block itself (no dialogs).
+// Air only (watch-only): the in-progress block of an air-only channel starts live TV in the Watch Now! player (the app spools the tuner stream and converts it
+// to HLS like a recording, docs/WebStreaming.md "Live TV"). Needs Web Streaming switched on; there is no recording path for these channels.
+// A failure is shown on the block itself (no dialogs).
 function airWatch(el){
   var lbl=el.querySelector('span'),was=lbl?lbl.textContent:'';
+  function fail(msg){el.classList.add('g-air-err');el.title=msg;if(lbl)lbl.textContent=msg;setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);}
   el.classList.remove('g-air-err');
-  if(lbl)lbl.textContent='Opening on the Mac…';
-  postJSON('/api/watch-air',{deviceId:el.dataset.dev,guideNumber:el.dataset.ch}).then(function(r){return r.json();}).then(function(d){
-    if(d&&d.ok){setTimeout(function(){if(lbl)lbl.textContent=was;},2500);}
-    else{el.classList.add('g-air-err');el.title=(d&&d.error)||'Could not open';if(lbl)lbl.textContent=(d&&d.error)||'Could not open';setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);}
-  }).catch(function(){el.classList.add('g-air-err');if(lbl)lbl.textContent='Could not reach the app';setTimeout(function(){el.classList.remove('g-air-err');if(lbl)lbl.textContent=was;},4000);});
+  if(lbl)lbl.textContent='Tuning…';
+  postJSON('/api/live-start',{deviceId:el.dataset.dev,guideNumber:el.dataset.ch}).then(function(r){return r.json();}).then(function(d){
+    if(lbl)lbl.textContent=was;
+    if(d&&d.ok){openWatchNow(d.id,d.title||el.dataset.ch,'Live · '+el.dataset.ch,'','',0,0);_wn.liveId=d.id;}
+    else fail((d&&d.error)||'Could not start');
+  }).catch(function(){fail('Could not reach the app');});
 }
 document.addEventListener('keydown',function(e){
   if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('g-air-now')){e.preventDefault();airWatch(e.target);}

@@ -398,6 +398,10 @@ final class WebServer: @unchecked Sendable {
                 guard let appState else { return StreamSnapshot(enabled: false, sources: [:]) }
                 var sources: [String: StreamSource] = [:]
                 for id in ids {
+                    if let live = appState.webLiveSessions[id] {   // live TV spooled for a browser (AppState+WebLive.swift)
+                        sources[id] = StreamSource(path: live.cachePath, isRecording: appState.recordingManager.isFeedCachePullRunning(sessionId: id))
+                        continue
+                    }
                     guard let show = appState.shows.first(where: { $0.show_id == id }),
                           !show.show_recording_path.isEmpty else { continue }   // active or last recording; the manager checks the file exists
                     sources[id] = StreamSource(path: show.show_recording_path, isRecording: appState.recordingManager.isRunning(showId: id))
@@ -878,6 +882,10 @@ final class WebServer: @unchecked Sendable {
             }
         }
     }
+
+    /// Live TV helpers for AppState+WebLive.swift.
+    func isStreamActive(id: String) async -> Bool { await streams?.isActive(id) ?? false }
+    func endStream(id: String) { Task { [streams] in await streams?.stop(showId: id, reason: "live ended") } }
 
     private func handleHLS(showId: String, name: String, conn: NWConnection) {
         guard let streams else { send(.notFound("streaming unavailable"), on: conn); return }
@@ -2388,6 +2396,31 @@ final class WebServer: @unchecked Sendable {
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
             }
+            // Live TV in a browser (AppState+WebLive.swift): start answers once the tuner is delivering, stop frees the tuner at once.
+            if cleanPath == "/api/live-start" && method == "POST" {
+                guard let obj = self.parseJSONBody(body), let deviceId = obj["deviceId"] as? String, let guideNumber = obj["guideNumber"] as? String else {
+                    self.send(.badRequest("Missing required fields: deviceId, guideNumber"), on: conn); return
+                }
+                Task { @MainActor [weak self] in
+                    guard let self, let state = self.appState else { return }
+                    let reply: [String: Any]
+                    switch await state.startWebLive(deviceId: deviceId, guideNumber: guideNumber) {
+                    case .success(let s): reply = ["ok": true, "id": s.id, "title": s.title]
+                    case .failure(let e): reply = ["ok": false, "error": e.message]
+                    }
+                    self.queue.async { self.send(self.jsonResponse(reply), on: conn) }
+                }
+                return
+            }
+            if cleanPath == "/api/live-stop" && method == "POST" {
+                let id = (self.parseJSONBody(body)?["id"] as? String) ?? ""
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if StreamSessions.isValidShowId(id) { self.appState?.stopWebLive(id: id, reason: "viewer left") }
+                    self.queue.async { self.send(self.jsonResponse(["ok": true]), on: conn) }
+                }
+                return
+            }
             if cleanPath == "/api/hls-status" && method == "GET" {
                 // Is web streaming on? Lets the guide show or hide "Watch Now!" without a reload. Answered off the main thread.
                 guard let streams = self.streams else { self.send(.ok(contentType: "application/json", body: Data("{\"enabled\":false}".utf8)), on: conn); return }
@@ -2597,7 +2630,6 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
-            if path == "/api/watch-air"        { return handleWatchAir(state: state, body: body) }
             if path == "/api/ota-scan" {   // over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true} (all optional), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
                 let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
                 if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
@@ -2908,16 +2940,6 @@ final class WebServer: @unchecked Sendable {
         // Virtual relay tuners (VirtualTunerService.swift) are watch-only by design.
         guard !device.isVirtualRelay else { return .isVirtualRelay(device) }
         return .found(device, ch)
-    }
-
-    /// POST /api/watch-air {deviceId, guideNumber}: plays an air-only channel (seen in the saved scan, not in the tuner's lineup) in the app on this Mac.
-    /// Watch only: there is deliberately no recording path for these channels.
-    @MainActor
-    func handleWatchAir(state: AppState, body: Data?) -> WebResponse {
-        guard let obj = parseJSONBody(body), let deviceId = obj["deviceId"] as? String, let guideNumber = obj["guideNumber"] as? String
-        else { return .badRequest("Missing required fields: deviceId, guideNumber") }
-        if let why = state.watchAirOnly(deviceId: deviceId, guideNumber: guideNumber) { return jsonResponse(["ok": false, "error": why]) }
-        return jsonResponse(["ok": true])
     }
 
     /// The 4-hour blocks (from local midnight: 12–4 AM, 4–8 AM …) that overlap the guide window; `isNow` marks the one in progress.

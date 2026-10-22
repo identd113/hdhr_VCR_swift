@@ -1360,6 +1360,14 @@ Guide rows for channels the saved over-the-air scan found that the tuner's own l
 empty when no scan is saved or the Developer lineup source is "From the air", where they already are the lineup). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
 (`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row has no listings: it is made of **4-hour blocks from local
 midnight** (`WebServer.airBlocks`, 12–4 AM, 4–8 AM …, clipped to the guide window). Only the block in progress (`.g-air-now`) is live: clicking it (or Enter/Space) calls
-`airWatch()` → `POST /api/watch-air {deviceId, guideNumber}` → `AppState.watchAirOnly`, which plays it in the app's own player on the Mac running hdhrVCRplus, tuned by frequency and
-program (`http://<tuner>:5004/auto/ch<Hz>-<program>`, one idle tuner, the usual `watchInApp` checks). **There is no recording path**: these rows have no `.g-prog` blocks, so the schedule,
+`airWatch()` → live TV in the browser (below), tuned by frequency and
+program (`http://<tuner>:5004/auto/ch<Hz>-<program>`). **Watching = live TV in the browser** (below). **There is no recording path**: these rows have no `.g-prog` blocks, so the schedule,
 favorites, genre filter and search never see them, and `/api/record` rejects a channel that is not in the tuner lineup. Visible by default while the feature is built; a Ctrl+D toggle is planned.
+
+### Live TV in the browser (2026-10-22)
+Kept light by reusing the web-streaming pieces (`docs/WebStreaming.md`): `POST /api/live-start {deviceId, guideNumber}` → `AppState.startWebLive` (needs Web Streaming on) takes a lineup
+channel's URL, or an air-only one's `ch<Hz>-<program>` URL, and spools it into a temp `.ts` under the FEED cache folder with the existing puller (`RecordingManager.startFeedCachePull`,
+curl); `StreamSessions` then converts that growing file like a recording that is never saved (the snapshot closure maps the id `live-<device>-<8 hex>` to the spool file), and the guide opens
+its Watch Now! player on `/api/hls/<id>/index.m3u8`. It answers once the first bytes arrive (up to 6 s). A tuner must be free (`tunersFull`; live sessions count in `activeTunerCount`), a second
+viewer of the same channel joins the same spool. `POST /api/live-stop {id}` (sent when the player closes) frees the tuner at once; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
+after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The spool is rolled into HLS and deleted on stop.
