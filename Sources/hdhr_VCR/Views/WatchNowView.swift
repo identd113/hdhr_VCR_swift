@@ -737,7 +737,8 @@ struct WatchNowRow: View {
                 quickRecordButton(state: state, entry: entry, device: device, channel: channel,
                                   tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm)
                 .accessibilityLabel("Record \(entry.Title)")
-                .help("Record \(entry.Title)")
+                .help(liveBlockedReason ?? "Record \(entry.Title)")
+                .disabled(liveBlockedReason != nil)
             }
         }
     }
