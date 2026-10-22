@@ -334,7 +334,7 @@ extension WindowNavigationTests {
         if let before = settledCPU(below: 5) { #expect(before.last! < 5, "app still at \(before.last!)% CPU before the splash (readings \(before))") }
 
         for play in 1...2 {
-            #expect(ax(["row", "", "text=Preview Launch Splash", "role=AXButton&title=Run", "--press"]).status == 0, "could not press Run (play \(play))")
+            #expect(ax(["row", "", "text=Preview Launch Splash", "role=AXButton&title=Run Preview Launch Splash", "--press"]).status == 0, "could not press Run (play \(play))")
             #expect(waitFor(6) { launchSplashWindow(pid: pid, onScreenOnly: true) } != nil, "play \(play): the splash never appeared on screen")
             #expect(waitFor(30) { !launchSplashWindow(pid: pid, onScreenOnly: false) } != nil,
                     "play \(play): the splash window still exists after it finished — it should be destroyed, not just hidden")
@@ -497,7 +497,7 @@ extension WindowNavigationTests {
         var found: String?
         _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
         guard let title = found else { Issue.record("the player window never opened"); return }
-        Thread.sleep(forTimeInterval: 4)   // a decoded frame must exist before Zoom knows the native size
+        Thread.sleep(forTimeInterval: 8)   // a decoded frame must exist before Zoom knows the native size; and the status bar that pops down for ~5 s when a stream opens must have gone, or the window changes height mid-test
 
         func size() -> String {
             runAppleScript("tell application \"System Events\" to tell process \"hdhr_VCR\" to return (get size of window \"\(title)\") as text") ?? "?"
@@ -512,6 +512,46 @@ extension WindowNavigationTests {
         #expect(zoomed != before, "Zoom did not resize the player window (\(before))")
         zoom()
         #expect(size() == before, "a second Zoom did not return to the earlier size: \(before) → \(zoomed) → \(size())")
+    }
+}
+
+extension WindowNavigationTests {
+
+    /// The player window shrinks to about 420 pt wide, the toolbar folds into the "…" menu there (the channel picker and the
+    /// menu itself stay on the bar), and a wide window brings the controls back. Uses the mock recording relay.
+    @Test func playerWindowShrinksAndKeepsItsEssentialControls() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        if let why = MockRecording.realRecordingConflict() { skip(why); return }
+        MockRecording.clean()
+        closeStrayWindows()
+        defer { MockRecording.clean(); closeStrayWindows() }
+        guard MockRecording.ensure() != nil else { skip("nothing airing / no free tuner"); return }
+
+        clickAppMenuItem("Watch Now…")
+        #expect(waitFor(8) { axWindows().contains("Watch Now") } != nil, "Watch Now never opened")
+        #expect(waitFor(15) { axPress("role=AXButton&help^=Play the in-progress recording", window: "Watch Now") } != nil,
+                "Watch Now never offered the recording's relay button")
+        var found: String?
+        _ = waitFor(10) { found = axWindows().first { $0 != "Watch Now" }; return found != nil }
+        guard let title = found else { Issue.record("the player window never opened"); return }
+        Thread.sleep(forTimeInterval: 8)   // the status bar that pops down for ~5 s at stream start is gone
+
+        func setWidth(_ w: Int) -> String {
+            runAppleScript("tell application \"System Events\" to tell process \"hdhr_VCR\" to tell window \"\(title)\" to set size to {\(w), 600}") ?? ""
+            Thread.sleep(forTimeInterval: 2)   // live-resize settle
+            return runAppleScript("tell application \"System Events\" to tell process \"hdhr_VCR\" to return (item 1 of (get size of window \"\(title)\")) as text") ?? "?"
+        }
+        let narrow = Int(setWidth(300)) ?? 9999
+        #expect(narrow <= 480, "the player window could not be made narrow: it stopped at \(narrow) pt")
+        // At that width the essentials are still reachable.
+        #expect(axFound("id=vlc-channel-picker", window: title), "the channel picker disappeared at \(narrow) pt")
+        #expect(axFound("id=vlc-more-options-menu", window: title), "the \u{2026} menu disappeared at \(narrow) pt")
+        #expect(!axFound("id=vlc-volume-slider", window: title), "the volume slider should have folded into the \u{2026} menu at \(narrow) pt")
+        let wide = Int(setWidth(1100)) ?? 0
+        #expect(wide >= 1000, "the player window did not grow back (\(wide) pt)")
+        for id in ["vlc-channel-picker", "vlc-catch-up-button", "vlc-volume-slider", "vlc-status-bar-toggle"] {
+            #expect(axFound("id=\(id)", window: title), "\(id) is missing at \(wide) pt wide")
+        }
     }
 }
 
