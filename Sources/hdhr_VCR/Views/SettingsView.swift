@@ -404,16 +404,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Guide") {
-                Toggle(isOn: $draft.Guide_use_xml) {
-                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.", about: "Use XMLTV guide format") }
-                }
-                if draft.Guide_use_xml {
-                    CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
-                                 systemImage: "exclamationmark.triangle")
-                        .accessibilityIdentifier("settings-guide-xmltv-warning")
-                }
-            }
         }
         .formStyle(.grouped)
         .navigationTitle("General")
@@ -494,6 +484,17 @@ struct SettingsView: View {
 
     private var guideView: some View {
         Form {
+            Section("Source") {
+                Toggle(isOn: $draft.Guide_use_xml) {
+                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.", about: "Use XMLTV guide format") }
+                }
+                if draft.Guide_use_xml {
+                    CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
+                                 systemImage: "exclamationmark.triangle")
+                        .accessibilityIdentifier("settings-guide-xmltv-warning")
+                }
+            }
+
             Section("Fetch") {
                 // Capped at 28, not the old 48: GuideStore.load() makes a single API call, and the
                 // cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless
@@ -519,6 +520,42 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings-update-guides")
                     saveFirstHint
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
+                }
+            }
+
+            Section("Lineup (Over the Air)") {
+                Picker(selection: $draft.OTA_lineup_hour) {
+                    Text("Never").tag(-1)
+                    ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
+                } label: {
+                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
+                }
+                .accessibilityIdentifier("settings-ota-lineup-hour")
+                Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                AirLastScanLines(progress: state.otaProgress)
+                if state.otaScanTask != nil {
+                    Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption)
+                    Button("Cancel Scan") { state.cancelOTAScan() }
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("settings-ota-cancel")
+                } else {
+                    if !state.otaScanStatus.isEmpty {
+                        Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
+                            .disabled(state.recordableDevices.isEmpty || isDirty)
+                            .accessibilityIdentifier("settings-ota-lineup-scan")
+                        InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.", about: "Scan Channel List Only")
+                        Button("Scan the Air Now") { state.startOTAScan() }
+                            .disabled(state.recordableDevices.isEmpty || isDirty)
+                            .accessibilityIdentifier("settings-ota-scan")
+                        InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
+                        saveFirstHint
+                    }
                 }
             }
         }
@@ -787,41 +824,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Over-the-Air Guide") {
-                Picker(selection: $draft.OTA_lineup_hour) {
-                    Text("Never").tag(-1)
-                    ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
-                } label: {
-                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
-                }
-                .accessibilityIdentifier("settings-ota-lineup-hour")
-                Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                AirLastScanLines(progress: state.otaProgress)
-                if state.otaScanTask != nil {
-                    Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
-                        .font(.caption)
-                    Button("Cancel Scan") { state.cancelOTAScan() }
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("settings-ota-cancel")
-                } else {
-                    if !state.otaScanStatus.isEmpty {
-                        Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
-                            .disabled(state.recordableDevices.isEmpty || isDirty)
-                            .accessibilityIdentifier("settings-ota-lineup-scan")
-                        InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.", about: "Scan Channel List Only")
-                        Button("Scan the Air Now") { state.startOTAScan() }
-                            .disabled(state.recordableDevices.isEmpty || isDirty)
-                            .accessibilityIdentifier("settings-ota-scan")
-                        InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
-                        saveFirstHint
-                    }
-                }
-            }
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")
@@ -1174,7 +1176,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("dev-guide-source")
-                Text("Switching saves the choice, drops the guide in memory and fetches it again from the new source. The same two switches exist under General (JSON / XMLTV, and the air guide).")
+                Text("Switching saves the choice, drops the guide in memory and fetches it again from the new source. The same two switches exist under Guide → Source (JSON / XMLTV, and the air guide).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Lineup source") {
@@ -1186,7 +1188,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("dev-lineup-source")
-                Text("The air lineup is the saved scan (Advanced → Over-the-Air Guide), tuned by frequency and program number, so it includes channels the tuner's own lineup lacks. Favorites do not apply to it. Falls back to the tuner's lineup when no scan under 36 hours old exists.")
+                Text("The air lineup is the saved scan (Guide → Lineup (Over the Air)), tuned by frequency and program number, so it includes channels the tuner's own lineup lacks. Favorites do not apply to it. Falls back to the tuner's lineup when no scan under 36 hours old exists.")
                     .font(.caption).foregroundStyle(.secondary)
                 maintenanceRow("Reload Lineup", "Fetches the lineup again from the chosen source") {
                     await state.reloadLineups()
@@ -1207,7 +1209,7 @@ struct SettingsView: View {
                     } else {
                         Button("Run") {
                             if state.otaScanTask != nil {   // a running scan would save straight over whatever was just purged
-                                maintenanceStatus = "An air scan is running — cancel it first (Over-the-Air Guide)."
+                                maintenanceStatus = "An air scan is running — cancel it first (Guide → Lineup)."
                                 return
                             }
                             maintenanceBusy = true

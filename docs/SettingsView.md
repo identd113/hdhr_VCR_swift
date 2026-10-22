@@ -52,14 +52,14 @@ Two `Section`s:
 - Post-recording script: path field + `"Choose…"` button — runs after a recording finishes
 
 ### Category: Guide
-One `Section`:
+Three `Section`s, in order (2026-10-22): **Source** (the XMLTV toggle `Guide_use_xml` with its caveat banner, moved from General), **Fetch**, **Lineup (Over the Air)** (rescan hour, scan buttons, last-scan lines; moved from Advanced).
 
 **Fetch** section:
 - Guide hours: `Stepper` `"Show next N hours"`, range 1–28
 - Series scan retry: `Stepper` `"Series scan retry: N hr"`, range 1–24
 - `"Update Guides Now"` `.borderedProminent` button — swaps for a small `ProgressView` spinner for the duration of the refresh (`@State guideRefreshInProgress`), same convention as the Maintenance tab's `maintenanceRow` spinners and the Discord webhook "Test" button's `.testing` state
 
-The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10 — see that section above.
+The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10, then to the Guide tab → Source, 2026-10-22.
 
 ### Category: Notifications
 **Reminders** section (was "Notifications"): Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
@@ -72,7 +72,7 @@ The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General
 **Notify when…** section (visible only when enabled + URL set): 4 grouped toggles (Lifecycle events, Reminders, Problems, Other) instead of 12 flat per-event rows.
 
 ### Category: Advanced
-Five sections (Signal Strength Scan only with signal bars on; **Over-the-Air Guide** always visible, independent of the signal-bars toggle):
+Sections (Signal Strength Scan only with signal bars on). The Over-the-Air section moved to the Guide tab (2026-10-22):
 - **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. (The idle-check-interval stepper that used to live here was removed 2026-07-23 — see below.)
 - **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button. Config path (text-selectable) + `"Show config in Finder"` button — merged here from the former standalone Config File section.
 - **Updates**: single `Toggle("Check for updates automatically")` bound to `draft.Check_for_updates` (default on). Gates only the automatic once-a-day background check (`AppState.updateCheckLoop()`); the manual "Check for Updates" button on the About tab always runs regardless. See `UpdateChecker.swift`.
@@ -162,7 +162,7 @@ Sidebar entries (with SF Symbol icons):
 
 | Category | Icon | Contents |
 |---|---|---|
-| General | `gear` | Launch at Login, Blink menu bar icon, JSON/XMLTV format toggle |
+| General | `gear` | Launch at Login, Blink menu bar icon, appearance, system |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders, Post-recording script |
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
@@ -174,6 +174,8 @@ Sidebar entries (with SF Symbol icons):
 ---
 
 ### General
+
+(The XMLTV toggle moved to Guide → Source, 2026-10-22.)
 
 - **Launch at Login** — uses `SMAppService.mainApp` (`register()`/`unregister()`), Apple's Login Item API — not a hand-written LaunchAgents plist. `launchAtLoginRegistered` reads `SMAppService.mainApp.status` and counts both `.enabled` **and** `.requiresApproval` as registered (`register()` succeeded and macOS is waiting for the user to approve the login item in System Settings → Login Items — treating that as "not registered" left the draft permanently differing from the live value, so "Unsaved changes" never cleared and closing prompted every time); the toggle only calls register/unregister on Save if the draft value differs from that live status. Toggle reverts to the actual registered state on a thrown error; the error's `localizedDescription` is shown in red below the toggle.
 - **Show launch splash** — `Toggle` bound to `draft.Show_launch_splash` (default on). Shows the logo splash at every launch, a first run included (where it flows into the setup wizard instead of flying to the menu bar); see `docs/LaunchSplash.md`. The info text reads "…It ends by pointing at the menu bar icon — or, on a first run, by flowing into the setup wizard."
@@ -206,7 +208,7 @@ Sidebar entries (with SF Symbol icons):
 - **Series scan retry** — `Stepper` (1–24 hr). How long to wait before re-scanning the guide for a SeriesID show's next episode when no match was found.
 - **Update Guides Now** — `Button` (hidden while a refresh is in flight, replaced by a `ProgressView` spinner). Awaits `state.refreshAll()` (now `async`, previously fire-and-forget) immediately, invalidating and reloading guide data for all devices. Useful any time fresh data is needed without restarting the app.
 
-The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10 — see that section above.
+The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10, then to the Guide tab → Source, 2026-10-22.
 
 ---
 
@@ -268,7 +270,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
 - At rest: a **Tuner** pulldown ("All Tuners", then each recordable device as `FriendlyName (DeviceID)`; a selection whose device has gone away behaves as "All Tuners") followed by one **Measure Signal** button (disabled with no devices). Calls `state.startSignalScan(force: true, deviceId:)` — `deviceId` is nil for "All Tuners", else only that device is scanned; `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
-**Over-the-Air Guide section** (Advanced, below Signal Strength Scan, visible regardless of the signal-bars toggle; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
+**Lineup (Over the Air) section** (Guide tab, below Fetch; moved from Advanced 2026-10-22, and the JSON/XMLTV toggle moved from General to this tab's **Source** section, shown first; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
 - Caption text, then: while scanning, a `Label` (`dot.radiowaves.left.and.right`) with `state.otaScanStatus` and a red **Cancel Scan** button (`settings-ota-cancel`); at rest the last status line (if any) and **Scan the Air Now** (`settings-ota-scan`, disabled with no recordable device). Calls `state.startOTAScan()` / `cancelOTAScan()`.
 
 ---
@@ -461,7 +463,7 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 **Dialogs (2026-10-14):** the unsaved-changes prompt on window close is a sheet on the Settings window, not `runModal()` (`WindowCloseInterceptor.windowShouldClose` returns `false`, asks via `promptUnsavedChanges(…on:)`, then `close()`s once answered); Export/Import Config and the folder/script pickers are `Dialogs.choose` sheets; the "Config imported — restart required" alert is `Dialogs.show`. Nothing in Settings blocks the main thread, so the web server keeps answering while any of them is open.
 
-**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Advanced → Over-the-Air Guide now has **Rescan channel list** (was "Rescan the channel list from the air") (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
+**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Guide → Lineup (Over the Air) now has **Rescan channel list** (was "Rescan the channel list from the air") (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
 
 ## Developer (debug builds only)
 `SettingsCategory.developer` (`hammer`) exists only under `#if DEBUG` — `deploy.sh` builds debug, so both dev Macs show it; `deploy_release.sh` builds release, which compiles the whole section out (nothing to switch off before a release). Contents (`developerView`, all actions immediate, none go through the Save draft):

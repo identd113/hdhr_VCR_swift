@@ -34,8 +34,8 @@ The scan runs on every free tuner and gives way to anything else, so nothing nee
 The scan uses `recordableDevices` only (never the virtual relay), and is off the main actor throughout.
 
 ## Where to run it
-- Settings → General → Guide: **Use the guide from the air (beta)** (`Guide_use_ota`).
-- Settings → Advanced → **Over-the-Air Guide**: *Scan the Air Now* / *Cancel Scan*, with the status line.
+- Settings → Guide → Source (developer): **Use the guide from the air (beta)** (`Guide_use_ota`).
+- Settings → Guide → **Lineup (Over the Air)**: *Scan the Air Now* / *Cancel Scan*, with the status line.
 - Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":90,"lineupOnly":true}` (all optional), `{"tuners":1}` (sets the running scan's tuner allowance) or `{"cancel":true}`;
   `GET /api/ota-status` → `{"status","running","finished","total","multiplexes","channels","listings","tuners","tunersMax","secondsLeft"}` (`secondsLeft` -1 = unknown).
 
@@ -61,7 +61,7 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
 - **The air guide is only a fallback.** A shipped app never tries it before the SiliconDust guide: `AppConfig.guidePrefersAir` is false outside debug builds, and the old
   General toggle "Use the guide from the air" is gone. `GuideStore` loads the saved air guide only when a guide fetch fails and the device has no guide in memory (and
   the saved one is under 36 h old). The Developer section can still make a debug build prefer it (`Guide_use_ota`), for testing.
-- **The channel list is rescanned daily.** `OTA_lineup_hour` (default 3 = 03:00, -1 = never; Settings → Advanced → Over-the-Air Guide and the first-run wizard; migrated from the old `OTA_lineup_auto`) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
+- **The channel list is rescanned daily.** `OTA_lineup_hour` (default 3 = 03:00, -1 = never; Settings → Guide → Lineup (Over the Air) and the first-run wizard; migrated from the old `OTA_lineup_auto`) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
   lineup-only scan (a few minutes, no window) once the hour has passed and the saved list is older than today's mark, at most one try a day
   (`AppState.lineupScanDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
 - **Guide failure** (`AppState.offerAirGuideFallback`, called once per outage from `handleGuideLoadFailure`, only when no saved air guide under 36 h exists and no scan is running): an in-app alert (Scan Now / Not Now) and a Discord message (honors the Guide-error Discord toggle). Scan Now starts a full scan (list, then guide); Not Now ends the offer for this outage; with no answer for an hour the full scan starts by itself. The guide loading again cancels the offer (`endAirGuideFallbackOffer`). The Discord message is one-way: the answer is given in the app.

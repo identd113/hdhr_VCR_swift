@@ -105,7 +105,7 @@ struct AirChannelsCard: View {
                 Label("No stations found.", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange).font(.callout.bold())
                     .accessibilityIdentifier("wizard-air-none")
-                Text("Is an antenna connected to the tuner? You can try again from Settings → Advanced → Over-the-Air Guide.")
+                Text("Is an antenna connected to the tuner? You can try again from Settings → Guide → Lineup (Over the Air).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             AirLastScanLines(progress: progress, showGuide: false)
