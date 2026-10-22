@@ -62,7 +62,7 @@ actor OTAScanner {
         case 2...4:   return (54 + 6 * (rf - 2) + 3) * 1_000_000
         case 5...6:   return (76 + 6 * (rf - 5) + 3) * 1_000_000
         case 7...13:  return (174 + 6 * (rf - 7) + 3) * 1_000_000
-        case 14...51: return (470 + 6 * (rf - 14) + 3) * 1_000_000
+        case 14...36, 38...51: return (470 + 6 * (rf - 14) + 3) * 1_000_000
         default:      return nil
         }
     }

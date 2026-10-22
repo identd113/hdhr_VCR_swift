@@ -345,6 +345,7 @@ struct OTAStoreTests {
         #expect(OTAScanner.frequencyHz(rf: 51) == 695_000_000)
         #expect(OTAScanner.frequencyHz(rf: 1) == nil)
         #expect(OTAScanner.frequencyHz(rf: 52) == nil)
+        #expect(OTAScanner.frequencyHz(rf: 37) == nil)   // radio astronomy, never scanned
         #expect(!OTAScanner.allRFChannels.contains(37))
     }
 }

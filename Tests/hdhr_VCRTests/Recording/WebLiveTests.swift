@@ -1,0 +1,139 @@
+import Testing
+import Foundation
+@testable import hdhr_VCR
+
+// MARK: - Browser live TV (AppState+WebLive.swift)
+//
+// Live TV for a browser holds a real tuner, so the bookkeeping around it decides whether a recording can start:
+// refusals must say why, the last viewer out must free the tuner and delete the spool, quitting must free every
+// tuner, and each session must count against its device's occupancy. None of these needs a tuner to run — they use
+// the session table directly (the puller itself is covered by the FEED cache tests).
+
+@Suite("Browser live TV")
+struct WebLiveTests {
+
+    private func session(id: String = "live-1", device: String = "DEV1", channel: String = "5.1", viewers: Int = 1) throws -> WebLiveSession {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("\(id)-\(UUID().uuidString).ts").path
+        try Data([0x47]).write(to: URL(fileURLWithPath: path))
+        var s = WebLiveSession(id: id, deviceId: device, guideNumber: channel, title: "KFOO", cachePath: path,
+                               startedAt: Date(), lastActive: Date())
+        s.viewers = viewers
+        return s
+    }
+
+    private func message(_ r: Result<WebLiveSession, WebLiveError>) -> String? {
+        if case .failure(let e) = r { return e.message }
+        return nil
+    }
+
+    // MARK: refusals
+
+    @Test func startIsRefusedWhenWebStreamingIsOff() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1")], lineups: ["DEV1": [.test(number: "5.1")]])
+        await MainActor.run { state.config.Web_streaming_enabled = false }
+        let r = await state.startWebLive(deviceId: "DEV1", guideNumber: "5.1")
+        #expect(message(r)?.contains("Web streaming is off") == true)
+    }
+
+    @Test func startIsRefusedForAnUnknownTuner() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1")])
+        await MainActor.run { state.config.Web_streaming_enabled = true }
+        let r = await state.startWebLive(deviceId: "NOPE", guideNumber: "5.1")
+        #expect(message(r) == "Tuner not found")
+    }
+
+    @Test func startIsRefusedForAChannelTheTunerDoesNotHave() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1")], lineups: ["DEV1": [.test(number: "5.1")]])
+        await MainActor.run { state.config.Web_streaming_enabled = true }
+        let r = await state.startWebLive(deviceId: "DEV1", guideNumber: "99.9")
+        #expect(message(r) == "Channel not found")
+    }
+
+    @Test func startIsRefusedWhenEveryTunerIsBusy_andNothingIsLeftBehind() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 1)], lineups: ["DEV1": [.test(number: "5.1")]])
+        await MainActor.run {
+            state.config.Web_streaming_enabled = true
+            state.deviceTunerOccupancy["DEV1"] = [DeviceTunerInfo(Resource: "tuner0", VctNumber: "7.1", TargetIP: nil, SignalQualityPercent: nil)]
+        }
+        let r = await state.startWebLive(deviceId: "DEV1", guideNumber: "5.1")
+        #expect(message(r) == "All tuners are in use")
+        #expect(await state.webLiveSessions.isEmpty)
+    }
+
+    // MARK: viewers
+
+    @Test func theTunerIsFreedOnlyWhenTheLastViewerLeaves() async throws {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        let s = try session(viewers: 2)
+        await MainActor.run { state.webLiveSessions[s.id] = s }
+
+        await MainActor.run { state.releaseWebLiveViewer(id: s.id) }
+        #expect(await state.webLiveSessions[s.id]?.viewers == 1)
+        #expect(FileManager.default.fileExists(atPath: s.cachePath))
+
+        await MainActor.run { state.releaseWebLiveViewer(id: s.id) }
+        #expect(await state.webLiveSessions[s.id] == nil)
+        #expect(!FileManager.default.fileExists(atPath: s.cachePath))
+    }
+
+    @Test func releasingAnUnknownSessionIsHarmless() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1")])
+        await MainActor.run { state.releaseWebLiveViewer(id: "gone") }
+        #expect(await state.webLiveSessions.isEmpty)
+    }
+
+    // MARK: quitting and recordings
+
+    @Test func stopAllFreesEverySessionAndDeletesItsSpool() async throws {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2), .test(id: "DEV2", tuners: 2)])
+        let a = try session(id: "live-a", device: "DEV1")
+        let b = try session(id: "live-b", device: "DEV2", channel: "7.1")
+        await MainActor.run { state.webLiveSessions = [a.id: a, b.id: b] }
+
+        await MainActor.run { state.stopAllWebLive(reason: "test") }
+
+        #expect(await state.webLiveSessions.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: a.cachePath))
+        #expect(!FileManager.default.fileExists(atPath: b.cachePath))
+    }
+
+    @Test func eachSessionCountsAgainstItsOwnDevicesTuners() async throws {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2), .test(id: "DEV2", tuners: 2)])
+        let a = try session(id: "live-a", device: "DEV1")
+        let b = try session(id: "live-b", device: "DEV1", channel: "7.1")
+        await MainActor.run { state.webLiveSessions = [a.id: a, b.id: b] }
+
+        #expect(await state.activeTunerCount(for: "DEV1") == 2)
+        #expect(await state.tunersFull(for: "DEV1"))
+        #expect(await state.activeTunerCount(for: "DEV2") == 0)
+
+        await MainActor.run { state.stopAllWebLive(reason: "test") }
+        #expect(await state.activeTunerCount(for: "DEV1") == 0)
+    }
+
+    @Test func turningWebStreamingOffEndsEverySession() async throws {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        let s = try session()
+        await MainActor.run {
+            state.config.Web_streaming_enabled = false
+            state.webLiveSessions[s.id] = s
+            state.reapWebLiveSessions()
+        }
+        for _ in 0..<40 where await !state.webLiveSessions.isEmpty { try await Task.sleep(nanoseconds: 50_000_000) }
+        #expect(await state.webLiveSessions.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: s.cachePath))
+    }
+
+    @Test func aSessionWhosePullerDiedIsReaped() async throws {
+        // No puller was ever started for this id, so isFeedCachePullRunning is false — the same state as a curl that exited.
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        let s = try session()
+        await MainActor.run {
+            state.config.Web_streaming_enabled = true
+            state.webLiveSessions[s.id] = s
+            state.reapWebLiveSessions()
+        }
+        for _ in 0..<40 where await !state.webLiveSessions.isEmpty { try await Task.sleep(nanoseconds: 50_000_000) }
+        #expect(await state.webLiveSessions.isEmpty)
+    }
+}
