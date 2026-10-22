@@ -96,6 +96,12 @@ final class GuideStore {
 
     // MARK: - URL building
 
+    /// Percent-encodes a query value (unreserved characters only) so a token with `&`, `+`, `=`, `#`
+    /// or spaces cannot break out of its parameter.
+    nonisolated static func queryEncoded(_ v: String) -> String {
+        v.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) ?? v
+    }
+
     /// Canonical guide URL for a device. Duration is in hours (the API accepts hours directly).
     /// - Cloud devices (has DeviceAuth): SiliconDust cloud API
     /// - Local devices: device's own /guide.json endpoint
@@ -104,7 +110,7 @@ final class GuideStore {
         // Duration +1 preserves the configured future window despite the earlier start.
         let start = Int(Date().timeIntervalSince1970) - 3600
         if let auth = device.DeviceAuth {
-            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Start=\(start)&Duration=\(hours + 1)")
+            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(Self.queryEncoded(auth))&Start=\(start)&Duration=\(hours + 1)")
         }
         if device.LocalIP.isEmpty { return nil }
         return URL(string: "http://\(device.LocalIP)/guide.json?Start=\(start)&Duration=\(hours + 1)")
@@ -114,7 +120,7 @@ final class GuideStore {
     /// Returns nil if the device has no DeviceAuth (XMLTV is cloud-only).
     nonisolated static func xmltvURL(for device: HDHRDevice) -> URL? {
         guard let auth = device.DeviceAuth else { return nil }
-        return URL(string: "https://api.hdhomerun.com/api/xmltv?DeviceAuth=\(auth)")
+        return URL(string: "https://api.hdhomerun.com/api/xmltv?DeviceAuth=\(Self.queryEncoded(auth))")
     }
 
     // MARK: - Loading

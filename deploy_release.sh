@@ -131,6 +131,7 @@ cp Resources/guide-vertical.css "$APP/Contents/Resources/guide-vertical.css"
 cp Resources/guide.js "$APP/Contents/Resources/guide.js"
 cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 cp Resources/hls.min.js "$APP/Contents/Resources/hls.min.js"
+cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 # Bundle.main.url(forResource:withExtension:) (SettingsView's in-app changelog) looks in
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
@@ -231,13 +232,23 @@ if [ "$SKIP_NOTARIZE" -eq 1 ]; then
 fi
 
 echo "==> Zipping for notarization…"
-ZIP_PATH="/tmp/${BUNDLE_ID}-notarize.zip"
+_NOTARY_DIR="$(mktemp -d)"
+[ -d "$_NOTARY_DIR" ] || { echo "ERROR: mktemp failed"; exit 1; }
+trap 'rm -rf "$_NOTARY_DIR"' EXIT
+ZIP_PATH="$_NOTARY_DIR/${BUNDLE_ID}-notarize.zip"
 ditto -c -k --keepParent "$APP" "$ZIP_PATH"
 
 echo "==> Submitting to Apple notary service…"
+# notarytool can exit 0 for an Invalid/Rejected submission, so the final status is checked explicitly.
+_NOTARY_LOG="$_NOTARY_DIR/notarytool.out"
 xcrun notarytool submit "$ZIP_PATH" \
     --keychain-profile "$NOTARY_PROFILE" \
-    --wait
+    --wait 2>&1 | tee "$_NOTARY_LOG" || true
+if ! grep -q "status: Accepted" "$_NOTARY_LOG"; then
+    echo "ERROR: notarization was not Accepted — not stapling or building the DMG." >&2
+    echo "       Inspect with: xcrun notarytool log <submission-id> --keychain-profile \"$NOTARY_PROFILE\"" >&2
+    exit 1
+fi
 
 echo "==> Stapling notarization ticket…"
 xcrun stapler staple "$APP"

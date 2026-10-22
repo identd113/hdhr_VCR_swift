@@ -92,6 +92,7 @@ final class ConfigManager {
             return
         }
         let backup = configURL.appendingPathExtension("bak")
+        quarantineIfUnreadable()
         // Only a main file that still reads back becomes the backup; a damaged one must not replace the last good .bak.
         if let current = try? Data(contentsOf: configURL), (try? Self.makeDecoder().decode(ConfigFile.self, from: current)) != nil {
             try? FileManager.default.removeItem(at: backup)
@@ -100,6 +101,42 @@ final class ConfigManager {
         let data = try Self.makeEncoder().encode(file)
         try data.write(to: configURL, options: .atomic)
         glog("[Config] Saved \(configURL.lastPathComponent)")
+    }
+
+    /// Before a save overwrites the main config, keep a timestamped `.corrupt-<ts>` copy of it when it
+    /// does not decode, or decodes with an empty shows list although the file holds a non-empty one
+    /// (ConfigFile's decoder swallows a bad shows array into `[]`). The rolling .bak is untouched.
+    @discardableResult
+    func quarantineIfUnreadable() -> URL? {
+        guard let current = try? Data(contentsOf: configURL), !current.isEmpty else { return nil }
+        var bad = false
+        if let file = try? Self.makeDecoder().decode(ConfigFile.self, from: current) {
+            if file.shows.isEmpty,
+               let obj = try? JSONSerialization.jsonObject(with: current) as? [String: Any],
+               ((obj["shows"] as? [Any])?.isEmpty == false || (obj["the_shows"] as? [Any])?.isEmpty == false) {
+                bad = true
+            }
+        } else {
+            bad = true
+        }
+        guard bad else { return nil }
+        let stamp = Int(Date().timeIntervalSince1970)
+        var dest = configURL.deletingLastPathComponent()
+            .appendingPathComponent(configURL.lastPathComponent + ".corrupt-\(stamp)")
+        var n = 1
+        while FileManager.default.fileExists(atPath: dest.path) {
+            dest = configURL.deletingLastPathComponent()
+                .appendingPathComponent(configURL.lastPathComponent + ".corrupt-\(stamp)-\(n)")
+            n += 1
+        }
+        do {
+            try FileManager.default.copyItem(at: configURL, to: dest)
+            glog("[Config] Existing config was unreadable/damaged — kept a copy at \(dest.lastPathComponent) before overwriting", level: .warning)
+            return dest
+        } catch {
+            glog("[Config] Could not keep a copy of the damaged config: \(error)", level: .error)
+            return nil
+        }
     }
 
     // Serial so writes stay strictly in call order — save(_:) does a remove+copy+atomic-write, and

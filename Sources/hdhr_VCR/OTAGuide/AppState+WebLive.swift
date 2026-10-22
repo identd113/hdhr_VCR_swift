@@ -32,15 +32,10 @@ extension AppState {
         } else if let air = airOnlyChannels(deviceId: deviceId).first(where: { $0.GuideNumber == guideNumber }) {
             url = "http://\(device.LocalIP):5004/auto/ch\(air.Frequency)-\(air.ProgramNumber)"; title = air.GuideName
         } else { return .failure(.init("Channel not found")) }
-        if var existing = webLiveSessions.values.first(where: { $0.deviceId == deviceId && $0.guideNumber == guideNumber }) {
-            if recordingManager.isFeedCachePullRunning(sessionId: existing.id) {
-                existing.lastActive = Date(); existing.viewers += 1; webLiveSessions[existing.id] = existing
-                await waitForFirstBytes(of: existing)   // the first viewer may still be waiting for the tuner
-                return .success(existing)   // a second viewer joins the same spool and the same tuner
-            }
-            stopWebLive(id: existing.id, reason: "the tuner stream ended")   // dead but not reaped yet: it would count against the tuner we are about to use
-        }
+        if let joined = await joinWebLive(deviceId: deviceId, guideNumber: guideNumber) { return .success(joined) }
         await yieldOTAScan(for: device)   // an air scan holding the tuners steps aside first
+        // Another first request for this channel may have started the stream while this one waited for the scan to step aside: join it, never open a second tuner.
+        if let joined = await joinWebLive(deviceId: deviceId, guideNumber: guideNumber) { return .success(joined) }
         guard !tunersFull(for: deviceId) else { return .failure(.init("All tuners are in use")) }
         guard !feedCacheDiskLow(minFreeGB: Self.feedCacheStartMinFreeGB) else { return .failure(.init("Not enough free disk space for live TV")) }
         let id = "live-\(deviceId.safeFileComponent)-\(UUID().uuidString.prefix(8))"
@@ -58,6 +53,19 @@ extension AppState {
         }
         await broadcastTunerOccupancyChange(deviceId: deviceId)
         return .success(session)
+    }
+
+    /// Joins the live session already running for this channel (a second viewer shares the spool and the tuner); nil when there is none.
+    /// A session whose puller has died is stopped here so it does not count against the tuner about to be used.
+    private func joinWebLive(deviceId: String, guideNumber: String) async -> WebLiveSession? {
+        guard var existing = webLiveSessions.values.first(where: { $0.deviceId == deviceId && $0.guideNumber == guideNumber }) else { return nil }
+        if recordingManager.isFeedCachePullRunning(sessionId: existing.id) {
+            existing.lastActive = Date(); existing.viewers += 1; webLiveSessions[existing.id] = existing
+            await waitForFirstBytes(of: existing)   // the first viewer may still be waiting for the tuner
+            return existing
+        }
+        stopWebLive(id: existing.id, reason: "the tuner stream ended")
+        return nil
     }
 
     /// Waits (up to ~6 s) for the spool's first bytes; a channel that will not tune ends the puller at once.
@@ -106,8 +114,11 @@ extension AppState {
                 if spool > Self.webLiveMaxSpoolBytes || self.feedCacheDiskLow(minFreeGB: Self.feedCacheStopMinFreeGB) {
                     self.stopWebLive(id: id, reason: "spool limit or low disk space"); continue
                 }
-                if await self.webServer.isStreamActive(id: id) { self.webLiveSessions[id]?.lastActive = Date(); continue }
-                if Date().timeIntervalSince(s.lastActive) > Self.webLiveIdleSeconds { self.stopWebLive(id: id, reason: "no viewers") }
+                let active = await self.webServer.isStreamActive(id: id)
+                // Re-read after the await: a viewer may have joined (lastActive bumped) or the session ended meanwhile.
+                guard let current = self.webLiveSessions[id] else { continue }
+                if active { self.webLiveSessions[id]?.lastActive = Date(); continue }
+                if Date().timeIntervalSince(current.lastActive) > Self.webLiveIdleSeconds { self.stopWebLive(id: id, reason: "no viewers") }
             }
         }
     }

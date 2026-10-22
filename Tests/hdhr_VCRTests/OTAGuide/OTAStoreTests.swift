@@ -30,6 +30,18 @@ struct OTAStoreTests {
         #expect(OTAStore.loadSummary(deviceId: "TEST", root: root)?.channels == 7)
     }
 
+    @Test func aChannelNumberCarriedByTwoMultiplexesAppearsOnce() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let dir = OTAStore.folder(deviceId: "DUP", root: root)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        func e(_ rf: Int, _ name: String) -> OTALineupEntry {
+            OTALineupEntry(GuideNumber: "7.1", GuideName: name, RF: rf, Frequency: 500_000_000 + rf, ProgramNumber: 1, ServiceType: 2, Hidden: false, Protected: false)
+        }
+        try JSONEncoder().encode([e(20, "FIRST"), e(30, "SECOND")]).write(to: dir.appendingPathComponent("lineup.json"))
+        #expect(try #require(OTAStore.savedLineup(deviceId: "DUP", root: root)).map(\.GuideNumber) == ["7.1"])
+        #expect(try #require(OTAStore.lineupEntries(deviceId: "DUP", host: "10.0.0.5", root: root)).map(\.GuideNumber) == ["7.1"])
+    }
+
     @Test func theLastCompletedScansAreReported() throws {
         let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
         #expect(OTAStore.lastCompletedScans(deviceId: "TEST", root: root).lineup == nil)

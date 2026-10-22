@@ -43,6 +43,30 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 - `POSIX_SPAWN_CLOEXEC_DEFAULT` (OR'd into the same `posix_spawnattr_setflags` call) — curl otherwise inherits every fd open at spawn time (the web server's listener socket, log handles, live SSE connections), and — being `SETSID`'d to survive a force-quit — can hold them open for the rest of a recording afterward. Only the three fds explicitly wired via `posix_spawn_file_actions_addopen` (stdin/stdout → `/dev/null`, stderr → the log path) stay open across the exec; every `RotatingLogFile`-backed log (`Models.swift`) also marks its own fd `FD_CLOEXEC` independently, closing the same gap for non-`posix_spawn` children too (`AppState`'s post-recording script hook, `reattachRecordings()`'s `ps` call). See `issues_resolved.md`'s "`RecordingManager.spawnDetached`'s curl ... inherited the app's entire open-fd table" entry.
 - `--dump-header {NSTemporaryDirectory()}hdhrVCRplus-{showId}.headers` captures response headers for tuner resource and error detection (see below).
 
+### Exact curl command line of a real recording
+
+`RecordingManager.start(...)` spawns `/usr/bin/curl` (no shell, no wrapper) with exactly this argument vector, in this order:
+
+```
+curl --connect-timeout 10
+     --max-time <durationSeconds + 120>
+     --proto =http,https --proto-redir =http,https
+     -H show_id:<show_id>
+     -H show_end:<show_end as integer Unix epoch seconds>
+     -H appname:hdhrVCRplus
+     [--interface <Network_interface>]            only when non-empty
+     [-v --no-progress-meter]                     only when Verbose_curl
+     --dump-header <NSTemporaryDirectory()>hdhrVCRplus-<show_id>.headers
+     "<show_url>?duration=<durationSeconds>&transcode=<profile>"
+     -o <outputPath>
+```
+
+- URL: `show_url` is the lineup stream URL (`http://<ip>:5004/auto/v<channel>`) with `?duration=<remaining seconds>&transcode=<profile>` appended unconditionally - `<profile>` is the lowercased, trimmed *effective* transcode, so an untranscoded recording still sends `transcode=none`. `durationSeconds = max(60, Int(endDate - now))` where `endDate` already includes Bonus Time.
+- The three `-H` headers carry no meaning for the tuner (it does not interpret them); they exist so the process is identifiable in `ps -Axo pid,args`. `reattachRecordings()` (and `ps | grep show_id`) requires the line to contain `show_id:`, `hdhrVCRplus` and `/usr/bin/curl`, takes the show id as the run of characters after `show_id:` up to the next whitespace/quote, and kills (SIGKILL) a match whose show is gone or already past `show_end`. A new argument must therefore never put whitespace inside the `show_id:` value or drop `appname:hdhrVCRplus`. `show_end:` is informational only.
+- stdin/stdout -> `/dev/null`; stderr -> `~/Library/Logs/hdhrVCRplus-curl.log` when verbose, else `/dev/null`. Spawned with `POSIX_SPAWN_SETSID` (see below), so it outlives the app.
+- `outputPath` = `Show.outputPath(...)` + `_partN` de-dupe (`docs/Models.md` "File name scheme"). Parent folder is created first; curl `-o` writes the raw MPEG-TS body (no remux).
+- The FEED cache puller's argument vector differs (see its section) and carries `-H feed_cache:<sessionId>` instead of `show_id`.
+
 ## Stop
 
 `stop()` sends `SIGKILL` to the curl PID, removes the PID from `pids`, releases its sleep assertion, then reaps the zombie via `waitpid(pid, nil, 0)` on a background utility queue — **not** inline. `SIGKILL` is normally reaped in microseconds, but it can't be delivered while curl sits in an uninterruptible (D-state) syscall — e.g. blocked writing to a stalled network mount, a perfectly valid recording target. A blocking `waitpid` here would freeze the menu-bar UI (`RecordingManager` is `@MainActor`, and `stopAll()` loops this over every recording) until the mount recovered. Backgrounding it is safe because `pids[showId]` is already cleared before the async reap runs, and `isRunning()` guards on `pids` — so no other `waitpid` call can ever race this pid.

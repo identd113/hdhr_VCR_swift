@@ -212,6 +212,8 @@ screen's title banner, so it's consistent everywhere the title appears.
 
 ## Redraw model
 
+**Signals and input (2026-10-22):** `SIGINT`/`SIGTERM`/`SIGHUP`/`SIGQUIT` all just set `interrupted`; the loop restores the terminal on its way out, and an `atexit` hook (`Terminal.enterRawScreen`) restores it on any other exit path. `SIGTSTP` (Ctrl-Z) sets a flag; the loop leaves raw mode, resets the handler to default and `raise`s `SIGTSTP`; after `SIGCONT` it re-enters raw mode and redraws (`SIGCONT` also sets `resized`). Multibyte UTF-8 input is accumulated from the lead byte's length (`Terminal.readMultibyte`, 100 ms per continuation byte) into one `Character`; an invalid/incomplete sequence is dropped.
+
 **Resizing the terminal redraws immediately** — a `SIGWINCH` handler (`main.swift`, installed
 next to the existing `SIGINT`/`SIGTERM` ones) sets a `resized` flag, checked at the top of the
 main loop before the next `pollStdin` wait; the loop calls `render()` right away when it's set,
@@ -636,6 +638,9 @@ builds the binary; a missing binary is a **failure**, not a silent skip.
 | `insideSearch_qAndFAreJustText_andEscapeGivesTheCommandsBack` | `q`/`f` typed into a search don't quit or toggle a favorite; after Esc `f` is a command again |
 | `shortQueriesWaitForThreeCharacters_noMatchesSaysSo_andBackspaceUnwindsAndCancels` | `(3+ to search)` hint, `No matches`, backspace unwinds the query and cancels on an empty one |
 | `sigterm_restoresTheTerminalBeforeExiting` | SIGTERM still restores the screen and cursor (never leaves a shell echo-less) |
+| `sighup_restoresTheTerminalBeforeExiting` | SIGHUP (closed terminal window) exits the same orderly way |
+| `ctrlZ_leavesTheScreen_andSIGCONTReentersAndRedraws` | Ctrl-Z leaves raw mode/alt screen before stopping; `fg` re-enters and redraws |
+| `multibyteUTF8Input_arrivesAsOneCharacter_notLatin1Garbage` | `é` typed into search is one character |
 | `requestsGoToTheConfiguredPort_notAHardcodedOne` | the guide fetch reaches the stub on the `HDHR_GUIDE_PORT` port |
 
 To extend: add a stub route in `StubGuideServer.respond`, drive keys with `PTYSession.send`, assert on `PTYSession.waitFor` (ANSI-stripped screen text)

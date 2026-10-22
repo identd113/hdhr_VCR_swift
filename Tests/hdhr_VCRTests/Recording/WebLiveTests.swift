@@ -60,6 +60,32 @@ struct WebLiveTests {
         #expect(await state.webLiveSessions.isEmpty)
     }
 
+    // MARK: concurrent first requests
+
+    @Test @MainActor func twoFirstRequestsWaitingOnTheAirScanShareOneTunerStream() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30, outputBytes: 4096)
+        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let state = makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)], lineups: ["DEV1": [.test(number: "5.1")]], recordingManager: manager)
+        state.config.Web_streaming_enabled = true
+        // An air scan holds a tuner, so both requests pause in yieldOTAScan before either has started a stream.
+        state.otaScanDeviceId = "DEV1"
+        state.otaScanTask = Task { try? await Task.sleep(for: .seconds(60)) }
+        state.otaHeldResources = ["tuner0", "tuner1"]
+        defer { state.otaScanTask?.cancel(); state.stopAllWebLive(reason: "test") }
+
+        async let a = state.startWebLive(deviceId: "DEV1", guideNumber: "5.1")
+        async let b = state.startWebLive(deviceId: "DEV1", guideNumber: "5.1")
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        state.otaHeldResources = []   // the scan lets go; both callers resume
+        let (ra, rb) = await (a, b)
+
+        let sa = try ra.get(), sb = try rb.get()
+        #expect(sa.id == sb.id)
+        #expect(state.webLiveSessions.count == 1)
+        #expect(state.webLiveSessions[sa.id]?.viewers == 2)
+    }
+
     // MARK: viewers
 
     @Test func theTunerIsFreedOnlyWhenTheLastViewerLeaves() async throws {

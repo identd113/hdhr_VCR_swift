@@ -14,6 +14,8 @@ extension AppState {
             return "No tuner available to scan."
         }
         let id = device.DeviceID
+        otaScanGeneration += 1
+        let generation = otaScanGeneration   // a cancelled scan's late callbacks (held tuners, status lines, events) are ignored once this moves on
         otaScanDeviceId = id
         let tunerCount = device.TunerCount ?? 1
         let seconds = lineupOnly ? min(seconds, 10) : seconds
@@ -40,7 +42,11 @@ extension AppState {
                 }
             },
             tunerLimit: { [weak self] in await MainActor.run { [weak self] in self?.otaTunerLimit ?? 1 } },
-            onHeldChange: { [weak self] held in Task { @MainActor [weak self] in self?.otaHeldResources = held } },
+            onHeldChange: { [weak self] held in
+                Task { @MainActor [weak self] in
+                    if let self, self.otaScanGeneration == generation { self.otaHeldResources = held }
+                }
+            },
             yieldRequested: { [weak self] in await MainActor.run { [weak self] in Date() < (self?.otaYieldUntil ?? .distantPast) } })
         otaScanStatus = "Scanning \(id)…"
         let twoPass = !lineupOnly && rfChannels == nil   // a full scan of the whole band: channel lists first, then guides
@@ -48,9 +54,15 @@ extension AppState {
         otaWindowActivates = userInitiated
         if showWindow { otaWindowRequest += 1 }   // the wizard shows its own progress and keeps this window closed
         glog("[OTA] \(lineupOnly ? "lineup-only " : "")scan starting on \(id) (\(host)), \(tunerCount) tuner(s), \(Int(seconds)) s per channel")
-        let report: @Sendable (String) -> Void = { [weak self] line in Task { @MainActor in self?.otaScanStatus = line } }
-        otaScanGeneration += 1
-        let generation = otaScanGeneration
+        // One status write per RF channel is a @Published change: while the menu is open it would rebuild it under the pointer (Menu rebuild
+        // churn invariant), so intermediate lines are held back and the newest goes out on the next line after the menu closes (the final
+        // status is always written on completion).
+        let report: @Sendable (String) -> Void = { [weak self] line in
+            Task { @MainActor [weak self] in
+                guard let self, self.otaScanGeneration == generation, !self.menuIsOpen else { return }
+                self.otaScanStatus = line
+            }
+        }
         let applyEvent: @MainActor (OTAScanEvent) -> Void = { [weak self] event in
             if let self, self.otaScanGeneration == generation { self.otaProgress.apply(event) }
         }
@@ -63,7 +75,7 @@ extension AppState {
                 // Pass 1: every RF channel's channel list (a couple of seconds each), saved at once. Pass 2: the guide of only the
                 // stations pass 1 found that announce one; the rest keep their pass 1 result.
                 let first = await scanner.scan(env: env, rfChannels: OTAScanner.allRFChannels, secondsPerChannel: 10, lineupOnly: true, onEvent: forward, progress: report)
-                channelListSaved = OTAStore.save(first, deviceId: id, lineupOnly: true) != nil
+                channelListSaved = await Task.detached(priority: .utility) { OTAStore.save(first, deviceId: id, lineupOnly: true) }.value != nil
                 let wanted = first.multiplexes.filter { $0.result.announcedEITCount > 0 }.map(\.rf)
                 if first.cancelled || wanted.isEmpty {
                     outcome = first
@@ -77,13 +89,16 @@ extension AppState {
                 outcome = await scanner.scan(env: env, rfChannels: rfChannels ?? OTAScanner.allRFChannels, secondsPerChannel: seconds, lineupOnly: lineupOnly,
                                              onEvent: forward, progress: report)
             }
+            // The save reads, merges and rewrites the guide/lineup/mux files: done off the main actor, state updates hop back afterwards.
+            // A cancelled full scan saved its channel lists already; its half-read guide must not replace an earlier complete one.
+            let finished = outcome
+            let saved: OTAScanSummary? = (twoPass && finished.cancelled) ? nil
+                : await Task.detached(priority: .utility) { OTAStore.save(finished, deviceId: id, lineupOnly: lineupOnly, partial: rfChannels != nil) }.value
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 // A cancelled scan's late finish must not clear the state of a scan started right after it.
                 let current = self.otaScanGeneration == generation
                 if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaProgress.endedAt = Date(); self.otaProgress.lanes = [:]; self.otaProgress.note = nil; self.otaHeldResources = [] }
-                // A cancelled full scan saved its channel lists already; its half-read guide must not replace an earlier complete one.
-                let saved = (twoPass && outcome.cancelled) ? nil : OTAStore.save(outcome, deviceId: id, lineupOnly: lineupOnly, partial: rfChannels != nil)
                 if saved != nil, rfChannels != nil, !lineupOnly { self.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self) }   // the web guide's Air Only rows show the new listings
                 if let summary = saved {
                     let done = "Done: \(summary.channels) channels, \(summary.events) events from \(summary.multiplexes) multiplexes"

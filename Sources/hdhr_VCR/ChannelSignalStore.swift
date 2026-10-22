@@ -60,13 +60,31 @@ final class ChannelSignalStore {
             guard let data    = try? Data(contentsOf: path) else { return nil }
             let dec = JSONDecoder()
             dec.dateDecodingStrategy = .secondsSince1970
-            guard let decoded = try? dec.decode([String: [ChannelSignalSample]].self, from: data)
+            // Per-sample lenient decode: one malformed sample is dropped, not the whole file.
+            guard let decoded = try? dec.decode([String: [LossySample]].self, from: data)
             else { return nil }
             let now = Date()
-            return decoded.mapValues { Array($0.suffix(50).map { Self.repaired($0, now: now) }) }.filter { !$0.value.isEmpty }
+            return decoded.mapValues { Array($0.compactMap(\.sample).suffix(50).map { Self.repaired($0, now: now) }) }.filter { !$0.value.isEmpty }
         }).value else { return }
-        history = h
+        history = Self.merged(loaded: h, live: history)
         buckets = computeAllBuckets()
+    }
+
+    private struct LossySample: Decodable {
+        let sample: ChannelSignalSample?
+        init(from decoder: Decoder) throws {
+            sample = try? ChannelSignalSample(from: decoder)
+        }
+    }
+
+    /// Samples recorded while the async load was still running are kept, not overwritten by the file.
+    nonisolated static func merged(loaded: [String: [ChannelSignalSample]],
+                                   live: [String: [ChannelSignalSample]]) -> [String: [ChannelSignalSample]] {
+        var out = loaded
+        for (k, v) in live where !v.isEmpty {
+            out[k] = Array(((out[k] ?? []) + v).sorted { $0.ts < $1.ts }.suffix(50))
+        }
+        return out
     }
 
     // Adaptive re-sample frequency: poor channels checked daily, good channels weekly.

@@ -149,3 +149,5 @@ Build the web stream on **AVFoundation (AVAssetReader â†’ hardware H.264 + AAC â
 A lineup or air-only channel can be watched in the browser: `POST /api/live-start` spools the tuner stream (FEED-cache puller) into a temp `.ts` that the same HLS converter follows like a recording that is never saved.
 It occupies a tuner (counted in `activeTunerCount`), yields to a running air scan and to a scheduled recording, is limited to about 3 hours / 6 GB per session, ends when the last viewer closes the player
 (`/api/live-stop`) or 45 s after the stream goes quiet, and is stopped when the app quits. Details and the routes: `docs/WebServer.md` "Live TV in the browser".
+
+Concurrent first requests for one live channel: `startWebLive` re-checks for an existing session after waiting for an air scan to step aside, so the second caller joins the first one's stream instead of opening another tuner; `reapWebLiveSessions` re-reads the session after its awaits so a viewer who just joined is not reaped.

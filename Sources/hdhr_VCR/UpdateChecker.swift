@@ -29,8 +29,12 @@ struct UpdateCheckResult: Equatable {
 // Component-wise integer compare ("2.0.10" > "2.0.9" — a plain string compare would get this
 // wrong). Missing trailing components are treated as 0, so "2.1" > "2.0.9".
 func isVersion(_ a: String, newerThan b: String) -> Bool {
-    let aParts = a.split(separator: ".").map { Int($0) ?? 0 }
-    let bParts = b.split(separator: ".").map { Int($0) ?? 0 }
+    // Numeric prefix only, so a pre-release/build suffix ("5-beta", "5+abc") reads as 5, not 0.
+    func parts(_ v: String) -> [Int] {
+        v.split(separator: ".").map { Int($0.prefix(while: { $0.isASCII && $0.isNumber })) ?? 0 }
+    }
+    let aParts = parts(a)
+    let bParts = parts(b)
     for i in 0..<max(aParts.count, bParts.count) {
         let x = i < aParts.count ? aParts[i] : 0
         let y = i < bParts.count ? bParts[i] : 0

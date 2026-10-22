@@ -158,7 +158,8 @@ enum OTAStore {
               Date().timeIntervalSince(modified) <= maxAge,
               let data = try? Data(contentsOf: file),
               let saved = try? JSONDecoder().decode([OTALineupEntry].self, from: data) else { return nil }
-        let entries = saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }.map { e in
+        var seen = Set<String>()   // one entry per channel number (two multiplexes can carry the same virtual number): ids stay unique
+        let entries = saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected && seen.insert($0.GuideNumber).inserted }.map { e in
             LineupEntry(GuideNumber: e.GuideNumber, GuideName: e.GuideName, URL: "http://\(host):5004/auto/ch\(e.Frequency)-\(e.ProgramNumber)",
                         HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil)
         }
@@ -170,7 +171,8 @@ enum OTAStore {
     /// Every real channel of the saved air lineup (video and audio services, no hidden or protected ones), whatever its age; nil when none is saved.
     static func savedLineup(deviceId: String, root: URL = OTAStore.root) -> [OTALineupEntry]? {
         guard let saved = allSavedLineup(deviceId: deviceId, root: root) else { return nil }
-        return saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected }
+        var seen = Set<String>()   // first entry per channel number wins (as `airOnly` does), so list/picker ids are unique
+        return saved.filter { ($0.ServiceType == 2 || $0.ServiceType == 3) && !$0.Hidden && !$0.Protected && seen.insert($0.GuideNumber).inserted }
     }
 
     /// The listings a scan saved, by channel number (empty when none). Decodes the whole saved guide: callers cache it by the file's date.

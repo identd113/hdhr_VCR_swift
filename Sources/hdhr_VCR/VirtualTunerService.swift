@@ -525,7 +525,7 @@ final class VirtualTunerService {
     /// starting"` in the log, mid-recording. A `u32` has exactly 8 hex digits of room, full stop —
     /// no format lets a DeviceID carry more than that.
     ///
-    /// **`"FEED" + the source's own last 4 hex digits`** — same 4-digit `FEED` sentinel prefix
+    /// **`"FEED" + CRC-32(full source ID) & 0xFFFF`** (was: the source's own last 4 hex digits; changed so sources sharing a suffix no longer collide; the examples below that show a last-4 suffix are historical) — same 4-digit `FEED` sentinel prefix
     /// `makeDeviceID()` already uses (2026-09-03: kept deliberately, rather than trimming it to a
     /// 2-digit `"FE"` marker to show more of the source's digits, a version of this function briefly
     /// carried — for one consistent "known-fake" brand across every DeviceID this app ever mints,
@@ -555,7 +555,10 @@ final class VirtualTunerService {
         guard let sourceDeviceID, sourceDeviceID.count == 8,
               UInt32(sourceDeviceID, radix: 16) != nil
         else { return makeDeviceID() }
-        return "FEED\(sourceDeviceID.suffix(4).uppercased())"
+        // 16 bits is all a FEED-prefixed ID has room for, so spend them on a CRC-32 of the FULL source ID
+        // rather than its last 4 digits: two tuners that merely share a suffix no longer collide.
+        let hash = crc32(Array(sourceDeviceID.uppercased().utf8)) & 0xFFFF
+        return String(format: "FEED%04X", hash)
     }
 
     /// Resolves the rare race where two Macs both start relaying the same source tuner before

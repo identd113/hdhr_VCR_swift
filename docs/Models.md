@@ -59,7 +59,7 @@ Called after each recording completes and file verification passes:
 
 ## Bonus Time Default
 
-`show_bonus_time` defaults to `false` for all new shows. **One exception:** the `init(from:)` decoder uses `show_genre.lowercased().contains("sports")` as the fallback when the field is absent from JSON — so shows loaded from a pre-bonus-time config auto-enable it if their genre is Sports. New shows created through the UI or `addShowFromGuide` always receive an explicit value (never the genre-based fallback), so genre alone does not auto-enable bonus time for newly added shows.
+`show_bonus_time` defaults to `false` for all new shows. **One exception:** the `init(from:)` decoder uses `Show.genreImpliesBonusTime(show_genre)` (`show_genre.lowercased().contains("sport")` — singular on purpose, matches both guide.php's "Sports" and XMLTV's "Sport") as the fallback when the field is absent from JSON — so shows loaded from a pre-bonus-time config auto-enable it if their genre contains "sport". New shows created through the UI or `addShowFromGuide` always receive an explicit value (never the genre-based fallback), so genre alone does not auto-enable bonus time for newly added shows.
 
 ---
 
@@ -70,6 +70,49 @@ Called after each recording completes and file verification passes:
 `Show.posixPrimaryDir` is the configured folder as POSIX (a legacy HFS string like `"Raid6:DVR Tests:"` — shows migrated from the original AppleScript app — converted by `toPosix`, never swapped for the fallback), and `Show.isRecordingToFallback` is `!show_dir.isEmpty && posixRecordDir != posixPrimaryDir` — what drives `startRecording`'s "Primary folder unavailable — recording to fallback" warning. It compares the two *POSIX* forms: comparing `posixRecordDir` against the raw `show_dir` string (the pre-2026-10-09 check) always differed for an HFS-style `show_dir`, so such a show logged a false "unavailable" warning on every airing even though the mounted primary folder was in use. `posixRecordDir` treats `show_dir` as primary and `show_temp_dir` as the fallback: if `show_dir`'s parent directory doesn't exist (the volume is unmounted), it redirects to `show_temp_dir`. For this to do anything, `show_temp_dir` has to actually be a *different* folder from `show_dir` — a prior bug in the native Add/Edit Show dialogs set them to the identical value (the user's chosen folder) on every save, silently discarding whatever real fallback a show had (including one set correctly by the web guide's `addShowFromGuide`, which always uses `Show.localFallbackDir` for `show_temp_dir` regardless of what `show_dir` is). Both dialogs now set `show_temp_dir` to `Show.localFallbackDir` instead of copying `show_dir`.
 
 **Self-healing for shows already saved with the bug:** `Show.init(from:)` repairs it on every load — a non-empty `show_temp_dir` identical to a non-default `show_dir` (i.e. `show_temp_dir == show_dir && show_dir != Show.localFallbackDir`) is treated as unambiguous evidence of the bug (a genuinely intentional matching value would be pointless to ever set) and is reset to `Show.localFallbackDir` in memory immediately, before anything reads `posixRecordDir`. This doesn't require re-saving through the now-fixed dialogs, and doesn't force an immediate config-file rewrite either — it just reapplies on every load, so the running app's fallback behavior is correct from the moment the config loads regardless of what's actually persisted on disk.
+
+---
+
+## Persisted Show Schema (JSON keys in `shows[]`)
+
+Encoded by the synthesized `Encodable` (key = Swift property name; `Optional` fields that are `nil` are **omitted**, not written as `null`). Decoded by `Show.init(from:)`: every key is optional on read, the default below is what a missing/mistyped key becomes. Dates are ISO-8601 UTC strings with no fractional seconds (`"2026-05-30T21:00:00Z"`); the decoder also accepts a legacy numeric or numeric-string epoch (> 0), anything else decodes as `nil`.
+
+| Key | JSON type | Default on missing | Meaning / units |
+|---|---|---|---|
+| `show_id` | String | fresh UUID, **32 lowercase hex chars, no dashes** | Identity. Never an integer. Also the value after `show_id:` in the curl `-H` header. |
+| `show_title` | String | `""` | Raw title (series shows have the ` SxxExx…` suffix stripped by `Show.seriesTitle(from:)` at creation). |
+| `show_is_series` | Bool | false | Together with the next two flags selects the 4-state type (see top). |
+| `show_use_seriesid` | Bool | false | SeriesID(Channel). |
+| `show_use_seriesid_all` | Bool | false | SeriesID(All); wins over `show_use_seriesid`. |
+| `show_air_date` | [String] | `[]` | **Full English weekday names**, `"Sunday"`…`"Saturday"` (matched case-insensitively, unknown names ignored). Used by `.dateTime` for the schedule; informational for `.single`. |
+| `show_channel` | String | `""` | Guide number as text (`"4.1"`, `"1002"`). |
+| `show_time` | Number (Double) | **20.0** | **Local decimal hours 0-24** (`20.5` = 8:30 PM local). Minutes = `round(frac*60)`. DateTime only. |
+| `show_length` | Int | **60** | **Minutes.** Fallback end = `show_next + show_length`. |
+| `show_next` | ISO date, optional | omitted (nil) | Next air start (absolute instant). |
+| `show_end` | ISO date, optional | omitted | End of the current/next airing, **including** Bonus Time padding once `startRecording` has applied it. |
+| `show_active` | Bool | **true** | false only for a finished `.single`. |
+| `show_paused` | Bool | false | See Show State Flags. |
+| `hdhr_record` | String | `""` | Device ID (8 hex, uppercase, e.g. `"105404BE"`). |
+| `show_url` | String | `""` | Tuner stream URL from the lineup (`http://ip:5004/auto/v4.1`); re-resolved when empty. |
+| `show_seriesid` | String | `""` | Guide SeriesID. |
+| `show_fail_count` / `show_fail_reason` | Int / String | 0 / `""` | Consecutive failures; last reason text (`"Tuner not detected"` is a reserved marker). |
+| `show_logo_url` | String | `""` | Channel/show image URL. |
+| `show_transcode` | String | `"none"` | `none|heavy|mobile|internet720|internet540|internet480|internet360|internet240`. |
+| `show_recording` | Bool | false | Reset to false on every launch, then re-derived by `reattachRecordings()`. |
+| `show_last` | ISO date, optional | omitted | Last completed recording. |
+| `notify_upnext_time` / `notify_recording_time` | ISO date, optional | omitted | De-dupe markers for the two reminder notifications. |
+| `show_dir` | String | `""` | Destination folder, POSIX (a legacy HFS `"Vol:Folder:"` string is converted at read time, see `toPosix`). Empty = `~/Movies/hdhr_videos`. |
+| `show_temp_dir` | String | `""` | Local fallback folder when `show_dir`'s volume is offline; self-healed if equal to `show_dir`. |
+| `show_recording_path` | String | `""` | Absolute path of the active/last recording file. |
+| `show_genre` | String | `""` | First guide genre tag. |
+| `show_bonus_time` | Bool | `Show.genreImpliesBonusTime(show_genre)` | Extend past `show_end` by `Sports_padding_minutes`. |
+| `show_bonus_padded_end` | ISO date, optional | omitted | The padded `show_end` already applied (prevents double padding on relaunch). |
+| `discord_start_msg_id` | String | `""` | Discord message id of the lifecycle embed. |
+| `show_tuner_resource` | String | `""` | `"tuner0"` from `X-HDHomeRun-Resource`. |
+| `show_ignore_duplicate_once` | Bool | false | Per-show override of skip-already-recorded. |
+| `show_new_only` | Bool | false | Skip airings the guide does not flag as new. |
+
+`Show.blank()` uses the same defaults (fresh `show_id`, `show_time 20.0`, `show_length 60`, `show_active true`, `show_transcode "none"`, everything else empty/false/nil). `Show.state` and `isSeries` are computed, never stored.
 
 ---
 
@@ -86,6 +129,43 @@ If the `shows`/`the_shows` key *is* present in the config but the array still fa
 `Show.outputPath(date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.
 
 **Extension is always `.ts`** regardless of transcode profile. The recorder writes the device's HTTP response verbatim (`curl -o`, no remux), and that response is always an MPEG-2 transport stream — transcoding only swaps the video codec inside the TS (MPEG-2 → H.264), not the container (see `docs/HDHRFindings.md`). `Show.recordingExtensions = {ts, m2ts, mkv}` and `Show.isRecordingFile(_:)` are the single source of truth for "is this a file we produced": `.ts` is current output, `.m2ts`/`.mkv` are legacy (pre-2026-07) and stay recognized so old recordings still count for `recordedEpisodeTags` (skip-already-recorded) and `organizeSeriesRecordings`. `.mp4` is deliberately excluded — the app never wrote it.
+
+
+### File name scheme
+
+`Show.outputPath(date:subfolder:episodeTag:)` returns `<posixRecordDir>[/<subfolder>]/<title><_EPISODETAG>_<channel>_<yyyyMMdd_HHmm>.ts`:
+
+- `<title>` = `show_title` with `/` replaced by `-`, leading `.` characters stripped (no hidden/`.`/`..` names); empty becomes `Recording`. Trimmed (whole characters) so the whole file name stays <= 255 UTF-8 bytes.
+- `<_EPISODETAG>` = `"_" + episodeTag` (the guide's `EpisodeNumber`, e.g. `S03E18`, or a bare season `S03`) and is **omitted entirely** when there is no tag. The tag is only passed for series shows when `Series_subfolder_enabled` is on, so the tag sits between title and channel, each part joined by `_`.
+- `<channel>` = `show_channel` verbatim (`4.1`). Date part = `show_next` (else now), formatter `yyyyMMdd_HHmm`, `en_US_POSIX`, **local time zone**.
+- Example: `Jeopardy_S41E112_4.1_20261022_1900.ts`; no tag: `Local News_4.1_20261022_1800.ts`.
+- `subfolder` (series + `Series_subfolder_enabled`): `<title>/Season NN` (`NN` = zero-padded `%02d` season from the tag; `<title>` has `/` -> `-`), or just `<title>` when no parseable season.
+- `AppState.uniqueRecordingPath` then avoids overwriting a non-empty file from an earlier attempt of the same airing by inserting `_part2`..`_part99` before `.ts`.
+
+### Parsing the tag back out (`HDR_EPISODE`, skip-already-recorded)
+
+Three readers, deliberately different:
+
+| Reader | Regex (case-insensitive) | Notes |
+|---|---|---|
+| `AppState.episodeTag(inFilename:)` (organize + `recordedEpisodeTags`) | `[_ ](S\d+(?:E\d+)?)` | Leading `_` or space required, **no trailing delimiter required**; accepts legacy `Title SxxExx guests_…` names. Returned as found; callers uppercase it. |
+| Post-recording script env `HDHR_EPISODE` (`runPostRecordingScript`) | `_(S\d+(?:E\d+)?)_` | **Requires both a leading and a trailing underscore** (which `outputPath` always produces: `_S03E18_4.1_…`); the underscores are trimmed. Empty string when the file has no tag. |
+| Duplicate gate (`duplicateEpisodeTag`, startRecording) | `^S\d+E\d+$` on the *guide's* tag | Needs a full season+episode tag; a bare `S03` never counts as a duplicate. |
+
+### Size floors (what counts as "already recorded")
+
+`recordedEpisodeTags(forTitle:baseDir:expectedMinutes:...)` scans `<baseDir>/<title>` and its `Season *` children for recording files (`.ts/.m2ts/.mkv`) and ignores a file smaller than `minBytes = max(durationFloor, 0.8 x largest sibling file with a tag)`:
+
+- `durationFloor = max(1_000_000, Int(expectedMinutes x 1_500_000/8 x 60 x 0.8))` -> i.e. 1.5 Mbps = 11,250,000 bytes/min, x0.8; `expectedMinutes` = the show's `show_length` (0 = flat 1,000,000-byte floor).
+- Smaller files are skipped (never counted); with `renameTruncatedTag` a truncated file for that tag is renamed to `.partial`. Files modified within 120 s before this airing's start (`ownAirStart - 120 s`) are this airing's own earlier attempts: excluded, and deleted if 0 bytes.
+
+### `Show.seriesTitle(from:)`
+
+Strips the first match of `\s+S\d+E\d+.*$` (case-insensitive) and everything after it: `"South Park S24E116 Trey Parker; Matt Stone"` -> `"South Park"`. Needs whitespace before `S`, digits, `E`, digits - so a bare `S03` or a title with no episode tag is returned unchanged. Applied to SeriesID shows only (Single/DateTime keep the raw title). The result is trimmed only by the regex's own whitespace consumption (no extra trim). `GuideEntry.seriesTitle` caches the same value for title matching.
+
+### `Show.toPosix` (legacy HFS paths)
+
+Applied to `show_dir`/`show_temp_dir` at read time (`posixPrimaryDir`/`posixRecordDir`), never written back: if the string already starts with `/` **or contains no `:`** it is returned unchanged; otherwise one trailing `:` is dropped, the rest is split on `:` (empty components kept) and rejoined with `/` under a `/Volumes/` prefix. `"Raid6:DVR Tests:"` -> `/Volumes/Raid6/DVR Tests`. So the first component is always treated as a volume name (the boot volume `Macintosh HD:Users:x` becomes `/Volumes/Macintosh HD/Users/x`, which is a symlink to `/` and resolves).
 
 ---
 

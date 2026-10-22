@@ -194,7 +194,7 @@ struct VirtualTunerServiceTests {
         // binary DeviceID TLV; a non-hex ID (an earlier version literally appended "_Relay") makes
         // start() reject it and the relay never binds at all — caught live, mid-recording.
         let id = VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE")
-        #expect(id == "FEED04BE")
+        #expect(id.hasPrefix("FEED") && id.count == 8)
         #expect(UInt32(id, radix: 16) != nil)
         #expect(VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE") == id)
     }
@@ -203,8 +203,9 @@ struct VirtualTunerServiceTests {
         let a = VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE")
         let b = VirtualTunerService.relayDeviceID(sourceDeviceID: "10440A2C")
         #expect(a != b)
-        #expect(a == "FEED04BE")
-        #expect(b == "FEED0A2C")
+        // Derived from the FULL source ID: two sources sharing their last 4 digits no longer collide.
+        #expect(VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE") != VirtualTunerService.relayDeviceID(sourceDeviceID: "1054FFBE"))
+        #expect(VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE") != VirtualTunerService.relayDeviceID(sourceDeviceID: "10A104BE"))
     }
 
     @Test func relayDeviceID_neverCollidesWithItsOwnSourceDeviceID() {

@@ -3498,12 +3498,17 @@ final class VLCPlayerWindowManager {
     /// preemption heads-up/stop notices) — a sheet, not runModal(), so it never blocks the idle
     /// loop that raises it. No-op without a window, or while another sheet is already showing.
     func presentNotice(title: String, message: String) {
-        guard let win = window, win.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
+        guard let win = window, win.attachedSheet == nil else {
+            // No player window, or a sheet is already up on it: still tell the person (Dialogs picks a floating window), never drop it silently.
+            glog("[VLC] notice shown without a free player window: \(title)")
+            Dialogs.show(alert)
+            return
+        }
         alert.beginSheetModal(for: win)
     }
     // FEED client-side local relay (docs/VirtualTunerService.md) — set by AppState.
@@ -3822,10 +3827,10 @@ final class VLCPlayerWindowManager {
         (currentChannelNumber, secondaryChannelNumber) = (secondaryChannelNumber, currentChannelNumber)
         (currentFeedRemoteURL, secondaryFeedRemoteURL) = (secondaryFeedRemoteURL, currentFeedRemoteURL)
         (currentFeedSessionId, secondaryFeedSessionId) = (secondaryFeedSessionId, currentFeedSessionId)
-        if let newPrimaryTitle = secondaryTitle {
-            secondaryTitle = window?.title
-            window?.title = newPrimaryTitle
-        }
+        // Always swap: a nil secondary title must not leave the old primary's name on the window.
+        let newPrimaryTitle = secondaryTitle
+        secondaryTitle = window?.title
+        window?.title = newPrimaryTitle ?? "hdhrVCRplus"
     }
 
     // Arrow-key seek (recording playback only) + Space to pause/resume (same scope) + Esc to exit

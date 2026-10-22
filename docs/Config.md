@@ -4,7 +4,8 @@
 
 **Location**: `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`  
 **Hostname changes**: the file is keyed by `ProcessInfo.processInfo.hostName`, which isn't stable (DHCP-assigned name, `.local` vs `.lan`, a rename, a VPN). `ConfigManager.load()` tries, in order: the current host's file, its `.bak`, `~/Documents/hdhr_VCR-{hostname}.json` (the last-ever migration from the old TCC-protected location), and then — new 2026-10-09 — the **newest other** `hdhr_VCR-*.json` in the folder that decodes as a `ConfigFile` (never a `.bak`, never an undecodable file), adopted as a *copy* under the current name (the original stays) with a `[ConfigManager] No config for hostname … — adopting …` warning. Only when none of those exist is it a fresh install. The folder is per-user and per-machine, so any other such file there is this install's config under an earlier name.  
-**Backup**: `.json.bak` written before each save. Import Config also keeps a permanent timestamped copy (`…json.pre-import-YYYYMMDD-HHmmss.bak`) of the config it replaces.
+**Backup**: `.json.bak` written before each save. Import Config also keeps a permanent timestamped copy (`…json.pre-import-YYYYMMDD-HHmmss.bak`) of the config it replaces.  
+**Corrupt copy**: before a save overwrites a main config that fails to decode (or whose `shows` array silently decoded to `[]` though the file holds one), `ConfigManager.quarantineIfUnreadable()` copies it to `…json.corrupt-<unix-ts>` next to it and logs a warning; the `.bak` rule is unchanged.
 
 **Format versions**:
 - v2 (current): dates encoded as ISO8601 strings (`"2026-05-30T21:00:00Z"`), top-level shows key is `"shows"`.
@@ -15,6 +16,20 @@
 **Async save**: `AppState.saveConfig()` (called from ~26 show-mutation sites in `AppState.swift`, essentially every add/edit/delete/pause/resume) snapshots `config`/`shows` synchronously (cheap in-memory copies) then hands the actual remove-backup/copy/atomic-write disk I/O to `ConfigManager.saveAsync(_:)`, which runs it on a private serial background queue instead of inline on `@MainActor` — the previous synchronous write there could stall every web request `WebServer` was mid-hop onto the same actor for. `ConfigManager.save(_:)` itself (the throwing, synchronous form) still exists and is what `saveAsync` calls under the hood — used directly only by `maybeUpgrade`'s v1→v2 migration inside `load()`, a one-time startup path where synchronous, exception-propagating completion is actually wanted. Any caller that must be sure a save has actually reached disk before proceeding (right before the process exits — the SIGTERM handler in `AppState.startup()`, and `teardownForExit()` behind `quit()`/`relaunchForVLC()`) calls `configManager.flushPendingSaves()` right after `saveConfig()`, which blocks until every previously-enqueued save has completed (the queue is serial/FIFO, so this also covers the one just enqueued). Every other call site is fire-and-forget by design — a save that fails there logs `"[Config] Save failed: ..."` and sets `AppState.statusMessage`, same as before this became async.
 
 **Test seam:** `ConfigManager.init(appSupportDir:documentsDir:)` takes optional directory overrides; production always passes `nil` and gets the real paths above (`documentsDir` redirects the `~/Documents` migration fallback — without it any test of `load()`'s fallbacks reads the developer's real `~/Documents`). `AppState.init(configManager:)` accepts an injected `ConfigManager`, defaulting to a real `ConfigManager()` — the app's own startup (`hdhr_VCRApp.swift`) always uses that default. Tests go through `makeTestAppState()` (`Tests/hdhr_VCRTests/TestFixtures.swift`), which points every test's `ConfigManager` at a fresh per-call temp directory. Without this seam, any test exercising a mutating `AppState` path that calls `saveConfig()` (`deleteShow`, `addShow`, `updateShow`, `pauseShow`, `resumeShow`) would silently overwrite the real on-disk config the deployed app uses — this is exactly what would have happened testing `deleteShow`'s side-table cleanup (`Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`) before this seam existed.
+
+**Top-level JSON layout** (`ConfigFile`, written pretty-printed with sorted keys, dates ISO-8601):
+
+```json
+{
+  "config": { "Config_version": "2", "GuideHours": 24, "Notify_upnext": 35.0, ... },
+  "shows":  [ { "show_id": "9f2c...", "show_title": "...", ... } ]
+}
+```
+
+- `config` holds the whole `AppConfig` as **one flat object**, keys exactly the property names in "AppConfig Fields" below (no nesting, no prefix). It is required: a file without a decodable `config` object fails the whole `ConfigFile` decode (-> `.bak` fallback). Inside it every key is optional - a missing/mistyped key takes its default, and several are clamped on read (`GuideHours` 1...28, `Fail_count_setting` >= 1, `Series_scan_retry_hours` >= 1, `Guide_refresh_interval_divisor` in {2,4,8} else 8, `OTA_lineup_hour` outside 0...23 -> -1).
+- `shows` is an array of Show objects (schema: `docs/Models.md` "Persisted Show Schema"). Legacy v1 files use `the_shows` instead; the decoder tries `shows` then `the_shows`, and only `shows` is ever written. If neither decodes, shows become `[]` (logged at error level).
+- `Config_version` lives **inside `config`**, not at the top level. Current value `"2"`; a missing key also decodes as `"2"`, so only an explicit other string (a v1 file) triggers `maybeUpgrade`, which stamps `"2"` and re-saves once.
+- No other top-level keys are read or written; unknown keys are ignored.
 
 ## Adding a New Field
 
@@ -36,7 +51,7 @@ Guide_refresh_interval_divisor Int 8    how often AppState.idleLoop's background
 Default_transcode       String  "none"  none | heavy | mobile | internet720
 Fail_count_setting      Int     3       pause show after N consecutive failures (clamped to >= 1 on decode)
 Min_disk_free_gb        Double  30.0    refuse to record below this free space (GB)
-Idle_timer_interval     Int     10      seconds between idle loop checks (min enforced: 5)
+Idle_timer_interval     Int     10      seconds between idle loop checks (the timer floors it at 5 s; the per-show failure cooldown multiplies the raw value, unfloored)
 Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved to Title/Season XX/ subfolders inside the recording folder; falls back to flat path if no parseable season in guide EpisodeNumber
 Skip_recorded_episodes  Bool    false   when true (needs Series_subfolder_enabled), skip recording a series episode whose SxxExx is already on disk — advances to the next airing without recording or a fail count; only when the guide entry has a full season+episode tag
 Post_recording_script   String  ""      POSIX path to a shell script run after each successful recording; $1 = file path; HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE set as env vars; PATH is whatever the app inherited at launch (no Homebrew-path prepending); script exits are logged but never block the app
@@ -45,7 +60,7 @@ TimeMachine_exclude_mode String "off"  off | perFile | perFolder — excludes re
 Series_scan_retry_hours Int     4       hours before re-scanning guide when no episode found (clamped to >= 1 on decode)
 Check_for_updates       Bool    true    gate the automatic once-a-day background update check (AppState.updateCheckLoop()); manual "Check for Updates" button always runs regardless; see UpdateChecker.swift
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
-Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrVCRplus.log
+Verbose_curl            Bool    false   add -v to curl; stderr appended to ~/Library/Logs/hdhrVCRplus-curl.log (its own file, not the main log)
 Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end (any show can enable; sports entries default to true)
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)
 Discord_enabled         Bool    false   master Discord on/off toggle; decode fallback is `!Discord_webhook_url.isEmpty` (auto-enables for existing configs that already have a webhook set)

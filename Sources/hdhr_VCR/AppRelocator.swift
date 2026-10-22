@@ -192,7 +192,9 @@ enum AppRelocator {
         config.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: destURL, configuration: config) { _, error in
             if let error {
+                // Keep this instance alive — quitting now would leave the user with no running app.
                 glog("AppRelocator: relaunch from \(destURL.path) failed: \(error)", level: .error)
+                return
             }
             DispatchQueue.main.async {
                 NSApp.terminate(nil)

@@ -660,8 +660,10 @@ function nextEvtSeq(){return ++_evtSeq;}
 // necessarily contain an older event's tuner-dropdown change. The grid/sumph are whole-state snapshots (newer wins),
 // but each tuner dropdown is tracked by its own seq: a stale payload is dropped for the grid yet still applies any
 // device fragment newer than what that dropdown last received.
-var _tdropSeq={};
+var _tdropSeq={},_sumPhSeq=0;
 function applyGuidePayloadSeq(seq,d,selOverride){
+  // A fragment push (sumPh) newer than this payload already updated #sum-ph: don't let this older snapshot overwrite it.
+  if(seq<_sumPhSeq&&d.sumph!=null)d=Object.assign({},d,{sumph:null});
   var td=d.tdrop||{},fresh={};
   Object.keys(td).forEach(function(dev){if(seq>=(_tdropSeq[dev]||0)){_tdropSeq[dev]=seq;fresh[dev]=td[dev];}});
   if(seq<_appliedSeq){
@@ -688,7 +690,7 @@ function applyGuidePayload(d,selOverride){
   // Bound the lazily-loaded detail cache: drop airings that started before the new window.
   _heavyCache.forEach(function(v,k){var st=+k.slice(k.lastIndexOf(':')+1);if(st&&st<_winStart)_heavyCache.delete(k);});
   var oldPh=document.getElementById('sum-ph');
-  if(oldPh)oldPh.innerHTML=d.sumph;
+  if(oldPh&&d.sumph!=null)oldPh.innerHTML=d.sumph;
   // Update each tuner's show list; header/toggle-open state is preserved.
   Object.keys(d.tdrop).forEach(function(dev){
     var el=document.getElementById('tdrop-body-'+dev);
@@ -2233,10 +2235,16 @@ setInterval(updateNowLine,60000);
 // expiry went stale in the cache and every load after it expired reloaded itself every minute.
 (function(){
   var _ver='{{APP_VERSION}}',_t0=Date.now(),_maxAge=2*3600*1000;
+  // Never reload out from under the user: while a modal is open or a field has focus, wait for the next tick.
+  function busy(){
+    for(var i=0;i<_MODAL_ORDER.length;i++){if(modalIsOpen(_MODAL_ORDER[i]))return true;}
+    var ae=document.activeElement,tg=ae&&ae.tagName;
+    return tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT';
+  }
   function checkFreshness(){
-    if(Date.now()-_t0>_maxAge){location.reload();return;}
+    if(Date.now()-_t0>_maxAge){if(!busy())location.reload();return;}
     fetch('/api/ping').then(function(r){return r.json();}).then(function(j){
-      if(j.version&&j.version!==_ver)location.reload();
+      if(j.version&&j.version!==_ver&&!busy())location.reload();
     }).catch(function(){});
   }
   setInterval(checkFreshness,60000);
@@ -2328,9 +2336,11 @@ setInterval(updateNowLine,60000);
         applyGuidePayloadSeq(nextEvtSeq(),d);
       } else if(d.sumPh||d.tdrop){
         // Fragment push — apply inline without a full page fetch
-        if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
-        // Update just the affected tuner's shows (tdrop-body, not the full tdrop with its header).
-        if(d.tdrop&&d.tdropDev){var td=document.getElementById('tdrop-body-'+d.tdropDev);if(td)td.innerHTML=d.tdrop;}
+        // Same ordering guard as the grid events: take a seq on arrival; a newer grid/fragment already applied wins.
+        var fseq=nextEvtSeq();
+        if(d.sumPh&&fseq>=_appliedSeq&&fseq>=_sumPhSeq){_sumPhSeq=fseq;var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
+        // Update just the affected tuner's shows (tdrop-body, not the full tdrop with its header); per-device seq, like applyGuidePayloadSeq.
+        if(d.tdrop&&d.tdropDev&&fseq>=(_tdropSeq[d.tdropDev]||0)){_tdropSeq[d.tdropDev]=fseq;var td=document.getElementById('tdrop-body-'+d.tdropDev);if(td)td.innerHTML=d.tdrop;}
         // For recording events: toggle recording state on the currently-airing guide entry
         // and push fresh tuner counts so the badge and popover stay accurate.
         if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){

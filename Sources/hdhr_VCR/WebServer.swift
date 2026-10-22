@@ -23,6 +23,7 @@ final class WebServer: @unchecked Sendable {
         case badRequest(String)
         case payloadTooLarge(String)
         case forbidden(String)
+        case methodNotAllowed(String)   // 405 + Allow
     }
 
     private var listener:      NWListener?
@@ -59,6 +60,7 @@ final class WebServer: @unchecked Sendable {
     private var streams: StreamSessions?
 
     private var sseConns: [NWConnection] = []
+    private var ssePending: [ObjectIdentifier: Int] = [:]   // unsent broadcast sends per client (guarded by sseLock)
     private let sseLock  = NSLock()
 
     // All accepted connections (SSE and normal alike) so stop() can close kept-alive connections
@@ -267,7 +269,8 @@ final class WebServer: @unchecked Sendable {
     // Not private — same reasoning as jsEscapeForScript below (WebServerHelperTests exercises
     // this directly).
     func fillTemplate(_ template: String, _ tokens: [(String, String)]) -> String {
-        let values = Dictionary(uniqueKeysWithValues: tokens)
+        // uniquingKeysWith: a duplicated token name must not trap the process (first one wins)
+        let values = Dictionary(tokens, uniquingKeysWith: { first, _ in first })
         var result = ""
         var remainder = Substring(template)
         while let openRange = remainder.range(of: "{{") {
@@ -560,8 +563,22 @@ final class WebServer: @unchecked Sendable {
         let conns = sseConns
         sseLock.unlock()
         for conn in conns {
+            let key = ObjectIdentifier(conn)
+            sseLock.lock()
+            let pending = ssePending[key, default: 0]
+            if pending < Self.maxSSEPendingSends { ssePending[key] = pending + 1 }
+            sseLock.unlock()
+            // A client that stopped reading leaves its sends queued forever — drop it instead of buffering without bound.
+            if pending >= Self.maxSSEPendingSends {
+                glog("[WebServer] Dropping stalled SSE client (\(pending) unsent events)", level: .warning)
+                removeSSE(conn); continue
+            }
             conn.send(content: bytes, completion: .contentProcessed({ [weak self] err in
-                if err != nil { self?.removeSSE(conn) }
+                guard let self else { return }
+                self.sseLock.lock()
+                if let n = self.ssePending[key] { self.ssePending[key] = n > 1 ? n - 1 : nil }
+                self.sseLock.unlock()
+                if err != nil { self.removeSSE(conn) }
             }))
         }
     }
@@ -746,6 +763,7 @@ final class WebServer: @unchecked Sendable {
     private func removeSSE(_ conn: NWConnection) {
         sseLock.lock()
         sseConns.removeAll { $0 === conn }
+        ssePending[ObjectIdentifier(conn)] = nil
         sseLock.unlock()
         // De-listing alone left a half-dead socket in liveConns until Network.framework happened to fail it;
         // cancelling is idempotent and lets the normal state handler clean it up now.
@@ -757,6 +775,11 @@ final class WebServer: @unchecked Sendable {
         conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
             guard let self, err == nil else { conn.cancel(); return }
             self.sseLock.lock()
+            if self.sseConns.count >= Self.maxSSEClients {
+                self.sseLock.unlock()
+                glog("[WebServer] Rejected SSE client: \(Self.maxSSEClients) already connected", level: .warning)
+                conn.cancel(); return
+            }
             self.sseConns.append(conn)
             self.sseLock.unlock()
             self.sseKeepalive(conn)
@@ -2257,7 +2280,17 @@ final class WebServer: @unchecked Sendable {
             glog("[WebServer] Rejected non-LAN connection from \(conn.endpoint)")
             return
         }
-        connLock.lock(); liveConns.append(conn); connLock.unlock()
+        connLock.lock()
+        let existingIPs = liveConns.compactMap { Self.remoteIPString($0.endpoint) }
+        let remoteIP = Self.remoteIPString(conn.endpoint)
+        let admitted = Self.admitConnection(remoteIP: remoteIP, existingLANIPs: existingIPs.filter { $0 != "127.0.0.1" && $0 != "::1" })
+        if admitted { liveConns.append(conn) }
+        connLock.unlock()
+        guard admitted else {
+            conn.cancel()
+            glog("[WebServer] Rejected connection from \(conn.endpoint): connection limit reached", level: .warning)
+            return
+        }
         // Deregister from liveConns exactly once, from whichever path cancels the connection
         // (idle timer, client disconnect, send-with-close, or stop()).
         conn.stateUpdateHandler = { [weak self] st in
@@ -2271,10 +2304,43 @@ final class WebServer: @unchecked Sendable {
         accumulate(conn: conn, buffer: Data())
     }
 
+    static let allowedMethods = "GET, HEAD, POST"
+    static let servedMethods: Set<String> = ["GET", "HEAD", "POST"]
+
+    // Connection hygiene (docs/WebServer.md "Connection limits"). Loopback is exempt from the
+    // total/per-IP caps: the app's own VLC/curl/transcode relays and the in-app WKWebView connect
+    // from 127.0.0.1 and must never be starved by LAN clients.
+    static let maxLANConnections = 64
+    static let maxConnectionsPerIP = 16
+    static let maxSSEClients = 32
+    static let maxSSEPendingSends = 64
+    static let headerDeadlineSeconds: Double = 10
+
+    /// Pure admission decision — unit tested. `remoteIP` nil/loopback is always admitted.
+    nonisolated static func admitConnection(remoteIP: String?, existingLANIPs: [String]) -> Bool {
+        guard let ip = remoteIP, ip != "127.0.0.1", ip != "::1" else { return true }
+        if existingLANIPs.count >= maxLANConnections { return false }
+        if existingLANIPs.filter({ $0 == ip }).count >= maxConnectionsPerIP { return false }
+        return true
+    }
+
+    nonisolated static func remoteIPString(_ endpoint: NWEndpoint) -> String? {
+        guard case .hostPort(let host, _) = endpoint else { return nil }
+        var s: String
+        switch host {
+        case .ipv4(let a): s = "\(a)"
+        case .ipv6(let a): s = "\(a)"
+        case .name(let n, _): s = n
+        @unknown default: return nil }
+        if s.hasPrefix("::ffff:") { s = String(s.dropFirst(7)) }
+        if let pct = s.firstIndex(of: "%") { s = String(s[..<pct]) }
+        return s
+    }
+
     // Read until we have the full HTTP request (headers + Content-Length body bytes).
     private static let maxRequestBytes = 1 << 17  // 128 KB — enough for any guide/record JSON; caps memory growth from slow/malicious LAN clients
     private static let httpSep = Data([0x0d, 0x0a, 0x0d, 0x0a])  // \r\n\r\n as a static constant so accumulate() doesn't allocate it on every callback
-    private func accumulate(conn: NWConnection, buffer: Data) {
+    private func accumulate(conn: NWConnection, buffer: Data, headerDeadline: DispatchWorkItem? = nil, headersDone: Bool = false) {
         // Arm an idle-close for THIS wait: if the client sends nothing more within
         // idleCloseSeconds, cancel the connection. Cancelled the instant real bytes arrive below,
         // then a fresh one is armed by the next accumulate() call — so every wait state (initial
@@ -2283,7 +2349,16 @@ final class WebServer: @unchecked Sendable {
         queue.asyncAfter(deadline: .now() + Self.idleCloseSeconds, execute: idle)
         conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] chunk, _, _, _ in
             idle.cancel()
-            guard let self, let chunk else { conn.cancel(); return }
+            guard let self, let chunk else { headerDeadline?.cancel(); conn.cancel(); return }
+            // Absolute deadline from the FIRST byte of a request to a complete header block, so a
+            // client trickling one byte every few seconds (which keeps resetting the idle timer
+            // above) cannot pin the connection. Not applied to the body or to between-request waits.
+            var deadline = headerDeadline
+            if deadline == nil && !headersDone {
+                let item = DispatchWorkItem { conn.cancel() }
+                self.queue.asyncAfter(deadline: .now() + Self.headerDeadlineSeconds, execute: item)
+                deadline = item
+            }
             // append() reuses existing buffer capacity; `buffer + chunk` would allocate a full copy
             var data = buffer
             data.append(chunk)
@@ -2291,15 +2366,17 @@ final class WebServer: @unchecked Sendable {
             // Reject before buffering further — prevents a client that never sends \r\n\r\n from
             // growing the buffer without bound.
             if data.count > Self.maxRequestBytes {
+                deadline?.cancel()
                 self.send(.payloadTooLarge("Request too large"), on: conn)
                 return
             }
 
             guard let sepRange = data.range(of: Self.httpSep) else {
                 // Headers not complete yet — keep reading
-                self.accumulate(conn: conn, buffer: data)
+                self.accumulate(conn: conn, buffer: data, headerDeadline: deadline)
                 return
             }
+            deadline?.cancel()
 
             let headerSection = data[..<sepRange.lowerBound]
             let bodyBytes     = data[sepRange.upperBound...]
@@ -2354,7 +2431,7 @@ final class WebServer: @unchecked Sendable {
 
             if bodyBytes.count < contentLength {
                 // Body not fully received yet — keep reading
-                self.accumulate(conn: conn, buffer: data)
+                self.accumulate(conn: conn, buffer: data, headersDone: true)
                 return
             }
 
@@ -2372,10 +2449,19 @@ final class WebServer: @unchecked Sendable {
             // a LAN address. See requestRejectionReason.
             if let reason = Self.requestRejectionReason(method: method, host: hostHeader, origin: originHeader,
                                                         secFetchSite: secFetchSite, contentType: contentType,
+                                                        path: cleanPath,
                                                         localHostNames: Self.localHostNames(),
                                                         inLocalDomain: LocalHostVerifier.shared.inLocalDomain) {
                 glog("[WebServer] rejected \(method) \(cleanPath) from \(conn.endpoint): \(reason)", level: .warning)
                 self.send(.forbidden(reason), on: conn)
+                return
+            }
+
+            // Only GET/HEAD/POST are served (HEAD is answered like GET, as before). Anything else
+            // (OPTIONS — never answered, so a CORS preflight fails by design — PUT, DELETE, TRACE…)
+            // gets 405 with Allow instead of falling through to a GET-style 404.
+            if !Self.servedMethods.contains(method) {
+                self.send(.methodNotAllowed("Method not allowed"), on: conn)
                 return
             }
 
@@ -4838,7 +4924,7 @@ final class WebServer: @unchecked Sendable {
         // Content-Length) where the receive buffer may hold unread bytes that would misparse the
         // next request, so reusing the connection is never safe regardless of the caller's flag.
         var keepAlive = keepAlive
-        let (status, headers, body): (String, [(String, String)], Data)
+        var (status, headers, body): (String, [(String, String)], Data)
         switch response {
         case .ok(let ct, let b):
             status = "200 OK"
@@ -4868,6 +4954,9 @@ final class WebServer: @unchecked Sendable {
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg); keepAlive = false
         case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg); keepAlive = false
         case .forbidden(let msg):     (status, headers, body) = errorParts("403 Forbidden",         msg); keepAlive = false
+        case .methodNotAllowed(let msg):
+            (status, headers, body) = errorParts("405 Method Not Allowed", msg)
+            headers.append(("Allow", Self.allowedMethods)); keepAlive = false
         }
 
         var raw = "HTTP/1.1 \(status)\r\n"
@@ -5037,11 +5126,18 @@ final class WebServer: @unchecked Sendable {
     ///   this server never answers, so a cross-site page can't send one.
     nonisolated static func requestRejectionReason(method: String, host: String?, origin: String?,
                                                    secFetchSite: String?, contentType: String?,
+                                                   path: String = "",
                                                    localHostNames: Set<String>,
                                                    inLocalDomain: (String) -> Bool = { _ in false }) -> String? {
         if let host, !host.isEmpty,
            !isAcceptableHost(host, localHostNames: localHostNames, inLocalDomain: inLocalDomain) {
             return "unrecognized Host header"
+        }
+        // GETs with side effects (they open a tuner / start a transcode / hold a relay) can be fired
+        // by any website through an <img>/<video> load, which browsers tag Sec-Fetch-Site: cross-site.
+        // A missing header (VLC, curl, hdhr_guide, older browsers) is still allowed.
+        if (method == "GET" || method == "HEAD"), secFetchSite == "cross-site", isSideEffectGETPath(path) {
+            return "cross-site request"
         }
         guard method == "POST" else { return nil }
         if secFetchSite == "cross-site" { return "cross-site request" }
@@ -5056,6 +5152,12 @@ final class WebServer: @unchecked Sendable {
             return "Content-Type must be application/json"
         }
         return nil
+    }
+
+    /// GET routes that start work (tuner stream, HLS/transcode session, relays) rather than read state.
+    nonisolated static func isSideEffectGETPath(_ path: String) -> Bool {
+        path.hasPrefix("/auto/v") || path.hasPrefix("/api/hls/") || path == "/api/watch-recording"
+            || path == "/api/feed-local-relay" || path == "/api/transcode-source-relay"
     }
 
     /// `inLocalDomain` is the last resort for a name that matches none of the static rules (a

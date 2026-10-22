@@ -3588,6 +3588,14 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
             // Fire conflict notification once per show+episode window to avoid per-tick spam.
             let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
+            // Back-to-back hand-off: every recording holding the tuners ends within seconds of this
+            // start, so it is not a real conflict — stay quiet and let the next tick retry.
+            let blockers = recordingShows.filter { $0.hdhr_record == show.hdhr_record }
+            if !blockers.isEmpty,
+               !vlcOccupiesTuner(for: show.hdhr_record), !secondaryVlcOccupiesTuner(for: show.hdhr_record),
+               blockers.allSatisfy({ ($0.show_end ?? .distantFuture) <= Date().addingTimeInterval(15) }) {
+                return
+            }
             if showRuntime[show.show_id]?.conflictNotifiedEpoch != conflictEpoch {
                 showRuntime[show.show_id, default: ShowRuntimeState()].conflictNotifiedEpoch = conflictEpoch
                 notify("Tuner Conflict", body: show.show_title,
@@ -4204,7 +4212,7 @@ final class AppState: ObservableObject {
 
     // Pass after: Date() to include today (menu display); after: startOfTomorrow to always skip today (rescheduling).
     func nextDateTimeOccurrences(for show: Show, after: Date = Date(), count: Int = 1) -> [Date] {
-        let cal = Calendar.current
+        let cal = Calendar.autoupdatingCurrent
         let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
         let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
         guard !airIndices.isEmpty else { return [] }
@@ -6952,16 +6960,28 @@ final class AppState: ObservableObject {
               let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
               let tunerCount = device.TunerCount,
               tunerCount > 0 else { return false }
-        let overlapping = shows.filter { other in
+        let intervals: [(Date, Date)] = shows.compactMap { other in
             guard other.show_active, !other.show_paused,
                   other.show_id != show.show_id,
                   other.hdhr_record == show.hdhr_record,
                   let oNext = other.show_next,
-                  let oEnd  = other.show_end
-            else { return false }
-            return oNext < end && oEnd > next
+                  let oEnd  = other.show_end,
+                  oNext < end && oEnd > next
+            else { return nil }
+            return (max(oNext, next), min(oEnd, end))
         }
-        return overlapping.count >= tunerCount
+        return Self.maxConcurrentOverlap(intervals) >= tunerCount
+    }
+
+    /// Sweep line: the most intervals simultaneously open. Ends sort before starts at the same
+    /// instant, so back-to-back shows (A ends 9:00, B starts 9:00) do not count as concurrent.
+    nonisolated static func maxConcurrentOverlap(_ intervals: [(Date, Date)]) -> Int {
+        var events: [(Date, Int)] = []
+        for (s, e) in intervals { events.append((s, 1)); events.append((e, -1)) }
+        events.sort { $0.0 != $1.0 ? $0.0 < $1.0 : $0.1 < $1.1 }
+        var cur = 0, best = 0
+        for (_, d) in events { cur += d; best = max(best, cur) }
+        return best
     }
 
     // MARK: - VLC hot-install detection

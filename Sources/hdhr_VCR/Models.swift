@@ -198,7 +198,15 @@ extension String {
     /// capped at 120 characters (file names are title + date + tag within a 255-byte limit), and
     /// "."/".." or leading dots neutralised so it can't act as a path component. May return "".
     var sanitizedShowTitle: String {
-        var t = String(unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(Character.init))
+        // Also U+2028/2029 (line/paragraph separators) and bidi controls (U+200E/F, 202A-202E, 2066-2069),
+        // which can reorder or break a displayed/logged title.
+        func isBad(_ u: Unicode.Scalar) -> Bool {
+            switch u.value {
+            case 0x2028, 0x2029, 0x200E, 0x200F, 0x202A...0x202E, 0x2066...0x2069: return true
+            default: return CharacterSet.controlCharacters.contains(u)
+            }
+        }
+        var t = String(unicodeScalars.filter { !isBad($0) }.map(Character.init))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if t.count > 120 { t = String(t.prefix(120)).trimmingCharacters(in: .whitespaces) }
         while t.hasPrefix(".") { t.removeFirst() }
@@ -359,7 +367,9 @@ struct Show: Identifiable, Equatable {
 
     func outputPath(date: Date = Date(), subfolder: String? = nil, episodeTag: String? = nil) -> String {
         let dateStr = Self.outputDateFormatter.string(from: date)
-        let safe = show_title.replacingOccurrences(of: "/", with: "-")
+        var safe = show_title.replacingOccurrences(of: "/", with: "-")
+        while safe.hasPrefix(".") { safe.removeFirst() }   // no hidden file / "." / ".." name
+        if safe.isEmpty { safe = "Recording" }
         // The recorder writes the device's HTTP response verbatim (curl -o, no remux). On the wire
         // that is always an MPEG-2 transport stream — verified 188-byte TS packets (sync 0x47) for
         // BOTH transcode=none (MPEG-2 video) and transcode profiles (H.264 video); only the video
@@ -372,7 +382,10 @@ struct Show: Identifiable, Equatable {
         var dir = posixRecordDir
         if let sub = subfolder { dir = (dir as NSString).appendingPathComponent(sub) }
         let epPart = episodeTag.map { "_\($0)" } ?? ""
-        return (dir as NSString).appendingPathComponent("\(safe)\(epPart)_\(show_channel)_\(dateStr)\(ext)")
+        // APFS/HFS+ cap a file name at 255 bytes: shrink the title (whole characters) to fit.
+        let tail = "\(epPart)_\(show_channel)_\(dateStr)\(ext)"
+        while safe.utf8.count + tail.utf8.count > 255, !safe.isEmpty { safe.removeLast() }
+        return (dir as NSString).appendingPathComponent("\(safe)\(tail)")
     }
 
     /// Strips a trailing episode-specific suffix (e.g. " S24E116 Trey Parker; Matt Stone; Alison

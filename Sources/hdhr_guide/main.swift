@@ -90,8 +90,18 @@ enum Mode { case normal, recordSummary, search, help }
 // something that's actually unsafe. A single Bool flag set from a signal handler and polled from
 // the main loop is the standard, safe pattern this attribute exists for.
 nonisolated(unsafe) var interrupted = false
+nonisolated(unsafe) var resized = false   // set by SIGWINCH/SIGCONT (see below)
 signal(SIGINT) { _ in interrupted = true }
 signal(SIGTERM) { _ in interrupted = true }
+// A closed terminal window (SIGHUP) and Ctrl-\\ (SIGQUIT) end the session the same orderly way — flag, then the
+// loop restores the terminal on its way out — instead of dying with the alternate screen/raw mode still set.
+signal(SIGHUP) { _ in interrupted = true }
+signal(SIGQUIT) { _ in interrupted = true }
+// Ctrl-Z: the handler only flags it; the loop leaves raw mode, then really stops itself (see the main loop), and
+// SIGCONT (fg) re-enters raw mode and redraws.
+nonisolated(unsafe) var suspendRequested = false
+signal(SIGTSTP) { _ in suspendRequested = true }
+signal(SIGCONT) { _ in resized = true }
 
 // The terminal sends SIGWINCH on every resize. A signal handler can only safely set a flag (no
 // arbitrary Swift code, same reason the SIGINT/SIGTERM handlers above just set `interrupted`
@@ -99,7 +109,6 @@ signal(SIGTERM) { _ in interrupted = true }
 // render() only re-reads the new size on the next keypress or the 20s poll tick, so a resize
 // could sit unreflected (a stale, possibly now too-small-or-too-large frame) for up to that long.
 // Same nonisolated(unsafe) reasoning as `interrupted` above.
-nonisolated(unsafe) var resized = false
 signal(SIGWINCH) { _ in resized = true }
 
 guard let initial = API.fetchGuide(device: nil) else {
@@ -1180,6 +1189,15 @@ Terminal.enterRawScreen()
 render()
 
 while !interrupted && !Terminal.stdinClosed {
+    if suspendRequested {
+        suspendRequested = false
+        Terminal.leaveRawScreen()
+        signal(SIGTSTP, SIG_DFL)
+        raise(SIGTSTP)                       // stops here until the shell sends SIGCONT (fg)
+        signal(SIGTSTP) { _ in suspendRequested = true }
+        Terminal.enterRawScreen()
+        resized = true                       // redraw the whole frame
+    }
     if resized {
         resized = false
         render()

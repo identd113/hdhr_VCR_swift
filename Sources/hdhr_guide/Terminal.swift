@@ -21,7 +21,12 @@ enum Terminal {
     // this readKey() just returned nil forever and the loop spun at 100% CPU, orphaned.
     nonisolated(unsafe) static var stdinClosed = false
 
+    private nonisolated(unsafe) static var exitHookInstalled = false
+
     static func enterRawScreen() {
+        // Safety net for any exit path that skips the normal teardown (exit() from deep in a handler, a fatal
+        // signal path that still runs atexit): a no-op unless raw mode is still active.
+        if !exitHookInstalled { exitHookInstalled = true; atexit { Terminal.leaveRawScreen() } }
         tcgetattr(STDIN_FILENO, &saved)
         var raw = saved
         // ISIG stays enabled — Ctrl-C still generates SIGINT, and the installed handler restores
@@ -158,7 +163,34 @@ enum Terminal {
         if byte == 0x0D || byte == 0x0A { return .enter }
         if byte == 0x09 { return .tab }
         if byte == 0x7F { return .backspace }
+        if byte >= 0x80 { return readMultibyte(lead: byte) }
         return .char(Character(UnicodeScalar(byte)))
+    }
+
+    /// Total byte length of a UTF-8 sequence from its lead byte (nil for a stray continuation / invalid lead).
+    static func utf8SequenceLength(lead: UInt8) -> Int? {
+        switch lead {
+        case 0xC2...0xDF: return 2
+        case 0xE0...0xEF: return 3
+        case 0xF0...0xF4: return 4
+        default: return nil
+        }
+    }
+
+    /// Accumulates the rest of a multibyte UTF-8 character (each byte previously became its own Latin-1 scalar, so "é"
+    /// arrived as "Ã©"). Continuation bytes are polled briefly — a split packet is possible on a slow link — and an
+    /// incomplete or invalid sequence is dropped (nil) rather than turned into garbage.
+    private static func readMultibyte(lead: UInt8) -> Key? {
+        guard let total = utf8SequenceLength(lead: lead) else { return nil }
+        var bytes = [lead]
+        while bytes.count < total, pollStdin(timeoutMs: 100) {
+            var b: UInt8 = 0
+            guard read(STDIN_FILENO, &b, 1) == 1 else { break }
+            bytes.append(b)
+        }
+        guard bytes.count == total, let s = String(validatingUTF8: bytes.map { CChar(bitPattern: $0) } + [0]),
+              s.count == 1, let ch = s.first else { return nil }
+        return .char(ch)
     }
 }
 

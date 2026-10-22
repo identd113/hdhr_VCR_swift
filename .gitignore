@@ -13,6 +13,7 @@
 TestMacro
 /dist/
 /hdhrVCRplus.app
+__pycache__/
 tools/__pycache__/
 tools/test_scenarios/__pycache__/
 tools/feed_diagnostics/__pycache__/

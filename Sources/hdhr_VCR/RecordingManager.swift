@@ -81,6 +81,9 @@ final class RecordingManager {
         var curlArgs: [String] = [
             "--connect-timeout", "10",
             "--max-time", "\(durationSeconds + 120)",
+            // http(s) only, including across redirects — never file:/ftp:/etc.
+            "--proto", "=http,https",
+            "--proto-redir", "=http,https",
             "-H", "show_id:\(showId)",
             "-H", "show_end:\(showEndEpoch)",
             "-H", "appname:hdhrVCRplus",

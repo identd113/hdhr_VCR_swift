@@ -420,6 +420,48 @@ struct TUIGuideSmokeTests {
         #expect(tty.output.contains("\u{1B}[?25h"), "SIGTERM must still show the cursor")
     }
 
+    @Test func sighup_restoresTheTerminalBeforeExiting() throws {
+        let stub = StubGuideServer(guideJSON: guideJSON())
+        try stub.start(); defer { stub.stop() }
+        guard let tty = PTYSession(port: stub.port) else { return }
+        #expect(tty.waitFor("KFOO"))
+        kill(tty.process.processIdentifier, SIGHUP)
+        #expect(tty.waitForExit() != nil, "should exit on SIGHUP")
+        #expect(tty.output.contains("\u{1B}[?1049l"), "SIGHUP must still leave the alternate screen")
+    }
+
+    @Test func ctrlZ_leavesTheScreen_andSIGCONTReentersAndRedraws() throws {
+        let stub = StubGuideServer(guideJSON: guideJSON())
+        try stub.start(); defer { stub.stop() }
+        guard let tty = PTYSession(port: stub.port) else { return }
+        #expect(tty.waitFor("KFOO"))
+        let pid = tty.process.processIdentifier
+        kill(pid, SIGTSTP)
+        let d0 = Date().addingTimeInterval(6)
+        while Date() < d0, !tty.output.contains("\u{1B}[?1049l") { Thread.sleep(forTimeInterval: 0.05) }
+        #expect(tty.output.contains("\u{1B}[?1049l"), "suspend must restore the normal screen first")
+        Thread.sleep(forTimeInterval: 0.3)
+        let before = tty.output.components(separatedBy: "\u{1B}[?1049h").count
+        kill(pid, SIGCONT)
+        let deadline = Date().addingTimeInterval(6)
+        while Date() < deadline, tty.output.components(separatedBy: "\u{1B}[?1049h").count == before { Thread.sleep(forTimeInterval: 0.05) }
+        #expect(tty.output.components(separatedBy: "\u{1B}[?1049h").count > before, "SIGCONT must re-enter the alternate screen")
+        #expect(tty.process.isRunning)
+        tty.send("q"); _ = tty.waitForExit()
+    }
+
+    @Test func multibyteUTF8Input_arrivesAsOneCharacter_notLatin1Garbage() throws {
+        guard let (stub, tty) = try launchBig() else { return }
+        defer { stub.stop() }
+        tty.send("/"); tty.send("\u{E9}")      // "é" = C3 A9 on the wire
+        #expect(tty.waitForFrame { $0.footer().contains("\u{E9}") }, "footer: \(tty.footer())")
+        #expect(!tty.footer().contains("\u{C3}"), "footer: \(tty.footer())")
+        tty.send("\u{7F}"); tty.send("\u{7F}")
+        tty.send("q")
+        _ = tty.waitForExit(timeout: 2)
+        if tty.process.isRunning { tty.process.terminate() }
+    }
+
     // Regression: with its terminal gone and no SIGHUP, the input loop used to spin at 100% CPU forever.
     @Test func terminalHangUp_exitsInsteadOfSpinning() throws {
         let stub = StubGuideServer(guideJSON: guideJSON())

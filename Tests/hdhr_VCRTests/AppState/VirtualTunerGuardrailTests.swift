@@ -110,9 +110,8 @@ struct VirtualTunerGuardrailTests {
         // are ever touched, so — unlike the "enabled" branch generally — this specific path is safe
         // to exercise without a live network interface or UDP bind.
         let show = Show.testRecording(title: "Live Now")   // hdhr_record defaults to "FFFFFFFF"
-        // VirtualTunerService.relayDeviceID(sourceDeviceID: "FFFFFFFF") == "FEEDFFFF" — the exact id
-        // this instance would itself mint for the same source tuner.
-        let conflictingRelay = HDHRDevice.test(id: "FEEDFFFF", isVirtualRelay: true)
+        // The exact id this instance would itself mint for the same source tuner.
+        let conflictingRelay = HDHRDevice.test(id: VirtualTunerService.relayDeviceID(sourceDeviceID: "FFFFFFFF"), isVirtualRelay: true)
         let state = await makeTestAppState(shows: [show], devices: [conflictingRelay])
         await MainActor.run { state.config.Virtual_tuner_relay_enabled = true }
         await state.updateVirtualTunerPresence()
@@ -133,12 +132,13 @@ struct VirtualTunerGuardrailTests {
         // guide-sourced airing produce byte-identical show_next by construction. Set directly here,
         // standing in for what startRecording()'s own success path sets in real use.
         let show = Show.testRecording(title: "Live Now")
-        let earlierConflict = HDHRDevice.test(id: "FEEDFFFF", isVirtualRelay: true,
+        let relayID = VirtualTunerService.relayDeviceID(sourceDeviceID: "FFFFFFFF")
+        let earlierConflict = HDHRDevice.test(id: relayID, isVirtualRelay: true,
                                                recordingStartedAt: Date().addingTimeInterval(-600).timeIntervalSince1970)   // they started 600s ago — first
         let state = await makeTestAppState(shows: [show], devices: [earlierConflict])
         await MainActor.run {
             state.config.Virtual_tuner_relay_enabled = true
-            state.activeVirtualTunerDeviceID = "FEEDFFFF"
+            state.activeVirtualTunerDeviceID = relayID
             state.showRuntime[show.show_id, default: AppState.ShowRuntimeState()].recordingLaunchedAt = Date().addingTimeInterval(-300)   // we started 300s ago
         }
         await state.updateVirtualTunerPresence()

@@ -1,6 +1,6 @@
 # hdhr_VCR Swift
 
-macOS menu bar app (`LSUIElement`, no Dock icon) recording TV from HDHomeRun tuners via guide-based scheduling. Swift/SwiftUI rewrite of the original AppleScript app.
+macOS menu bar app (menu-bar-first; the Dock icon is hidden in steady state — see the Info.plist note below) recording TV from HDHomeRun tuners via guide-based scheduling. Swift/SwiftUI rewrite of the original AppleScript app.
 
 > Conventions, commits, deploy rules: [`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md)
 

@@ -103,6 +103,7 @@ cp Resources/guide-vertical.css "$APP/Contents/Resources/guide-vertical.css"
 cp Resources/guide.js "$APP/Contents/Resources/guide.js"
 cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 cp Resources/hls.min.js "$APP/Contents/Resources/hls.min.js"
+cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 # Bundle.main.url(forResource:withExtension:) (SettingsView's in-app changelog) looks in
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.

@@ -145,6 +145,9 @@ final class HDHRManager {
             found.append(dev)
             return
         }
+        if found[idx].LocalIP != dev.LocalIP, isIPv4(found[idx].LocalIP), isIPv4(dev.LocalIP) {
+            glog("[Discovery] Duplicate DeviceID \(dev.DeviceID) from a different IP (\(dev.LocalIP) vs kept \(found[idx].LocalIP)) — ignoring the later one", level: .warning)
+        }
         // Prefer a numeric address over an mDNS hostname (2026-10-03). The mDNS source fetches
         // http://hdhomerun.local/discover.json, and a device asked by hostname answers with a
         // hostname BaseURL — so LocalIP, lineup.json and every stream URL became
