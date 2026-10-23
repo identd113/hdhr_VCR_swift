@@ -712,8 +712,12 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 /* Short landscape phones, after the touch-target rules above so these win: the one-line summary strip must fit Watch/Record/Stop and the close
    button. The channel/time line shrinks instead of pushing the actions off the right edge, and the actions use a 36 px height here. */
 @media(max-height:480px){
-  #sum-ch-row{flex:0 1 auto!important;min-width:0!important;overflow:hidden}
+  /* #sum-c and #sum-grad default to min-width:auto, so a long title made the strip wider than the screen and clipped the actions;
+     the episode text gives up room first, then the channel/time line. */
+  #sum-c{min-width:0!important;flex:1 1 0!important}
+  #sum-grad{min-width:0!important}
+  #sum-ch-row{flex:0 3 auto!important;min-width:0!important;overflow:hidden}
   #sum-ct{max-width:90px!important}
-  #sum-ep{max-width:24%!important}
+  #sum-ep{flex:0 6 auto!important;max-width:none!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #sum-actions button{min-width:0!important;min-height:36px!important;padding:3px 8px!important}
 }
