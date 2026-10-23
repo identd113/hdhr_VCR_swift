@@ -136,78 +136,7 @@ struct MenuContent: View {
         let availableDevices     = state.recordableDevices.filter { $0.isAvailable }
         let watchingInfo         = nowWatchingInfo
 
-        // ── Header ────────────────────────────────────────────────────────
-        // recordableDevices — a discovered virtual relay device has no real lineup/guide data (see
-        // AppState.performFetchAllGuides's own comment on why its guide fetch is skipped entirely),
-        // so an unfiltered loop here would show a permanent, unfixable "⚠ no guide" warning for a
-        // tuner the user never added. It already gets its own correct, dedicated treatment in the
-        // "Recording on Another Mac" section below.
-        ForEach(state.displayableDevices) { device in
-            let slots       = device.TunerCount ?? 1
-            // Sums both slots, matching AppState.activeTunerCount(for:)'s own vlc term — a PiP
-            // secondary stream watching a real live-tuner channel occupies a tuner exactly like
-            // the primary would (docs/VLCPlayerView.md's "Picture-in-picture" section).
-            let vlcUsing    = (state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
-                            + (state.secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
-            let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
-            let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
-            let hwCount     = liveInfo?.filter { $0.isInUse }.count ?? appCount
-            // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —
-            // not hwCount alone. Right after a recording or in-app VLC stream starts but before the
-            // next status.json poll lands, hwCount is still the stale pre-start value; showing it
-            // as the headline number under-reported true occupancy for that window. The note after it
-            // (TunerSharing) compares the raw hwCount, not this corrected liveCount, so it still names
-            // both cases — hw higher than ours (another device using the tuner) and hw briefly lower
-            // (our own just-started stream, "starting…").
-            let liveCount   = max(hwCount, appCount)
-            // Tuners in use that this app doesn't hold (another Mac sharing the device, a third-party client) are named
-            // as such rather than flagged as an app/hardware "mismatch" — see TunerSharing.
-            let sharing     = TunerSharing.note(hardwareCount: liveInfo == nil ? nil : hwCount, appCount: appCount)
-            let offline     = !device.isAvailable
-            let noLineup    = !state.isStartingUp && !offline && (state.lineups[device.DeviceID]?.isEmpty ?? true)
-            let noGuide     = !state.isStartingUp && !offline && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
-            let warnings    = [offline   ? "unavailable" : nil,
-                               noLineup  ? "no lineup"   : nil,
-                               noGuide   ? "no guide"    : nil]
-                                .compactMap { $0 }.joined(separator: ", ")
-            let hasWarn     = !warnings.isEmpty
-            Text("\(device.DeviceID)  \(offline ? "—" : "\(liveCount)/\(slots)")" +
-                 (sharing.map { "  · \($0)" } ?? "") +
-                 (hasWarn  ? "  ⚠ \(warnings)" : ""))
-                .foregroundStyle(offline  ? Color(NSColor.systemRed) :
-                                 hasWarn  ? Color(NSColor.systemOrange) :
-                                 liveCount > 0 ? Color(NSColor.labelColor) :
-                                                 Color(NSColor.secondaryLabelColor))
-                .accessibilityLabel(offline
-                    ? "Tuner \(device.DeviceID), unavailable"
-                    : "Tuner \(device.DeviceID), \(liveCount) of \(slots) in use"
-                      + (sharing.map { ". \($0)" } ?? "")
-                      + (hasWarn ? ". Warning: \(warnings)" : ""))
-        }
-        if state.displayableDevices.isEmpty && !state.isStartingUp {
-            Text("No tuners found — will keep trying").foregroundStyle(Color(NSColor.secondaryLabelColor))
-        }
-        if let hostname = watchingRemoteFeedHostname(for: watchingInfo) {
-            Text("Watching FEED from \(hostname)")
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-        }
-        Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
-        // ── Relay stats ───────────────────────────────────────────────────
-        // Shown only while this instance's own virtual tuner is actually advertised (a show is
-        // recording + the relay is enabled) — not a permanent row, since there's nothing to report
-        // otherwise. Sums relayRawViewerCount (raw-passthrough relay connections) with
-        // transcodeViewerCount (transcode/H.264 relay connections) — both @Published on AppState,
-        // both updated at the moment a viewer actually connects/disconnects, so this row stays live
-        // without needing an unrelated AppState mutation to force a menu rebuild first (was reading
-        // VLCBridge.shared.transcodeViewerCount(showId:) directly here before, which is correct but
-        // not itself @Published — see AppState.transcodeViewerCount's own doc comment on why a
-        // second, reactive copy of that aggregate lives there now). Shown even at 0 watching, as
-        // confirmation the relay itself is up and reachable, not just once someone connects.
-        if state.activeVirtualTunerDeviceID != nil {
-            let totalViewers = state.relayRawViewerCount + state.transcodeViewerCount
-            Text("FEED: \(totalViewers) watching")
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-        }
+        deviceHeaderRows(recordingShows: recordingShows, watchingInfo: watchingInfo)
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
             .keyboardShortcut("n")
@@ -255,11 +184,107 @@ struct MenuContent: View {
             Divider()
         }
 
+        remoteRelaySection(state.remoteRelayEntries)
+
+        scheduleSections(activeShows: activeShows, pausedShows: pausedShows, unavailableShows: unavailableShows,
+                         unavailableDeviceIDs: unavailableDeviceIDs, availableDevices: availableDevices)
+        Divider()
+
+        Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
+            .keyboardShortcut("q")
+            .accessibilityIdentifier("menu.quit")
+    }
+
+    // body is split into these pieces so the Swift 6.2 compiler (an older Mac's toolchain) can type-check each one; the
+    // content and order are exactly what body used to hold inline.
+    @ViewBuilder
+    private func deviceHeaderRows(recordingShows: [Show], watchingInfo: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)?) -> some View {
+        // ── Header ────────────────────────────────────────────────────────
+        // recordableDevices — a discovered virtual relay device has no real lineup/guide data (see
+        // AppState.performFetchAllGuides's own comment on why its guide fetch is skipped entirely),
+        // so an unfiltered loop here would show a permanent, unfixable "⚠ no guide" warning for a
+        // tuner the user never added. It already gets its own correct, dedicated treatment in the
+        // "Recording on Another Mac" section below.
+        ForEach(state.displayableDevices) { device in
+            deviceRow(device, recordingShows: recordingShows)
+        }
+        if state.displayableDevices.isEmpty && !state.isStartingUp {
+            Text("No tuners found — will keep trying").foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
+        if let hostname = watchingRemoteFeedHostname(for: watchingInfo) {
+            Text("Watching FEED from \(hostname)")
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
+        Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
+        // ── Relay stats ───────────────────────────────────────────────────
+        // Shown only while this instance's own virtual tuner is actually advertised (a show is
+        // recording + the relay is enabled) — not a permanent row, since there's nothing to report
+        // otherwise. Sums relayRawViewerCount (raw-passthrough relay connections) with
+        // transcodeViewerCount (transcode/H.264 relay connections) — both @Published on AppState,
+        // both updated at the moment a viewer actually connects/disconnects, so this row stays live
+        // without needing an unrelated AppState mutation to force a menu rebuild first (was reading
+        // VLCBridge.shared.transcodeViewerCount(showId:) directly here before, which is correct but
+        // not itself @Published — see AppState.transcodeViewerCount's own doc comment on why a
+        // second, reactive copy of that aggregate lives there now). Shown even at 0 watching, as
+        // confirmation the relay itself is up and reachable, not just once someone connects.
+        if state.activeVirtualTunerDeviceID != nil {
+            let totalViewers = state.relayRawViewerCount + state.transcodeViewerCount
+            Text("FEED: \(totalViewers) watching")
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
+    }
+
+    private func deviceRow(_ device: HDHRDevice, recordingShows: [Show]) -> some View {
+        let slots       = device.TunerCount ?? 1
+        // Sums both slots, matching AppState.activeTunerCount(for:)'s own vlc term — a PiP
+        // secondary stream watching a real live-tuner channel occupies a tuner exactly like
+        // the primary would (docs/VLCPlayerView.md's "Picture-in-picture" section).
+        let vlcUsing    = (state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
+                        + (state.secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
+        let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
+        let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
+        let hwCount     = liveInfo?.filter { $0.isInUse }.count ?? appCount
+        // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —
+        // not hwCount alone. Right after a recording or in-app VLC stream starts but before the
+        // next status.json poll lands, hwCount is still the stale pre-start value; showing it
+        // as the headline number under-reported true occupancy for that window. The note after it
+        // (TunerSharing) compares the raw hwCount, not this corrected liveCount, so it still names
+        // both cases — hw higher than ours (another device using the tuner) and hw briefly lower
+        // (our own just-started stream, "starting…").
+        let liveCount   = max(hwCount, appCount)
+        // Tuners in use that this app doesn't hold (another Mac sharing the device, a third-party client) are named
+        // as such rather than flagged as an app/hardware "mismatch" — see TunerSharing.
+        let sharing     = TunerSharing.note(hardwareCount: liveInfo == nil ? nil : hwCount, appCount: appCount)
+        let offline     = !device.isAvailable
+        let noLineup    = !state.isStartingUp && !offline && (state.lineups[device.DeviceID]?.isEmpty ?? true)
+        let noGuide     = !state.isStartingUp && !offline && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
+        let warnings    = [offline   ? "unavailable" : nil,
+                           noLineup  ? "no lineup"   : nil,
+                           noGuide   ? "no guide"    : nil]
+                            .compactMap { $0 }.joined(separator: ", ")
+        let hasWarn     = !warnings.isEmpty
+        let statusCount: String = offline ? "—" : "\(liveCount)/\(slots)"
+        let sharingPart: String = sharing.map { "  · \($0)" } ?? ""
+        let warnPart: String = hasWarn ? "  ⚠ \(warnings)" : ""
+        let line: String = "\(device.DeviceID)  \(statusCount)" + sharingPart + warnPart
+        let color: Color = offline ? Color(NSColor.systemRed)
+            : hasWarn ? Color(NSColor.systemOrange)
+            : liveCount > 0 ? Color(NSColor.labelColor)
+            : Color(NSColor.secondaryLabelColor)
+        let spoken: String = offline
+            ? "Tuner \(device.DeviceID), unavailable"
+            : "Tuner \(device.DeviceID), \(liveCount) of \(slots) in use" + (sharing.map { ". \($0)" } ?? "") + (hasWarn ? ". Warning: \(warnings)" : "")
+        return Text(line)
+            .foregroundStyle(color)
+            .accessibilityLabel(spoken)
+    }
+
+    @ViewBuilder
+    private func remoteRelaySection(_ remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)]) -> some View {
         // ── Remote relays (another hdhrVCRplus instance's in-progress recording) ────────────
         // state.remoteRelayEntries is the shared source of truth (also drives the menu bar's own
         // blue blink, hdhr_VCRApp.swift's statusLabel) — read here rather than recomputing the
         // same filter/flatMap locally, so the two surfaces can't drift apart.
-        let remoteRelayEntries = state.remoteRelayEntries
         if !remoteRelayEntries.isEmpty {
             Section("Recording on Another Mac (Beta)") {
                 ForEach(Array(remoteRelayEntries.enumerated()), id: \.offset) { _, pair in
@@ -366,6 +391,11 @@ struct MenuContent: View {
             Divider()
         }
 
+    }
+
+    @ViewBuilder
+    private func scheduleSections(activeShows: [Show], pausedShows: [Show], unavailableShows: [Show],
+                                  unavailableDeviceIDs: Set<String>, availableDevices: [HDHRDevice]) -> some View {
         // ── Next Up ────────────────────────────────────────────────────────
         // "Up Next" means any show scheduled to record later today — not a fixed lookahead
         // window — grouped by start time (bucketed to minute). Standardized to match the same
@@ -455,11 +485,6 @@ struct MenuContent: View {
                 }
             }
         }
-        Divider()
-
-        Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
-            .keyboardShortcut("q")
-            .accessibilityIdentifier("menu.quit")
     }
 
     // Shared shape behind five near-identical menu sections (Recording Now, Up Next, Scheduled,
