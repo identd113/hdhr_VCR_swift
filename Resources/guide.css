@@ -696,8 +696,8 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 /* ── Touch targets: coarse pointers (phones/tablets) get a 44px minimum hit area; desktop (fine pointer) is unchanged. ── */
 @media(pointer:coarse){
   .d-btn,.tdrop-btn,.t-info,.genre-sel,#tb-more,.tb-mi,#theme-sw button,#search-icon-btn,#search-info-btn,#search-clear,
-  .g-hdr-btn,#sum-actions button,#sum-close,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset,#t-pop-c button{min-height:44px;min-width:44px}
-  .d-btn,.tdrop-btn,.t-info,.genre-sel,.g-hdr-btn,#sum-actions button,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset{display:inline-flex;align-items:center;justify-content:center}
+  #sum-actions button,#sum-close,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset,#t-pop-c button{min-height:44px;min-width:44px}
+  .d-btn,.tdrop-btn,.t-info,.genre-sel,#sum-actions button,.mac-btn,.rm-type-btn,.day-btn,.em-fail-reset{display:inline-flex;align-items:center;justify-content:center}
   .tb-mi{display:flex;align-items:center}
   .genre-sel,.em-input,select.em-input{min-height:44px}
   .em-check{min-height:44px;align-items:center;padding-top:0}
@@ -705,7 +705,15 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   .mac-check:checked::after{left:7px;top:3px;width:5px;height:11px}
   #search-in{min-height:44px}
   .tdrop a,.tdrop button,.tdrop .tdrop-ui{min-height:44px;display:inline-flex;align-items:center}
-  .g-hdr-btns{gap:6px;flex-wrap:wrap}
-  .g-hdr-tl{height:auto;min-height:48px}
-  .g-hdr-ch{height:auto;min-height:48px}
+  /* The grid header's corner (Ch label + Now/refresh) stays compact: 44 px buttons there stacked and made the whole header row ~90 px tall. */
+  #search-icon-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px}
+}
+
+/* Short landscape phones, after the touch-target rules above so these win: the one-line summary strip must fit Watch/Record/Stop and the close
+   button. The channel/time line shrinks instead of pushing the actions off the right edge, and the actions use a 36 px height here. */
+@media(max-height:480px){
+  #sum-ch-row{flex:0 1 auto!important;min-width:0!important;overflow:hidden}
+  #sum-ct{max-width:90px!important}
+  #sum-ep{max-width:24%!important}
+  #sum-actions button{min-width:0!important;min-height:36px!important;padding:3px 8px!important}
 }
