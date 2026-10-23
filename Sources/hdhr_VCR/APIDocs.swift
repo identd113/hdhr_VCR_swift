@@ -71,11 +71,11 @@ enum APIDocs {
         APIRoute(method: "GET", path: "/api/signal", group: "Signal", summary: "Signal quality bucket per channel name."),
         APIRoute(method: "GET", path: "/api/signal-stats/{channelName}", group: "Signal", summary: "Signal history and stats for one channel.",
                  params: [APIParam(name: "channelName", place: .path, summary: "GuideName", example: "WCCO-DT")]),
-        APIRoute(method: "POST", path: "/api/signal-scan", group: "Signal", summary: "Measure signal on idle tuners.",
+        APIRoute(method: "POST", path: "/api/signal-scan", group: "Signal", summary: "Measure signal on idle tuners. 409 while a signal scan runs (never restarted); 503 + Retry-After when no tuner is idle.",
                  body: #"{"force":false}"#, changesState: true),
         // — Over-the-air guide
         APIRoute(method: "POST", path: "/api/ota-scan", group: "Over-the-air guide",
-                 summary: "Start a scan of the air, change the running scan's tuner count, or cancel it. Everything optional; \"rf\":[31] refreshes just those multiplexes.",
+                 summary: "Start a scan of the air, change the running scan's tuner count, or cancel it. Everything optional; \"rf\":[31] refreshes just those multiplexes. 409 while a scan runs (never restarted); 503 + Retry-After when no tuner is free.",
                  body: #"{"lineupOnly":true}"#, response: #"{"status":"…"}"#, changesState: true),
         APIRoute(method: "POST", path: "/api/ota-scan", group: "Over-the-air guide", summary: "Allow the running scan N tuners.",
                  body: #"{"tuners":1}"#, changesState: true),

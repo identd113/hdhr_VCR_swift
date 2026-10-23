@@ -79,6 +79,10 @@ struct OTAStoreTests {
         var silent = OTAScanOutcome(); silent.skipped = [19: "no signal"]
         silent.multiplexes = try Self.outcome().multiplexes                                         // (RF 32 read again alongside)
         _ = OTAStore.save(silent, deviceId: "TEST", partial: true, root: root)
+        // The first silent scan only counts a miss: RF 19 and its listings are still there.
+        #expect(Set(try #require(OTAStore.allSavedLineup(deviceId: "TEST", root: root)).map(\.RF)) == [19, 32])
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[19]?.noSignalMisses == 1)
+        _ = OTAStore.save(silent, deviceId: "TEST", partial: true, root: root)
         #expect(Set(try #require(OTAStore.allSavedLineup(deviceId: "TEST", root: root)).map(\.RF)) == [32])
         #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[19] == nil)
         // The "a full scan ran" record belongs to full scans only.
@@ -100,6 +104,20 @@ struct OTAStoreTests {
         let guide = try JSONDecoder().decode([GuideChannel].self, from: Data(contentsOf: OTAStore.guideFile(deviceId: "TEST", root: root)))
         #expect(guide.first?.Guide?.count == 105)                                                    // the listings survived
         #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32]?.guideDate == date)            // and no new "guide read" date
+    }
+
+    @Test func aStationThatIsHeardAgainBetweenSilentScansKeepsItsStreak_reset() throws {
+        let root = Self.tempRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = OTAStore.save(try Self.outcome(), deviceId: "TEST", root: root)                         // RF 32 saved
+        var quiet = OTAScanOutcome(); quiet.skipped = [32: "no signal"]
+        var other = try Self.outcome(); other.multiplexes[0].rf = 19; other.skipped = quiet.skipped  // RF 19 read, RF 32 silent
+        _ = OTAStore.save(other, deviceId: "TEST", partial: true, root: root)
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32]?.noSignalMisses == 1)
+        var heard = try Self.outcome(); heard.skipped = [:]                                           // RF 32 heard again: the streak ends
+        _ = OTAStore.save(heard, deviceId: "TEST", partial: true, root: root)
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32]?.noSignalMisses == nil)
+        _ = OTAStore.save(other, deviceId: "TEST", partial: true, root: root)                         // a new silent scan is miss 1 again, not 2
+        #expect(OTAStore.muxRecords(deviceId: "TEST", root: root)[32] != nil)
     }
 
     @Test func aCancelledReadIsNotNoSignal() throws {

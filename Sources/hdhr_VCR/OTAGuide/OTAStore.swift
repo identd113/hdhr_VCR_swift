@@ -42,7 +42,13 @@ enum OTAStore {
         var guideDate: Date?
         var channels: Int
         var events: Int
+        /// Consecutive scans that found nothing on this RF channel. A station is dropped only on its second miss in a row, so one slow lock or a
+        /// busy tuner never deletes it. nil (and absent in older files) = none.
+        var noSignalMisses: Int? = nil
     }
+
+    /// Scans in a row that must find no signal on an RF channel before its saved channels and listings are removed.
+    static let noSignalMissesToDrop = 2
 
     static func muxFile(deviceId: String, root: URL = OTAStore.root) -> URL { folder(deviceId: deviceId, root: root).appendingPathComponent("mux.json") }
 
@@ -96,10 +102,16 @@ enum OTAStore {
             let read = Set(results.map(\.rf))
             // Of those, the ones whose guide this scan really read (a channel-list-only read of a station, e.g. one whose guide read failed in a full scan, never replaces listings).
             let guideRead = Set(results.filter { !lineupOnly && $0.guideRead }.map(\.rf))
-            let gone = Set(outcome.skipped.filter { $0.value == "no signal" }.keys).subtracting(read)
-            let replaced = read.union(gone)
-
+            let silent = Set(outcome.skipped.filter { $0.value == "no signal" }.keys).subtracting(read)
             var records = muxRecords(deviceId: deviceId, root: root)   // before lineup.json is rewritten: an old save without mux.json takes its dates from the file
+            // A station is dropped on its second silent scan in a row; the first only counts a miss and keeps what was saved. (A silent RF with no record has nothing to keep.)
+            var gone = Set<Int>()
+            for rf in silent {
+                guard var rec = records[rf] else { continue }
+                let misses = (rec.noSignalMisses ?? 0) + 1
+                if misses >= Self.noSignalMissesToDrop { gone.insert(rf) } else { rec.noSignalMisses = misses; records[rf] = rec }
+            }
+            let replaced = read.union(gone)
             let oldLineup = allSavedLineup(deviceId: deviceId, root: root) ?? []
             let oldNumbers = Set(oldLineup.filter { guideRead.union(gone).contains($0.RF) }.map(\.GuideNumber))
             let goneNumbers = Set(oldLineup.filter { gone.contains($0.RF) }.map(\.GuideNumber))
@@ -124,6 +136,7 @@ enum OTAStore {
                 let numbers = Set(m.result.channels.map(\.number))
                 var rec = records[m.rf] ?? MuxRecord(rf: m.rf, lineupDate: nil, guideDate: nil, channels: 0, events: 0)
                 rec.lineupDate = now
+                rec.noSignalMisses = nil   // heard again: the streak of silent scans ends
                 rec.channels = numbers.count
                 if !lineupOnly, m.guideRead {
                     rec.guideDate = now

@@ -48,4 +48,40 @@ struct WebServerOTARouteTests {
         let r = await post("not json", state: state)
         #expect(!isBadRequest(r))
     }
+
+    private func isConflict(_ r: WebServer.WebResponse) -> Bool { if case .conflict = r { return true }; return false }
+    private func isUnavailable(_ r: WebServer.WebResponse) -> Bool { if case .serviceUnavailable = r { return true }; return false }
+
+    @Test func aScanThatIsRunningIsNeverRestarted_409() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1")])
+        await MainActor.run { state.otaScanTask = Task { try? await Task.sleep(nanoseconds: 5_000_000_000) } }
+        let r = await post(#"{"rf":[31]}"#, state: state)
+        #expect(isConflict(r))
+        await MainActor.run { state.otaScanTask?.cancel(); state.otaScanTask = nil }
+    }
+
+    @Test func noTunerToScanWith_503() async {
+        let state = await makeTestAppState()   // no devices
+        #expect(isUnavailable(await post(#"{"rf":[31]}"#, state: state)))
+        let other = await makeTestAppState(devices: [.test(id: "DEV1")])
+        #expect(isUnavailable(await post(#"{"deviceId":"NOPE"}"#, state: other)))
+    }
+
+    @Test func everyTunerBusy_503() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 1)])
+        await MainActor.run {
+            state.deviceTunerOccupancy["DEV1"] = [DeviceTunerInfo(Resource: "tuner0", VctNumber: "7.1", TargetIP: nil, SignalQualityPercent: nil)]
+        }
+        #expect(isUnavailable(await post(#"{"rf":[31]}"#, state: state)))
+        #expect(await state.otaScanTask == nil)
+    }
+
+    @Test func aSignalScanIsMarkedActiveUntilItEndsOrIsCancelled() async throws {
+        let state = await makeTestAppState()   // nothing to measure: the scan ends at once
+        await MainActor.run { state.startSignalScan(force: true) }
+        for _ in 0..<40 where await state.signalScanActive { try await Task.sleep(nanoseconds: 50_000_000) }
+        #expect(await !state.signalScanActive)
+        await MainActor.run { state.cancelSignalScan() }
+        #expect(await !state.signalScanActive)
+    }
 }

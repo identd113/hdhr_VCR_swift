@@ -74,7 +74,7 @@ trickling in listings uses all of it. Why: a station's near-term listings come r
 
 ## Each multiplex is saved and dated on its own (2026-10-22)
 `OTAStore.save` merges per RF channel instead of rewriting the whole saved scan. A scan **replaces** the channels (`lineup.json`) and listings (`guide.json`) of every RF channel it read, **drops** every RF channel it found
-with "no signal", and leaves all other multiplexes untouched, so one station can be refreshed alone (the web guide's *Refresh this multiplex's guide*, `POST /api/ota-scan {"rf":[19]}`) and a full scan is just every RF at once.
+with "no signal" **twice in a row** (the first silent scan only records a miss in `mux.json`, `noSignalMisses`, and keeps everything saved; a scan that hears the station again resets the count; the whole multiplex goes together, since one RF channel carries all its sub-channels), and leaves all other multiplexes untouched, so one station can be refreshed alone (the web guide's *Refresh this multiplex's guide*, `POST /api/ota-scan {"rf":[19]}`) and a full scan is just every RF at once.
 A lineup-only scan updates channel lists only (it seeds listings for channels that have none and never replaces an earlier guide). **`mux.json`** keeps `[{rf, lineupDate, guideDate, channels, events}]`: the date each multiplex's channel list
 and guide were last read to the end (`OTAStore.muxRecords`; a saved scan from before it existed gets the channel-list date from `lineup.json` and no guide date). The scan window shows them under the selected multiplex's header and
 the web guide's summary shows "Guide read <date>". `scan.json` (the "a full scan ran" record the wizard lines and schedule read) is still written only by a full scan. The Developer purges clear the matching dates.

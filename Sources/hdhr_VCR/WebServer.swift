@@ -24,6 +24,8 @@ final class WebServer: @unchecked Sendable {
         case payloadTooLarge(String)
         case forbidden(String)
         case methodNotAllowed(String)   // 405 + Allow
+        case serviceUnavailable(String) // 503 + Retry-After: no tuner free right now (or none at all)
+        case conflict(String)           // 409: the request is valid but not allowed in the current state (a scan already running)
     }
 
     private var listener:      NWListener?
@@ -2720,6 +2722,10 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/ota-scan" { return handleOTAScan(state: state, body: body) }
             if path == "/api/signal-scan"  {
                 let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
+                // Never restarts a scan in progress (force used to cancel it and begin again).
+                if state.signalScanActive { return .conflict("A signal scan is already running") }
+                let free = state.recordableDevices.filter { $0.isAvailable && !state.tunersFull(for: $0.DeviceID) }
+                if free.isEmpty { return .serviceUnavailable("No idle tuner to measure; try again later") }
                 state.startSignalScan(force: force)
                 return jsonResponse(["status": "started", "force": force])
             }
@@ -3048,6 +3054,12 @@ final class WebServer: @unchecked Sendable {
         if let raw = params["rf"], !(raw is [Int]) { return .badRequest("rf must be a list of numbers, e.g. [31, 32]") }
         let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
         if let rf, rf.isEmpty { return .badRequest("rf lists no valid RF channel (2-36, 38-51); omit it to scan them all") }
+        // A scan that is running is never restarted from the network: only {"cancel":true} ends it.
+        if state.otaScanTask != nil { return .conflict("A scan is already running: \(state.otaScanStatus)") }
+        // No tuner to scan with, or every one of them busy: tell the caller to try later instead of answering 200.
+        let target = state.recordableDevices.first { ($0.DeviceID == (params["deviceId"] as? String)) || params["deviceId"] == nil }
+        guard let target, target.isAvailable else { return .serviceUnavailable("No tuner available to scan") }
+        if state.tunersFull(for: target.DeviceID) { return .serviceUnavailable("Every tuner on \(target.DeviceID) is busy; try again later") }
         let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
         return jsonResponse(["status": state.startOTAScan(deviceId: params["deviceId"] as? String, rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false, showWindow: params["window"] as? Bool ?? true)])
     }
@@ -4954,6 +4966,10 @@ final class WebServer: @unchecked Sendable {
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg); keepAlive = false
         case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg); keepAlive = false
         case .forbidden(let msg):     (status, headers, body) = errorParts("403 Forbidden",         msg); keepAlive = false
+        case .serviceUnavailable(let msg):
+            (status, headers, body) = errorParts("503 Service Unavailable", msg)
+            headers.append(("Retry-After", "30")); keepAlive = false
+        case .conflict(let msg):      (status, headers, body) = errorParts("409 Conflict",          msg); keepAlive = false
         case .methodNotAllowed(let msg):
             (status, headers, body) = errorParts("405 Method Not Allowed", msg)
             headers.append(("Allow", Self.allowedMethods)); keepAlive = false

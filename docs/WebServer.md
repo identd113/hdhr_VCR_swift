@@ -46,6 +46,7 @@ func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — thin wra
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
+| POST | `/api/ota-scan` / `/api/signal-scan` (status codes) | A scan that is already running is **never restarted** from the network: **409 Conflict** (`/api/ota-scan` new scan, `/api/signal-scan` with or without `force`); only `{"cancel":true}` (OTA) ends one. **503 Service Unavailable** with `Retry-After: 30` when no tuner can be used right now: none available, or every tuner on the device busy (`tunersFull`); OTA also answers 503 for an unknown `deviceId`. `400` stays for a bad `rf`. |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |

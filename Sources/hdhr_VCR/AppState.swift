@@ -240,6 +240,9 @@ final class AppState: ObservableObject {
     @Published var signalScanProgress: String? = nil
 
     private var signalScanTask:     Task<Void, Never>? = nil
+    /// True from the moment a signal scan is requested until it ends or is cancelled (the web route refuses to restart one).
+    private(set) var signalScanActive = false
+    private var signalScanToken = UUID()   // a cancelled scan's late end must not clear a newer scan's flag
     // Over-the-air guide scan (OTAGuide/, overtime/APP_PLAN.md). Status line also read by /api/ota-status (a few writes per scan, like signalScanProgress).
     var otaScanTask: Task<Void, Never>? = nil
     @Published var otaScanStatus: String = ""
@@ -6699,7 +6702,11 @@ final class AppState: ObservableObject {
     /// `deviceId`: scan only that tuner (Settings → Advanced's picker); nil = every tuner (idle loop, web UI).
     func startSignalScan(force: Bool = false, deviceId: String? = nil) {
         signalScanTask?.cancel()
+        let token = UUID()
+        signalScanToken = token
+        signalScanActive = true
         signalScanTask = Task {
+            defer { if signalScanToken == token { signalScanActive = false } }
             // Only scan channels that don't already have fresh data — lets us resume a
             // partial scan and skip work after a clean full scan. force=true bypasses this.
             // recordableDevices (not devices) — a discovered virtual relay device's synthetic
@@ -6850,6 +6857,7 @@ final class AppState: ObservableObject {
     func cancelSignalScan() {
         signalScanTask?.cancel()
         signalScanTask = nil
+        signalScanActive = false
         signalScanProgress = nil
     }
 
