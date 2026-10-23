@@ -816,6 +816,12 @@ final class AppState: ObservableObject {
     private var lineupConfirmBackoff = APIBackoff()
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
+    private var quickProbeStep = 0                    // how many tapering follow-ups have been scheduled for the current miss
+    /// Delay before follow-up probe number `step` (0-based): 60 s doubling each time, nil once it would reach the 5-min cycle.
+    nonisolated static func quickProbeDelay(step: Int) -> TimeInterval? {
+        let delay = 60.0 * pow(2.0, Double(max(0, step)))
+        return delay < 300 ? delay : nil
+    }
     // idleLoop() launches probeForNewDevices() as a detached `Task { }`, not awaited — its own
     // idleLoopRunning guard only prevents overlapping idleLoop() bodies, not this background probe
     // outliving one tick. Without this, a probe slower than the ~60s/300s trigger interval (e.g.
@@ -1833,9 +1839,18 @@ final class AppState: ObservableObject {
         // that never yields a discover.json TunerCount (e.g. the fake FFFF0001 test device, or a
         // real device whose HTTP server is permanently down rather than just slow) would otherwise
         // pin the quick-probe cadence at 60 s for the whole session instead of settling back to it.
+        // The follow-ups taper (60 s, 120 s, 240 s) and then stop: once the next one would be no
+        // sooner than the normal 5-min cycle, the cycle itself takes over. The step resets when the
+        // condition clears.
         if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 })
             || tunerCountRecentlyMissing {
-            nextQuickProbe = Date().addingTimeInterval(60)
+            let delay = Self.quickProbeDelay(step: quickProbeStep)
+            if let delay {
+                nextQuickProbe = Date().addingTimeInterval(delay)
+                quickProbeStep += 1
+            }
+        } else {
+            quickProbeStep = 0
         }
 
         // Forget any device that's both unavailable and has no show assigned to it, once it's been
