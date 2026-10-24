@@ -132,7 +132,7 @@ final class AppState: ObservableObject {
     private var sigtermSource: DispatchSourceSignal?
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
-    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.guidePrefersAir; guideStore.airGuideAllowed = config.OTA_enabled } }
+    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.guidePrefersAir; syncAirGuideAllowed() } }
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
@@ -253,6 +253,8 @@ final class AppState: ObservableObject {
     var otaGapCheckInFlight = false
     /// Guide-failure fallback (AppState+OTA.swift): set once per outage when the person has been asked; the task is the one-hour wait.
     var airFallbackOffered = false
+    /// The person said yes (or an hour passed unanswered) to the guide-failure air scan: the saved air guide may stand in until the guide loads again.
+    var airFallbackApproved = false
     /// Live TV watched in a browser (AppState+WebLive.swift): session id → the tuner stream being spooled to a temp file that the HLS follower reads.
     var webLiveSessions: [String: WebLiveSession] = [:]
     /// Web guide "Air only" section: air channels the tuner lacks, cached per device by the saved lineup file's date and the tuner lineup size.
@@ -4201,11 +4203,15 @@ final class AppState: ObservableObject {
                     applyMatch(match); return
                 }
             }
-            // Bump show_next if stranded (nil or past). If it's already a future guide match,
-            // leave it — rescheduleAllSeries will override it when a real episode appears.
-            if shows[idx].show_next.map({ $0 <= Date() }) ?? true {
-                glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
-                shows[idx].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
+            // No airing in the guide: park the show one hour past the last listing the guide has (`seriesParkedTime`), so it can never
+            // look imminent. It is looked at again whenever newer guide data arrives (every refresh runs `rescheduleAllSeries`); there is
+            // no fixed retry interval. With no guide loaded for the tuner (an outage) a future show_next is left alone instead, so a
+            // recording already scheduled is not thrown away by a guide that is merely missing.
+            let guideLoaded = !(guideStore.channelsByDevice[shows[idx].hdhr_record] ?? []).isEmpty
+            if guideLoaded || (shows[idx].show_next.map({ $0 <= Date() }) ?? true) {
+                let parked = seriesParkedTime(deviceId: shows[idx].hdhr_record)
+                glog("[\(show.show_title)] no episode found — parked until \(shortTime(parked)) (an hour past the guide); re-checked when newer guide data arrives", level: .warning)
+                shows[idx].show_next = parked
             } else {
                 glog("[\(show.show_title)] no episode found in guide — show_next already future, leaving unchanged", level: .warning)
             }
@@ -4230,6 +4236,15 @@ final class AppState: ObservableObject {
                 shows[idx].show_end = newEnd
             }
         }
+    }
+
+    /// Where a SeriesID show with no airing in the guide is parked: an hour past the last listing the tuner's guide has (never earlier than an
+    /// hour from now), or past the whole fetch window when no guide is loaded. A real airing can only show up in newer guide data, which
+    /// re-evaluates the show, so this time is only a marker that keeps it from looking like it is about to air.
+    func seriesParkedTime(deviceId: String, now: Date = Date()) -> Date {
+        let lastEnd = (guideStore.channelsByDevice[deviceId] ?? []).flatMap { $0.Guide ?? [] }.map(\.EndTime).max()
+        let edge = lastEnd.map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? now.addingTimeInterval(Double(config.GuideHours) * 3600)
+        return max(edge, now).addingTimeInterval(3600)
     }
 
     // Pass after: Date() to include today (menu display); after: startOfTomorrow to always skip today (rescheduling).

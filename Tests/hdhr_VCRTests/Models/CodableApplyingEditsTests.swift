@@ -11,10 +11,10 @@ struct CodableApplyingEditsTests {
         var live = baseline
         live.Donation_unlocked = true          // unlocked from the nag window meanwhile
         var draft = baseline
-        draft.GuideHours = baseline.GuideHours == 12 ? 14 : 12   // the user's actual edit
+        draft.Min_disk_free_gb = baseline.Min_disk_free_gb == 12 ? 14 : 12   // the user's actual edit
         let merged = try #require(codableApplyingEdits(live: live, original: baseline, edited: draft))
         #expect(merged.Donation_unlocked == true)
-        #expect(merged.GuideHours == draft.GuideHours)
+        #expect(merged.Min_disk_free_gb == draft.Min_disk_free_gb)
     }
 
     // The merge round-trips through Codable — every field must survive encode/decode unchanged,

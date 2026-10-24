@@ -2,34 +2,19 @@ import Testing
 import Foundation
 @testable import hdhr_VCR
 
-// MARK: - AppConfig decode-time clamps
+// MARK: - Guide window
 //
-// GuideHours is clamped to 1...28 on decode (Models.swift) because the cloud guide.php API
-// silently truncates single-call requests beyond ~29h, and guideURL adds +1 to the requested
-// hours (docs/GuideStore.md) — an old saved config with 48 slipping through would silently
-// fetch a truncated guide with no error signal, and 0/negative would zero out the web guide's
-// winSec (division context in guide rendering). The Settings stepper already enforces 1...28
-// in the UI; this decode clamp is the only guard for values written by older builds or by
-// hand-editing the JSON, so it gets pinned here.
+// GuideHours is no longer a setting (2026-10-24): the app always asks for the most the cloud guide.php API gives in one call (28 h; it
+// silently truncates beyond ~29 h and guideURL adds +1, docs/GuideStore.md). A value in an old saved config — 48, 0, anything — is ignored,
+// so it can neither truncate the fetch nor zero out the web guide's winSec.
 
-@Suite("AppConfig GuideHours decode clamp")
+@Suite("AppConfig GuideHours is fixed")
 struct AppConfigGuideHoursClampTests {
 
-    @Test(arguments: [
-        // Pre-clamp builds allowed up to 48 in the UI — those configs still exist on disk.
-        (json: #"{"GuideHours": 48}"#, expected: 28),
-        (json: #"{"GuideHours": 0}"#,  expected: 1),
-        (json: #"{"GuideHours": -5}"#, expected: 1),
-        // Absent key falls back to the default, not a clamp boundary.
-        (json: "{}",                   expected: 24),
-        // In-range values (including both boundaries) pass through untouched.
-        (json: #"{"GuideHours": 12}"#, expected: 12),
-        (json: #"{"GuideHours": 1}"#,  expected: 1),
-        (json: #"{"GuideHours": 28}"#, expected: 28),
-    ])
-    func decodeClampsTo1Through28(_ row: (json: String, expected: Int)) throws {
-        let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(row.json.utf8))
-        #expect(cfg.GuideHours == row.expected)
+    @Test(arguments: [#"{"GuideHours": 48}"#, #"{"GuideHours": 0}"#, #"{"GuideHours": -5}"#, "{}", #"{"GuideHours": 12}"#, #"{"GuideHours": 28}"#])
+    func alwaysTwentyEight(_ json: String) throws {
+        let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+        #expect(cfg.GuideHours == 28)
     }
 }
 
@@ -40,11 +25,5 @@ struct AppConfigRetryClampTests {
     func failCountAtLeastOne(_ row: (String, Int)) throws {
         let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(row.0.utf8))
         #expect(cfg.Fail_count_setting == row.1)
-    }
-
-    @Test(arguments: [(#"{"Series_scan_retry_hours": 0}"#, 1), ("{}", 4), (#"{"Series_scan_retry_hours": 6}"#, 6)])
-    func retryHoursAtLeastOne(_ row: (String, Int)) throws {
-        let cfg = try JSONDecoder().decode(AppConfig.self, from: Data(row.0.utf8))
-        #expect(cfg.Series_scan_retry_hours == row.1)
     }
 }

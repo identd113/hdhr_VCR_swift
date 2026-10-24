@@ -6,10 +6,17 @@ import Foundation
 // The scan runs entirely off the main actor; only the small environment closures and the final hand-over touch app state.
 
 extension AppState {
+    /// The channel-list scan is the one thing the air does without being asked; a scan that reads guide listings needs the person's
+    /// permission ("Use the air for guide data", `OTA_enabled`).
+    nonisolated static func scanAllowed(lineupOnly: Bool, config: AppConfig) -> Bool { lineupOnly || config.OTA_enabled }
+
+    /// The saved air guide may be read when guide data from the air is allowed, or while an approved guide-failure scan is standing in.
+    func syncAirGuideAllowed() { guideStore.airGuideAllowed = config.OTA_enabled || airFallbackApproved }
+
     /// Starts a scan of one device (default: the first real tuner). Returns a one-line status for the caller.
     @discardableResult
-    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true, showWindow: Bool = true) -> String {
-        guard config.OTA_enabled else { return "Over-the-air scanning is off (Settings → Over the Air)." }
+    func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true, showWindow: Bool = true, permitted: Bool = false) -> String {
+        guard permitted || Self.scanAllowed(lineupOnly: lineupOnly, config: config) else { return "Guide data from the air is off (Settings → Over the Air)." }
         if otaScanTask != nil { return "A scan is already running: \(otaScanStatus)" }
         guard let device = recordableDevices.first(where: { deviceId == nil || $0.DeviceID == deviceId }), device.isAvailable else {
             return "No tuner available to scan."
@@ -129,7 +136,7 @@ extension AppState {
     /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) once a day from `OTA_lineup_hour`.
     /// It opens the scan window (without taking focus; the window closes itself when the scan ends) and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
     func startScheduledOTALineupRefreshIfDue(now: Date = Date()) {
-        guard config.OTA_enabled, config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
+        guard config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
         guard Self.lineupScanDue(now: now, hour: config.OTA_lineup_hour, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
         lastOTALineupAttempt = now
         glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
@@ -218,7 +225,7 @@ extension AppState {
     /// the air for a backup guide, tell Discord, and start the scan by itself if nobody answers within an hour. "Not now" ends the offer for
     /// this outage. A guide that loads again cancels everything (`endAirGuideFallbackOffer`).
     func offerAirGuideFallback(deviceId: String, wait: TimeInterval = 3600) {
-        guard config.OTA_enabled, !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
+        guard !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
               recordableDevices.contains(where: { $0.DeviceID == deviceId }) else { return }
         airFallbackOffered = true
         glog("[OTA] guide unavailable for \(deviceId) — offering an air scan, starting it in \(Int(wait / 60)) min if nobody answers")
@@ -230,7 +237,7 @@ extension AppState {
         Dialogs.show(alert) { [weak self] response in
             guard let self else { return }
             self.airFallbackTask?.cancel(); self.airFallbackTask = nil
-            if response == .alertFirstButtonReturn { self.startOTAScan(deviceId: deviceId) }
+            if response == .alertFirstButtonReturn { self.airFallbackApproved = true; self.syncAirGuideAllowed(); self.startOTAScan(deviceId: deviceId, permitted: true) }
             else { glog("[OTA] air guide scan declined for this outage") }
         }
         discordError("📡 Guide unavailable — air scan offered",
@@ -241,7 +248,8 @@ extension AppState {
             guard !Task.isCancelled, let self else { return }
             self.airFallbackTask = nil
             glog("[OTA] no answer after \(Int(wait / 60)) min — starting the air scan")
-            self.startOTAScan(deviceId: deviceId, userInitiated: false)
+            self.airFallbackApproved = true; self.syncAirGuideAllowed()
+            self.startOTAScan(deviceId: deviceId, userInitiated: false, permitted: true)
         }
     }
 
@@ -249,6 +257,7 @@ extension AppState {
     func endAirGuideFallbackOffer() {
         airFallbackTask?.cancel(); airFallbackTask = nil
         airFallbackOffered = false
+        airFallbackApproved = false; syncAirGuideAllowed()
     }
 
     // MARK: air-only channels (web guide)
@@ -256,7 +265,7 @@ extension AppState {
     /// Channels the saved air lineup has and this tuner's own lineup does not (empty when no scan is saved).
     func airOnlyChannels(deviceId: String) -> [OTALineupEntry] {
         // With the Developer lineup source "From the air" the air channels ARE the lineup: nothing is left over to list separately.
-        guard config.airFillsGaps, !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
+        guard !config.airReplacesSiliconDust, !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
         let tuner = lineups[deviceId] ?? []
         let stamp = "\(date.timeIntervalSince1970)-\(tuner.count)"
         if let hit = airOnlyCache[deviceId], hit.stamp == stamp { return hit.entries }

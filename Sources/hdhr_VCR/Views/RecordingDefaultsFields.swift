@@ -67,12 +67,9 @@ struct RecordingDefaultsFields: View {
             }
             .accessibilityIdentifier("\(idPrefix)-fail-threshold")
 
-            Picker(selection: $timeMachineExcludeMode) {
-                Text("Off").tag("off")
-                Text("Each Recording").tag("perFile")
-                Text("Show's Folder").tag("perFolder")
-            } label: {
-                HStack { Text("Exclude from Time Machine"); InfoButton("Keeps TV recordings out of Time Machine backups. \"Each Recording\" tags every file individually. \"Show's Folder\" tags the containing folder once instead — Time Machine skips an excluded folder entirely, so this also covers future episodes automatically, but any other files you keep in that same folder are excluded too.", about: "Exclude from Time Machine") }
+            // One switch (2026-10-24): on tags the show's folder once ("perFolder"); a config from before that with "perFile" still reads as on.
+            Toggle(isOn: Binding(get: { timeMachineExcludeMode != "off" }, set: { timeMachineExcludeMode = $0 ? "perFolder" : "off" })) {
+                HStack { Text("Exclude recordings from Time Machine"); InfoButton("Keeps TV recordings out of Time Machine backups by tagging each show's folder once; Time Machine then skips everything inside it, including future episodes.", about: "Exclude from Time Machine") }
             }
             .accessibilityIdentifier("\(idPrefix)-tm-exclude")
         }

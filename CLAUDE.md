@@ -130,7 +130,7 @@ Each bullet is the binding rule; the **→ full text** link has the complete ori
 
 - **Web server listener is IPv4-only** — `WebServer.start(port:)` sets `NWProtocolIP.Options.version = .v4`. The default dual-stack `NWListener` sent ~500× slower to IPv4 LAN clients under Network.framework's user-space TCP stack (~0.2 MB/s, ~40% retransmits — starved every FEED viewer); IPv4-only measured ~100 MB/s. Don't remove it without re-measuring a LAN client's throughput (`issues_resolved.md`'s "FEED starvation: dual-stack NWListener").
 
-- **Guide API** — cloud `guide.php` caps a single call at ~29h regardless of `Duration`; `GuideHours` setting is clamped to 28 to stay within it (`GuideStore.load()` makes one call, no pagination); `DeviceAuth` rotates (re-fetch from `/discover.json`). Details + untapped endpoints: `docs/HDHRFindings.md`.
+- **Guide API** — cloud `guide.php` caps a single call at ~29h regardless of `Duration`; `GuideHours` is a constant 28 (no longer a setting) to stay within it (`GuideStore.load()` makes one call, no pagination); `DeviceAuth` rotates (re-fetch from `/discover.json`). Details + untapped endpoints: `docs/HDHRFindings.md`.
 
 - **Idle-loop show-array safety** — `idleLoop()` guards against overlapping runs (`idleLoopRunning`). Its passes, plus `scheduleNextAir`/`stopRecording(showId:)`, re-resolve `shows` by `show_id` after any `await` — never reuse a captured `Int` index, since `shows` can mutate (a web-UI delete, another show's own reschedule) while suspended.
 

@@ -152,8 +152,18 @@ final class GuideStore {
         return await task.value
     }
 
+    /// Loads in the chosen format and, if that fails, once in the other one (JSON and XMLTV are two endpoints of the same service, and one can be
+    /// down while the other answers). Only when both fail does the caller fall back to the air (`handleGuideLoadFailure` → `offerAirGuideFallback`).
     @discardableResult
     private func loadNow(for device: HDHRDevice, hours: Int, useXML: Bool, maxCacheAge: TimeInterval?) async -> Bool {
+        if await loadFormat(for: device, hours: hours, useXML: useXML, maxCacheAge: maxCacheAge) { return true }
+        guard device.DeviceAuth != nil, !preferOTA else { return false }   // without DeviceAuth there is only the JSON path
+        glog("[\(device.DeviceID)] \(useXML ? "XMLTV" : "JSON") guide failed — trying \(useXML ? "JSON" : "XMLTV")", level: .warning)
+        return await loadFormat(for: device, hours: hours, useXML: !useXML, maxCacheAge: maxCacheAge)
+    }
+
+    @discardableResult
+    private func loadFormat(for device: HDHRDevice, hours: Int, useXML: Bool, maxCacheAge: TimeInterval?) async -> Bool {
         if preferOTA {
             if await loadOTA(deviceId: device.DeviceID) { return true }
             glog("[\(device.DeviceID)] over-the-air guide preferred but no usable saved scan — using the cloud guide")

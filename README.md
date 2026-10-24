@@ -294,7 +294,7 @@ The lit states blink on a 6-second cycle if "Blink menu bar icon" is enabled in 
 |---------|-------------|
 | **General** | Launch at Login |
 | **Recording** | Save folder; transcode profile; min free disk; failure threshold |
-| **Guide** | Hours of guide data; series scan retry interval |
+| **Guide** | Guide format (JSON, XMLTV, or the air), auto-refresh interval |
 | **Notifications** | Up Next / Recording Soon timing; Discord webhook + per-event toggles |
 | **Advanced** | Idle interval; verbose curl logging |
 | **Web Server** | Enable/disable; port; live status and access URL |

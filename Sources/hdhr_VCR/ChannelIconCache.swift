@@ -40,6 +40,18 @@ actor ChannelIconCache {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
+    /// Where the icons live in production (Settings → Maintenance shows its size).
+    nonisolated static var defaultDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("hdhr_VCR/channel_icons", isDirectory: true)
+    }
+
+    /// Deletes every cached logo (they download again as the guide needs them). Returns how many files were removed.
+    @discardableResult
+    func clearAll() -> Int {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { (try? FileManager.default.removeItem(at: $0)) != nil }.count
+    }
+
     // SHA256 of the full URL, not just URL.lastPathComponent — two logo URLs sharing a basename
     // (or both lacking a path, falling to the "icon.png" default) previously collided on disk,
     // silently serving one channel's icon for another after a restart. Swift's built-in

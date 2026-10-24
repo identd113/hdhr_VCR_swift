@@ -567,11 +567,11 @@ struct AppConfig: Equatable {
     var Notify_upnext: Double    = 35.0     // minutes before show airs
 
     // Guide
-    var GuideHours: Int          = 24       // hours ahead to fetch
+    /// Hours of guide asked for: always the most the cloud guide gives in one call (it silently truncates past ~29 h). No longer a setting (2026-10-24); an old config's value is ignored.
+    var GuideHours: Int { 28 }
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
     var OTA_enabled: Bool        = false    // "Scan OTA for Lineup and Guide" (Settings → Over the Air): off = nothing over the air is done at all (OTAGuide/)
     var OTA_always_use: Bool     = false    // with OTA_enabled: true = the air is the lineup and guide (SiliconDust's are not used); false (default) = SiliconDust stays the source
-    var OTA_fill_gaps: Bool      = true     // with OTA_enabled and SiliconDust as the source: "Use OTA to get guide data SiliconDust does not provide" — read from the air only the multiplexes SiliconDust lacks. Not offered when the air is the source
     var OTA_lineup_hour: Int     = 3        // hour of day (0-23) the over-the-air channel list is rescanned in the background (a quick scan, no guide) on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
     var OTA_lineup_auto: Bool    = true    // LEGACY (replaced by OTA_lineup_hour, only read to migrate an old config): keep the over-the-air channel list (a quick scan, no guide) up to date, only in the early hours (OTAGuide/AppState+OTA.swift)
     var OTA_scan_hour: Int       = -1       // LEGACY, unused since the guide is scanned only after a guide failure (AppState.offerAirGuideFallback): hour of day (0-23) the over-the-air guide is rescanned in the background on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
@@ -582,7 +582,7 @@ struct AppConfig: Equatable {
     // needs to refresh more often to avoid running dry. Valid values are 2, 4, or 8 (halves, quarters,
     // eighths) — any other decoded value falls back to the default. "Update Guides Now" in Settings
     // always bypasses this for an immediate manual refresh.
-    var Guide_refresh_interval_divisor: Int = 8
+    var Guide_refresh_interval_divisor: Int = 4
 
     // Recording
     var Default_transcode: String   = "none"  // none | heavy | mobile | internet720
@@ -601,9 +601,6 @@ struct AppConfig: Equatable {
     // tags each recording individually instead, for someone who wants other files sharing that
     // folder (an .nfo, a poster) still backed up.
     var TimeMachine_exclude_mode: String = "off"
-
-    // Series
-    var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
 
     // Default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
     var Hdhr_setup_folder: String = ""
@@ -717,7 +714,7 @@ struct AppConfig: Equatable {
     var Virtual_tuner_relay_default_transcode: String = "heavy"
 
     // Signal quality
-    var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
+    var Signal_quality_enabled:      Bool = true   // show signal bars in guide + web UI (default on since 2026-10-24)
     var Signal_quality_alert_notify: Bool = false  // deliver system notification + Discord on dropout
 
     // Menu bar icon
@@ -753,32 +750,22 @@ extension AppConfig: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         Notify_recording      = (try? c.decode(Double.self,  forKey: .Notify_recording))      ?? 15.5
         Notify_upnext         = (try? c.decode(Double.self,  forKey: .Notify_upnext))         ?? 35.0
-        // Clamp to 28 even for an old saved value above that — GuideStore.load()'s single-call
-        // cloud request silently truncates past ~29h regardless (docs/HDHRFindings.md), so a
-        // stale higher setting from before this cap was enforced would otherwise look honored.
-        // Clamp both ends: the ~29h cloud cap sets the ceiling (28), and a floor of 1 guards against a
-        // corrupt/hand-edited config with 0 or a negative — GuideHours feeds winSec = GuideHours*3600,
-        // and WebServer.pct() divides by winSec, so 0 would be a division-by-zero trap that aborts the
-        // app on every page render (and at startup during prebuildPageHTML), not just a bad UI value.
-        GuideHours            = max(1, min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24))
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
         OTA_enabled           = (try? c.decode(Bool.self,   forKey: .OTA_enabled))           ?? false
         OTA_always_use        = (try? c.decode(Bool.self,   forKey: .OTA_always_use))        ?? false
-        OTA_fill_gaps         = (try? c.decode(Bool.self,   forKey: .OTA_fill_gaps))         ?? true
         OTA_scan_hour         = (try? c.decode(Int.self,    forKey: .OTA_scan_hour))         ?? -1
         OTA_lineup_auto       = (try? c.decode(Bool.self,   forKey: .OTA_lineup_auto))       ?? true
         OTA_lineup_hour       = (try? c.decode(Int.self,    forKey: .OTA_lineup_hour)).map { (0...23).contains($0) ? $0 : -1 } ?? (OTA_lineup_auto ? 3 : -1)
         // Only 2/4/8 are ever offered in the UI — a corrupt/hand-edited value outside that set falls
-        // back to the default (8) rather than being clamped into it, since there's no sensible
+        // back to the default (4) rather than being clamped into it, since there's no sensible
         // "nearest valid divisor" for e.g. 5 or -1.
-        let decodedDivisor = (try? c.decode(Int.self, forKey: .Guide_refresh_interval_divisor)) ?? 8
-        Guide_refresh_interval_divisor = [2, 4, 8].contains(decodedDivisor) ? decodedDivisor : 8
+        let decodedDivisor = (try? c.decode(Int.self, forKey: .Guide_refresh_interval_divisor)) ?? 4
+        Guide_refresh_interval_divisor = [2, 4, 8].contains(decodedDivisor) ? decodedDivisor : 4
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         // >= 1: 0/negative would make every show "PAUSED — fail threshold 0 reached" before its first try.
         Fail_count_setting    = max(1, (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3)
         Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 30.0
         Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
-        Series_scan_retry_hours = max(1, (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4)
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
         Network_interface     = (try? c.decode(String.self,  forKey: .Network_interface))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
@@ -811,7 +798,7 @@ extension AppConfig: Codable {
         FEED_feature_enabled    = (try? c.decode(Bool.self,   forKey: .FEED_feature_enabled))    ?? true
         Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? false
         Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"
-        Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
+        Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? true
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false
         Show_launch_splash          = (try? c.decode(Bool.self, forKey: .Show_launch_splash))          ?? true
@@ -1453,7 +1440,7 @@ extension AppConfig {
     var airReplacesSiliconDust: Bool { OTA_enabled && OTA_always_use }
 
     /// SiliconDust stays the source and the air supplies only the stations (multiplexes) it does not send.
-    var airFillsGaps: Bool { OTA_enabled && !OTA_always_use && OTA_fill_gaps }
+    var airFillsGaps: Bool { OTA_enabled && !OTA_always_use }
 
     /// Whether the over-the-air guide is tried *before* the SiliconDust one.
     var guidePrefersAir: Bool { airReplacesSiliconDust }

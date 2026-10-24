@@ -6,8 +6,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     case general       = "General"
     case recording     = "Recording"
-    case guide         = "Guide"
     case overTheAir    = "Over the Air"
+    case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
     // The tab is "Sharing": an umbrella over the web server ("Web LAN" section), Terminal Guide and Recording FEED.
@@ -43,6 +43,18 @@ struct SettingsView: View {
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
     @State private var signalScanDeviceID: String = ""      // Signal Strength Scan picker; "" = all tuners
+    @State private var storageSizes = StorageSizes()
+    @State private var aboutStoryExpanded = false      // About → The story (collapsed by default)
+    @State private var aboutOlderExpanded = false      // About → Earlier versions (collapsed by default)
+    // Maintenance → Guides & Devices: which actions are ticked (remembered between visits) and the run state.
+    @AppStorage("maintenanceRunDiscover") private var runDiscover = false
+    @AppStorage("maintenanceRunLineups") private var runLineups = false
+    @AppStorage("maintenanceRunGuide") private var runGuide = false
+    @AppStorage("maintenanceRunChannelScan") private var runChannelScan = false
+    @AppStorage("maintenanceRunSeries") private var runSeries = false
+    @State private var guidesDevicesRunning = false
+    @State private var guidesDevicesStatus = ""
+    @State private var organizeStatus = ""          // result line of Recording → Series → Organize Existing Recordings
     @State private var draft: AppConfig = AppConfig()
     // Snapshot of state.config at the moment `draft` was last (re)synced — lets
     // resyncIfUntouched() below prove "draft still equals what it started as" (safe to silently
@@ -165,8 +177,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("settings-import-pending")
-                } else if needsTest {
-                    Label("Test the webhook before saving", systemImage: "exclamationmark.triangle.fill")
+                } else if needsTest && !portBad {
+                    Label("Discord webhook not tested yet (you can still save)", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                     Button("Show") { selection = .notifications }
@@ -201,7 +213,7 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings-reset-tab")
                 }
                 Spacer()
-                let canSave = dirty && !needsTest && !portBad && !savesPaused
+                let canSave = dirty && !portBad && !savesPaused
                 Button("Save") { applyAndSave() }
                     .disabled(!canSave)
                     .keyboardShortcut("s", modifiers: .command)
@@ -214,7 +226,7 @@ struct SettingsView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(canSave ? .orange : .accentColor)
                 .keyboardShortcut(.defaultAction)
-                .disabled(needsTest || portBad || savesPaused)
+                .disabled(portBad || savesPaused)
                 .accessibilityIdentifier("settings-save-close")
             }
             .padding(.horizontal, 16)
@@ -224,8 +236,8 @@ struct SettingsView: View {
                minHeight: 420, idealHeight: 520, maxHeight: .infinity)
         // Remember the user's chosen size across opens and restarts.
         .background(WindowAction(trigger: true) { $0.setFrameAutosaveName("SettingsWindow") })
-        .onChange(of: selection) { maintenanceStatus = "" }   // a result from one tab shouldn't linger on another
-        .background(WindowCloseInterceptor(isDirty: dirty, canSave: !needsTest && !portBad && !savesPaused, onSave: applyAndSave,
+        .onChange(of: selection) { maintenanceStatus = ""; if selection == .maintenance { refreshStorageSizes() } }   // a result from one tab shouldn't linger on another
+        .background(WindowCloseInterceptor(isDirty: dirty, canSave: !portBad && !savesPaused, onSave: applyAndSave,
                                            onBecomeKey: { refreshSystemCaches(); resyncIfUntouched() },
                                            onWindow: { settingsWindow = $0 }))
         .onAppear {
@@ -260,12 +272,12 @@ struct SettingsView: View {
         case .general:       return ["Appearance_mode", "Show_launch_splash", "Status_light_blink_enabled"]
         case .recording:     return ["Default_transcode", "Fail_count_setting", "Min_disk_free_gb", "Post_recording_script", "Series_subfolder_enabled",
                                      "Skip_recorded_episodes", "Sports_padding_minutes", "TimeMachine_exclude_mode", "Write_metadata_sidecar", "Hdhr_setup_folder"]
-        case .guide:         return ["GuideHours", "Guide_refresh_interval_divisor", "Guide_use_xml", "Series_scan_retry_hours"]
-        case .overTheAir:    return ["OTA_enabled", "OTA_always_use", "OTA_fill_gaps", "OTA_lineup_hour"]
-        case .notifications: return ["Discord_enabled", "Discord_webhook_url", "Notify_recording", "Notify_upnext", "Discord_on_start", "Discord_on_complete",
+        case .guide:         return ["Guide_refresh_interval_divisor", "Guide_use_xml", "OTA_always_use"]
+        case .overTheAir:    return ["OTA_enabled", "OTA_lineup_hour"]
+        case .notifications: return ["Discord_enabled", "Discord_webhook_url", "Notify_upnext", "Discord_on_start", "Discord_on_complete",
                                      "Discord_on_failed", "Discord_on_paused", "Discord_on_skipped", "Discord_on_duplicate", "Discord_on_conflict",
                                      "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_soon", "Discord_on_show_added"]
-        case .advanced:      return ["Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled", "Verbose_curl"]
+        case .advanced:      return ["Notify_recording", "Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled"]
         case .sharing:       return ["Home_assistant_status_enabled", "Terminal_guide_enabled", "Virtual_tuner_relay_default_transcode", "Virtual_tuner_relay_enabled",
                                      "Web_server_enabled", "Web_server_port", "Web_streaming_enabled"]
         default:             return nil
@@ -328,7 +340,6 @@ struct SettingsView: View {
         if draft.Discord_webhook_url != old.Discord_webhook_url { glog("[Settings] DiscordWebhook changed") }
         if draft.Discord_enabled     != old.Discord_enabled     { glog("[Settings] DiscordEnabled: \(old.Discord_enabled) → \(draft.Discord_enabled)") }
         if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
-        if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
         if draft.Guide_refresh_interval_divisor != old.Guide_refresh_interval_divisor {
             glog("[Settings] GuideRefreshIntervalDivisor: 1/\(old.Guide_refresh_interval_divisor) → 1/\(draft.Guide_refresh_interval_divisor)")
         }
@@ -339,14 +350,13 @@ struct SettingsView: View {
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
         if draft.OTA_enabled         != old.OTA_enabled         { glog("[Settings] OTAEnabled: \(old.OTA_enabled) → \(draft.OTA_enabled)") }
         if draft.OTA_always_use      != old.OTA_always_use      { glog("[Settings] OTAAlwaysUse: \(old.OTA_always_use) → \(draft.OTA_always_use)") }
-        if draft.OTA_fill_gaps       != old.OTA_fill_gaps       { glog("[Settings] OTAFillGaps: \(old.OTA_fill_gaps) → \(draft.OTA_fill_gaps)") }
         if draft.OTA_lineup_hour     != old.OTA_lineup_hour     { glog("[Settings] OTALineupHour: \(old.OTA_lineup_hour) → \(draft.OTA_lineup_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
-        let airSourceChanged  = draft.OTA_enabled != old.OTA_enabled || (draft.OTA_enabled && (draft.OTA_always_use != old.OTA_always_use || draft.OTA_fill_gaps != old.OTA_fill_gaps))
+        let airSourceChanged  = draft.OTA_enabled != old.OTA_enabled || (draft.OTA_enabled && draft.OTA_always_use != old.OTA_always_use)
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         // WebServer.buildGuideJSON caches its skip-already-recorded on-disk scan
         // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
@@ -497,20 +507,29 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Series") {
+                Toggle(isOn: Binding(get: { draft.Series_subfolder_enabled },
+                                     set: { draft.Series_subfolder_enabled = $0; draft.Skip_recorded_episodes = $0 })) {
+                    HStack { Text("Organize series and skip duplicates"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders, and skip an episode when a file with the same season and episode (e.g. S02E04) is already in the show's folder; the show then moves on to the next airing without a failure. Needs season data from the guide. Date-scheduled shows always use a flat path.", about: "Organize series and skip duplicates") }
+                }
+                .accessibilityIdentifier("settings-series-organize")
+                if draft.Series_subfolder_enabled {
+                    // Sorts recordings made before the switch was on into Title/Season XX/ folders. Acts on the saved setting, so it waits for Save.
+                    HStack {
+                        Button("Organize Existing Recordings") { organizeStatus = state.organizeSeriesRecordings() }
+                            .disabled(isDirty)
+                            .accessibilityIdentifier("settings-series-organize-now")
+                        InfoButton("Sorts series recordings you already have into Title/Season XX/ folders. New recordings are organized as they are made.", about: "Organize Existing Recordings")
+                        saveFirstHint
+                    }
+                    if !organizeStatus.isEmpty {
+                        Text(organizeStatus).font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("settings-series-organize-status")
+                    }
+                }
+            }
+
             Section("Post-Processing") {
-                Toggle(isOn: $draft.Series_subfolder_enabled) {
-                    HStack { Text("Series subfolders"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.", about: "Series subfolders") }
-                }
-
-                Toggle(isOn: $draft.Skip_recorded_episodes) {
-                    HStack { Text("Skip already-recorded episodes"); InfoButton("Before recording a series episode, skip it if a file with the same season/episode (e.g. S02E04) already exists in the show's folder. Advances to the next airing without a failure. Requires Series subfolders and season/episode data from the guide.", about: "Skip already-recorded episodes") }
-                }
-                .disabled(!draft.Series_subfolder_enabled)
-                if !draft.Series_subfolder_enabled {
-                    Text("Requires Series subfolders")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
                 Toggle(isOn: $draft.Write_metadata_sidecar) {
                     HStack { Text("Write metadata sidecar"); InfoButton("Saves a Kodi-style .nfo file alongside each recording (same folder, same name) with the guide's synopsis, season/episode, air date, and genre — lets a media server show real episode info instead of just the filename.", about: "Write metadata sidecar") }
                 }
@@ -547,40 +566,57 @@ struct SettingsView: View {
     private var guideView: some View {
         Form {
             Section("Source") {
-                Toggle(isOn: $draft.Guide_use_xml) {
-                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.", about: "Use XMLTV guide format") }
+                Picker(selection: guideFormatBinding) {
+                    Text("JSON").tag(GuideFormat.json)
+                    Text("XMLTV").tag(GuideFormat.xmltv)
+                    if draft.OTA_enabled { Text("OTA").tag(GuideFormat.air) }
+                } label: {
+                    HStack { Text("Guide format"); InfoButton("JSON and XMLTV both come from SiliconDust's cloud guide service and describe the same shows; JSON is the default. OTA (the air) appears here once you allow guide data from the air in Over the Air: it replaces SiliconDust's lineup and guide with what the stations broadcast. Devices without DeviceAuth always use JSON.", about: "Guide format") }
                 }
-                if draft.Guide_use_xml {
-                    CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
-                                 systemImage: "exclamationmark.triangle")
-                        .accessibilityIdentifier("settings-guide-xmltv-warning")
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-guide-format")
+                if !draft.OTA_enabled {
+                    Text("To use the air as a source, allow guide data from the air in Settings → Over the Air.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-guide-format-ota-hint")
+                }
+                HStack(alignment: .top, spacing: 10) {
+                    guideFormatCard("JSON (default)", selected: guideFormatBinding.wrappedValue == .json, id: "settings-guide-format-json",
+                        pros: ["A complete timeline: shows that already ended in the last hour are included, so the guide grid has no gaps behind \"now\".",
+                               "Fetches 28 hours ahead, including the hour just past.",
+                               "Works for a device with no DeviceAuth (its own local guide)."],
+                        cons: ["Genres are coarse (about 9 tags such as Sports or Drama) and often empty, so paid programming is spotted by a blocklist.",
+                               "No network name (affiliate)."])
+                    guideFormatCard("XMLTV", selected: guideFormatBinding.wrappedValue == .xmltv, id: "settings-guide-format-xmltv",
+                        pros: ["Richer genres (about 60 real categories), which help the genre colours and the Bonus Time default for sports.",
+                               "Paid programming is marked explicitly.",
+                               "Includes the network name (affiliate)."],
+                        cons: ["Never contains a show that has already ended, so the last hour of the guide shows empty gaps where earlier shows were.",
+                               "The server sets the window (about 2 days), not the app.",
+                               "Cloud only: a device with no DeviceAuth uses JSON anyway."])
+                    if draft.OTA_enabled {
+                        guideFormatCard("OTA (the air)", selected: guideFormatBinding.wrappedValue == .air, id: "settings-guide-format-air",
+                            pros: ["Everything the stations broadcast, including channels SiliconDust lacks. No SiliconDust guide or internet needed.",
+                                   "Saved listings are kept ahead by reading again when they run out within 6 hours."],
+                            cons: ["No series IDs (series recording falls back on titles), no genre tags or images.",
+                                   "Depth varies by station, from about 12 hours to 3 days; some stations send no guide.",
+                                   "Needs idle tuners to scan, and favorites do not apply."])
+                    }
                 }
             }
 
             Section("Fetch") {
-                // Capped at 28, not the old 48: GuideStore.load() makes a single API call, and the
-                // cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless
-                // of what's requested (confirmed in docs/HDHRFindings.md) — a higher setting would
-                // look accepted but never actually fetch further out, with no error surfaced.
-                Stepper(value: $draft.GuideHours, in: 1...28) {
-                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h. See the auto-refresh interval below for how often this actually re-fetches.") }
-                }
                 Picker(selection: $draft.Guide_refresh_interval_divisor) {
                     Text("1/2 (~\(formattedGuideRefreshInterval(divisor: 2)))").tag(2)
                     Text("1/4 (~\(formattedGuideRefreshInterval(divisor: 4)))").tag(4)
                     Text("1/8 (~\(formattedGuideRefreshInterval(divisor: 8)))").tag(8)
                 } label: {
-                    HStack { Text("Auto-refresh"); InfoButton("How often guide data is automatically re-fetched in the background, as a fraction of the window size above — e.g. 1/8 of a 24-hour window refreshes roughly every 3 hours. A wider window can afford to refresh less often before running dry; a narrower one refreshes more often. The exact timing is randomized within the final hour of that window (or, for a window an hour or shorter, sometime within the whole window) each time, rather than always landing at the same predictable offset. \"Update Guides Now\" always refreshes immediately regardless of this setting.", about: "Auto-refresh") }
-                }
-                Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
-                    HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
+                    HStack { Text("Auto-refresh"); InfoButton("How often guide data is automatically re-fetched in the background, as a fraction of the 28-hour guide window — 1/4 refreshes roughly every 7 hours. A shorter fraction keeps the far end of the guide fresher; a longer one makes fewer requests. The exact timing is randomized within the final hour of the interval each time, rather than always landing at the same predictable offset. \"Update Guides Now\" always refreshes immediately regardless of this setting.", about: "Auto-refresh") }
                 }
                 HStack {
                     busyButton("Update Guides Now", isBusy: $guideRefreshInProgress) { await state.refreshAll() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isDirty)
                         .accessibilityIdentifier("settings-update-guides")
-                    saveFirstHint
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
                 }
             }
@@ -595,56 +631,20 @@ struct SettingsView: View {
 
     private var overTheAirView: some View {
         Form {
-            Section("Over the Air") {
-                Toggle(isOn: $draft.OTA_enabled) {
-                    HStack {
-                        Text("Scan OTA for Lineup and Guide")
-                        InfoButton("Your tuner can also read the channels and listings that stations broadcast with their signal. SiliconDust's lineup and guide are sometimes missing stations, sub-channels or shows that are really on the air; turn this on to read them from the air as well. It uses idle tuners only and steps aside whenever a recording or a viewer needs one. Off: the app does nothing over the air at all (no scans, no air channels, no backup guide).", about: "Scan OTA for Lineup and Guide")
-                    }
-                }
-                .accessibilityIdentifier("settings-ota-enabled")
-                if !draft.OTA_enabled {
-                    Text("Off. Nothing is scanned or read from the air.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            if draft.OTA_enabled {
-                Section("Lineup and guide from") {
-                    Picker(selection: $draft.OTA_always_use) {
-                        Text("SiliconDust").tag(false)
-                        Text("The air (OTA)").tag(true)
-                    } label: {
-                        HStack { Text("Source"); InfoButton("SiliconDust: its lineup and guide (JSON or XMLTV, see Guide) stay the source. The air: the channels and listings the stations broadcast are used instead, so SiliconDust is not used for the lineup or guide.", about: "Lineup and guide source") }
-                    }
-                    .pickerStyle(.radioGroup)
-                    .accessibilityIdentifier("settings-ota-source")
-                    if draft.OTA_always_use {
-                        Text("Everything the air carries is used, and saved listings are read again when they run out within 6 hours. Favorites do not apply, and series recording falls back on titles (the air carries no series IDs).")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("settings-ota-source-note")
-                    } else {
-                        Toggle(isOn: $draft.OTA_fill_gaps) {
-                            HStack {
-                                Text("Use OTA to get guide data SiliconDust does not provide")
-                                InfoButton("Stations that are on the air but missing from SiliconDust's lineup are listed in the web guide under AIR ONLY · WATCH. Only the multiplexes holding them are read from the air for listings, and read again whenever the saved listings run out within 6 hours. Everything else stays SiliconDust's.", about: "Use OTA to get guide data SiliconDust does not provide")
-                            }
-                        }
-                        .accessibilityIdentifier("settings-ota-fill-gaps")
-                    }
-                }
-            if draft.OTA_enabled && !draft.OTA_always_use { missingFromSiliconDustSection }
-            Section("Channel list") {
+            // The channel scan is the core of this tab and needs no permission: it reads only the channel names and numbers, on idle tuners,
+            // early in the morning. It is how the app learns which stations SiliconDust's lineup lacks.
+            Section("Channel scan") {
                 Picker(selection: $draft.OTA_lineup_hour) {
                     Text("Never").tag(-1)
                     ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                 } label: {
-                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is read for the stations you pick below, and for all of them if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
+                    HStack { Text("Scan for channels"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. It is how the app finds stations SiliconDust's lineup is missing; they are listed in the web guide under AIR ONLY · WATCH.", about: "Scan for channels") }
                 }
                 .accessibilityIdentifier("settings-ota-lineup-hour")
-                Text("A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
+                Text("Every TV channel is tuned in turn; the channel list takes a few minutes. It uses idle tuners only and steps aside for a recording or a viewer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                AirLastScanLines(progress: state.otaProgress)
+                AirLastScanLines(progress: state.otaProgress, showGuide: draft.OTA_enabled)
                 if state.otaScanTask != nil {
                     Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
                         .font(.caption)
@@ -656,25 +656,50 @@ struct SettingsView: View {
                         Text(state.otaScanStatus).font(.caption).foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button("Scan Channel List Only") { state.startOTAScan(lineupOnly: true) }
+                        Button("Scan Channel List Now") { state.startOTAScan(lineupOnly: true) }
                             .disabled(state.recordableDevices.isEmpty || isDirty)
                             .accessibilityIdentifier("settings-ota-lineup-scan")
-                        InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all). Run it first to get a lineup quickly; it never replaces a guide you already scanned.", about: "Scan Channel List Only")
-                        Button("Scan the Air Now") { state.startOTAScan() }
-                            .disabled(state.recordableDevices.isEmpty || isDirty)
-                            .accessibilityIdentifier("settings-ota-scan")
-                        InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
+                        InfoButton("Reads just the channel names and numbers from each station, about 10 seconds per station with signal (a couple of minutes in all).", about: "Scan Channel List Now")
                         saveFirstHint
                     }
                 }
             }
+            if !draft.OTA_always_use || !draft.OTA_enabled { missingFromSiliconDustSection }
+            // Everything below needs the person's permission: it uses the tuners for much longer and can change which guide is used.
+            Section("Guide data from the air") {
+                Toggle(isOn: Binding(get: { draft.OTA_enabled }, set: { draft.OTA_enabled = $0; if !$0 { draft.OTA_always_use = false } })) {
+                    HStack {
+                        Text("Use the air for guide data")
+                        InfoButton("SiliconDust's lineup and guide are sometimes missing stations or shows that are really on the air. Allowing this lets the app read their listings from the air (a minute or so per station, on idle tuners, stepping aside for recordings and viewers), use the saved air guide as a backup if SiliconDust's cannot be loaded, and offers OTA as a guide source under Guide → Guide format. Off, only the channel scan above runs. (If SiliconDust's guide cannot be loaded at all, the app still asks whether to scan the air for a backup.)", about: "Use the air for guide data")
+                    }
+                }
+                .accessibilityIdentifier("settings-ota-enabled")
+                if draft.OTA_enabled {
+                    Text(draft.OTA_always_use
+                         ? "OTA is the guide source (Guide → Guide format): everything the air carries is used, and saved listings are read again when they run out within 6 hours."
+                         : "SiliconDust stays the guide. Only the multiplexes holding stations it is missing are read from the air for listings, and read again when the saved listings run out within 6 hours.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-ota-source-note")
+                    if state.otaScanTask == nil {
+                        HStack {
+                            Button("Scan the Air Now") { state.startOTAScan() }
+                                .disabled(state.recordableDevices.isEmpty || isDirty)
+                                .accessibilityIdentifier("settings-ota-scan")
+                            InfoButton("Tunes every TV channel and reads the full listings stations broadcast, about 15 minutes in all. Uses idle tuners only and steps aside for a recording or a viewer.", about: "Scan the Air Now")
+                            saveFirstHint
+                        }
+                    }
+                } else {
+                    Text("Off. Only the channel scan above runs; if SiliconDust's guide cannot be loaded at all, the app still asks first.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Over the Air")
     }
 
-    /// Which multiplexes hold stations SiliconDust's lineup lacks (matched by channel number; the RF comes from the saved air lineup) — the ones the gap-fill reads.
+    /// Which multiplexes hold stations SiliconDust's lineup lacks (matched by channel number; the RF comes from the saved air lineup) — the ones the gap-fill reads once guide data from the air is allowed.
     @ViewBuilder
     private var missingFromSiliconDustSection: some View {
         let deviceId = OTAScanView.scanDeviceId(state)
@@ -683,7 +708,7 @@ struct SettingsView: View {
         Section("Missing from SiliconDust") {
             if missing.isEmpty {
                 Text(deviceId.flatMap { OTAStore.lineupDate(deviceId: $0) } == nil
-                     ? "No channel list yet. Run \"Scan Channel List Only\" below to find out which stations SiliconDust lacks."
+                     ? "No channel list yet. Run \"Scan Channel List Now\" above to find out which stations SiliconDust lacks."
                      : "Every station on the air is in SiliconDust's lineup.")
                     .font(.caption).foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings-ota-missing-none")
@@ -700,6 +725,43 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private enum GuideFormat: Hashable { case json, xmltv, air }
+
+    /// The three-way Guide format picker over the two settings behind it: XMLTV or JSON (`Guide_use_xml`) and the air as the source (`OTA_always_use`,
+    /// only while guide data from the air is allowed). Picking the air leaves the XMLTV choice alone, so going back restores it.
+    private var guideFormatBinding: Binding<GuideFormat> {
+        Binding(
+            get: { draft.OTA_enabled && draft.OTA_always_use ? .air : (draft.Guide_use_xml ? .xmltv : .json) },
+            set: { format in
+                switch format {
+                case .json:  draft.OTA_always_use = false; draft.Guide_use_xml = false
+                case .xmltv: draft.OTA_always_use = false; draft.Guide_use_xml = true
+                case .air:   draft.OTA_always_use = true
+                }
+            })
+    }
+
+    /// One side of the JSON / XMLTV / OTA comparison under the Guide format picker: what the format is good and bad at. The chosen side is outlined.
+    private func guideFormatCard(_ title: String, selected: Bool, id: String, pros: [String], cons: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.subheadline.weight(.semibold))
+            ForEach(pros, id: \.self) { line in
+                Label { Text(line).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "plus.circle.fill").foregroundStyle(.green) }
+            }
+            ForEach(cons, id: \.self) { line in
+                Label { Text(line).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "minus.circle.fill").foregroundStyle(.orange) }
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.accentColor.opacity(0.08) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: selected ? 1.5 : 1))
+        .opacity(selected ? 1 : 0.8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(id)
     }
 
     // Live preview for the auto-refresh Picker's option labels — reuses the exact same
@@ -720,14 +782,6 @@ struct SettingsView: View {
             Section("Reminders") {
                 Stepper(value: Binding(get: { Int(draft.Notify_upnext) }, set: { draft.Notify_upnext = Double($0) }), in: 5...120, step: 5) {
                     HStack { Text("Up Next: \(Int(draft.Notify_upnext)) min before"); InfoButton("Early heads-up notification sent this many minutes before a show's scheduled start time.") }
-                }
-                Stepper(value: Binding(get: { Int(draft.Notify_recording) }, set: { draft.Notify_recording = Double($0) }), in: 1...60) {
-                    HStack { Text("Recording alert: \(Int(draft.Notify_recording)) min before"); InfoButton("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.") }
-                }
-                if draft.Notify_recording >= draft.Notify_upnext {
-                    Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
             }
 
@@ -837,6 +891,16 @@ struct SettingsView: View {
 
     private var advancedView: some View {
         Form {
+            Section("Reminder timing") {
+                Stepper(value: Binding(get: { Int(draft.Notify_recording) }, set: { draft.Notify_recording = Double($0) }), in: 1...60) {
+                    HStack { Text("Recording alert: \(Int(draft.Notify_recording)) min before"); InfoButton("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.") }
+                }
+                if draft.Notify_recording >= draft.Notify_upnext {
+                    Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
                     Text("Auto").tag("")
@@ -876,24 +940,6 @@ struct SettingsView: View {
                 Text("Filter: subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\"")
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
 
-                Toggle(isOn: $draft.Verbose_curl) {
-                    HStack { Text("Verbose curl logging"); InfoButton("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.", about: "Verbose curl logging") }
-                }
-                if draft.Verbose_curl {
-                    Text("curl stderr → \(RecordingManager.curlLogPath)")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    Button("Show curl log in Finder") {
-                        let path = RecordingManager.curlLogPath
-                        if FileManager.default.fileExists(atPath: path) {
-                            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                        } else {
-                            NSWorkspace.shared.selectFile(
-                                NSHomeDirectory() + "/Library/Logs",
-                                inFileViewerRootedAtPath: ""
-                            )
-                        }
-                    }
-                }
                 Text(state.configManager.configPath)
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 Button("Show config in Finder") {
@@ -1206,6 +1252,7 @@ struct SettingsView: View {
 
     private var maintenanceView: some View {
         Form {
+            guidesAndDevicesSection
             Section("Setup") {
                 maintenanceRow("Reset First-Run Setup",
                                "Run to clear the setup wizard's completed flag and walk through it again, prefilled with your current settings") {
@@ -1213,12 +1260,6 @@ struct SettingsView: View {
                     state.saveConfig()
                     openWindow(id: "first-run-wizard")
                     return "First-run setup wizard reopened"
-                }
-                maintenanceRow("Preview Launch Splash",
-                               "Play the launch splash now — show posters fly in, the checklist fills, and the logo flies to the menu bar icon") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    LaunchSplashController.shared.play(state: state, offersDonation: false)
-                    return "Launch splash playing"
                 }
             }
             Section("Shows") {
@@ -1228,40 +1269,27 @@ struct SettingsView: View {
                     state.reactivatePausedShows()
                     return count > 0 ? "\(count) show(s) reactivated" : "No paused shows"
                 }
-                maintenanceRow("Rescan Series",
-                               "Run if a series show isn't scheduling — re-checks the guide for its next air time") {
-                    let count = state.shows.filter { $0.show_active && !$0.show_paused && !$0.show_recording && $0.show_use_seriesid }.count
-                    await state.rescheduleAllSeries()
-                    return "\(count) series show(s) rescheduled"
-                }
-                maintenanceRow("Reset Fail Counts",
-                               "Run to clear error counters after fixing an issue, without unpausing shows") {
-                    let total = state.shows.count
-                    state.resetAllFailCounts()
-                    return "Cleared fail counts on \(total) show(s)"
-                }
-                maintenanceRow("Organize Series Recordings",
-                               "Run after enabling Series subfolders to sort existing flat recordings into Title/Season XX/ folders") {
-                    state.organizeSeriesRecordings()
-                }
             }
-            Section("Guide & Devices") {
-                maintenanceRow("Rediscover Devices",
-                               "Run if a tuner is missing from the device bar, or after a network or router change") {
-                    await state.rediscoverDevices()
-                    return "\(state.devices.count) device(s) found"
-                }
-                maintenanceRow("Refresh Guide",
-                               "Run if guide data looks stale or wrong — forces a full re-fetch from all tuners") {
-                    await state.refreshGuide()
-                    let ch = state.guideByDevice.values.flatMap { $0 }.count
-                    return "Guide refreshed — \(ch) channel(s) loaded"
-                }
-                maintenanceRow("Clear Guide Cache",
-                               "Run if Refresh Guide doesn't fix stale data, or after switching between JSON and XMLTV") {
+            Section("Storage") {
+                storageRow("Guide cache", "The SiliconDust guide files kept on disk so the guide survives a restart or an outage. Emptying it also drops the guide in memory and fetches it again.",
+                           bytes: storageSizes.guideCache, button: "Empty") {
                     state.guideStore.invalidateAll()
                     state.guideByDevice = [:]
-                    return "Guide cache cleared"
+                    let removed = state.guideStore.clearDiskCache()
+                    await state.refreshGuide()
+                    return "Guide cache emptied (\(removed) file(s)) and the guide fetched again"
+                }
+                storageRow("Saved air guide and lineup", "What the over-the-air scans found (channels and listings). Deleting it means the next channel scan starts from nothing; stations SiliconDust lacks disappear until then.",
+                           bytes: storageSizes.airData, button: "Delete") {
+                    if state.otaScanTask != nil { return "A scan is running — cancel it first" }
+                    let result = state.purgeSavedAirData(guide: true, lineup: true)
+                    await state.reloadLineups()
+                    return result
+                }
+                storageRow("Channel logos", "Station logos downloaded for the guide and menus. They download again as needed.",
+                           bytes: storageSizes.icons, button: "Empty") {
+                    let removed = await ChannelIconCache.shared.clearAll()
+                    return "Deleted \(removed) logo file(s)"
                 }
             }
             if !maintenanceStatus.isEmpty {
@@ -1274,6 +1302,154 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Maintenance")
+    }
+
+    // MARK: Maintenance → Guides & Devices
+
+    private var guidesDevicesSelectionCount: Int { [runDiscover, runLineups, runGuide, runChannelScan, runSeries].filter { $0 }.count }
+
+    /// The first thing in Maintenance: tick what to redo and press one button. Any unsaved settings are saved first, so the actions use what you see.
+    @ViewBuilder
+    private var guidesAndDevicesSection: some View {
+        Section {
+            Toggle(isOn: $runDiscover) {
+                HStack { Text("Find tuners again"); InfoButton("Searches the network for HDHomeRun tuners again. Use it when a tuner is missing from the device list, or after a router, Wi-Fi or network change (the app may still be holding the old address).", about: "Find tuners again") }
+            }
+            .accessibilityIdentifier("settings-gd-discover")
+            Toggle(isOn: $runLineups) {
+                HStack { Text("Reload channel lineups"); InfoButton("Asks each tuner for its channel list again (and, with the air as the source, reads the saved air lineup). Use it when channels you expect are missing, renamed or still showing as old after a rescan.", about: "Reload channel lineups") }
+            }
+            .accessibilityIdentifier("settings-gd-lineups")
+            Toggle(isOn: $runGuide) {
+                HStack { Text("Refresh the guide"); InfoButton("Fetches the program guide again from every tuner right now, instead of waiting for the next automatic refresh, and re-checks every series show against it. Use it when listings look stale or wrong, or a series show is not finding its next airing. If that does not help, empty the guide cache under Storage below.", about: "Refresh the guide") }
+            }
+            .accessibilityIdentifier("settings-gd-guide")
+            Toggle(isOn: $runChannelScan) {
+                HStack { Text("Scan for channels over the air"); InfoButton("Starts the channel scan now (a few minutes, idle tuners only) instead of waiting for tomorrow morning's. Use it after moving the antenna, or when a station you should get is missing from the list of channels SiliconDust lacks.", about: "Scan for channels over the air") }
+            }
+            .accessibilityIdentifier("settings-gd-channel-scan")
+            Toggle(isOn: $runSeries) {
+                HStack { Text("Re-check series shows"); InfoButton("Looks again in the guide for the next airing of every SeriesID show. This already happens after every guide refresh; use it only if a series show is still not scheduled after refreshing the guide.", about: "Re-check series shows") }
+            }
+            .accessibilityIdentifier("settings-gd-series")
+            HStack {
+                Button { runGuidesAndDevices() } label: {
+                    Label(isDirty ? "Save Settings & Run" : "Run Selected", systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(guidesDevicesSelectionCount == 0 || guidesDevicesRunning)
+                .accessibilityIdentifier("settings-gd-run")
+                if guidesDevicesRunning { ProgressView().controlSize(.small) }
+                if isDirty && !guidesDevicesRunning {
+                    Text("Your unsaved settings are saved first").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                InfoButton("Runs every ticked action in order: find tuners, reload lineups, refresh the guide, start the channel scan, re-check series. Unsaved settings are saved first so the actions use them. Your ticks are remembered for next time.", about: "Guides & Devices")
+            }
+            if !guidesDevicesStatus.isEmpty {
+                Label(guidesDevicesStatus, systemImage: "checkmark.circle.fill")
+                    .font(.callout).foregroundStyle(.green)
+                    .accessibilityIdentifier("settings-gd-status")
+            }
+        } header: {
+            Label("Guides & Devices", systemImage: "arrow.triangle.2.circlepath").font(.headline)
+        }
+    }
+
+    private func runGuidesAndDevices() {
+        guard !guidesDevicesRunning, guidesDevicesSelectionCount > 0 else { return }
+        if isDirty {
+            if webPortInvalid || state.configManager.savesSuppressedAfterImport {
+                guidesDevicesStatus = "Settings can't be saved yet — fix them first"
+                return
+            }
+            applyAndSave()
+        }
+        guidesDevicesRunning = true
+        guidesDevicesStatus = ""
+        let discover = runDiscover, lineups = runLineups, guide = runGuide, scan = runChannelScan, series = runSeries
+        Task { @MainActor in
+            var done: [String] = []
+            if discover {
+                await state.rediscoverDevices()
+                done.append("\(state.devices.count) tuner(s) found")
+            }
+            if lineups {
+                await state.reloadLineups()
+                done.append("lineups reloaded (\(state.lineups.values.map(\.count).reduce(0, +)) channels)")
+            }
+            if guide {
+                await state.refreshGuide()   // also re-checks every series show
+                done.append("guide refreshed (\(state.guideByDevice.values.flatMap { $0 }.count) channels)")
+            } else if series {
+                await state.rescheduleAllSeries()
+                done.append("series shows re-checked")
+            }
+            if scan {
+                done.append(state.startOTAScan(lineupOnly: true))
+            }
+            guidesDevicesStatus = done.joined(separator: " · ")
+            guidesDevicesRunning = false
+        }
+    }
+
+    // MARK: storage sizes (Maintenance → Storage)
+
+    private struct StorageSizes: Equatable { var guideCache: Int64 = 0; var airData: Int64 = 0; var icons: Int64 = 0 }
+
+    /// Total bytes of the regular files under `url` (0 when it does not exist). Read off the main actor.
+    nonisolated private static func folderSize(_ url: URL) -> Int64 {
+        guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in walker {
+            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
+        }
+        return total
+    }
+
+    private func refreshStorageSizes() {
+        let guideDir = state.configManager.supportDir.appendingPathComponent("guide_cache", isDirectory: true)
+        let airDir = OTAStore.root
+        let iconDir = ChannelIconCache.defaultDirectory
+        Task { @MainActor in
+            let sizes = await Task.detached(priority: .utility) {
+                StorageSizes(guideCache: Self.folderSize(guideDir), airData: Self.folderSize(airDir), icons: Self.folderSize(iconDir))
+            }.value
+            storageSizes = sizes
+        }
+    }
+
+    /// A Maintenance row for something that takes disk space: its name, how big it is now, and a button that clears it.
+    private func storageRow(_ title: String, _ description: String, bytes: Int64, button: String,
+                            action: @escaping () async -> String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack {
+                Text(title).fontWeight(.medium)
+                InfoButton(description, about: title)
+            }
+            Spacer()
+            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                .accessibilityIdentifier("settings-storage-size-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
+            saveFirstHint
+            if busyRow == title {
+                ProgressView().controlSize(.small)
+            } else {
+                Button(button) {
+                    busyRow = title
+                    maintenanceStatus = ""
+                    Task { @MainActor in
+                        maintenanceStatus = await action()
+                        refreshStorageSizes()
+                        if busyRow == title { busyRow = nil }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isDirty || bytes == 0)
+                .accessibilityIdentifier("settings-storage-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
+            }
+        }
     }
 
     // Shared "swap for a spinner while a plain async action with no result runs" skeleton — the
@@ -1307,6 +1483,46 @@ struct SettingsView: View {
 
     private var developerView: some View {
         Form {
+            Section("Logging") {
+                Toggle(isOn: $draft.Verbose_curl) {
+                    HStack { Text("Verbose curl logging"); InfoButton("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.", about: "Verbose curl logging") }
+                }
+                if draft.Verbose_curl {
+                    Text("curl stderr → \(RecordingManager.curlLogPath)")
+                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    Button("Show curl log in Finder") {
+                        let path = RecordingManager.curlLogPath
+                        if FileManager.default.fileExists(atPath: path) {
+                            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                        } else {
+                            NSWorkspace.shared.selectFile(
+                                NSHomeDirectory() + "/Library/Logs",
+                                inFileViewerRootedAtPath: ""
+                            )
+                        }
+                    }
+                }
+            }
+            Section("Tools") {
+                maintenanceRow("Preview Launch Splash",
+                               "Play the launch splash now — show posters fly in, the checklist fills, and the logo flies to the menu bar icon") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    LaunchSplashController.shared.play(state: state, offersDonation: false)
+                    return "Launch splash playing"
+                }
+                maintenanceRow("Rescan Series",
+                               "Re-checks the guide for the next air time of every series show (this already happens after every guide refresh)") {
+                    let count = state.shows.filter { $0.show_active && !$0.show_paused && !$0.show_recording && $0.show_use_seriesid }.count
+                    await state.rescheduleAllSeries()
+                    return "\(count) series show(s) rescheduled"
+                }
+                maintenanceRow("Reset Fail Counts",
+                               "Clears the error counters of every show without unpausing any") {
+                    let total = state.shows.count
+                    state.resetAllFailCounts()
+                    return "Cleared fail counts on \(total) show(s)"
+                }
+            }
             Section("Guide source") {
                 Picker("Guide", selection: Binding(
                     get: { state.guideSourceChoice },
@@ -1432,15 +1648,15 @@ struct SettingsView: View {
         let olderSections = sections.dropFirst().joined(separator: "\n\n")
 
         return ScrollView {
-            VStack(spacing: 20) {
-                AboutStatusLight(light: state.statusLight, blinkEnabled: state.config.Status_light_blink_enabled)
-
-                Text("hdhrVCRplus").font(.largeTitle).bold()
-                // appVersion is generated by deploy.sh before each build (format: YYMMDD-HHMM)
-                Text("Version \(appVersion) — Swift/SwiftUI rewrite")
-                    .foregroundStyle(.secondary)
-
+            VStack(spacing: 16) {
+                // Name and version first, then the touchable status-light logo, then everything else in cards below.
                 VStack(spacing: 4) {
+                    Text("hdhrVCRplus").font(.largeTitle).bold()
+                        .accessibilityIdentifier("about-title")
+                    // appVersion is generated by deploy.sh before each build (format: YYMMDD-HHMM)
+                    Text("Version \(appVersion)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("about-version")
                     if let update = state.updateCheckResult {
                         Link(destination: update.releaseURL) {
                             Label("Update available: v\(update.latestVersion)", systemImage: "arrow.down.circle.fill")
@@ -1454,71 +1670,70 @@ struct SettingsView: View {
                         .font(.caption)
                 }
 
-                if state.config.Donation_unlocked {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
-                        Text("Registered supporter")
-                            .font(.subheadline).bold()
+                AboutStatusLight(light: state.statusLight, blinkEnabled: state.config.Status_light_blink_enabled)
+
+                aboutCard {
+                    if state.config.Donation_unlocked {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                            Text("Registered supporter").font(.subheadline).bold()
+                        }
+                        if !state.config.Donation_unlock_code.isEmpty {
+                            Text("Code: \(state.config.Donation_unlock_code)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        Text("Not yet a registered supporter")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
-                    if !state.config.Donation_unlock_code.isEmpty {
-                        Text("Code: \(state.config.Donation_unlock_code)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                } else {
-                    Text("Not yet a registered supporter")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
-                Divider()
+                aboutCard {
+                    DisclosureGroup(isExpanded: $aboutStoryExpanded) {
+                        Text("""
+                        hdhr_VCR began in 2016 as an AppleScript application for recording \
+                        live TV from HDHomeRun network tuners. Built to fill the gap left by \
+                        discontinued recording software, it grew to support SeriesID-based \
+                        recording, multi-device discovery, and guide-driven scheduling — all \
+                        from a simple macOS script.
 
-                Text("""
-                hdhr_VCR began in 2016 as an AppleScript application for recording \
-                live TV from HDHomeRun network tuners. Built to fill the gap left by \
-                discontinued recording software, it grew to support SeriesID-based \
-                recording, multi-device discovery, and guide-driven scheduling — all \
-                from a simple macOS script.
-
-                This Swift/SwiftUI rewrite brings a native menu bar experience, a \
-                channel-guide grid, persistent settings, and modern macOS features like \
-                Launch at Login and user notifications, while staying fully compatible \
-                with the original AppleScript config format.
-                """)
-                .font(.callout)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider()
-
-                HStack {
-                    Link("View on GitHub",
-                         destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
-                        .buttonStyle(.bordered)
-                    Spacer()
+                        This Swift/SwiftUI rewrite brings a native menu bar experience, a \
+                        channel-guide grid, persistent settings, and modern macOS features like \
+                        Launch at Login and user notifications, while staying fully compatible \
+                        with the original AppleScript config format.
+                        """)
+                        .font(.callout)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
+                    } label: {
+                        Text("The story").font(.headline)
+                    }
+                    .accessibilityIdentifier("about-story")
                 }
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Credits")
-                        .font(.headline)
+                aboutCard {
+                    HStack {
+                        Text("Links").font(.headline)
+                        Spacer()
+                        Link("View on GitHub",
+                             destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
+                            .buttonStyle(.bordered)
+                    }
                     // In-app playback dlopens libvlc from the user's own separately-installed
                     // VLC.app (VLCBridge.swift) — never bundled/redistributed, so this is
                     // attribution for a runtime dependency, not a bundled-library notice.
                     HStack(spacing: 4) {
                         Text("Playback powered by")
                         Link("VLC media player", destination: URL(string: "https://www.videolan.org/vlc/")!)
+                        Text("— © VideoLAN, GPL/LGPL.").foregroundStyle(.secondary)
                     }
                     .font(.callout)
-                    Text("© VideoLAN, licensed under the GPL/LGPL.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("Changelog")
+                Text("What's new")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1535,13 +1750,29 @@ struct SettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.4), lineWidth: 1))
                 }
                 if !olderSections.isEmpty {
-                    MarkdownView(markdown: olderSections, height: $changelogHeight)
-                        .frame(height: max(40, changelogHeight))
+                    aboutCard {
+                        DisclosureGroup(isExpanded: $aboutOlderExpanded) {
+                            MarkdownView(markdown: olderSections, height: $changelogHeight)
+                                .frame(height: max(40, changelogHeight))
+                                .padding(.top, 6)
+                        } label: {
+                            Text("Earlier versions").font(.headline)
+                        }
+                        .accessibilityIdentifier("about-earlier-versions")
+                    }
                 }
             }
             .padding()
         }
         .navigationTitle("About")
+    }
+
+    /// A soft rounded card for the About tab's groups.
+    private func aboutCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) { content() }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
     }
 
     // MARK: - Helpers

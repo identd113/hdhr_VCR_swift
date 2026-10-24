@@ -608,7 +608,9 @@ struct WindowNavigationTests {
                     set allEls to entire contents of window 1
                     repeat with e in allEls
                         try
-                            if role of e is "AXCheckBox" and name of e contains "XMLTV" then
+                            -- The guide format is a two-segment picker (JSON | XMLTV): the segments are radio buttons. \(varName) = the
+                            -- one that is NOT selected right now, so clicking it flips the setting.
+                            if role of e is "AXRadioButton" and (name of e is "JSON" or name of e is "XMLTV") and (value of e) is not 1 then
                                 set \(varName) to e
                                 exit repeat
                             end if
@@ -625,7 +627,6 @@ struct WindowNavigationTests {
         let findAndToggleXMLCheckboxSnippet = """
         \(findCheckboxSnippet(assignTo: "xmlCheckbox"))
         if xmlCheckbox is missing value then return "NO_TOGGLE_FOUND"
-        set originalValue to value of xmlCheckbox
         click xmlCheckbox
         try
             click button "Save & Close" of window 1
@@ -755,7 +756,7 @@ struct WindowNavigationTests {
             return
         }
         if result == "NO_TOGGLE_FOUND" {
-            Issue.record("Could not find the 'Use XMLTV guide format' checkbox in the Guide tab — did it move again?")
+            Issue.record("Could not find the unselected JSON/XMLTV segment of the Guide format picker in the Guide tab — did it move again?")
             return
         }
         let halves = result.components(separatedBy: "===SPLIT===")

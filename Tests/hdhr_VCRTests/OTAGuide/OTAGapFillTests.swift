@@ -51,15 +51,12 @@ struct OTAGapFillTests {
 
     // MARK: the settings
 
-    @Test func theAirIsOffByDefault_andFillingGapsIsTheDefaultOnceItIsOn() {
+    @Test func theAirIsOffByDefault_andFillingGapsIsWhatPermissionMeansWithSiliconDust() {
         var c = AppConfig()
         #expect(!c.OTA_enabled && !c.airFillsGaps && !c.airReplacesSiliconDust && !c.lineupFromAir && !c.guidePrefersAir)
         c.OTA_enabled = true
         #expect(c.airFillsGaps && !c.airReplacesSiliconDust && !c.lineupFromAir)
-        c.OTA_fill_gaps = false
-        #expect(!c.airFillsGaps && !c.airReplacesSiliconDust)
-        c.OTA_always_use = true
-        c.OTA_fill_gaps = true   // the gap option goes away when the air is the source
+        c.OTA_always_use = true   // OTA chosen as the guide source: nothing is left to fill
         #expect(c.airReplacesSiliconDust && c.lineupFromAir && c.guidePrefersAir && !c.airFillsGaps)
         c.OTA_enabled = false
         #expect(!c.airReplacesSiliconDust && !c.lineupFromAir && !c.guidePrefersAir)
@@ -67,24 +64,31 @@ struct OTAGapFillTests {
 
     @Test func anOldConfigWithoutTheNewKeysLoadsWithTheAirOff() throws {
         let c = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
-        #expect(!c.OTA_enabled && !c.OTA_always_use && c.OTA_fill_gaps)
-        let on = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"OTA_enabled":true,"OTA_always_use":true,"OTA_fill_gaps":false}"#.utf8))
-        #expect(on.OTA_enabled && on.OTA_always_use && !on.OTA_fill_gaps)
+        #expect(!c.OTA_enabled && !c.OTA_always_use)
+        let on = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"OTA_enabled":true,"OTA_always_use":true}"#.utf8))
+        #expect(on.OTA_enabled && on.OTA_always_use)
     }
 
-    // MARK: with the switch off nothing happens over the air
+    // MARK: the channel scan needs no permission, anything that reads guide listings does
 
-    @Test func withTheSwitchOffNoScanStartsAndNothingIsScheduled() async {
+    @Test func onlyTheChannelListScanRunsWithoutPermission() {
+        let off = AppConfig()
+        #expect(!off.OTA_enabled)
+        #expect(AppState.scanAllowed(lineupOnly: true, config: off))
+        #expect(!AppState.scanAllowed(lineupOnly: false, config: off))
+        var on = AppConfig(); on.OTA_enabled = true
+        #expect(AppState.scanAllowed(lineupOnly: false, config: on))
+    }
+
+    @Test func withoutPermissionAGuideScanIsRefusedAndNoGapFillStarts() async {
         let state = makeTestAppState(devices: [.test(id: "DEV1")])
-        #expect(!state.config.OTA_enabled)
         let status = state.startOTAScan(deviceId: "DEV1", rfChannels: [19], userInitiated: false, showWindow: false)
         #expect(status.contains("off"))
         #expect(state.otaScanTask == nil)
-        state.startScheduledOTALineupRefreshIfDue()
         state.startScheduledOTAGapFillIfDue()
         #expect(state.otaScanTask == nil)
         #expect(!state.otaGapCheckInFlight)
-        #expect(state.airOnlyChannels(deviceId: "DEV1").isEmpty)
+        #expect(state.airOnlyChannels(deviceId: "DEV1").isEmpty)   // nothing saved yet
     }
 
     @Test func theMissingMultiplexesAreTheRfChannelsOfTheChannelsSiliconDustLacks() {

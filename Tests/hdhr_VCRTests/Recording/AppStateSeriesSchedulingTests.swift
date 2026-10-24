@@ -7,7 +7,7 @@ import Foundation
 // `scheduleNextAir`'s .seriesChannel/.seriesAll branch tries four guide lookups in a fixed order
 // before giving up and retrying later — see AppState.swift's own comments there: currentEpisode
 // (SeriesID, on-air now) → nextEpisode (SeriesID, future) → currentEntryByTitle (title, on-air) →
-// nextEntryByTitle (title, future) → no match (bump show_next by Series_scan_retry_hours). The
+// nextEntryByTitle (title, future) → no match (park show_next an hour past the guide). The
 // underlying GuideStore lookups already have direct coverage via GuideStoreTests; what was
 // untested was scheduleNextAir's own orchestration — which tier wins when more than one could
 // match, and that seriesChannel vs. seriesAll differ only in channel scope. Uses the same
@@ -156,7 +156,7 @@ struct AppStateSeriesSchedulingTests {
         #expect(state.shows[0].show_next?.timeIntervalSince1970 == Double(futureStart))
     }
 
-    @Test @MainActor func seriesChannel_noMatchAnywhere_bumpsShowNextByRetryHoursAndResyncsEnd() async {
+    @Test @MainActor func seriesChannel_noMatchAnywhere_parksShowNextAnHourPastTheGuideAndResyncsEnd() async {
         let device = HDHRDevice.test(id: "AABBCCDD", tuners: 2)
         let show = makeSeriesShow(all: false, channel: "5.1", device: device.DeviceID)
         let json = """
@@ -165,12 +165,12 @@ struct AppStateSeriesSchedulingTests {
         ]}]
         """
         let state = await makeStateWithGuide(show: show, device: device, json: json)
-        let retryHours = state.config.Series_scan_retry_hours
 
         await state.scheduleNextAir(index: 0)
 
         let updated = state.shows[0]
-        let expected = Date().addingTimeInterval(Double(retryHours) * 3600)
+        // Parked one hour past the last listing the guide has (the unrelated show ends 5400 s from now).
+        let expected = Date().addingTimeInterval(5400 + 3600)
         #expect(abs((updated.show_next ?? .distantPast).timeIntervalSince(expected)) < 5)
         // show_end re-syncs to the bumped show_next + show_length even though no real match was
         // found — otherwise it stays stuck at the pre-test stale value set in makeSeriesShow.
@@ -191,15 +191,14 @@ struct AppStateSeriesSchedulingTests {
         ]}]
         """
         let state = await makeStateWithGuide(show: show, device: device, json: json)
-        let retryHours = state.config.Series_scan_retry_hours
 
         await state.scheduleNextAir(index: 0)
 
         // No match found on 5.1 despite a real match existing on 9.1 — falls through to the
-        // retry-bump fallback exactly like the "no match anywhere" case above, and show_channel
-        // is left untouched (never silently reassigned to 9.1).
+        // parking fallback exactly like the "no match anywhere" case above, and show_channel
+        // is left untouched (never silently reassigned to 9.1). The guide's last listing (on 9.1) ends 300 s from now.
         let updated = state.shows[0]
-        let expected = Date().addingTimeInterval(Double(retryHours) * 3600)
+        let expected = Date().addingTimeInterval(300 + 3600)
         #expect(abs((updated.show_next ?? .distantPast).timeIntervalSince(expected)) < 5)
         #expect(updated.show_channel == "5.1")
     }

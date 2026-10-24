@@ -466,7 +466,7 @@ fresh values, not stale ones.
 
 ## Step "Channels from the Air" (added 2026-10-21, right after Recording Defaults)
 `Step.airChannels` (`airChannelsScreen`, title "Channels from the Air"): a short explanation (a cheap backup channel list read from what stations broadcast; about
-**Opt-in switch (2026-10-24):** the step opens with a `Toggle` **Scan OTA for Lineup and Guide** (`airEnabled` → `OTA_enabled`, default off, `wizard-air-enabled`, with an InfoButton). Off, nothing else on the step shows and the app does nothing over the air; on, the scan card and the rescan-hour picker appear. Turning it on applies `OTA_enabled` at once (so the card's scan can run) and Finish saves it. The source and gap options are in Settings → Over the Air.
+**2026-10-24:** the step needs no permission switch: it is only the channel scan. A caption points to Settings → Over the Air for using the air for guide data (a separate choice).
 three minutes; idle tuners only and it steps aside for a recording or a viewer; the air guide is only ever used if no other guide is available; it refreshes itself
 once a day at the picked time) and `AirChannelsCard` (`Views/AirChannelsCard.swift`): **Scan the air for channels** (`wizard-air-scan`) starts a lineup-only
 OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindow: false)`: the wizard shows the progress itself); while it runs, a bar with
