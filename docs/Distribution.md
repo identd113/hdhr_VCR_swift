@@ -109,7 +109,7 @@ onward follows this full notarized path — the Developer ID cert and notary cre
 are already set up (see `tools/setup_signing.sh`), so this is the normal flow, not an
 aspirational one.
 
-**Helper (2026-10-15): `tools/release_checklist.py`** does the mechanical parts of this checklist — `preflight <version> [--tests] [--ui]` (readiness report), `stamp <version>` (CHANGELOG `Unreleased` → `v<version>`), `notes <version>` (GitHub Release notes), `publish <version> [--yes] [--live]` (draft/live Release, README "Latest" block). The build itself stays `./deploy_release.sh`. `publish --live` updates README's "Latest" heading and link; the 3-4 bullets under it are still written by hand (step 4). See `docs/Tools.md`.
+**Helper (2026-10-15): `tools/release_checklist.py`** does the mechanical parts of this checklist — `preflight <version> [--tests] [--ui]` (readiness report), `stamp <version>` (CHANGELOG `Unreleased` → `v<version>`; the `<!-- headline -->` block under the heading — title, blurb, optional "Coming soon, in testing" note — is what the About tab shows as the big feature, so write it before stamping and reuse its wording for RELEASES.md's headline), `notes <version>` (GitHub Release notes), `publish <version> [--yes] [--live]` (draft/live Release, README "Latest" block). The build itself stays `./deploy_release.sh`. `publish --live` updates README's "Latest" heading and link; the 3-4 bullets under it are still written by hand (step 4). See `docs/Tools.md`.
 
 **Every release — not just the first — goes through a pre-release pass before `deploy_release.sh`
 runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..main`):

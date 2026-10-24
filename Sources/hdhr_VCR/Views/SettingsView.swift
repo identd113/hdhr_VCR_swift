@@ -1644,7 +1644,9 @@ struct SettingsView: View {
 
     private var aboutView: some View {
         let sections = Self.parsedChangelogSections
-        let currentSection = sections.first
+        let currentRaw = sections.first
+        let headline = currentRaw.flatMap { Self.splitHeadline($0) }
+        let currentSection = headline?.rest ?? currentRaw
         let olderSections = sections.dropFirst().joined(separator: "\n\n")
 
         return ScrollView {
@@ -1733,6 +1735,28 @@ struct SettingsView: View {
                     .font(.callout)
                 }
 
+                if let headline, let title = headline.paragraphs.first {
+                    // The version's big feature, then what is coming (beta). Same text as the headline in RELEASES.md.
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("BIG FEATURE").font(.caption2.weight(.semibold)).foregroundStyle(.tint)
+                        Text(title.replacingOccurrences(of: "**", with: "")).font(.title2.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(Array(headline.paragraphs.dropFirst().enumerated()), id: \.offset) { _, paragraph in
+                            Text(LocalizedStringKey(paragraph)).font(.callout)
+                                .foregroundStyle(paragraph.hasPrefix("**Coming soon") ? .secondary : .primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Link("Release notes", destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift/blob/main/RELEASES.md")!)
+                            .font(.callout)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.10)))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.accentColor.opacity(0.35), lineWidth: 1))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("about-headline")
+                }
+
                 Text("What's new")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1812,6 +1836,18 @@ struct SettingsView: View {
             kept.append("## " + part)   // restore the heading marker the split consumed
         }
         return (Array(kept.prefix(maxSections)), latestVersion)
+    }
+
+    /// A version's headline: the paragraphs between `<!-- headline -->` and `<!-- /headline -->` at the top of its changelog section — a title, a
+    /// blurb, and optionally a "coming soon / in testing" note. Returns them (blank-line separated, trimmed) and the section without the block;
+    /// a section with no block returns nil and is unchanged. (The same text is written into RELEASES.md at release time.)
+    static func splitHeadline(_ section: String) -> (paragraphs: [String], rest: String)? {
+        guard let open = section.range(of: "<!-- headline -->"), let close = section.range(of: "<!-- /headline -->"), open.upperBound <= close.lowerBound else { return nil }
+        let inner = section[open.upperBound..<close.lowerBound]
+        let paragraphs = inner.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var rest = section
+        rest.removeSubrange(open.lowerBound..<close.upperBound)
+        return (paragraphs, rest.replacingOccurrences(of: "\n\n\n", with: "\n\n"))
     }
 
     /// Extracts a "(YYMMDD-HHMM)" version stamp from a changelog heading string.
