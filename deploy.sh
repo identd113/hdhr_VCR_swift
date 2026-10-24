@@ -112,6 +112,7 @@ cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
 cp RELEASES.md "$APP/Contents/Resources/RELEASES.md"
+rm -f "$APP/Contents/Resources/CHANGELOG.md"   # no longer bundled (the About tab reads RELEASES.md); drop one left by an older deploy
 # Privacy manifest (required-reason API declarations) — was never copied into the bundle, so the
 # shipped app had none (docs/MAS_COMPLIANCE.md §7).
 cp Sources/hdhr_VCR/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
