@@ -662,7 +662,7 @@ struct WindowNavigationTests {
                     delay 0.5
                     \#(captureAllSettingsTabTitlesSnippet)
                     set beforeResults to result
-                    \#(selectSettingsTabSnippet("General"))
+                    \#(selectSettingsTabSnippet("Guide"))
                     \#(findAndToggleXMLCheckboxSnippet)
                 on error errMsg
                     return "PHASE_BEFORE_ERROR: " & errMsg
@@ -719,7 +719,7 @@ struct WindowNavigationTests {
                             if (count of windows) > 0 then exit repeat
                         end repeat
                         delay 0.5
-                        \#(selectSettingsTabSnippet("General"))
+                        \#(selectSettingsTabSnippet("Guide"))
                         \#(findAndToggleXMLCheckboxSnippet)
                         set restoreOk to true
                         exit repeat
@@ -755,7 +755,7 @@ struct WindowNavigationTests {
             return
         }
         if result == "NO_TOGGLE_FOUND" {
-            Issue.record("Could not find the 'Use XMLTV guide format' checkbox in General — did it move again?")
+            Issue.record("Could not find the 'Use XMLTV guide format' checkbox in the Guide tab — did it move again?")
             return
         }
         let halves = result.components(separatedBy: "===SPLIT===")
@@ -774,8 +774,8 @@ struct WindowNavigationTests {
         let before = parsed(halves[0])
         let after  = parsed(halves[1])
 
-        // 8 tabs in a release build; debug builds add the Developer tab (Settings → Developer, compiled out of release builds).
-        #expect(before.count == 8 || before.count == 9, "expected 8 (release) or 9 (debug) tabs before toggling, saw \(before.count): \(halves[0])")
+        // 9 tabs in a release build; debug builds add the Developer tab (Settings → Developer, compiled out of release builds).
+        #expect(before.count == 9 || before.count == 10, "expected 9 (release) or 10 (debug) tabs before toggling, saw \(before.count): \(halves[0])")
         #expect(after.count == before.count,  "expected the same \(before.count) tabs after toggling, saw \(after.count): \(halves[1])")
 
         // Every label's own title should still match itself both before AND after the toggle
