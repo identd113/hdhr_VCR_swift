@@ -4,6 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Added* — **Every Settings tab has a "Reset This Tab to Defaults" button** in the bottom bar. It puts that tab's settings back to their defaults without saving; press Save to keep it, or Discard to undo.
 - *Info* — **The README now says European (DVB) tuners may not work.** Only US/Canadian (ATSC) tuners have been tested. Recording and watching should work on others, but the guide comes from SiliconDust's US/Canada service and the over-the-air scan reads ATSC tables only.
 - *Added* — **Settings → Over the Air lists which stations SiliconDust is missing.** Each multiplex that holds channels SiliconDust's lineup lacks is shown with its channels and when its guide was last read, so you can see what the top-up reads.
 - *Updated* — **Every scan of the air opens its window and closes it when it is over.** The daily channel-list scan, the guide top-up for missing stations and the Refresh this multiplex's guide button now show the scan window too (without taking focus unless you started it), and it closes itself a moment after the scan ends or is cancelled. The first-run wizard still shows its own progress.

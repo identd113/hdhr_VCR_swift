@@ -28,6 +28,7 @@ Selected row highlighted in accent color. Each row carries `accessibilityIdentif
 - `"Test the webhook before saving"` orange warning + Discard when webhook untested
 - `"Import pending — restart to apply; saving is paused"` orange label (replaces the other messages) after Import Config while `ConfigManager.savesSuppressedAfterImport` is true; Save and Save & Close are both disabled then (`settings-import-pending`)
 - The two orange warnings each carry a small **Show** button that switches to the relevant tab (webhook → Notifications `settings-show-webhook`, port → Sharing `settings-show-port`)
+- **"Reset This Tab to Defaults"** (`settings-reset-tab`, small button, added 2026-10-24) after the status text, on every tab except Maintenance, Developer and About: sets every setting the current tab edits back to `AppConfig()`'s default in the draft only (`SettingsView.resetKeys(for:)` lists the fields per tab; General also clears Launch at login, Recording also clears the default folder, Notifications also clears the webhook test state). Nothing is saved until Save, and Discard puts everything back. Dimmed when the tab already equals its defaults. `SettingsResetTests` checks every listed key is a real config field and none is on two tabs.
 - Right side: `"Save"` button (disabled when clean, webhook untested or import pending, ⌘S shortcut) + **"Save & Close"** prominent button (orange tint when dirty, blue/accent when clean, Return shortcut)
 - Accessibility identifiers: `settings-discard`, `settings-save`, `settings-save-close`
 

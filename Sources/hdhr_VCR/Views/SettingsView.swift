@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
-private enum SettingsCategory: String, CaseIterable, Identifiable {
+enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     case general       = "General"
     case recording     = "Recording"
@@ -193,6 +193,13 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("settings-discard")
                 }
+                if Self.resetKeys(for: selection ?? .general) != nil {
+                    Button("Reset This Tab to Defaults") { resetCurrentTab() }
+                        .controlSize(.small)
+                        .disabled(currentTabIsAtDefaults)
+                        .help("Puts every setting on this tab back to its default. Nothing changes until you press Save.")
+                        .accessibilityIdentifier("settings-reset-tab")
+                }
                 Spacer()
                 let canSave = dirty && !needsTest && !portBad && !savesPaused
                 Button("Save") { applyAndSave() }
@@ -243,6 +250,57 @@ struct SettingsView: View {
     }
 
     private func discardDraft() { resetDrafts() }
+
+    // MARK: reset a tab to its defaults
+
+    /// The AppConfig fields each tab edits (the names in the saved JSON), nil for tabs with nothing to reset. Resetting changes the
+    /// draft only: nothing is saved until Save, and Discard puts everything back.
+    static func resetKeys(for tab: SettingsCategory) -> [String]? {
+        switch tab {
+        case .general:       return ["Appearance_mode", "Show_launch_splash", "Status_light_blink_enabled"]
+        case .recording:     return ["Default_transcode", "Fail_count_setting", "Min_disk_free_gb", "Post_recording_script", "Series_subfolder_enabled",
+                                     "Skip_recorded_episodes", "Sports_padding_minutes", "TimeMachine_exclude_mode", "Write_metadata_sidecar", "Hdhr_setup_folder"]
+        case .guide:         return ["GuideHours", "Guide_refresh_interval_divisor", "Guide_use_xml", "Series_scan_retry_hours"]
+        case .overTheAir:    return ["OTA_enabled", "OTA_always_use", "OTA_fill_gaps", "OTA_lineup_hour"]
+        case .notifications: return ["Discord_enabled", "Discord_webhook_url", "Notify_recording", "Notify_upnext", "Discord_on_start", "Discord_on_complete",
+                                     "Discord_on_failed", "Discord_on_paused", "Discord_on_skipped", "Discord_on_duplicate", "Discord_on_conflict",
+                                     "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_soon", "Discord_on_show_added"]
+        case .advanced:      return ["Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled", "Verbose_curl"]
+        case .sharing:       return ["Home_assistant_status_enabled", "Terminal_guide_enabled", "Virtual_tuner_relay_default_transcode", "Virtual_tuner_relay_enabled",
+                                     "Web_server_enabled", "Web_server_port", "Web_streaming_enabled"]
+        default:             return nil
+        }
+    }
+
+    private func jsonObject<T: Encodable>(_ value: T) -> [String: Any] {
+        ((try? JSONEncoder().encode(value)).flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
+    }
+
+    /// True when every setting on the current tab already equals its default (the button is dimmed then).
+    private var currentTabIsAtDefaults: Bool {
+        let tab = selection ?? .general
+        guard let keys = Self.resetKeys(for: tab) else { return true }
+        let current = jsonObject(draft), defaults = jsonObject(AppConfig())
+        let configSame = keys.allSatisfy { key in
+            let a = (current[key] as AnyObject?) ?? NSNull(), b = (defaults[key] as AnyObject?) ?? NSNull()
+            return a.isEqual(b)
+        }
+        let extrasSame = (tab != .general || !draftLaunchAtLogin) && (tab != .recording || draftSaveDirectory.isEmpty)
+        return configSame && extrasSame
+    }
+
+    private func resetCurrentTab() {
+        let tab = selection ?? .general
+        guard let keys = Self.resetKeys(for: tab) else { return }
+        var current = jsonObject(draft)
+        let defaults = jsonObject(AppConfig())
+        for key in keys { current[key] = defaults[key] }
+        if let data = try? JSONSerialization.data(withJSONObject: current), let reset = try? JSONDecoder().decode(AppConfig.self, from: data) { draft = reset }
+        if tab == .general { draftLaunchAtLogin = false }
+        if tab == .recording { draftSaveDirectory = "" }
+        if tab == .notifications { webhookTestStatus = .idle }
+        glog("[Settings] reset the \(tab.rawValue) tab to its defaults (not saved yet)")
+    }
 
     /// Short hint shown beside a button that acts on SAVED values while there are unsaved edits (the button is disabled).
     @ViewBuilder private var saveFirstHint: some View {
