@@ -38,6 +38,8 @@ The scan uses `recordableDevices` only (never the virtual relay), and is off the
 - Web API (LAN): `GET /api/ota-status` → `{"status","running","finished","total","multiplexes","channels","listings","tuners","tunersMax","secondsLeft"}` (`secondsLeft` -1 = unknown). **There is no route that starts, changes or cancels a scan** (the old `POST /api/ota-scan` was removed 2026-10-24): scans are started from the app only, and the web guide shows the air data without being able to request it.
 
 ## Known gaps
+**ATSC only (2026-10-24).** The scanner uses the ATSC 1.0 channel plan (6 MHz RF channels 2–36 and 38–51) and decodes ATSC PSIP tables; DVB tuners (Europe and elsewhere: 7/8 MHz channels, NIT/SDT/EIT tables) are not supported and are untested, and a scan on one finds nothing. The tuner's firmware name (`hdhomeruntc_atsc` on the EXTEND) could be used to offer the Over the Air tab only on ATSC tuners; that is not done yet (TODO.md). The README says DVB tuners may not work.
+
 No series IDs (series recording falls back on titles), no genre tags (genre dimming and the sports Bonus Time default have nothing to
 read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Cities test) or no PSIP at all. Depth varies, from about
 12 hours to 3 days. 

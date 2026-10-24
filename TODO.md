@@ -4,6 +4,12 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## DVB (European) tuners: gate the air features and say so
+
+Only ATSC tuners (US/Canada) have been tested; the README now says European/DVB tuners may not work. Still to do: (1) offer the Over the Air tab only on ATSC tuners (the EXTEND reports firmware `hdhomeruntc_atsc`; find out what DVB models report) so a DVB user is not given a scan that finds nothing; (2) find out whether the guide works for them and what a no-guide setup should look like (XMLTV?); (3) a DVB scanner is a separate piece of work — the NIT lists the other multiplexes, so it would need far fewer tries than the ATSC sweep.
+
+---
+
 ## Test: launch with no cached show icons
 
 Try launching with the show/channel icon caches empty (cold `ChannelIconCache` disk cache, no cached posters) and see what the menu, Watch Now, guide and launch splash do: placeholders, layout shifts, blocking fetches, CPU spike while ~100+ logos download. Not started — wanted as a check, not a known bug.

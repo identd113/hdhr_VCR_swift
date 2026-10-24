@@ -183,6 +183,7 @@ under [Features](#features).
 
 - **macOS 15.0** (Sequoia) or later, on **Apple Silicon** (Intel Macs are not supported)
 - An **HDHomeRun** network tuner (CONNECT, PRIME, EXTEND, FLEX, etc.) on your local network
+- **Tested with US/Canadian tuners only** (ATSC antenna, and cable). **European and other DVB tuners (DVB-T/T2, DVB-C) may not work and have not been tested.** Recording and watching use the tuner's own lineup and should work, but the guide comes from SiliconDust's cloud guide service, and the over-the-air scan (Settings → Over the Air) reads ATSC broadcast tables only, so it finds nothing on a DVB tuner.
 - **VLC** (`/Applications/VLC.app`) — optional, for Watch Now! playback
 
 ---
