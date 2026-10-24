@@ -109,7 +109,7 @@ onward follows this full notarized path — the Developer ID cert and notary cre
 are already set up (see `tools/setup_signing.sh`), so this is the normal flow, not an
 aspirational one.
 
-**Helper (2026-10-15): `tools/release_checklist.py`** does the mechanical parts of this checklist — `preflight <version> [--tests] [--ui]` (readiness report), `stamp <version>` (CHANGELOG `Unreleased` → `v<version>`; the `<!-- headline -->` block under the heading — title, blurb, optional "Coming soon, in testing" note — is what the About tab shows as the big feature, so write it before stamping and reuse its wording for RELEASES.md's headline), `notes <version>` (GitHub Release notes), `publish <version> [--yes] [--live]` (draft/live Release, README "Latest" block). The build itself stays `./deploy_release.sh`. `publish --live` updates README's "Latest" heading and link; the 3-4 bullets under it are still written by hand (step 4). See `docs/Tools.md`.
+**Helper (2026-10-15): `tools/release_checklist.py`** does the mechanical parts of this checklist — `preflight <version> [--tests] [--ui]` (readiness report), `stamp <version>` (CHANGELOG `Unreleased` → `v<version>`), `notes <version>` (GitHub Release notes), `publish <version> [--yes] [--live]` (draft/live Release, README "Latest" block). The build itself stays `./deploy_release.sh`. `publish --live` updates README's "Latest" heading and link; the 3-4 bullets under it are still written by hand (step 4). See `docs/Tools.md`.
 
 **Every release — not just the first — goes through a pre-release pass before `deploy_release.sh`
 runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..main`):
@@ -124,9 +124,7 @@ runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..mai
 2. **Add a `## v<version> (<date>)` entry to [`RELEASES.md`](../RELEASES.md)**, condensed and
    end-user-facing (see existing entries for the house style) from what actually landed since the
    last tag (`git log <last-tag>..main` / `CHANGELOG.md`'s entries for this
-   release). `deploy_release.sh` does **not** touch this file — it only bundles
-   root `CHANGELOG.md` into the app (`cp` into `Contents/Resources/`) for the in-app About screen (see root `CLAUDE.md`'s "Guide page
-   CSS/JS/HTML" note and `SettingsView.swift`'s `changelogText`). `Sources/hdhr_VCR/CHANGELOG.md` is only a byte copy kept for SwiftPM's `.copy` resource (`Package.swift`); after editing the root file run `cp CHANGELOG.md Sources/hdhr_VCR/CHANGELOG.md` — `CachePrunerTests.changelogCopiesStayIdentical` fails if they drift. Skipping this step is how
+   release). `deploy_release.sh` does **not** touch this file — it bundles root `RELEASES.md` (not the changelog) into the app (`cp` into `Contents/Resources/`) for the in-app About screen (`ReleaseNotes.swift`, `SettingsView.swift`'s About). `Sources/hdhr_VCR/RELEASES.md` is only a byte copy kept for SwiftPM's `.copy` resource (`Package.swift`); `deploy.sh` and `deploy_release.sh` refresh it before building, and `CachePrunerTests.releaseNotesCopyStaysIdentical` fails if it drifts. The newest notes are written under `## Unreleased` in RELEASES.md with a `### The headline: <Title>` section (blurb, optional `**Coming soon, in testing:**` paragraph); `release_checklist.py stamp` renames the heading to `## v<version> (<date>)`. CHANGELOG.md is the long tagged list, no longer bundled. Skipping this step is how
    RELEASES.md fell two versions behind (v2.0.3, v2.0.4) before a manual audit caught it in
    2026-08-17 — do this before publishing the GitHub Release below, and use the new RELEASES.md
    section as the basis for that release's notes.

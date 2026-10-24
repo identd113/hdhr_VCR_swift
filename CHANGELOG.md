@@ -4,15 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
-<!-- headline -->
-**Your antenna, now in the guide.**
-
-Every morning, hdhrVCRplus quietly listens to the airwaves and finds the stations your SiliconDust lineup leaves out. They show up in the web guide, ready to watch. Allow it, and their listings fill the gaps in your guide too. And if SiliconDust is ever down, the air keeps your guide alive.
-
-**Coming soon, in testing:** watch live TV and recordings in your browser, channels seen on the air in the web guide, and a guide built entirely from the air with no internet at all. All three are beta. Try them, and tell us what you think.
-<!-- /headline -->
-
-- *Added* — **About shows the big feature of the version.** A card above the changelog gives the headline (this version: finding the stations SiliconDust leaves out, from the air), what is coming in testing, and a link to the release notes.
+- *Updated* — **About shows the release notes, version by version.** The big feature of the newest version is a card at the top, with what is coming in testing, and a row of versions below it opens the short notes for each one. The app bundles RELEASES.md now, not the changelog, which stays on GitHub.
 - *Updated* — **The About tab is tidier.** The name and version come first with the update check, then the touchable logo, then soft cards for supporter status, the story (collapsed), links and credits, and the changelog with the current version open and earlier versions collapsed.
 - *Updated* — **Maintenance starts with a Guides & Devices section.** Tick what to redo (find tuners again, reload channel lineups, refresh the guide, scan for channels, re-check series shows), read in the (i) what each does and why you might need it, and press one button; it saves any unsaved settings first and remembers your ticks.
 - *Updated* — **Settings are simpler.** The guide always asks for 28 hours (the "Show next hours" setting is gone; the auto-refresh choice stays, default 1/4), the "Series scan retry" setting is gone (a series show with no airing is parked an hour past the end of the guide and re-checked whenever new guide data arrives), the over-the-air "fill the gaps" switch is gone (allowing guide data from the air means filling the gaps), Series subfolders and Skip already-recorded episodes are one switch, Time Machine exclusion is one switch, signal bars in the guide are on by default, the Recording alert time moved to Advanced, and Verbose curl logging moved to Developer.

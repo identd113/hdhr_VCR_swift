@@ -35,8 +35,8 @@ import sys
 
 ROOT = os.environ.get("RELEASE_REPO_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
-CHANGELOG_COPY = os.path.join(ROOT, "Sources/hdhr_VCR/CHANGELOG.md")
 RELEASES = os.path.join(ROOT, "RELEASES.md")
+RELEASES_COPY = os.path.join(ROOT, "Sources/hdhr_VCR/RELEASES.md")   # the copy SwiftPM bundles; deploy*.sh refresh it before building
 README = os.path.join(ROOT, "README.md")
 DIST = os.path.join(ROOT, "dist")
 NOTARY_PROFILE = "hdhrVCR-notary"
@@ -163,9 +163,9 @@ def preflight(args):
         say(OK, f"CHANGELOG.md has {n_entries} Unreleased entries — `release_checklist.py stamp {v}` will turn them into v{v}")
     else:
         say(BAD, "CHANGELOG.md has no Unreleased entries and no v%s section" % v)
-    say(OK if read(CHANGELOG) == read(CHANGELOG_COPY) else BAD,
-        "Sources/hdhr_VCR/CHANGELOG.md is a byte copy" if read(CHANGELOG) == read(CHANGELOG_COPY)
-        else "Sources/hdhr_VCR/CHANGELOG.md differs — cp CHANGELOG.md Sources/hdhr_VCR/CHANGELOG.md")
+    say(OK if read(RELEASES) == read(RELEASES_COPY) else BAD,
+        "Sources/hdhr_VCR/RELEASES.md is a byte copy" if read(RELEASES) == read(RELEASES_COPY)
+        else "Sources/hdhr_VCR/RELEASES.md differs — cp RELEASES.md Sources/hdhr_VCR/RELEASES.md (deploy.sh does this)")
     sec = releases_section(v)
     if not sec:
         say(BAD, f"RELEASES.md has no '## v{v} (date)' entry")
@@ -266,15 +266,18 @@ def stamp(args):
         cl = cl[:m.start()] + f"## v{v} — {date}\n" + cl[m.end():]
         write(CHANGELOG, cl)
         print(f"CHANGELOG.md: Unreleased → v{v} — {date}")
-    write(CHANGELOG_COPY, read(CHANGELOG))
-    print("Sources/hdhr_VCR/CHANGELOG.md synced")
     rel = read(RELEASES)
+    # The newest notes are written under "## Unreleased" while the version is built; stamping names them (the About tab and the
+    # GitHub Release notes both read this heading).
+    rel = re.sub(r"^## Unreleased\n", f"## v{v} ({date})\n", rel, count=1, flags=re.M)
     new = re.sub(rf"^(## v{re.escape(v)} )\([0-9-]+\)", rf"\1({date})", rel, count=1, flags=re.M)
-    if new != rel:
+    if new != read(RELEASES):
         write(RELEASES, new)
-        print(f"RELEASES.md heading date → {date}")
+        print(f"RELEASES.md heading → v{v} ({date})")
     elif releases_section(v) is None:
         print(f"! RELEASES.md has no v{v} entry yet")
+    write(RELEASES_COPY, read(RELEASES))
+    print("Sources/hdhr_VCR/RELEASES.md synced")
     print("\nNext: review `git diff`, commit, then ./deploy_release.sh %s" % v)
 
 

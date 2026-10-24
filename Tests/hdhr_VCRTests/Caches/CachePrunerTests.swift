@@ -2,8 +2,8 @@ import Testing
 import Foundation
 @testable import hdhr_VCR
 
-// CachePruner — pure over a temp dir + injected `now` / in-use set. Also pins the two CHANGELOG.md
-// copies (repo root = what deploy.sh bundles; Sources/hdhr_VCR = the SPM .copy resource) together.
+// CachePruner — pure over a temp dir + injected `now` / in-use set. Also pins the two RELEASES.md
+// copies (repo root = what deploy.sh bundles; Sources/hdhr_VCR = the SPM .copy resource, refreshed by deploy.sh) together.
 
 private func makeDir() -> URL {
     let d = FileManager.default.temporaryDirectory.appendingPathComponent("prune-\(UUID().uuidString)", isDirectory: true)
@@ -62,12 +62,12 @@ private func exists(_ u: URL) -> Bool { FileManager.default.fileExists(atPath: u
         #expect(r == CachePruner.Result())
     }
 
-    @Test func changelogCopiesStayIdentical() throws {
+    @Test func releaseNotesCopyStaysIdentical() throws {
         // #filePath = <repo>/Tests/hdhr_VCRTests/Caches/CachePrunerTests.swift
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let root = try Data(contentsOf: repo.appendingPathComponent("CHANGELOG.md"))
-        let src  = try Data(contentsOf: repo.appendingPathComponent("Sources/hdhr_VCR/CHANGELOG.md"))
-        #expect(root == src, "Sources/hdhr_VCR/CHANGELOG.md must be a byte copy of CHANGELOG.md (cp CHANGELOG.md Sources/hdhr_VCR/CHANGELOG.md)")
+        let root = try Data(contentsOf: repo.appendingPathComponent("RELEASES.md"))
+        let src  = try Data(contentsOf: repo.appendingPathComponent("Sources/hdhr_VCR/RELEASES.md"))
+        #expect(root == src, "Sources/hdhr_VCR/RELEASES.md must be a byte copy of RELEASES.md (cp RELEASES.md Sources/hdhr_VCR/RELEASES.md; deploy.sh does it)")
     }
 }

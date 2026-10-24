@@ -97,6 +97,8 @@ echo "    Release:      $RELEASE_VERSION (CFBundleVersion $_BUILD_NUM)"
 echo "==> Building (release, arm64)…"
 # Apple Silicon only — Intel support (a universal arm64+x86_64 build via double --arch, SwiftPM
 # combining the slices itself) was dropped 2026-09-28; see CHANGELOG.md's Unreleased "Removed" entry.
+# The About tab reads RELEASES.md (not the changelog); SwiftPM bundles the copy inside the target, so refresh it first.
+cp RELEASES.md Sources/hdhr_VCR/RELEASES.md
 swift build -c release --arch arm64
 # Resolved via --show-bin-path (same flags as the build above) instead of a hardcoded
 # .build/apple/Products/Release/ — that path was specific to the classic SwiftPM "native" build
@@ -135,7 +137,7 @@ cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 # Bundle.main.url(forResource:withExtension:) (SettingsView's in-app changelog) looks in
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
-cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
+cp RELEASES.md "$APP/Contents/Resources/RELEASES.md"
 # Privacy manifest (required-reason API declarations) — was never copied into the bundle (docs/MAS_COMPLIANCE.md §7).
 cp Sources/hdhr_VCR/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 

@@ -55,6 +55,7 @@ UpdateChecker.swift        GitHub-release update check (Sparkle is a parked dead
 XmltvParser.swift          XMLTV → [GuideChannel], same output shape as the guide.php JSON decoder (`Guide_use_xml`)
 OTAGuide/                  Over-the-air guide (beta; scan window = Views/OTAScanView.swift, docs/OTAScanView.md): PSIPDecoder (ATSC tables → channels/events), OTAGuideConverter (→ [GuideChannel]), OTAScanner (actor: sweeps RF channels on idle tuners), OTAStore, AppState+OTA — docs/OTAGuide.md, research in overtime/
 TunerSharing.swift         Menu-header note for tuners in use by something other than this instance (hw vs app count)
+ReleaseNotes.swift       RELEASES.md → the About tab's version chips and big-feature headline (the app bundles RELEASES.md, not the changelog; deploy*.sh copy it)
 Version.swift              `appVersion` build stamp — rewritten by deploy.sh, never commit it
 Views/
   MenuContent.swift        Menu bar dropdown (entire UI)

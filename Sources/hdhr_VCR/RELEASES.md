@@ -1,0 +1,585 @@
+# Release Notes
+
+What's new in each version. For the fuller list of changes within a version, see
+[CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md); for the full download, see the
+[GitHub Releases page](https://github.com/identd113/hdhr_VCR_swift/releases).
+
+---
+
+## Unreleased
+
+### The headline: Your antenna, now in the guide
+
+Every morning, hdhrVCRplus quietly listens to the airwaves and finds the stations your SiliconDust lineup leaves out. They show up in the web guide, ready to watch. Allow it, and their listings fill the gaps in your guide too. And if SiliconDust is ever down, the air keeps your guide alive.
+
+**Coming soon, in testing:** watch live TV and recordings in your browser, channels seen on the air in the web guide, and a guide built entirely from the air with no internet at all. All three are beta. Try them, and tell us what you think.
+
+**What else is new.**
+- **Pick your guide.** JSON, XMLTV or the air, side by side with what each is good and bad at. If one of SiliconDust's two formats fails, the other is tried before the app asks about the air.
+- **Simpler settings.** An Over the Air tab, a Reset button on every tab, one switch for organizing series, one for Time Machine, and no more fixed "hours" or "retry" settings to puzzle over.
+- **Maintenance that helps.** Tick what to redo (find tuners, reload lineups, refresh the guide) and run it in one go, and see how much space the guide cache, saved air data and logos take, with a button to clear each.
+- **A tidier About tab,** with release notes you can browse version by version.
+- **The web guide fits phones again,** in portrait and landscape.
+
+---
+
+## v2.6.5 (2026-10-15)
+
+### The headline: fixes and polish
+
+2.6.0 made FEED and picture-in-picture good. 2.6.5 is the release that makes the whole app steadier: it
+fixes the rough edges that turned up in daily use and in a lot of new automated testing, and it makes the
+app cost nothing when it is idle. There is one small new touch, a launch splash, mentioned at the end.
+
+**Why it needed work.** Three things stood out. A dialog — "No Tuner Available", "Quit while recording?",
+a delete confirmation, a file picker — froze everything behind it: the web guide, any Mac watching a FEED
+and recording scheduling all stopped until you clicked OK, so an unattended Mac with a stray alert looked
+hung. The launch splash never really went away: its window was only hidden, and its poster wall kept
+animating out of sight — about a fifth of a CPU core spent doing nothing, and a half-second hitch every ten
+seconds in the menu, the web guide and the player. And Watch Now could go stale: a recording that had just
+started could still read "scheduled to record" without its Watch Now! / Watch from Beginning buttons until
+you restarted the app.
+
+**How it got better.**
+- **Dialogs are sheets** on the window you are using (or a small floating window when none is open), so
+  everything keeps running while one is up.
+- **Idle means idle:** the hidden window is now destroyed when the splash ends — 0 % CPU when idle, about
+  15 MB of memory back, and no more periodic hitch.
+- **Watch Now is right the moment a recording starts**, and a window reopened after a show changes no
+  longer lists the previous airing.
+- **FEED is steadier:** it starts about 8 seconds behind live so delivery hiccups don't stutter, recovers
+  within a second after a slow patch instead of freezing, and is never mistaken for an ordinary tuner.
+- **Recordings are safer** when an external drive is unplugged or two series share the start of a title.
+
+These were checked with new automated tests that drive the real app on two Macs — dialogs staying
+non-blocking, Watch Now rows updating, idle CPU, and a 30-step FEED soak that checks, after every step, that
+your tuners are counted correctly.
+
+The small new touch: a short **launch splash** when you open the app — the logo, a live checklist and show
+posters flying in, then the panel glides up to the menu-bar icon to show where the app lives. On a new
+install the setup wizard slides in on the same panel, and the support card follows it when it is due: one
+window, one card at a time. It is off with one switch in Settings → General, and skipped when macOS Reduce
+Motion is on.
+
+### Removed
+- **The setup wizard's own opening animation.** A new install now sees the launch splash and goes straight
+  to the first setup step.
+
+### Added
+- **A launch splash** — the logo, version and a live checklist (tuner, channels, guide) over show posters
+  flying in from every edge, then the panel glides to the menu-bar icon. A new install gets it too: the
+  setup wizard and the support card slide in as cards in the same panel, one at a time. The rest of the
+  app's launch waits for the posters to fly in, so it animates smoothly. Turn it off in Settings → General
+  → "Show launch splash".
+- **Watch from Beginning for a FEED** — right-click a FEED to scrub back to where the recording started.
+- **Settings → About explains the menu-bar light** — the logo matches the light now showing, with a
+  legend of every light and blink pattern.
+
+### Updated
+- **Fixed: no dialog freezes the app any more**, and **idle CPU is 0 %** (see above).
+- **Fixed: "Move to Applications?" no longer starts the app underneath its own prompt.** A copy opened from the disk image or
+  Downloads began launching (finding tuners, starting the web server, reattaching recordings) while the prompt was still up,
+  and gave up if macOS asked for permission to write to Applications. Now nothing starts until you decide; the move waits
+  for macOS's permission prompt instead of failing under it; a copy already running in Applications is asked to quit first;
+  and the new copy launches only once it is really in place.
+- **Launch timing:** with the launch splash on, the app finishes starting about 3 seconds later than 2.6.0, because tuner
+  discovery and the guide wait for the posters to fly in; with the splash off, startup, idle CPU, memory and web-guide speed
+  match 2.6.0 (measured side by side, docs/PerformanceHistory.md).
+- **Fixed: Watch Now could show a recording as "scheduled to record"** without its relay buttons, or list
+  the previous airing for up to 30 seconds after a reopen.
+- **Fixed: recordings could land on the startup disk when an external drive was unplugged.** If a show's
+  folder was the drive itself, the recording went into a look-alike folder on the Mac's own disk; it now
+  falls back to your local recording folder.
+- **Fixed: "Organize series recordings" could file one show under another** whose title starts the same
+  way (such as "Law & Order SVU" under "Law & Order").
+- **Fixed: a FEED could freeze for tens of seconds**, and "Watch from Beginning" could be off by seconds
+  when two shows were recording at once.
+- **Unreachable tuners are no longer offered** in Watch Now, picture-in-picture or Add Show; the menu names
+  tuners that another device is using; and the Tuner pickers always land on an available tuner.
+- **The player's sound follows your Mac's output** — plug in headphones or switch to AirPods and playback
+  moves with it; pin a device in More options → Audio Output.
+- **Discord cards wait out Discord's rate limit** instead of being dropped when several shows start at
+  once; webhook URLs must be `https://`.
+- **Smaller fixes:**
+  - The player window no longer grows under the Dock or sits on "Connecting…" forever.
+  - The "All Tuners Busy" notice appears when switching from a recording to a live channel.
+  - Clear Guide Cache also clears the saved copies on disk.
+  - Add Show recovers if a tuner comes back after the window opened.
+  - Signal Strength Scan has a tuner pulldown.
+  - The first-run window is tall enough for the Next button.
+  - The picture-in-picture close button works with VoiceOver.
+
+---
+
+## v2.6.0 (2026-10-10)
+
+### The headline: FEED and picture-in-picture grow up
+
+2.5.0 introduced two big ideas: **Recording FEED** (watch a show that's recording on another Mac,
+without a second tuner) and **picture-in-picture** (two streams at once). Both shipped as Beta, with
+rough edges. 2.6.0 is the release where they get good.
+
+**Why it needed work.** The point of FEED is simple: one tuner, several Macs, and you want to watch
+from wherever you are while it records. In real use that exposed three problems. The built-in web
+server was handing video to other Macs at about 1.6 Mbps — a fraction of an HD broadcast's ~11 Mbps —
+because of a macOS networking quirk, so viewers stalled; the cause was found and fixed, and it now runs
+at full network speed (the web guide loads faster from other devices too). A FEED could only join at the
+live edge, with no way back if you missed a moment. And a dropped connection ended the FEED for good.
+Picture-in-picture had its own limits: a fixed corner, a fixed size, and audio or scrub position that
+could be lost when you swapped streams.
+
+**How it matured.**
+- **Scrub a FEED** like a recording — rewind and fast-forward within what you've watched so far.
+- **It reconnects by itself** after a network blip and keeps filling the same scrub-back cache.
+- **It's steadier:** no more slow memory leak, it works with Sharing turned off, the right episode title
+  and description show even after the other Mac restarts, only one Mac relays a shared tuner, and
+  deleting a recording shuts its FEED down instead of leaving an empty one running.
+- **Picture-in-picture goes where you want it** (right-click the video), **resizes by dragging its
+  corner**, remembers your size, and scales with the window.
+- **Swapping keeps what matters:** your scrub position, your chosen audio output, and correct sound.
+- **Streams start by themselves** — picture and sound together, no Start button — and switching
+  channels on a busy tuner waits for the tuner instead of ending playback.
+
+These were shaken out with a lot of real use plus new automated stress tests that open, swap and close
+players and picture-in-pictures while checking, after every step, that your tuners are counted correctly.
+FEED is still labeled Beta, but it's far steadier than it was in 2.5.0.
+
+### Removed
+- **Intel Mac support.** Release builds are Apple Silicon (arm64) only. macOS 15.0 or later is
+  still required.
+
+### Added
+- **Pause and resume with the space bar** while watching a recording or a FEED (live TV can't be
+  paused — there's no buffer to resume from).
+- **Place a picture-in-picture where you want it, and resize it by dragging its corner.** Right-click
+  the video and choose "Add Picture-in-Picture…" to open it in the quadrant you clicked; your size is
+  remembered and travels with Export/Import Config.
+- **Streams start by themselves** — no Start button. Picture and sound arrive together as soon as the
+  first frame is decoded.
+- **Press `?` in the player to see every keyboard shortcut** — a translucent card over the video, closed by
+  any key; keys that don't apply right now are dimmed.
+- **`?` shortcuts card in the web guide and terminal guide too** — press `?` to see the keys; any key closes it.
+- **An info banner for what you're watching** — press `i` for the show, episode and source
+  ("Live OTA · Ch 5.1", "Recording" or "FEED").
+- **Scrub back and forward while watching a FEED**, the same way you can with a recording, and a FEED
+  now reconnects on its own after a network blip.
+- **Cast to Chromecast (Beta)** — the player's "…" menu finds Chromecasts on your LAN. Built and
+  unit-tested, but not yet verified against real Chromecast hardware.
+- **Exclude recordings from Time Machine** — Settings → Recording: Off, Each Recording or Show's
+  Folder — so terabytes of recordings stay out of your backup.
+- **A heads-up about 3 minutes before a scheduled recording needs the tuner you're watching.**
+  Nothing stops until the recording actually starts; on the same channel, playback simply switches
+  to the recording.
+- **Adjustable guide auto-refresh** (Settings → Guide), and **`/api/tuner-status.json`** for Home
+  Assistant and other pollers (off by default — Settings → Sharing → Home Assistant).
+- **A station with no logo now shows the app icon** instead of a blank.
+
+### Updated
+- **Fixed: series recordings started a few seconds late and posted a false "Recording Skipped."**
+  Every guide-matched series show lost the first 5–10 seconds of the broadcast.
+- **Fixed: a recording that ended normally could be logged as a failure** — no completion card or
+  post-recording script, and repeated, it could auto-pause a healthy show.
+- **Fixed: Bonus Time padding was applied twice** if the app restarted mid-airing.
+- **Fixed: a partial recording from a failed attempt could count as "already recorded"**, so the
+  retry was skipped and the airing stayed truncated.
+- **Fixed: your Discord webhook token was written to the logs** when a send failed. It is now masked.
+  Old log lines are not rewritten — rotate the webhook if you've shared logs.
+- **The web guide refuses cross-site and DNS-rebinding requests**, including ones with malformed
+  headers, and show titles sent to it are cleaned up.
+- **Fixed: a changed hostname made the app look like a fresh install** (no shows, setup wizard
+  again). It now finds and adopts your existing config.
+- **Fixed: "Move to Applications" could delete your existing copy before the new one was in place.**
+- **Fixed: a bad or empty guide reply could wipe your guide.**
+- **Fixed: recordings refused on a big drive that was merely "93% full"** — only your "Minimum free
+  disk" setting decides now.
+- **Fixed: a New Only skip right before a date/time recording repeated every few seconds**, and **a
+  retry could skip the rest of an airing** because its own earlier partial counted as "already recorded".
+- **Fixed: the player could get stuck on "Connecting…"** after "All Tuners Busy", and **closing it during
+  a FEED transcode switch left a download running** until you quit the app.
+- **Fixed: opening the web guide by a router-assigned name** (like `macmini.fritz.box`) was refused.
+- **Old temporary files are cleaned up** — stale guide caches and leftover recording-header files.
+- **Fixed: switching channels while a tuner is busy no longer ends playback**, and switching from a
+  FEED to a real channel keeps the FEED playing until the new stream is ready. Fewer false
+  "playback stalled" reconnects, and no silent audio after a picture-in-picture swap.
+- **FEED playback is much smoother.** The web server was delivering to other Macs at about 1.6 Mbps
+  because of a macOS dual-stack networking issue; it now delivers at full network speed.
+- **The guide survives the guide service being down.** If SiliconDust's guide servers can't be reached
+  (their certificate expired on 2026-10-09), a relaunch now loads your last saved guide instead of
+  starting empty, and you get a plain notification and Discord message about it — then another when it
+  recovers.
+- **The blue FEED light flashes when a FEED is available and stays solid while you watch one**, and
+  **double-clicking the menu bar icon brings all your open windows forward** (the player on top).
+- **A scrubbed position survives a picture-in-picture swap**, and Watch Now's Record button is a compact
+  button again.
+- **Faster startup, fewer calls to the public guide service, and more resilient device discovery.**
+- **Smaller fixes:** Edit Show no longer saves a Length of 0, Import Config tells you to restart,
+  launch-at-login no longer leaves Settings on "unsaved changes", the web guide's tuner count
+  updates within seconds, the menu bar's "FEED available" light means someone is actually
+  watching, and a misleading "Primary folder unavailable" warning is gone.
+
+## v2.5.0 (2026-09-19)
+
+### Removed
+- **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in
+  a separate, external VLC.app window. hdhrVCRplus still requires VLC.app for all of its own
+  in-app playback, live TV and recordings alike.
+
+### Added
+- **Watch an in-progress recording live from another Mac on your LAN (Recording FEED, Beta)** —
+  a Mac that's recording can rebroadcast it as a small virtual tuner on your network, so any other
+  hdhrVCRplus instance can watch without opening a second real tuner. Off by default per Mac —
+  turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings." Beta: occasional
+  playback hiccups and switching audio tracks mid-watch are known limitations; the transcoded
+  option is best treated as one viewer at a time.
+- **Watch two live streams at once (picture-in-picture)** — any live channel, in-progress
+  recording, or another Mac's shared recording can play as a small muted corner thumbnail
+  alongside whatever's already playing. Click it to swap instantly, right-click to move it to any
+  corner or (for a live channel) switch what it's showing.
+- **An Info button on the player** ("i", like a TV remote) — shows the show name, episode title,
+  and either a "NEW" badge or its original air date in a temporary banner.
+- **First-Run Wizard now explains the VLC requirement up front**, with a one-click install path via
+  Homebrew or a direct download link.
+- **Terminal Guide can now set "New Only" and pick specific weekdays** for a recurring schedule,
+  matching the web guide's Record dialog.
+- **The web guide previews Bonus Time overlap directly in the grid.**
+
+### Updated
+- **Player toolbar decluttered** — audio track, captions, audio output, and display pickers moved
+  into one "More options" menu.
+- **Fixed: the First-Run Wizard could crash outright on its last step**, shown to every user.
+- **Standardized what "Up Next" means** across the menu bar and web guide.
+- **Fixed: switching channels in the player toolbar could hang with no explanation** when a tuner
+  turned out to be unavailable — now shows the same "All Tuners Busy" alert every other path does.
+- **Fixed: captions could go permanently undetected for a whole playback session.**
+- **Fixed: a live stream that stalled with zero new bytes had no auto-recovery** — now recovers on
+  its own, the same way a corrupted stream already did.
+- **Fixed: adding a second show from the native Add Show window in one sitting could silently do
+  nothing.**
+- **Fixed: a Bonus Time recording could show the wrong show's title/episode info** in the menu bar
+  and player once the channel moved on to its next program.
+- **Fixed: watching a recording (Watch Now or a shared FEED) no longer lets the Mac sleep
+  mid-playback**, and playback no longer cuts off immediately if the tuner drops.
+- **Fixed: "Add Show…" could feel slow to open**, especially right after launch.
+- **Discord's "Skipped — rerun (New Only)" notification now includes the episode's original air
+  date.**
+
+## v2.3.0 (2026-09-11)
+
+### Added
+- **Watch Now can now yield its tuner to a blocked recording request** — if you're watching live
+  TV on a device's last free tuner and a scheduled recording needs it, a "Stop Watching & Record?"
+  dialog offers to stop watching, start the recording, and reconnect you to watch it from disk a
+  moment later, instead of just blocking with "All Tuners Busy."
+
+### Updated
+- **"Sharing" settings reorganized into "Web LAN"** — the web guide's settings/first-run steps
+  split out under this clearer name; every option gets its own short animated first-run screen.
+- **Fixed: a rare bug could leave a background copy of the app running invisibly, silently
+  doubling recordings and Discord notifications.**
+- **Fixed: a "Tuner Conflict" notification could repeat for the same show on every retry**
+  instead of firing once.
+- **Fixed: duplicate Login Items could appear after certain updates.**
+- **Web guide and API stay responsive even under heavy load.**
+- **Deploy scripts now self-heal** if iCloud sync evicts the app bundle mid-session.
+- VoiceOver accessibility labels added to the in-app video player and the menu bar's Watch
+  buttons, verified against real VoiceOver navigation.
+
+### In progress
+- **Recording FEED** — the idea: watch an in-progress recording live from another Mac on your LAN
+  without tying up a second tuner. Fully built and tested, but not enabled in this release — an
+  occasional client-side playback stall hasn't been fully tracked down yet, so it stays off with no
+  setting to turn it on until it's solid. No user-facing change this release; watch for it in a
+  future one.
+
+## v2.2.0 (2026-08-29)
+
+### Added
+- **First-Run Wizard** — walks new (or upgrading) users through picking a recordings folder and
+  confirming their HDHomeRun tuner(s) are found, with a short animated intro (double-click the
+  header logo to replay it), including a Local Network permission check with a direct link to
+  Privacy Settings if it's not granted yet. Re-run anytime from Settings → Maintenance →
+  "Reset First-Run Setup."
+- **Appearance setting** — Settings → General gains an Auto/Light/Dark picker for this app's own
+  windows, two-way synced with the web guide when it's shown inside the Add Show wizard.
+- **Type-ahead show search in the web guide** — a toolbar search box (type 3+ characters, or
+  press "/") finds a show on the current tuner, with arrow-key navigation and episode cycling.
+- **Terminal Guide search / channel-jump** — press "/" to jump to a channel number or search
+  loaded guide entries, arrow through results, and hit Enter to schedule a recording — fully
+  offline.
+- **Proactive transcode-compatibility warnings** in Add/Record and Edit, so an unsupported
+  transcode profile is flagged before recording instead of only after it fails.
+- **Release builds now ship as a DMG** with a custom Read Me and background, and offer to move
+  themselves to /Applications if launched from elsewhere.
+
+### Updated
+- **Security fix**: a guide entry's poster image could be crafted to inject content into the web
+  guide's search results. No evidence it was ever exploited.
+- **Fixed: the web guide could mislabel one of your own in-progress recordings as being on
+  "another tuner."** A leftover character from reading the tuner's status kept it from
+  recognizing its own recording.
+- **Fixed: a recording channel's station label didn't always read as clearly "recording"** in the
+  web guide — it now turns red along with the rest of the recording indicator.
+- **Fixed: an ⓘ info tooltip could pop open oversized with its text shoved to the bottom**,
+  instead of sizing tightly around the text; also fixed the Maintenance tab's info icons sitting
+  closer to their labels than every other tab's.
+- **Fixed: repeatedly pressing ↓/↑ in Terminal Guide could drift the visible time window away
+  from wherever you'd scrolled to.** Moving between channels now holds your place in time until
+  you deliberately move elsewhere.
+- **Esc in Add Show now backs out one step at a time** instead of always closing the wizard.
+- **Fixed: Space could misfire the web guide's type-to-search** instead of activating guide
+  controls as normal.
+- **Fixed: a tuner that was briefly unreachable at startup could get permanently stuck marked as
+  "doesn't support transcoding"** even after coming back online.
+- **Fixed: resetting First-Run Setup could pop the donation reminder up alongside it.**
+- A few smaller fixes: the web guide's Edit modal now shows the same transcode warning the Record
+  modal already had; live tuner updates now carry transcode-support status without needing a
+  reload; typing in the guide search box no longer momentarily freezes the app; the First-Run
+  Wizard checks all your tuners at once instead of one by one, so setup finishes faster; warning
+  banners throughout the app now use a softer, less alarming style.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.1.0 (2026-08-25)
+
+### Added
+- **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling
+  recordings without a browser, bundled with the app. Enable and open it from Settings → Sharing.
+- **Pull-to-refresh on the web guide** — drag down at the top of the grid to refresh in place
+  instead of reloading the page.
+- **"New Only" recording option** — skip reruns the guide doesn't flag as a new episode, for
+  DateTime and SeriesID shows.
+- **Signal quality now shown in the web guide's Edit modal**, matching what the Record modal
+  already had.
+
+### Updated
+- **SeriesID(Channel)/SeriesID(All) are now one "SeriesID" option with a Channel/All scope
+  toggle**, instead of two separate, easy-to-conflate top-level choices.
+- **The web guide now asks you to confirm before deleting a show**, showing its poster and title.
+- Settings' "Web Server" section is now called "Sharing" — same setting, new label.
+- **Fixed: a SeriesID(Channel) show without SeriesID guide data could get stuck re-skipping the
+  same already-recorded episode every ~10 seconds** for its whole broadcast window.
+- **Fixed: editing a SeriesID(All) show could get permanently stuck at Save** if its channel had
+  been cleared before switching to All.
+- A few smaller fixes: "Update Guides Now"/"Check for Updates" show a spinner while running; the
+  Local Network permission retry backs off over time instead of polling forever; the
+  delete-confirmation dialog could show a blank poster or briefly disagree about recording status;
+  a tuner that goes fully undetected while a show is still scheduled on it now shows up (as
+  offline) in Terminal Guide instead of disappearing.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.5 (2026-08-22)
+
+### Added
+- **Metadata sidecar (.nfo) files for recordings** — Settings → Recording → Post-Processing gains
+  "Write metadata sidecar," writing a Kodi-style `.nfo` with episode title, season/episode, air
+  date, synopsis, genre, and runtime next to each recording. Off by default.
+- **Shows auto-pause when their tuner isn't detected, and auto-resume once it reappears** — instead
+  of silently sitting scheduled against a tuner that isn't there. Never touches a show you paused
+  yourself.
+- **Release builds are now universal** (Apple Silicon + Intel) — Intel Macs can run hdhrVCRplus
+  starting with this release.
+- **In-app player: true fullscreen (Esc to exit), arrow-key seeking (15s back / 30s forward), and
+  labeled toolbar buttons.**
+- Settings → Advanced gained Export/Import Config buttons for copying your setup to another
+  machine.
+
+### Removed
+- Settings → Maintenance no longer offers "Install VLC"/"Install HDHomeRun CLI" via Homebrew —
+  VLC detection is unaffected, just the install-it-for-me buttons.
+
+### Updated
+- **Watch Now and the VLC player no longer offer Record for paid programming** (infomercials, home
+  shopping), matching the web guide's existing behavior.
+- **Fixed a series show getting stuck re-skipping the same already-recorded rerun every ~10
+  seconds** for its entire time slot, spamming duplicate notifications.
+- **Fixed: a recording interrupted partway through (crash, forced restart, reboot) could be
+  permanently mistaken for a complete recording** with "Skip already-recorded episodes" on — the
+  completeness check now compares against that series' own real recorded file sizes instead of a
+  flat guess, so a truncated file is correctly retried next time it airs.
+- **Fixed: watching an in-progress recording never showed its poster image or synopsis** in the
+  player overlay.
+- **Fixed: an already-recorded duplicate being skipped showed a false "Recording now" ring** on the
+  web guide and Watch Now for its entire time slot.
+- Hardened the LAN web server so a slow/stalled recording drive can no longer freeze guide loads or
+  live updates for other devices on the network.
+- The web guide's Summary panel now often has poster/synopsis ready the instant you click a tile,
+  thanks to a hover-triggered prefetch.
+- A "record all airings" series show without SeriesID data (e.g. some local news) no longer
+  silently flips between simulcast channels on different guide reloads.
+- Assorted smaller fixes: the menu bar's series "Upcoming" preview no longer shows an airing on a
+  tuner the show would never actually record from; a resumed-from-pause show properly re-arms its
+  heads-up notifications; a completed recording now drops out of the guide's "Recording" section
+  immediately instead of waiting for the next unrelated refresh; a single-tuner setup's tuner popover
+  now opens on the first click.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.4 (2026-08-15)
+
+### Added
+- **Record directly from Watch Now and the streaming player** — no need to open the Add Show
+  wizard. Click Record for a pulldown of the four recording types (single airing, weekly, series
+  on this channel, series on any channel); the streaming player gained its own Record button.
+- **Currently-recording shows now sort above Favorites**, in their own "Recording" section, in
+  both Watch Now and the web guide.
+- Watch Now can now start playback from the very beginning of an in-progress recording, not just
+  ~30 seconds behind live.
+- The streaming player turns on closed captions automatically when muted, if available, and
+  leaves them on when unmuted.
+- Discord notifications now show a 🆕 NEW tag for a first-run episode airing today.
+
+### Updated
+- Double-clicking a show in the web guide now opens Edit (if scheduled/recording) or Record (if
+  not) — previously it always tried Record, even for already-scheduled shows.
+- Watch Now's tiles, buttons, and tuner switcher got a round of layout polish (genre coloring
+  under posters, one-button-per-row actions with tooltips, faster load with many channels, poster
+  borders).
+- Watch Now and the web guide now share the same colored status indicators (recording, scheduled,
+  will-skip, conflict, in-use-elsewhere).
+- Fixed several status-indicator mismatches: a rerun on a different channel showing as
+  "recording," a stalled retry showing as "recording," a false "in use by another tuner" flag on
+  your own session, and a scheduled-indicator appearing on a channel a series show would never
+  actually record from.
+- Fixed: switching channels, seeking, or closing the player mid-recording-playback could
+  occasionally freeze the whole app.
+- Fixed: a completed recording's Discord notification could be missing its episode number/summary
+  even when an earlier notification for the same show had it.
+- A tuner that goes offline with nothing scheduled on it no longer leaves a permanently dimmed,
+  empty box in the web guide.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.3 (2026-08-11)
+
+### Fixed
+- **A crafted web-guide request could crash the whole app, ending any in-progress recording** —
+  an extreme time-window value sent to the guide's lazy-load endpoint could overflow an internal
+  calculation and trap the process. Requests like that now fall back to the normal guide window
+  instead of crashing.
+- **A `SeriesID(All)` show could match and record on more than one HDHomeRun device at once**,
+  wasting tuner capacity and producing duplicate files, and could silently migrate to a different
+  device on reschedule. It's now scoped to the one device it was originally set up on, same as a
+  channel-locked `SeriesID` show.
+- **Reopening the Settings window while it was already open could show a false "Unsaved Settings"
+  warning on close**, even with nothing actually edited. It now resyncs whenever the window
+  regains focus, as long as nothing's actually been edited yet.
+- **XMLTV guide data used different genre spellings than the app expected**, silently breaking
+  Bonus Time auto-detection for Sport-tagged shows and leaving most XMLTV genres shown in plain
+  gray instead of their proper color. Both are now recognized, and XMLTV-tagged shopping/
+  infomercial entries are now detected and flagged automatically.
+- **The passive signal-quality scan assumed every tuner streams on port 5004** — it now reads the
+  actual stream URL from the device's own reported channel lineup, so it works correctly on a
+  device using a non-default port.
+- **A loopback-check bug could, in principle, let a non-loopback IPv6 address bypass the web
+  server's LAN-only access check.** Low real-world risk, but the check now requires an exact
+  match instead of merely starting with the loopback address.
+
+### Updated
+- On a multi-tuner device, if a `SeriesID(All)` show has two different episodes airing at the
+  same moment on two channels, the app now prefers whichever one isn't already recorded, instead
+  of always breaking the tie toward a favorited channel even when that channel's episode is a
+  duplicate you already have.
+- Guide/performance polish: faster icon-cache disk cleanup, the vertical (portrait) page variant
+  is no longer built for installs that never use it, verbose curl logging now has its own
+  correctly size-capped log file, and the web guide gained a per-show "record even if already on
+  disk" override for duplicate episodes.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.2 (2026-08-09)
+
+### Fixed
+- **A stuck Local Network permission prompt could require quitting and reopening the app** — the
+  app now shows a Dock icon on launch until it confirms it can actually reach your tuner (giving
+  macOS's permission prompt a normal app to attach to), then hides it automatically. New
+  **Settings → Advanced → "Dock icon"** option (Auto/Always/Never) to override. The app also now
+  retries reaching your tuner every ~10 seconds instead of up to an hour, so granting permission
+  takes effect on its own — no relaunch needed.
+- **The menu bar's tuner-in-use count could go stale while the dropdown was open** — it now
+  updates live, so if something else on your network (another machine running this app, a TV,
+  etc.) starts or stops using a tuner, you'll see it right away instead of only after closing and
+  reopening the menu.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.1 (2026-08-09)
+
+### Fixed
+- **Some machines never fully loaded channel data** — macOS's Local Network privacy permission
+  could silently block the app's requests to the tuner. When that happened, the channel list,
+  favorites, and some Watch Now/recording links could end up empty or stale with no visible
+  error. Recording itself was never affected. This is now clearly logged instead of silent, so
+  it's diagnosable if it happens again. If you ever see channels missing at launch, check
+  System Settings → Privacy & Security → Local Network and make sure hdhrVCRplus is allowed.
+- The Transcode picker now notes that not every tuner model supports transcoding — pick None if
+  a recording fails immediately after choosing a different profile.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.0 — First Notarized Release (2026-08-08)
+
+**This is the first hdhrVCRplus release signed with a Developer ID certificate and notarized by
+Apple** — no more "unidentified developer" warning, no right-click-Open or `xattr` bypass step.
+macOS accepts it as a normal app on first launch, verified offline via a stapled ticket.
+
+### Added
+- **Donation support** — an optional, dismissible in-app reminder (shown on launch and when
+  scheduling a show) with a link to leave a voluntary tip. Not a paywall — every feature works
+  identically whether you ever see it, dismiss it, or ignore it entirely. Settings → About shows
+  your registered status if you've tipped.
+- **Vertical time-axis mode for the mobile web guide** — on a portrait phone, the guide grid
+  transposes so channels become side-by-side columns and time reads top-to-bottom, like a
+  calendar view, instead of the usual side-scrolling horizontal grid.
+
+### Removed
+- **The "Cable Guide" pop-out window** — redundant since the Add Show wizard's guide step already
+  embeds the full-size web guide directly; had no remaining way to open it.
+
+### Fixed
+- The app referred to itself by three different names ("hdhrVCRplus", "hdhrVCR+", "hdhr_VCR")
+  depending on which screen you were looking at — standardized to "hdhrVCRplus" everywhere.
+- Some Settings number fields could show their value doubled up (e.g. the web server port reading
+  "1980  1980") on recent macOS — a redundant placeholder rendering alongside the real value.
+- Narrow phones could overflow channel number/name text in the web guide's channel column.
+- The web guide's "snap to now" button appeared later than it should have, and the summary panel
+  had a leftover error from an earlier feature's removal.
+- The About panel's changelog now renders markdown headers and numbered/bulleted lists properly
+  instead of one flattened paragraph, and reads correctly in dark mode.
+- Log files (`hdhrVCRplus.log`, the Discord activity log) now self-rotate instead of growing
+  without bound over a long-running session.
+- A recording resumed after an app restart could leave behind a stray temp file and silently lose
+  error-code reporting for the rest of that recording — fixed by properly reattaching its curl
+  header-file tracking. The channel-logo disk cache also now has a 150 MB ceiling (oldest logos
+  evicted first) instead of growing without bound.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+### Installing
+
+1. Download `hdhrVCRplus-v2.0.0.zip` from the
+   [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases) and unzip it.
+2. Move `hdhrVCRplus.app` to `/Applications`.
+3. Open it — no warning, no bypass step needed.
+4. Requires macOS 15.0 (Sequoia) or later, and an HDHomeRun tuner on your local network. VLC is
+   optional, for Watch Now playback.
+
+---
+
+*Releases before v2.0.0 were ad-hoc signed, not notarized — see that release's own notes on the
+[Releases page](https://github.com/identd113/hdhr_VCR_swift/releases) for its Gatekeeper bypass
+instructions.*

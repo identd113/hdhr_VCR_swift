@@ -70,6 +70,10 @@ APP_VERSION="$(date +%y%m%d-%H%M)"
 printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift
 echo "    Version: $APP_VERSION"
 
+echo "==> Release notes…"
+# The About tab reads RELEASES.md (not the changelog). SwiftPM bundles the copy inside the target; refresh it before building.
+cp RELEASES.md Sources/hdhr_VCR/RELEASES.md
+
 echo "==> Building…"
 swift build
 
@@ -107,7 +111,7 @@ cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 # Bundle.main.url(forResource:withExtension:) (SettingsView's in-app changelog) looks in
 # Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
 # reaches there, so this copy is the only thing that actually makes it visible in-app.
-cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
+cp RELEASES.md "$APP/Contents/Resources/RELEASES.md"
 # Privacy manifest (required-reason API declarations) — was never copied into the bundle, so the
 # shipped app had none (docs/MAS_COMPLIANCE.md §7).
 cp Sources/hdhr_VCR/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"

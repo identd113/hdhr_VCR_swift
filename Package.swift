@@ -9,7 +9,7 @@ let package = Package(
             name: "hdhr_VCR",
             dependencies: [],
             path: "Sources/hdhr_VCR",
-            resources: [.copy("CHANGELOG.md"), .copy("PrivacyInfo.xcprivacy")]
+            resources: [.copy("RELEASES.md"), .copy("PrivacyInfo.xcprivacy")]
         ),
         // Pure, testable TUI logic (string layout, DTOs, grid/scheduling math) split out of
         // hdhr_guide specifically so it's unit-testable — a `main.swift`-based executable target

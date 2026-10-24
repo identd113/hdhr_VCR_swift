@@ -94,23 +94,10 @@ struct SettingsView: View {
         vlcInstalled = VLCBridge.locateApp() != nil
         terminalGuideExists = FileManager.default.fileExists(atPath: Self.terminalGuideURL.path)
     }
-    @State private var changelogHeight: CGFloat = 0
-    @State private var currentChangelogHeight: CGFloat = 0
+    @State private var releaseNoteHeight: CGFloat = 0
+    @State private var selectedReleaseID: String?       // About → the version whose notes are open (nil = the newest)
 
-    private static let changelogText: String = {
-        guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md"),
-              let raw = try? String(contentsOf: url, encoding: .utf8),
-              let range = raw.range(of: "\n## ") else { return "" }
-        // Strip the file title; return only the version sections
-        return String(raw[range.lowerBound...]).trimmingCharacters(in: .newlines)
-    }()
-    // Computed once (like changelogText above), not inside aboutView's computed-property body —
-    // aboutView re-runs on every SwiftUI re-render of the whole SettingsView (this observes
-    // @EnvironmentObject state, so any @Published AppState mutation while the About tab happens to
-    // be open re-triggers it: idle-loop ticks, tuner-status polls, guide refreshes, signal-scan
-    // progress, all firing continuously in this 24/7 menu-bar app), yet changelogText/its parsed
-    // sections never change after launch (found in code review 2026-09-25).
-    private static let parsedChangelogSections: [String] = parseChangelog(changelogText).sections
+    private static let releases: [ReleaseNote] = ReleaseNotes.bundled
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false     // Developer tab's Purges Run button
     @State private var busyRow: String?                  // title of the maintenance row currently running
@@ -1643,11 +1630,9 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let sections = Self.parsedChangelogSections
-        let currentRaw = sections.first
-        let headline = currentRaw.flatMap { Self.splitHeadline($0) }
-        let currentSection = headline?.rest ?? currentRaw
-        let olderSections = sections.dropFirst().joined(separator: "\n\n")
+        let releases = Self.releases
+        let selected = releases.first { $0.id == selectedReleaseID } ?? releases.first
+        let headline = releases.first.flatMap { ReleaseNotes.headline(in: $0.body) }
 
         return ScrollView {
             VStack(spacing: 16) {
@@ -1720,6 +1705,9 @@ struct SettingsView: View {
                     HStack {
                         Text("Links").font(.headline)
                         Spacer()
+                        Link("Full change list",
+                             destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift/blob/main/CHANGELOG.md")!)
+                            .buttonStyle(.bordered)
                         Link("View on GitHub",
                              destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
                             .buttonStyle(.bordered)
@@ -1735,19 +1723,18 @@ struct SettingsView: View {
                     .font(.callout)
                 }
 
-                if let headline, let title = headline.paragraphs.first {
-                    // The version's big feature, then what is coming (beta). Same text as the headline in RELEASES.md.
+                if let headline {
+                    // The newest version's big feature, then what is coming (beta). Same text as its headline in RELEASES.md.
                     VStack(alignment: .leading, spacing: 8) {
                         Text("BIG FEATURE").font(.caption2.weight(.semibold)).foregroundStyle(.tint)
-                        Text(title.replacingOccurrences(of: "**", with: "")).font(.title2.weight(.semibold))
+                        Text(headline.title).font(.title2.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
-                        ForEach(Array(headline.paragraphs.dropFirst().enumerated()), id: \.offset) { _, paragraph in
-                            Text(LocalizedStringKey(paragraph)).font(.callout)
-                                .foregroundStyle(paragraph.hasPrefix("**Coming soon") ? .secondary : .primary)
+                        Text(LocalizedStringKey(headline.blurb)).font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let soon = headline.comingSoon {
+                            Text(LocalizedStringKey(soon)).font(.callout).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        Link("Release notes", destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift/blob/main/RELEASES.md")!)
-                            .font(.callout)
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1757,32 +1744,39 @@ struct SettingsView: View {
                     .accessibilityIdentifier("about-headline")
                 }
 
-                Text("What's new")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let currentSection {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Current Version", systemImage: "checkmark.seal.fill")
-                            .font(.caption).bold()
-                            .foregroundStyle(.tint)
-                        MarkdownView(markdown: currentSection, height: $currentChangelogHeight)
-                            .frame(height: max(40, currentChangelogHeight))
-                    }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.12)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.4), lineWidth: 1))
-                }
-                if !olderSections.isEmpty {
-                    aboutCard {
-                        DisclosureGroup(isExpanded: $aboutOlderExpanded) {
-                            MarkdownView(markdown: olderSections, height: $changelogHeight)
-                                .frame(height: max(40, changelogHeight))
-                                .padding(.top, 6)
-                        } label: {
-                            Text("Earlier versions").font(.headline)
+                if !releases.isEmpty {
+                    Text("Release notes")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // One chip per version in RELEASES.md; the chosen one's notes open below.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(releases) { release in
+                                let isSelected = release.id == selected?.id
+                                Button(release.id) { selectedReleaseID = release.id }
+                                    .buttonStyle(.plain)
+                                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(Capsule().fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.15)))
+                                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                                    .accessibilityIdentifier("about-release-\(release.id)")
+                            }
                         }
-                        .accessibilityIdentifier("about-earlier-versions")
+                        .padding(.vertical, 2)
+                    }
+                    if let selected {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(selected.id).font(.title3.weight(.semibold))
+                                if !selected.subtitle.isEmpty { Text(selected.subtitle).foregroundStyle(.secondary) }
+                                Spacer()
+                            }
+                            MarkdownView(markdown: selected.body, height: $releaseNoteHeight)
+                                .frame(height: max(40, releaseNoteHeight))
+                                .id(selected.id)   // a different version is a fresh view, so its height is measured again
+                        }
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
                     }
                 }
             }
@@ -1809,60 +1803,6 @@ struct SettingsView: View {
             return (state.config.Hdhr_setup_folder as NSString).lastPathComponent + " (from config)"
         }
         return "hdhr_videos (default)"
-    }
-
-    // MARK: - Changelog parsing
-
-    /// Splits `text` into sections by "## " headings, keeping only those whose date is
-    /// ≤ `appVersion`'s own build date. Sections with no extractable date (e.g. "## Unreleased",
-    /// or anything predating version stamping) are always kept. Returns up to `maxSections` kept
-    /// sections — each a complete, independently-renderable "## "-prefixed markdown block, in
-    /// original (newest-first) order — plus the latest version found (nil if none), so callers can
-    /// show an update notice. Capped here (a display concern) rather than in CHANGELOG.md itself or
-    /// the version-filtering logic above, which stay untouched — see TODO.md's About-tab entry.
-    // Widened from `private` for direct test coverage — same "widen for testability" precedent
-    // TODO.md documents for HDHRManager's discovery methods.
-    static func parseChangelog(_ text: String, maxSections: Int = 6) -> (sections: [String], latestVersion: String?) {
-        let sep = "\n## "
-        let parts = text.components(separatedBy: sep)
-        guard parts.count > 1 else { return (text.isEmpty ? [] : [text], nil) }
-        var latestVersion: String? = nil
-        var kept = [parts[0]]   // already "## "-prefixed — it's the head of the original string
-        for part in parts.dropFirst() {
-            let heading = String(part.prefix(while: { $0 != "\n" }))
-            let ver = extractVersion(from: heading)
-            if latestVersion == nil { latestVersion = ver }
-            if let ver, ver > appVersion { continue }   // newer than this build — omit
-            kept.append("## " + part)   // restore the heading marker the split consumed
-        }
-        return (Array(kept.prefix(maxSections)), latestVersion)
-    }
-
-    /// A version's headline: the paragraphs between `<!-- headline -->` and `<!-- /headline -->` at the top of its changelog section — a title, a
-    /// blurb, and optionally a "coming soon / in testing" note. Returns them (blank-line separated, trimmed) and the section without the block;
-    /// a section with no block returns nil and is unchanged. (The same text is written into RELEASES.md at release time.)
-    static func splitHeadline(_ section: String) -> (paragraphs: [String], rest: String)? {
-        guard let open = section.range(of: "<!-- headline -->"), let close = section.range(of: "<!-- /headline -->"), open.upperBound <= close.lowerBound else { return nil }
-        let inner = section[open.upperBound..<close.lowerBound]
-        let paragraphs = inner.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        var rest = section
-        rest.removeSubrange(open.lowerBound..<close.upperBound)
-        return (paragraphs, rest.replacingOccurrences(of: "\n\n\n", with: "\n\n"))
-    }
-
-    /// Extracts a "(YYMMDD-HHMM)" version stamp from a changelog heading string.
-    // CHANGELOG.md headings (2026-08-12 rewrite) are "vX.Y.Z — YYYY-MM-DD" or bare "Unreleased" —
-    // no longer the older "(YYMMDD-HHMM)" parenthetical this used to look for. Extracts the date
-    // as "YYMMDD" (dropping the century) so it compares correctly against appVersion's own
-    // "YYMMDD-HHMM" build stamp: a date-only prefix always sorts as "not newer" than a same-day
-    // build with a time suffix (Swift String comparison treats a string as less than any longer
-    // string it's a prefix of), so day-level granularity here is sufficient — this only needs to
-    // gate out entries from a clearly *later* calendar date, not order same-day entries by time.
-    private static func extractVersion(from heading: String) -> String? {
-        guard let dashRange = heading.range(of: " — ") else { return nil }   // "Unreleased" has none
-        let digits = heading[dashRange.upperBound...].filter(\.isNumber)
-        guard digits.count == 8 else { return nil }   // not a recognizable YYYY-MM-DD date
-        return String(digits.dropFirst(2))   // YYYYMMDD -> YYMMDD
     }
 
     private func exportConfig() {
