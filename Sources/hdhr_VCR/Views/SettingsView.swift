@@ -553,43 +553,13 @@ struct SettingsView: View {
     private var guideView: some View {
         Form {
             Section("Source") {
-                Picker(selection: guideFormatBinding) {
-                    Text("JSON").tag(GuideFormat.json)
-                    Text("XMLTV").tag(GuideFormat.xmltv)
-                    if draft.OTA_enabled { Text("OTA").tag(GuideFormat.air) }
-                } label: {
-                    HStack { Text("Guide format"); InfoButton("JSON and XMLTV both come from SiliconDust's cloud guide service and describe the same shows; JSON is the default. OTA (the air) appears here once you allow guide data from the air in Over the Air: it replaces SiliconDust's lineup and guide with what the stations broadcast. Devices without DeviceAuth always use JSON.", about: "Guide format") }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings-guide-format")
                 if !draft.OTA_enabled {
                     Text("To use the air as a source, allow guide data from the air in Settings → Over the Air.")
                         .font(.caption).foregroundStyle(.secondary)
                         .accessibilityIdentifier("settings-guide-format-ota-hint")
                 }
-                HStack(alignment: .top, spacing: 10) {
-                    guideFormatCard("JSON (default)", selected: guideFormatBinding.wrappedValue == .json, id: "settings-guide-format-json",
-                        pros: ["A complete timeline: shows that already ended in the last hour are included, so the guide grid has no gaps behind \"now\".",
-                               "Fetches 28 hours ahead, including the hour just past.",
-                               "Works for a device with no DeviceAuth (its own local guide)."],
-                        cons: ["Genres are coarse (about 9 tags such as Sports or Drama) and often empty, so paid programming is spotted by a blocklist.",
-                               "No network name (affiliate)."])
-                    guideFormatCard("XMLTV", selected: guideFormatBinding.wrappedValue == .xmltv, id: "settings-guide-format-xmltv",
-                        pros: ["Richer genres (about 60 real categories), which help the genre colours and the Bonus Time default for sports.",
-                               "Paid programming is marked explicitly.",
-                               "Includes the network name (affiliate)."],
-                        cons: ["Never contains a show that has already ended, so the last hour of the guide shows empty gaps where earlier shows were.",
-                               "The server sets the window (about 2 days), not the app.",
-                               "Cloud only: a device with no DeviceAuth uses JSON anyway."])
-                    if draft.OTA_enabled {
-                        guideFormatCard("OTA (the air)", selected: guideFormatBinding.wrappedValue == .air, id: "settings-guide-format-air",
-                            pros: ["Everything the stations broadcast, including channels SiliconDust lacks. No SiliconDust guide or internet needed.",
-                                   "Saved listings are kept ahead by reading again when they run out within 6 hours."],
-                            cons: ["No series IDs (series recording falls back on titles), no genre tags or images.",
-                                   "Depth varies by station, from about 12 hours to 3 days; some stations send no guide.",
-                                   "Needs idle tuners to scan, and favorites do not apply."])
-                    }
-                }
+                HStack { Text("Guide format"); InfoButton("JSON and XMLTV both come from SiliconDust's cloud guide service and describe the same shows; JSON is the default. Click a column to choose it. OTA (the air) appears once you allow guide data from the air in Over the Air: it replaces SiliconDust's lineup and guide with what the stations broadcast. Devices without DeviceAuth always use JSON.", about: "Guide format"); Spacer() }
+                guideFormatTable
             }
 
             Section("Fetch") {
@@ -730,25 +700,52 @@ struct SettingsView: View {
             })
     }
 
-    /// One side of the JSON / XMLTV / OTA comparison under the Guide format picker: what the format is good and bad at. The chosen side is outlined.
-    private func guideFormatCard(_ title: String, selected: Bool, id: String, pros: [String], cons: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.subheadline.weight(.semibold))
-            ForEach(pros, id: \.self) { line in
-                Label { Text(line).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "plus.circle.fill").foregroundStyle(.green) }
+    /// A side-by-side of the guide formats (like the README's comparison table): one row per trait, one column per format, green where a format is good at
+    /// it and orange where it is not. Clicking a column picks that format (there is no separate picker); the chosen column is outlined. OTA shows only once
+    /// guide data from the air is allowed.
+    private var guideFormatTable: some View {
+        typealias Cell = (text: String, good: Bool?)
+        let traits = ["Load time", "Timeline", "Window", "Genres", "Network name", "Series IDs", "Needs"]
+        let columns: [(title: String, format: GuideFormat, id: String, cells: [Cell])] = [
+            ("JSON (default)", .json,  "settings-guide-format-json",
+             [("About 0.5 s", true), ("Complete", true), ("28 h ahead", nil), ("Coarse, ~9", false), ("No", false), ("Yes", true), ("DeviceAuth, internet", nil)]),
+            ("XMLTV", .xmltv, "settings-guide-format-xmltv",
+             [("About 1 s", true), ("Gap before now", false), ("~2 days, server's", nil), ("Rich, ~60", true), ("Yes", true), ("Yes", true), ("DeviceAuth, internet", nil)]),
+        ] + (draft.OTA_enabled ? [
+            ("OTA (the air)", .air, "settings-guide-format-air",
+             [("Minutes", false), ("Per station", nil), ("12 h – 3 days", nil), ("None", false), ("No", false), ("Titles only", false), ("Idle tuners", nil)]),
+        ] : [])
+        let current = guideFormatBinding.wrappedValue
+        return HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(" ").fontWeight(.semibold).padding(.vertical, 4)
+                ForEach(traits, id: \.self) { Text($0).foregroundStyle(.secondary) }
             }
-            ForEach(cons, id: \.self) { line in
-                Label { Text(line).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "minus.circle.fill").foregroundStyle(.orange) }
+            ForEach(columns, id: \.format) { col in
+                let selected = current == col.format
+                Button { guideFormatBinding.wrappedValue = col.format } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(col.title).fontWeight(.semibold).padding(.vertical, 4)
+                        ForEach(Array(col.cells.enumerated()), id: \.offset) { _, c in
+                            Text(c.text).lineLimit(1).minimumScaleFactor(0.8)
+                                .foregroundStyle(c.good == true ? Color.green : c.good == false ? Color.orange : Color.primary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.accentColor.opacity(0.12) : Color.clear))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: selected ? 1.5 : 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(col.title)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+                .accessibilityIdentifier(col.id)
             }
         }
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.accentColor.opacity(0.08) : Color.clear))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: selected ? 1.5 : 1))
-        .opacity(selected ? 1 : 0.8)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(id)
+        .font(.callout)
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("settings-guide-format-table")
     }
 
     // Live preview for the auto-refresh Picker's option labels — reuses the exact same

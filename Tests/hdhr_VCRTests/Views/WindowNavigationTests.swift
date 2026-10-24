@@ -608,9 +608,9 @@ struct WindowNavigationTests {
                     set allEls to entire contents of window 1
                     repeat with e in allEls
                         try
-                            -- The guide format is a segmented picker (JSON | XMLTV, plus OTA when allowed): the segments are radio buttons named by their description. \(varName) = the
+                            -- The guide format is a comparison table whose JSON / XMLTV (/ OTA) columns are buttons named by their description. \(varName) = the
                             -- one that is NOT selected right now, so clicking it flips the setting.
-                            if role of e is "AXRadioButton" and (description of e is "JSON" or description of e is "XMLTV") and (value of e) is not 1 then
+                            if role of e is "AXButton" and (description of e is "JSON (default)" or description of e is "XMLTV") and (value of attribute "AXSelected" of e) is not true then
                                 set \(varName) to e
                                 exit repeat
                             end if

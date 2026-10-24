@@ -4,6 +4,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- **Guide tab:** the JSON | XMLTV | OTA picker and cards are one comparison table; click a column to choose it. Rows: load time, timeline, window, genres, network name, series IDs, needs.
+- **About:** the release notes list no longer repeats the big-feature headline and blurb; the rest of that version's notes still show.
+
 - *Updated* — **About shows the release notes, version by version.** The big feature of the newest version is a card at the top, with what is coming in testing, and a row of versions below it opens the short notes for each one. The app bundles RELEASES.md now, not the changelog, which stays on GitHub.
 - *Updated* — **The About tab is tidier.** The name and version come first with the update check, then the touchable logo, then soft cards for supporter status, the story (collapsed), links and credits, and the changelog with the current version open and earlier versions collapsed.
 - *Updated* — **Maintenance starts with a Guides & Devices section.** Tick what to redo (find tuners again, reload channel lineups, refresh the guide, scan for channels, re-check series shows), read in the (i) what each does and why you might need it, and press one button; it saves any unsaved settings first and remembers your ticks.
