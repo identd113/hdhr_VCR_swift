@@ -1771,7 +1771,7 @@ struct SettingsView: View {
                                 if !selected.subtitle.isEmpty { Text(selected.subtitle).foregroundStyle(.secondary) }
                                 Spacer()
                             }
-                            MarkdownView(markdown: selected.body, height: $releaseNoteHeight)
+                            MarkdownView(markdown: selected.id == releases.first?.id && headline != nil ? ReleaseNotes.withoutHeadline(selected.body) : selected.body, height: $releaseNoteHeight)
                                 .frame(height: max(40, releaseNoteHeight))
                                 .id(selected.id)   // a different version is a fresh view, so its height is measured again
                         }

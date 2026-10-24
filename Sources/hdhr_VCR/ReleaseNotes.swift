@@ -90,4 +90,15 @@ enum ReleaseNotes {
         guard !title.isEmpty, let blurb = paragraphs.first(where: { !$0.hasPrefix("**Coming soon") && !$0.hasPrefix("- ") }) else { return nil }
         return ReleaseHeadline(title: title, blurb: blurb, comingSoon: paragraphs.first { $0.hasPrefix("**Coming soon") })
     }
+
+    /// A release body without its "### The headline" section (the About tab shows that in the big-feature card, so the list skips it).
+    static func withoutHeadline(_ body: String) -> String {
+        var kept: [String] = []
+        var skipping = false
+        for line in body.components(separatedBy: "\n") {
+            if line.hasPrefix("### ") { skipping = line.hasPrefix("### The headline") }
+            if !skipping { kept.append(line) }
+        }
+        return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

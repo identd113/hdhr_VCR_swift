@@ -88,4 +88,10 @@ struct ReleaseNotesTests {
         #expect(notes.first?.id == "Unreleased" || notes.first?.id.hasPrefix("v") == true)
         #expect(notes.allSatisfy { !$0.body.isEmpty })
     }
+
+    @Test func headlineSectionIsLeftOutOfTheList_otherSectionsStay() {
+        let body = "### The headline: Big\n\nBlurb.\n\n**Coming soon:** later.\n\n### Also\n\n- one"
+        #expect(ReleaseNotes.withoutHeadline(body) == "### Also\n\n- one")
+        #expect(ReleaseNotes.withoutHeadline("- plain") == "- plain")
+    }
 }
