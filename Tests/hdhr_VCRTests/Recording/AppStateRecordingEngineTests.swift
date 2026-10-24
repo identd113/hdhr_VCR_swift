@@ -233,7 +233,6 @@ struct AppStateRecordingEngineTests {
         show.show_bonus_time = true
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
-        state.config.Sports_padding_enabled = true
         state.config.Sports_padding_minutes = 30
 
         await state.startRecording(index: 0)
@@ -251,7 +250,6 @@ struct AppStateRecordingEngineTests {
         show.show_bonus_time = true
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
         state.config.Min_disk_free_gb = 0
-        state.config.Sports_padding_enabled = true
         state.config.Sports_padding_minutes = 30
 
         await state.startRecording(index: 0)
@@ -305,21 +303,6 @@ struct AppStateRecordingEngineTests {
         #expect(!state.deviceHasImminentRecording("DEV1", within: 120))
     }
 
-    @Test @MainActor func startRecording_bonusTimeShowButPaddingDisabled_leavesShowEndUnchanged() async throws {
-        let manager = RecordingManager(curlExecutablePath: "/usr/bin/true")
-        let guideEnd = Date().addingTimeInterval(1800)
-        var show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: guideEnd)
-        show.show_bonus_time = true
-        let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
-        state.config.Sports_padding_enabled = false  // master toggle off — per-show flag alone isn't enough
-        state.config.Sports_padding_minutes = 30
-
-        await state.startRecording(index: 0)
-
-        #expect(abs(state.shows[0].show_end!.timeIntervalSince(guideEnd)) < 1)
-    }
-
     @Test @MainActor func startRecording_bonusTimeDisabledOnShow_leavesShowEndUnchangedEvenWithPaddingEnabled() async throws {
         let manager = RecordingManager(curlExecutablePath: "/usr/bin/true")
         let guideEnd = Date().addingTimeInterval(1800)
@@ -327,7 +310,6 @@ struct AppStateRecordingEngineTests {
         show.show_bonus_time = false  // this show opted out — a global padding toggle can't override that
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
-        state.config.Sports_padding_enabled = true
         state.config.Sports_padding_minutes = 30
 
         await state.startRecording(index: 0)

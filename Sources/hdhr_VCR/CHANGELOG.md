@@ -4,6 +4,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **Bonus Time no longer has a global on/off switch in Settings.** Each show already chooses it, so the switch was redundant. The "how many minutes past the guide end" setting stays, and shows saved with Bonus Time on keep it.
 - *Updated* — **Looking for a missing tuner tapers off.** When a tuner stops answering, the app re-checks after 1, 2 and 4 minutes and then waits for the normal 5-minute check, instead of re-checking every minute.
 - *Updated* — **The web guide fits phones again.** The grid header's corner buttons are no longer stretched to 44 px (that made the header about 90 px tall and left room for one row), the search button has an outline like its neighbours, and in short landscape the selected-show strip keeps Watch, Record, Stop & Delete and the close button on screen.
 - *Updated* — **A station is removed from the saved air lineup only after two silent scans in a row.** One slow lock or a busy tuner no longer deletes a good station and its listings; hearing it again resets the count.

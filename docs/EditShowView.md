@@ -44,7 +44,7 @@ ScrollView {
     Scope (2-segment Picker: Channel / All — only when Type is SeriesID)
     Transcode (Picker: None / Heavy / Mobile / Internet 720 — CaveatBanner below when the
               device doesn't support transcoding and the profile isn't None)
-    Bonus Time (toggle — only when Sports_padding_enabled)
+    Bonus Time (toggle)
     Day / Days (toggle buttons — only for Single and DateTime)
     New Only (Skip reruns toggle — every Type except Single)
     Duplicate Episodes (override toggle + CaveatBanner — only when Series subfolders + Skip

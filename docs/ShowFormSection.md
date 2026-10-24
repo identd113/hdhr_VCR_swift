@@ -50,7 +50,7 @@ Transcode    — Picker: None | Heavy | Mobile | Internet 720
                *false* (warn) — matching, not opposing, startRecording's own conservative
                "unknown ⇒ force None" posture. (Fixed 2026-08-28, commit 919a045 — an earlier
                version of this code defaulted true for both cases.)
-Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
+Bonus Time   — Toggle; bound to show.show_bonus_time
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime); each toggle's VoiceOver label
                is the full weekday name ("Monday"), the visible text stays the two-letter abbreviation
                Tooltip: single-day vs. multi-day selection intent
@@ -89,7 +89,7 @@ success) can reuse it instead of duplicating the pattern again.
 
 ## Bonus Time Toggle
 
-Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the inline `StarburstBadge` (60pt, `show-form-bonus-badge`, shown right of the toggle while it is on, scrolls with the form, never covers controls; toggle id `show-form-bonus-toggle`) animate in/out when the toggle changes (no animation when Reduce Motion is on: `@Environment(\.accessibilityReduceMotion)`).
+Always shown (the global switch was removed 2026-10-23). The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the inline `StarburstBadge` (60pt, `show-form-bonus-badge`, shown right of the toggle while it is on, scrolls with the form, never covers controls; toggle id `show-form-bonus-toggle`) animate in/out when the toggle changes (no animation when Reduce Motion is on: `@Environment(\.accessibilityReduceMotion)`).
 
 ---
 

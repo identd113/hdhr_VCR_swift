@@ -61,7 +61,7 @@ Series_scan_retry_hours Int     4       hours before re-scanning guide when no e
 Check_for_updates       Bool    true    gate the automatic once-a-day background update check (AppState.updateCheckLoop()); manual "Check for Updates" button always runs regardless; see UpdateChecker.swift
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false   add -v to curl; stderr appended to ~/Library/Logs/hdhrVCRplus-curl.log (its own file, not the main log)
-Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end (any show can enable; sports entries default to true)
+(removed 2026-10-23) Sports_padding_enabled — was the global Bonus Time switch; now a constant true in code, an old config's value is ignored, and each show chooses via show_bonus_time
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)
 Discord_enabled         Bool    false   master Discord on/off toggle; decode fallback is `!Discord_webhook_url.isEmpty` (auto-enables for existing configs that already have a webhook set)
 Discord_webhook_url     String  ""      Discord webhook URL; blank = disabled

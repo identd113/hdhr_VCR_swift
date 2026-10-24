@@ -611,7 +611,8 @@ struct AppConfig: Equatable {
     var Verbose_curl: Bool = false
     var Check_for_updates: Bool = true  // periodic GitHub Releases check; see UpdateChecker.swift
     // Bonus Time: extends recording past the guide end for any show
-    var Sports_padding_enabled: Bool = true
+    /// Bonus Time is always available; each show chooses it (`show_bonus_time`). The old global switch was removed 2026-10-23 — an old config's value is ignored.
+    var Sports_padding_enabled: Bool { true }
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "2"
 
@@ -780,7 +781,6 @@ extension AppConfig: Codable {
         Network_interface     = (try? c.decode(String.self,  forKey: .Network_interface))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
         Check_for_updates     = (try? c.decode(Bool.self,    forKey: .Check_for_updates))     ?? true
-        Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
         Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "2"
         Discord_webhook_url     = (try? c.decode(String.self, forKey: .Discord_webhook_url))     ?? ""
