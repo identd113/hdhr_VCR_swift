@@ -111,7 +111,7 @@ struct AddShowView: View {
                                onScanMultiplex: { rf, deviceId in
                                    // Only this embedded guide can ask for a scan (a LAN browser has no such bridge, and the web
                                    // server has no scan route): the app starts it itself and tells the page what happened.
-                                   state.startOTAScan(deviceId: deviceId, rfChannels: [rf], userInitiated: false, showWindow: false)
+                                   state.startOTAScan(deviceId: deviceId, rfChannels: [rf])
                                },
                                onAppearanceChanged: { mode in
                                    // The embedded guide's own theme switcher is "this app's own

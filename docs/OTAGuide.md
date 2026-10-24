@@ -60,7 +60,7 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
   General toggle "Use the guide from the air" is gone. `GuideStore` loads the saved air guide only when a guide fetch fails and the device has no guide in memory (and
   the saved one is under 36 h old). (Superseded 2026-10-24: with the air as the source it is preferred; see below.)
 - **The channel list is rescanned daily.** `OTA_lineup_hour` (default 3 = 03:00, -1 = never; Settings → Over the Air and the first-run wizard; migrated from the old `OTA_lineup_auto`) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
-  lineup-only scan (a few minutes, no window) once the hour has passed and the saved list is older than today's mark, at most one try a day
+  lineup-only scan (a few minutes; the scan window opens without taking focus) once the hour has passed and the saved list is older than today's mark, at most one try a day
   (`AppState.lineupScanDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
 - **Guide failure** (`AppState.offerAirGuideFallback`, called once per outage from `handleGuideLoadFailure`, only when no saved air guide under 36 h exists and no scan is running): an in-app alert (Scan Now / Not Now) and a Discord message (honors the Guide-error Discord toggle). Scan Now starts a full scan (list, then guide); Not Now ends the offer for this outage; with no answer for an hour the full scan starts by itself. The guide loading again cancels the offer (`endAirGuideFallbackOffer`). The Discord message is one-way: the answer is given in the app.
 
@@ -88,7 +88,7 @@ One switch in Settings → Over the Air decides whether the app does anything ov
 - **The air (OTA)** (`OTA_always_use` true; `AppConfig.airReplacesSiliconDust`, which also drives `lineupFromAir` and `guidePrefersAir` in every build). The air is the lineup and guide; the fill toggle is not offered. Every saved multiplex is kept fed.
 
 **Keeping listings from running dry** (`AppState.startScheduledOTAGapFillIfDue`, idle loop; pure rule `OTAGapFill`, unit-tested): every `checkEvery` (5 min) it reads how far ahead the saved listings of the wanted channels reach
-(`OTAStore.listingCoverage`, off the main actor); each multiplex whose last listing ends within `horizon` (6 h) is read again with a normal rf-list scan (`startOTAScan(rfChannels:)`, no window, idle tuners only, steps aside for recordings and viewers).
+(`OTAStore.listingCoverage`, off the main actor); each multiplex whose last listing ends within `horizon` (6 h) is read again with a normal rf-list scan (`startOTAScan(rfChannels:)`, scan window shown without focus, idle tuners only, steps aside for recordings and viewers).
 Not while a scan runs or every tuner is busy. A multiplex is tried at most once an hour (`retry`); one read to the end less than a day ago that held no listings at all (a station that sends no guide) is left alone for a day (`noGuideRetry`).
 It needs a saved channel list, which the daily rescan and the manual scans provide. Saving the switch or the source calls `AppState.airSourceChanged()`.
 

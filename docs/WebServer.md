@@ -1404,6 +1404,6 @@ device first (same grace as the in-app Watch Now preemption). Live sessions are 
 
 ### Refreshing one multiplex's guide (2026-10-22, per-multiplex since the same day)
 Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`) **only inside the app's own embedded guide** (Add Show, a `WKWebView` with the `scanMultiplex` script-message handler; `canScanMultiplex()` in guide.js): the click posts `{rf, deviceId}` to the app, `AddShowView` starts `startOTAScan(rfChannels:[rf])` and answers through `airScanStatus(text)`. A LAN browser has no such handler, so the button is not shown and no HTTP route can start a scan (2026-10-24). The scan
-reads just that station (about a minute or less, one idle tuner, no scan window on the Mac). **Every multiplex is saved and dated on its own** (`OTAStore.save` merges per RF, `mux.json`, see docs/OTAGuide.md): the refresh
+reads just that station (about a minute or less, one idle tuner; the scan window opens on the Mac). **Every multiplex is saved and dated on its own** (`OTAStore.save` merges per RF, `mux.json`, see docs/OTAGuide.md): the refresh
 replaces only that station's channels and listings, the others keep theirs, and the summary line shows "Guide read <date>" for the selected channel's multiplex (`data-gread` on the row's blocks). When the scan finishes the
 web guide is pushed a `guide_refreshed` event and the rows show the new listings.

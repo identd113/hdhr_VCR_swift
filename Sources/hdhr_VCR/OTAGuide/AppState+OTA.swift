@@ -127,13 +127,13 @@ extension AppState {
     }
 
     /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) once a day from `OTA_lineup_hour`.
-    /// It runs without opening the scan window and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
+    /// It opens the scan window (without taking focus; the window closes itself when the scan ends) and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
     func startScheduledOTALineupRefreshIfDue(now: Date = Date()) {
         guard config.OTA_enabled, config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
         guard Self.lineupScanDue(now: now, hour: config.OTA_lineup_hour, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
         lastOTALineupAttempt = now
         glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
-        startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false, showWindow: false)
+        startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false)
     }
 
     // MARK: filling the gaps in SiliconDust's guide
@@ -165,7 +165,7 @@ extension AppState {
             guard !due.isEmpty else { return }
             for rf in due { self.lastOTAGapAttempt[rf] = Date() }
             glog("[OTA] listings run out within \(Int(OTAGapFill.horizon / 3600)) h on RF \(due.map(String.init).joined(separator: ", ")) — reading their guide")
-            self.startOTAScan(deviceId: id, rfChannels: due, userInitiated: false, showWindow: false)
+            self.startOTAScan(deviceId: id, rfChannels: due, userInitiated: false)
         }
     }
 

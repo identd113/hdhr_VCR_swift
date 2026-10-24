@@ -68,3 +68,6 @@ Accessibility identifiers: `ota-scan-window`, `ota-scan-progress`, `ota-scan-cou
 `ota-scan-mux-<RF>` (the selected multiplex's panel), `ota-scan-follow`, `ota-scan-signal`, `ota-scan-sub-<number>`, `ota-scan-budget`,
 `ota-scan-cancel`, `ota-scan-close`. Settings: `settings-ota-scan`, `settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-lineup-hour`.
 Without the UI: `GET /api/ota-status` (docs/OTAGuide.md). Scans can only be started from the app (Settings → Over the Air, the embedded guide's Air Only selection).
+
+## Opens for every scan, closes itself (2026-10-24)
+Every scan of the air opens this window — a scan a person starts (focus and floating level), and the daily channel-list scan, the gap-fill and the embedded guide's multiplex scan (normal level, no focus taken; `startOTAScan`'s `showWindow` default). The first-run wizard is the one exception (`showWindow: false`: it shows its own progress). When a scan ends or is cancelled the window closes itself 2.5 s later (`OTAScanView`, on `progress.running` turning false), so the last line can be read.

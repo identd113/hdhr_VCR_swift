@@ -32,6 +32,10 @@ struct OTAScanView: View {
         .onChange(of: progress.running) { _, running in
             reloadMuxRecords()
             if running { pinnedRF = nil; followedRF = nil }   // a new scan starts with nothing pinned from the last one
+            else {
+                // Every scan opens this window, and it closes itself when the scan is over (a moment later, so the last line can be read).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if !progress.running { dismissWindow(id: "ota-scan") } }
+            }
         }
         .onChange(of: progress.currentRF) { _, rf in
             if let rf, progress.rows.contains(where: { $0.rf == rf }) { followedRF = rf }   // empty channels have no tab: stay on the last station that did
