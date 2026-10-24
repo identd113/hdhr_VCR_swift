@@ -92,4 +92,6 @@ One switch in Settings → Over the Air decides whether the app does anything ov
 Not while a scan runs or every tuner is busy. A multiplex is tried at most once an hour (`retry`); one read to the end less than a day ago that held no listings at all (a station that sends no guide) is left alone for a day (`noGuideRetry`).
 It needs a saved channel list, which the daily rescan and the manual scans provide. Saving the switch or the source calls `AppState.airSourceChanged()`.
 
+**Which multiplexes are missing** is worked out by channel number: SiliconDust's lineup has no RF or frequency, so a saved air channel with no SiliconDust match is missing and its own saved `RF`/`Frequency` names the multiplex to read (`OTAStore.airOnly`, `missingMultiplexes`). A multiplex whose channels all match is complete and never scanned; one with any missing channel is read whole (one tuner lock either way). A station the channel-list scan never heard cannot be found; a station SiliconDust numbers differently shows as missing. Listed in Settings → Over the Air → Missing from SiliconDust.
+
 **Scanning one multiplex** is available only in the app: the embedded guide's Air Only selection posts a `scanMultiplex` message (`AddShowView`), which starts that RF channel's scan. The web server never starts a scan.

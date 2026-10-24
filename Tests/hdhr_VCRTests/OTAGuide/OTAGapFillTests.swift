@@ -86,4 +86,14 @@ struct OTAGapFillTests {
         #expect(!state.otaGapCheckInFlight)
         #expect(state.airOnlyChannels(deviceId: "DEV1").isEmpty)
     }
+
+    @Test func theMissingMultiplexesAreTheRfChannelsOfTheChannelsSiliconDustLacks() {
+        func e(_ n: String, _ rf: Int) -> OTALineupEntry {
+            OTALineupEntry(GuideNumber: n, GuideName: "S\(n)", RF: rf, Frequency: 500_000_000 + rf, ProgramNumber: 1, ServiceType: 2, Hidden: false, Protected: false)
+        }
+        let tuner = [LineupEntry.test(number: "5.1"), LineupEntry.test(number: "5.2")]
+        let missing = OTAStore.missingMultiplexes(airOnly: OTAStore.airOnly(saved: [e("5.1", 22), e("5.2", 22), e("19.1", 19), e("19.2", 19), e("23.1", 23)], tunerLineup: tuner))
+        #expect(missing.map(\.rf) == [19, 23])            // RF 22 holds only channels SiliconDust has: complete, never scanned
+        #expect(missing[0].channels.map(\.GuideNumber) == ["19.1", "19.2"])
+    }
 }

@@ -574,6 +574,7 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings-ota-fill-gaps")
                     }
                 }
+            if draft.OTA_enabled && !draft.OTA_always_use { missingFromSiliconDustSection }
             Section("Channel list") {
                 Picker(selection: $draft.OTA_lineup_hour) {
                     Text("Never").tag(-1)
@@ -613,6 +614,34 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Over the Air")
+    }
+
+    /// Which multiplexes hold stations SiliconDust's lineup lacks (matched by channel number; the RF comes from the saved air lineup) — the ones the gap-fill reads.
+    @ViewBuilder
+    private var missingFromSiliconDustSection: some View {
+        let deviceId = OTAScanView.scanDeviceId(state)
+        let missing = deviceId.map { OTAStore.missingMultiplexes(airOnly: state.airOnlyChannels(deviceId: $0)) } ?? []
+        let records = deviceId.map { OTAStore.muxRecords(deviceId: $0) } ?? [:]
+        Section("Missing from SiliconDust") {
+            if missing.isEmpty {
+                Text(deviceId.flatMap { OTAStore.lineupDate(deviceId: $0) } == nil
+                     ? "No channel list yet. Run \"Scan Channel List Only\" below to find out which stations SiliconDust lacks."
+                     : "Every station on the air is in SiliconDust's lineup.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-ota-missing-none")
+            } else {
+                ForEach(missing, id: \.rf) { mux in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("RF \(mux.rf) · \(mux.channels.count) channel\(mux.channels.count == 1 ? "" : "s")")
+                        Text(mux.channels.map { "\($0.GuideNumber) \($0.GuideName)" }.joined(separator: ", ")
+                             + " · " + (records[mux.rf]?.guideDate.map { "guide read \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "guide not read yet"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("settings-ota-missing-\(mux.rf)")
+                }
+            }
+        }
     }
 
     // Live preview for the auto-refresh Picker's option labels — reuses the exact same

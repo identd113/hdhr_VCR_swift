@@ -214,6 +214,12 @@ enum OTAStore {
         return out
     }
 
+    /// The multiplexes (RF channels) holding air channels the tuner's lineup lacks: those are the ones to read from the air. SiliconDust's
+    /// lineup has no frequency, so the match is by channel number and the RF comes from the air channel's own saved entry.
+    static func missingMultiplexes(airOnly: [OTALineupEntry]) -> [(rf: Int, channels: [OTALineupEntry])] {
+        Dictionary(grouping: airOnly, by: \.RF).map { (rf: $0.key, channels: $0.value) }.sorted { $0.rf < $1.rf }
+    }
+
     /// The air channels the tuner's own lineup does not have (matched by channel number), sorted by number: what the web guide's "Air only" section lists.
     static func airOnly(saved: [OTALineupEntry], tunerLineup: [LineupEntry]) -> [OTALineupEntry] {
         let known = Set(tunerLineup.map(\.GuideNumber))
