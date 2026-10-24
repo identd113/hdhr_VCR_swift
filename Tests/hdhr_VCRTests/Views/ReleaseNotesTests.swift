@@ -94,4 +94,9 @@ struct ReleaseNotesTests {
         #expect(ReleaseNotes.withoutHeadline(body) == "### Also\n\n- one")
         #expect(ReleaseNotes.withoutHeadline("- plain") == "- plain")
     }
+
+    @Test func whatFollowsTheHeadlineBlurbStaysInTheList() {
+        let body = "### The headline: Big\n\nBlurb.\n\n**Coming soon, in testing:** later.\n\n**What else is new.**\n- one\n- two"
+        #expect(ReleaseNotes.withoutHeadline(body) == "**What else is new.**\n- one\n- two")
+    }
 }
