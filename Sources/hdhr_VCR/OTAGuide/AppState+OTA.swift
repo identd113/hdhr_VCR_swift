@@ -9,6 +9,7 @@ extension AppState {
     /// Starts a scan of one device (default: the first real tuner). Returns a one-line status for the caller.
     @discardableResult
     func startOTAScan(deviceId: String? = nil, rfChannels: [Int]? = nil, seconds: TimeInterval = 90, lineupOnly: Bool = false, userInitiated: Bool = true, showWindow: Bool = true) -> String {
+        guard config.OTA_enabled else { return "Over-the-air scanning is off (Settings → Over the Air)." }
         if otaScanTask != nil { return "A scan is already running: \(otaScanStatus)" }
         guard let device = recordableDevices.first(where: { deviceId == nil || $0.DeviceID == deviceId }), device.isAvailable else {
             return "No tuner available to scan."
@@ -128,11 +129,44 @@ extension AppState {
     /// Idle-loop hook: a quick channel-list scan (a few minutes, no guide) once a day from `OTA_lineup_hour`.
     /// It runs without opening the scan window and, like every scan, gives its tuners up the moment a recording or a viewer needs one.
     func startScheduledOTALineupRefreshIfDue(now: Date = Date()) {
-        guard config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
+        guard config.OTA_enabled, config.OTA_lineup_hour >= 0, otaScanTask == nil, let device = recordableDevices.first(where: \.isAvailable) else { return }
         guard Self.lineupScanDue(now: now, hour: config.OTA_lineup_hour, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
         lastOTALineupAttempt = now
         glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
         startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false, showWindow: false)
+    }
+
+    // MARK: filling the gaps in SiliconDust's guide
+
+    /// Idle-loop hook (2026-10-24): keeps the air listings from running dry — those of the stations SiliconDust lacks ("Use OTA to get guide data SiliconDust does not provide"), or of every station when the air is the source. Every few minutes it checks how
+    /// far ahead the saved listings reach; any multiplex with less than `OTAGapFill.horizon` (6 h) left is read again, on idle tuners only
+    /// (the scan steps aside for recordings and viewers). In "Always use the OTA lineup and guide" mode every saved multiplex is kept fed.
+    func startScheduledOTAGapFillIfDue(now: Date = Date()) {
+        guard config.airFillsGaps || config.airReplacesSiliconDust, otaScanTask == nil, !otaGapCheckInFlight, now.timeIntervalSince(lastOTAGapCheck) >= OTAGapFill.checkEvery,
+              let device = recordableDevices.first(where: \.isAvailable), !tunersFull(for: device.DeviceID),
+              OTAStore.lineupDate(deviceId: device.DeviceID) != nil else { return }
+        lastOTAGapCheck = now
+        let id = device.DeviceID
+        let always = config.OTA_always_use
+        let saved = OTAStore.savedLineup(deviceId: id) ?? []
+        let wanted = always ? saved : airOnlyChannels(deviceId: id)
+        guard !wanted.isEmpty else { return }
+        let numbers = Set(wanted.map(\.GuideNumber))
+        let rfs = Array(Set(wanted.map(\.RF))).sorted()
+        otaGapCheckInFlight = true
+        Task { [weak self] in
+            let (coverage, muxes) = await Task.detached(priority: .utility) {
+                (OTAStore.listingCoverage(deviceId: id, numbers: numbers), OTAStore.muxRecords(deviceId: id))
+            }.value
+            guard let self else { return }
+            self.otaGapCheckInFlight = false
+            guard self.config.airFillsGaps || self.config.airReplacesSiliconDust, self.otaScanTask == nil else { return }
+            let due = OTAGapFill.dueMultiplexes(now: Date(), rfs: rfs, coverageEnd: coverage, muxRecords: muxes, lastAttempt: self.lastOTAGapAttempt)
+            guard !due.isEmpty else { return }
+            for rf in due { self.lastOTAGapAttempt[rf] = Date() }
+            glog("[OTA] listings run out within \(Int(OTAGapFill.horizon / 3600)) h on RF \(due.map(String.init).joined(separator: ", ")) — reading their guide")
+            self.startOTAScan(deviceId: id, rfChannels: due, userInitiated: false, showWindow: false)
+        }
     }
 
     // MARK: handing a tuner to the app while a scan runs
@@ -184,7 +218,7 @@ extension AppState {
     /// the air for a backup guide, tell Discord, and start the scan by itself if nobody answers within an hour. "Not now" ends the offer for
     /// this outage. A guide that loads again cancels everything (`endAirGuideFallbackOffer`).
     func offerAirGuideFallback(deviceId: String, wait: TimeInterval = 3600) {
-        guard !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
+        guard config.OTA_enabled, !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
               recordableDevices.contains(where: { $0.DeviceID == deviceId }) else { return }
         airFallbackOffered = true
         glog("[OTA] guide unavailable for \(deviceId) — offering an air scan, starting it in \(Int(wait / 60)) min if nobody answers")
@@ -222,7 +256,7 @@ extension AppState {
     /// Channels the saved air lineup has and this tuner's own lineup does not (empty when no scan is saved).
     func airOnlyChannels(deviceId: String) -> [OTALineupEntry] {
         // With the Developer lineup source "From the air" the air channels ARE the lineup: nothing is left over to list separately.
-        guard !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
+        guard config.airFillsGaps, !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
         let tuner = lineups[deviceId] ?? []
         let stamp = "\(date.timeIntervalSince1970)-\(tuner.count)"
         if let hit = airOnlyCache[deviceId], hit.stamp == stamp { return hit.entries }
@@ -241,5 +275,28 @@ extension AppState {
             airListingsCache[deviceId] = (stamp, OTAStore.savedListings(deviceId: deviceId, only: numbers))
         }
         return airListingsCache[deviceId]?.listings[channel] ?? []
+    }
+}
+
+/// When the air listings of the stations SiliconDust lacks need reading again (pure, unit-tested).
+enum OTAGapFill {
+    /// A multiplex whose saved listings end within this long from now is read again.
+    static let horizon: TimeInterval = 6 * 3600
+    /// The least time between two tries on one multiplex (a station that sends only a short guide is always "running out").
+    static let retry: TimeInterval = 3600
+    /// A multiplex that was read to the end and held no listings at all (a station that sends no guide) is not tried again for a day.
+    static let noGuideRetry: TimeInterval = 24 * 3600
+    /// How often the idle loop looks (the look decodes the saved guide).
+    static let checkEvery: TimeInterval = 300
+
+    /// The RF channels among `rfs` to read now. `coverageEnd[rf]` = when the last saved listing there ends (absent = none saved).
+    static func dueMultiplexes(now: Date, rfs: [Int], coverageEnd: [Int: Date], muxRecords: [Int: OTAStore.MuxRecord], lastAttempt: [Int: Date]) -> [Int] {
+        rfs.filter { rf in
+            let silent = (muxRecords[rf]?.guideDate != nil) && (muxRecords[rf]?.events ?? 0) == 0
+            if let last = lastAttempt[rf], now.timeIntervalSince(last) < (silent ? noGuideRetry : retry) { return false }
+            if silent, let read = muxRecords[rf]?.guideDate, now.timeIntervalSince(read) < noGuideRetry { return false }   // read to the end a day ago or less and held nothing: not after every launch either
+            if let end = coverageEnd[rf], end.timeIntervalSince(now) >= horizon { return false }
+            return true
+        }
     }
 }

@@ -15,7 +15,7 @@ final class AppState: ObservableObject {
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
     private var lineupFetchTasks: [String: Task<Void, Never>] = [:]   // deviceId → the lineup fetch in flight (see fetchAllLineups)
     private(set) var lineupFetchCount = 0                             // lineups actually fetched (a test and diagnostics counter)
-    var lineupFromAirByDevice: Set<String> = []                 // devices whose lineup above is the saved over-the-air one (developer section)
+    var lineupFromAirByDevice: Set<String> = []                 // devices whose lineup above is the saved over-the-air one ("Always use the OTA lineup and guide")
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
         // Rebuild caches on guide load (infrequent). The 403 feedback loop is broken by
         // ensureGuideLoaded's success-only guard on guideByDevice assignment.
@@ -132,7 +132,7 @@ final class AppState: ObservableObject {
     private var sigtermSource: DispatchSourceSignal?
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
-    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.guidePrefersAir } }
+    @Published var config = AppConfig() { didSet { guideStore.preferOTA = config.guidePrefersAir; guideStore.airGuideAllowed = config.OTA_enabled } }
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
@@ -248,6 +248,9 @@ final class AppState: ObservableObject {
     @Published var otaScanStatus: String = ""
     var lastScheduledOTAAttempt: Date? = nil
     var lastOTALineupAttempt: Date? = nil
+    var lastOTAGapAttempt: [Int: Date] = [:]   // RF channel → when the gap-fill last tried to read its guide (OTAGapFill.dueMultiplexes)
+    var lastOTAGapCheck: Date = .distantPast   // the check itself reads the saved guide: throttled to every few minutes
+    var otaGapCheckInFlight = false
     /// Guide-failure fallback (AppState+OTA.swift): set once per outage when the person has been asked; the task is the one-hour wait.
     var airFallbackOffered = false
     /// Live TV watched in a browser (AppState+WebLive.swift): session id → the tuner stream being spooled to a temp file that the HLS follower reads.
@@ -1967,7 +1970,7 @@ final class AppState: ObservableObject {
             }
             for await (id, tunerLineup) in group {
                 var lu = tunerLineup
-                // Developer lineup source "air": the saved scan replaces the tuner's own channel list (see OTAStore.lineupEntries).
+                // "Always use the OTA lineup and guide": the saved scan replaces the tuner's own channel list (see OTAStore.lineupEntries).
                 if config.lineupFromAir, let device = devices.first(where: { $0.DeviceID == id }),
                    let air = OTAStore.lineupEntries(deviceId: id, host: device.LocalIP), !air.isEmpty {
                     glog("[Lineup] \(id) using the saved over-the-air lineup (\(air.count) channels) instead of the tuner's \(tunerLineup?.count ?? 0)")
@@ -2950,6 +2953,7 @@ final class AppState: ObservableObject {
         warnOfLiveWatchPreemptionIfNeeded()
         maintainFeedCacheSessions()
         startScheduledOTALineupRefreshIfDue()
+        startScheduledOTAGapFillIfDue()
         reapWebLiveSessions()
         let now = Date()
         var dirty = false
@@ -7221,18 +7225,15 @@ private final class ResumeOnce: @unchecked Sendable {
 
 extension AppState {
     enum GuideSourceChoice: String, CaseIterable, Identifiable {
-        case json = "SiliconDust JSON", xmltv = "SiliconDust XMLTV", air = "From the air"
+        case json = "SiliconDust JSON", xmltv = "SiliconDust XMLTV"
         var id: String { rawValue }
     }
 
-    var guideSourceChoice: GuideSourceChoice {
-        config.Guide_use_ota ? .air : (config.Guide_use_xml ? .xmltv : .json)
-    }
+    var guideSourceChoice: GuideSourceChoice { config.Guide_use_xml ? .xmltv : .json }
 
     /// Switches the guide source, saves it, drops the guide in memory and fetches it again from the new source.
     func setGuideSource(_ choice: GuideSourceChoice) async {
         guard choice != guideSourceChoice else { return }   // a segmented picker can report the same pick twice: load once
-        config.Guide_use_ota = (choice == .air)
         config.Guide_use_xml = (choice == .xmltv)
         saveConfig()
         glog("[Dev] guide source → \(choice.rawValue)")
@@ -7241,13 +7242,14 @@ extension AppState {
         await refreshGuide()
     }
 
-    /// Switches the lineup between the tuner's own and the saved over-the-air one, then loads it again.
-    func setLineupSource(air: Bool) async {
-        guard (config.Dev_lineup_source == "air") != air else { return }
-        config.Dev_lineup_source = air ? "air" : "tuner"
-        saveConfig()
-        glog("[Dev] lineup source → \(air ? "air" : "tuner")")
+    /// Settings → Over the Air was saved with the switch or the mode changed: the lineup and guide come from a different place now.
+    func airSourceChanged() async {
+        glog("[OTA] air source settings changed — enabled=\(config.OTA_enabled) alwaysUse=\(config.OTA_always_use)")
+        airOnlyCache = [:]; airListingsCache = [:]
+        guideStore.invalidateAll()
+        guideByDevice = [:]
         await reloadLineups()
+        await refreshGuide()
     }
 
     func reloadLineups() async {

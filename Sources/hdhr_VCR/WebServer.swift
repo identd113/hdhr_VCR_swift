@@ -2719,7 +2719,6 @@ final class WebServer: @unchecked Sendable {
             if path == "/api/delete"           { return handleDelete(state: state, body: body) }
             if path == "/api/edit"             { return handleEdit(state: state, body: body) }
             if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
-            if path == "/api/ota-scan" { return handleOTAScan(state: state, body: body) }
             if path == "/api/signal-scan"  {
                 let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
                 // Never restarts a scan in progress (force used to cancel it and begin again).
@@ -3038,30 +3037,6 @@ final class WebServer: @unchecked Sendable {
             slot = next
         }
         return out
-    }
-
-    /// POST /api/ota-scan — over-the-air guide scan (OTAGuide/): {"rf":[31,32],"seconds":75,"lineupOnly":true,"deviceId":"…","window":false} (all optional; an rf list refreshes just those multiplexes and keeps every other saved one), {"tuners":1} (change the running scan's tuner allowance) or {"cancel":true}
-    @MainActor
-    func handleOTAScan(state: AppState, body: Data?) -> WebResponse {
-        let params = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any]) ?? [:]
-        if params["cancel"] as? Bool == true { state.cancelOTAScan(); return jsonResponse(["status": state.otaScanStatus]) }
-        if let n = params["tuners"] as? Int {
-            // An allowance for the running scan only: with none running this must not fall through and start a full scan.
-            guard state.otaScanTask != nil else { return jsonResponse(["status": "No scan is running"]) }
-            state.otaTunerLimit = min(max(1, n), state.otaTunerMax)
-            return jsonResponse(["status": state.otaScanStatus, "tuners": state.otaTunerLimit])
-        }
-        if let raw = params["rf"], !(raw is [Int]) { return .badRequest("rf must be a list of numbers, e.g. [31, 32]") }
-        let rf = (params["rf"] as? [Int])?.filter { OTAScanner.frequencyHz(rf: $0) != nil }
-        if let rf, rf.isEmpty { return .badRequest("rf lists no valid RF channel (2-36, 38-51); omit it to scan them all") }
-        // A scan that is running is never restarted from the network: only {"cancel":true} ends it.
-        if state.otaScanTask != nil { return .conflict("A scan is already running: \(state.otaScanStatus)") }
-        // No tuner to scan with, or every one of them busy: tell the caller to try later instead of answering 200.
-        let target = state.recordableDevices.first { ($0.DeviceID == (params["deviceId"] as? String)) || params["deviceId"] == nil }
-        guard let target, target.isAvailable else { return .serviceUnavailable("No tuner available to scan") }
-        if state.tunersFull(for: target.DeviceID) { return .serviceUnavailable("Every tuner on \(target.DeviceID) is busy; try again later") }
-        let seconds = min(300, max(10, (params["seconds"] as? Double) ?? 90))
-        return jsonResponse(["status": state.startOTAScan(deviceId: params["deviceId"] as? String, rfChannels: rf, seconds: seconds, lineupOnly: params["lineupOnly"] as? Bool ?? false, userInitiated: false, showWindow: params["window"] as? Bool ?? true)])
     }
 
     @MainActor

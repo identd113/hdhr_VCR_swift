@@ -569,8 +569,9 @@ struct AppConfig: Equatable {
     // Guide
     var GuideHours: Int          = 24       // hours ahead to fetch
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
-    var Guide_use_ota: Bool      = false    // prefer the guide built from the air (OTAGuide/, a saved scan) over the cloud guide; the cloud guide is used when no scan exists
-    var Dev_lineup_source: String = "tuner"   // developer section only (Settings → Developer, debug builds): "tuner" = the tuner's own /lineup.json, "air" = the saved over-the-air scan
+    var OTA_enabled: Bool        = false    // "Scan OTA for Lineup and Guide" (Settings → Over the Air): off = nothing over the air is done at all (OTAGuide/)
+    var OTA_always_use: Bool     = false    // with OTA_enabled: true = the air is the lineup and guide (SiliconDust's are not used); false (default) = SiliconDust stays the source
+    var OTA_fill_gaps: Bool      = true     // with OTA_enabled and SiliconDust as the source: "Use OTA to get guide data SiliconDust does not provide" — read from the air only the multiplexes SiliconDust lacks. Not offered when the air is the source
     var OTA_lineup_hour: Int     = 3        // hour of day (0-23) the over-the-air channel list is rescanned in the background (a quick scan, no guide) on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
     var OTA_lineup_auto: Bool    = true    // LEGACY (replaced by OTA_lineup_hour, only read to migrate an old config): keep the over-the-air channel list (a quick scan, no guide) up to date, only in the early hours (OTAGuide/AppState+OTA.swift)
     var OTA_scan_hour: Int       = -1       // LEGACY, unused since the guide is scanned only after a guide failure (AppState.offerAirGuideFallback): hour of day (0-23) the over-the-air guide is rescanned in the background on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
@@ -761,11 +762,12 @@ extension AppConfig: Codable {
         // app on every page render (and at startup during prebuildPageHTML), not just a bad UI value.
         GuideHours            = max(1, min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24))
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
-        Guide_use_ota         = (try? c.decode(Bool.self,   forKey: .Guide_use_ota))         ?? false
+        OTA_enabled           = (try? c.decode(Bool.self,   forKey: .OTA_enabled))           ?? false
+        OTA_always_use        = (try? c.decode(Bool.self,   forKey: .OTA_always_use))        ?? false
+        OTA_fill_gaps         = (try? c.decode(Bool.self,   forKey: .OTA_fill_gaps))         ?? true
         OTA_scan_hour         = (try? c.decode(Int.self,    forKey: .OTA_scan_hour))         ?? -1
         OTA_lineup_auto       = (try? c.decode(Bool.self,   forKey: .OTA_lineup_auto))       ?? true
         OTA_lineup_hour       = (try? c.decode(Int.self,    forKey: .OTA_lineup_hour)).map { (0...23).contains($0) ? $0 : -1 } ?? (OTA_lineup_auto ? 3 : -1)
-        Dev_lineup_source     = (try? c.decode(String.self, forKey: .Dev_lineup_source))     ?? "tuner"
         // Only 2/4/8 are ever offered in the UI — a corrupt/hand-edited value outside that set falls
         // back to the default (8) rather than being clamped into it, since there's no sensible
         // "nearest valid divisor" for e.g. 5 or -1.
@@ -1447,23 +1449,16 @@ func codableApplyingEdits<T: Codable>(live: T, original: T, edited: T) -> T? {
 }
 
 extension AppConfig {
-    /// Whether the over-the-air guide is tried *before* the SiliconDust one. Only the developer section can turn that on (debug builds);
-    /// a shipped app uses the air guide purely as a fallback, when no other guide is available.
-    var guidePrefersAir: Bool {
-        #if DEBUG
-        return Guide_use_ota
-        #else
-        return false
-        #endif
-    }
+    /// "Always use the OTA lineup and guide" (Settings → Over the Air): the saved air scan replaces SiliconDust's lineup and is tried before its guide.
+    var airReplacesSiliconDust: Bool { OTA_enabled && OTA_always_use }
 
-    /// The air lineup replaces the tuner's own only in debug builds: the developer section that sets it is compiled out of release builds,
-    /// and a stray value left in a config file must not change a shipped app's channel list.
-    var lineupFromAir: Bool {
-        #if DEBUG
-        return Dev_lineup_source == "air"
-        #else
-        return false
-        #endif
-    }
+    /// SiliconDust stays the source and the air supplies only the stations (multiplexes) it does not send.
+    var airFillsGaps: Bool { OTA_enabled && !OTA_always_use && OTA_fill_gaps }
+
+    /// Whether the over-the-air guide is tried *before* the SiliconDust one.
+    var guidePrefersAir: Bool { airReplacesSiliconDust }
+
+    /// Whether the air lineup replaces the tuner's own. Off, or in "fill the gaps" mode, the tuner's lineup is used and the air-only
+    /// channels are listed beside it instead.
+    var lineupFromAir: Bool { airReplacesSiliconDust }
 }

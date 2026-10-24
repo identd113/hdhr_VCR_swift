@@ -41,6 +41,7 @@ struct FirstRunWizardView: View {
     @State private var sharingEnabled: Bool = false
     @State private var terminalGuideEnabled: Bool = false
     @State private var relayEnabled: Bool = false
+    @State private var airEnabled = false   // "Scan OTA for Lineup and Guide" (saved on Finish; also applied at once so the card's scan can run)
     @State private var airScanHour: Int = 3   // hour of the daily air rescan, -1 = never (saved on Finish)
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
@@ -386,6 +387,17 @@ struct FirstRunWizardView: View {
                 }
             }
             Section {
+                Toggle(isOn: $airEnabled) {
+                    HStack {
+                        Text("Scan OTA for Lineup and Guide")
+                        InfoButton("SiliconDust's lineup and guide are sometimes missing stations or shows that are really on the air. Turn this on to read them from the air as well. Off, the app does nothing over the air. More choices are in Settings → Over the Air.", about: "Scan OTA for Lineup and Guide")
+                    }
+                }
+                .onChange(of: airEnabled) { _, on in state.config.OTA_enabled = on }
+                .accessibilityIdentifier("wizard-air-enabled")
+            }
+            if airEnabled {
+            Section {
                 AirChannelsCard(progress: state.otaProgress)
             }
             Section {
@@ -396,6 +408,7 @@ struct FirstRunWizardView: View {
                     HStack { Text("Rescan the channel list"); InfoButton("Once a day from this hour on, on idle tuners only, the app rereads the channel list from the air. The scan steps aside whenever a recording or a viewer needs a tuner. The guide from the air is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself. You can change this later in Settings → Advanced → Over-the-Air Guide.") }
                 }
                 .accessibilityIdentifier("wizard-air-schedule")
+            }
             }
         }
         .formStyle(.grouped)
@@ -790,6 +803,7 @@ struct FirstRunWizardView: View {
         terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
         airScanHour          = state.config.OTA_lineup_hour
+        airEnabled           = state.config.OTA_enabled
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
         failThreshold         = state.config.Fail_count_setting
@@ -817,6 +831,7 @@ struct FirstRunWizardView: View {
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
         state.config.OTA_lineup_hour         = airScanHour
+        state.config.OTA_enabled             = airEnabled
         state.config.First_run_wizard_shown = true
         state.saveConfig()
         // Same commit pattern as SettingsView.save(): only (re)start the listener if the toggle

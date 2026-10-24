@@ -2091,7 +2091,7 @@ function showAirInfo(el){
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
   watch.style.display='none';note.style.color='var(--t2)';
   var rb=document.getElementById('sum-btn');   // the Record button slot becomes "Refresh guide" here: reads just this multiplex off the air
-  if(d.rf){rb.textContent='Refresh this multiplex\'s guide';rb.title='Scans RF '+d.rf+' (about a minute, one idle tuner) and replaces the saved air guide with it';rb.style.background='var(--air)';rb.style.color='#fff';rb.style.display='inline-block';rb.disabled=false;rb.onclick=function(){airRefresh(el);};}
+  if(d.rf&&canScanMultiplex()){rb.textContent='Refresh this multiplex\'s guide';rb.title='Scans RF '+d.rf+' (about a minute, one idle tuner) and replaces the saved air guide with it';rb.style.background='var(--air)';rb.style.color='#fff';rb.style.display='inline-block';rb.disabled=false;rb.onclick=function(){airRefresh(el);};}
   var nowTs=Math.floor(Date.now()/1000);
   if(_s<=nowTs&&_e>nowTs){
     note.textContent='Seen on the air, not in your tuner\'s lineup · watch only · '+grText;note.style.display='inline';
@@ -2101,12 +2101,19 @@ function showAirInfo(el){
     });
   }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched · '+grText;note.style.display='inline';}
 }
+// Only the app's own embedded guide (a WKWebView with the scanMultiplex bridge) can ask for a scan; a LAN browser has no such bridge and the server has no scan route.
+function canScanMultiplex(){return !!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.scanMultiplex);}
 function airRefresh(el){
   var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');
-  rb.disabled=true;note.style.color='var(--t2)';note.style.display='inline';note.textContent='Scanning RF '+el.dataset.rf+'… the guide updates here when it is done';
-  postJSON('/api/ota-scan',{rf:[+el.dataset.rf],seconds:90,deviceId:el.dataset.dev,window:false}).then(function(r){return r.json();}).then(function(d){
-    if(d&&d.status&&/already|No tuner/.test(d.status)){note.textContent=d.status;rb.disabled=false;}
-  }).catch(function(){note.textContent='Could not reach the app';rb.disabled=false;});
+  rb.disabled=true;note.style.color='var(--t2)';note.style.display='inline';note.textContent='Asking the app to scan RF '+el.dataset.rf+'… the guide updates here when it is done';
+  try{window.webkit.messageHandlers.scanMultiplex.postMessage({rf:+el.dataset.rf,deviceId:el.dataset.dev});}catch(e){note.textContent='Could not reach the app';rb.disabled=false;}
+}
+// The app's answer to airRefresh (evaluated by AddShowView): a scan that could not start leaves the button usable again.
+function airScanStatus(s){
+  var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');
+  if(!note||!rb)return;
+  note.textContent=s;
+  if(/already|No tuner|off/.test(s))rb.disabled=false;
 }
 function airWatch(el){
   var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');

@@ -108,6 +108,11 @@ struct AddShowView: View {
                                reloadToken: guideReloadToken,
                                onLoadFailed: { guideLoadError = $0 },
                                onLoadSucceeded: { guideLoadError = nil },
+                               onScanMultiplex: { rf, deviceId in
+                                   // Only this embedded guide can ask for a scan (a LAN browser has no such bridge, and the web
+                                   // server has no scan route): the app starts it itself and tells the page what happened.
+                                   state.startOTAScan(deviceId: deviceId, rfChannels: [rf], userInitiated: false, showWindow: false)
+                               },
                                onAppearanceChanged: { mode in
                                    // The embedded guide's own theme switcher is "this app's own
                                    // setting" here (unlike a real LAN browser hitting the same
@@ -586,6 +591,7 @@ private struct AddShowWebView: NSViewRepresentable {
     let reloadToken: Int         // bump to reload the guide after a load failure
     let onLoadFailed: (String) -> Void
     let onLoadSucceeded: () -> Void
+    let onScanMultiplex: (Int, String) -> String   // RF channel, device id → a one-line status for the page
     let onAppearanceChanged: (String) -> Void
     let onRecord: ([String: Any]) -> Void
 
@@ -593,6 +599,7 @@ private struct AddShowWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "record")
         config.userContentController.add(context.coordinator, name: "appearanceChanged")
+        config.userContentController.add(context.coordinator, name: "scanMultiplex")
         // Mark the page as the in-app view before it paints, so guide.css's `html.native` rules (native scrollbars,
         // no frame around the grid) apply without a flash. LAN browsers never get this class.
         config.userContentController.addUserScript(WKUserScript(
@@ -616,6 +623,7 @@ private struct AddShowWebView: NSViewRepresentable {
     // history for the repro) once it was firing on effectively every tick.
     func updateNSView(_ nsView: WKWebView, context: Context) {
         context.coordinator.onRecord = onRecord   // the coordinator is made once; keep its callbacks current
+        context.coordinator.onScanMultiplex = onScanMultiplex
         context.coordinator.onAppearanceChanged = onAppearanceChanged
         context.coordinator.onLoadFailed = onLoadFailed
         context.coordinator.onLoadSucceeded = onLoadSucceeded
@@ -631,10 +639,12 @@ private struct AddShowWebView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "record")
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "appearanceChanged")
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "scanMultiplex")
     }
 
     func makeCoordinator() -> Coordinator {
         let c = Coordinator(appearanceMode: appearanceMode, onRecord: onRecord, onAppearanceChanged: onAppearanceChanged)
+        c.onScanMultiplex = onScanMultiplex
         c.reloadToken = reloadToken
         c.onLoadFailed = onLoadFailed
         c.onLoadSucceeded = onLoadSucceeded
@@ -645,6 +655,8 @@ private struct AddShowWebView: NSViewRepresentable {
         var appearanceMode: String
         var onRecord: ([String: Any]) -> Void
         var onAppearanceChanged: (String) -> Void
+        var onScanMultiplex: (Int, String) -> String = { _, _ in "" }
+        weak var webView: WKWebView?
         var reloadToken = 0
         var onLoadFailed: (String) -> Void = { _ in }
         var onLoadSucceeded: () -> Void = {}
@@ -664,6 +676,14 @@ private struct AddShowWebView: NSViewRepresentable {
             case "appearanceChanged":
                 guard let mode = message.body as? String, ["auto", "dark", "light"].contains(mode) else { return }
                 DispatchQueue.main.async { self.onAppearanceChanged(mode) }
+            case "scanMultiplex":
+                guard let body = message.body as? [String: Any], let rf = body["rf"] as? Int, OTAScanner.frequencyHz(rf: rf) != nil,
+                      let deviceId = body["deviceId"] as? String else { return }
+                DispatchQueue.main.async {
+                    let status = self.onScanMultiplex(rf, deviceId)
+                    let literal = (try? JSONSerialization.data(withJSONObject: [status])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+                    self.webView?.evaluateJavaScript("airScanStatus(\(literal)[0])", completionHandler: nil)
+                }
             default: break
             }
         }
@@ -674,6 +694,7 @@ private struct AddShowWebView: NSViewRepresentable {
         }
 
         func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
+            webView = wv
             pushAppearance(to: wv)
             DispatchQueue.main.async { self.onLoadSucceeded() }
         }

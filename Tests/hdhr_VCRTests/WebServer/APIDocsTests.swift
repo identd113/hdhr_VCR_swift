@@ -28,7 +28,7 @@ struct APIDocsTests {
         let json = try #require(try JSONSerialization.jsonObject(with: APIDocs.helpJSON()) as? [String: Any])
         #expect(json["openapi"] as? String == "3.0.3")
         let paths = try #require(json["paths"] as? [String: Any])
-        #expect(paths["/api/ota-scan"] != nil)
+        #expect(paths["/api/ota-status"] != nil)
         #expect(paths.count >= 20)
     }
 

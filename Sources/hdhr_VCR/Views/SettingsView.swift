@@ -7,13 +7,14 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case general       = "General"
     case recording     = "Recording"
     case guide         = "Guide"
+    case overTheAir    = "Over the Air"
     case notifications = "Notifications"
     case advanced      = "Advanced"
     // The tab is "Sharing": an umbrella over the web server ("Web LAN" section), Terminal Guide and Recording FEED.
     case sharing       = "Sharing"
     case maintenance   = "Maintenance"
     #if DEBUG
-    // Developer tools (guide/lineup source switches, purges): compiled out of release builds entirely.
+    // Developer tools (guide format switch, purges): compiled out of release builds entirely.
     case developer     = "Developer"
     #endif
     case about         = "About"
@@ -23,6 +24,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .general:       return "gear"
         case .recording:     return "record.circle"
         case .guide:         return "tv"
+        case .overTheAir:    return "dot.radiowaves.left.and.right"
         case .notifications: return "bell.badge"
         case .advanced:      return "terminal"
         case .sharing:       return "globe"
@@ -277,12 +279,16 @@ struct SettingsView: View {
             glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
         }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
+        if draft.OTA_enabled         != old.OTA_enabled         { glog("[Settings] OTAEnabled: \(old.OTA_enabled) → \(draft.OTA_enabled)") }
+        if draft.OTA_always_use      != old.OTA_always_use      { glog("[Settings] OTAAlwaysUse: \(old.OTA_always_use) → \(draft.OTA_always_use)") }
+        if draft.OTA_fill_gaps       != old.OTA_fill_gaps       { glog("[Settings] OTAFillGaps: \(old.OTA_fill_gaps) → \(draft.OTA_fill_gaps)") }
         if draft.OTA_lineup_hour     != old.OTA_lineup_hour     { glog("[Settings] OTALineupHour: \(old.OTA_lineup_hour) → \(draft.OTA_lineup_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
+        let airSourceChanged  = draft.OTA_enabled != old.OTA_enabled || (draft.OTA_enabled && (draft.OTA_always_use != old.OTA_always_use || draft.OTA_fill_gaps != old.OTA_fill_gaps))
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         // WebServer.buildGuideJSON caches its skip-already-recorded on-disk scan
         // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
@@ -344,6 +350,7 @@ struct SettingsView: View {
         // this off while a show happens to be recording should tear the relay down right away, not
         // leave it advertised until that recording ends.
         if relayEnabledChanged { state.updateVirtualTunerPresence() }
+        if airSourceChanged && !formatChanged && !interfaceChanged { Task { @MainActor in await state.airSourceChanged() } }
         if formatChanged {
             state.guideStore.invalidateAll()
             state.guideByDevice = [:]
@@ -362,6 +369,7 @@ struct SettingsView: View {
         case .general:       generalView
         case .recording:     recordingView
         case .guide:         guideView
+        case .overTheAir:    overTheAirView
         case .notifications: notificationsView
         case .advanced:      advancedView
         case .sharing:       sharingView
@@ -519,15 +527,62 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Lineup (Over the Air)") {
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Guide")
+    }
+
+
+    // MARK: - Over the Air
+
+    private var overTheAirView: some View {
+        Form {
+            Section("Over the Air") {
+                Toggle(isOn: $draft.OTA_enabled) {
+                    HStack {
+                        Text("Scan OTA for Lineup and Guide")
+                        InfoButton("Your tuner can also read the channels and listings that stations broadcast with their signal. SiliconDust's lineup and guide are sometimes missing stations, sub-channels or shows that are really on the air; turn this on to read them from the air as well. It uses idle tuners only and steps aside whenever a recording or a viewer needs one. Off: the app does nothing over the air at all (no scans, no air channels, no backup guide).", about: "Scan OTA for Lineup and Guide")
+                    }
+                }
+                .accessibilityIdentifier("settings-ota-enabled")
+                if !draft.OTA_enabled {
+                    Text("Off. Nothing is scanned or read from the air.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if draft.OTA_enabled {
+                Section("Lineup and guide from") {
+                    Picker(selection: $draft.OTA_always_use) {
+                        Text("SiliconDust").tag(false)
+                        Text("The air (OTA)").tag(true)
+                    } label: {
+                        HStack { Text("Source"); InfoButton("SiliconDust: its lineup and guide (JSON or XMLTV, see Guide) stay the source. The air: the channels and listings the stations broadcast are used instead, so SiliconDust is not used for the lineup or guide.", about: "Lineup and guide source") }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .accessibilityIdentifier("settings-ota-source")
+                    if draft.OTA_always_use {
+                        Text("Everything the air carries is used, and saved listings are read again when they run out within 6 hours. Favorites do not apply, and series recording falls back on titles (the air carries no series IDs).")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("settings-ota-source-note")
+                    } else {
+                        Toggle(isOn: $draft.OTA_fill_gaps) {
+                            HStack {
+                                Text("Use OTA to get guide data SiliconDust does not provide")
+                                InfoButton("Stations that are on the air but missing from SiliconDust's lineup are listed in the web guide under AIR ONLY · WATCH. Only the multiplexes holding them are read from the air for listings, and read again whenever the saved listings run out within 6 hours. Everything else stays SiliconDust's.", about: "Use OTA to get guide data SiliconDust does not provide")
+                            }
+                        }
+                        .accessibilityIdentifier("settings-ota-fill-gaps")
+                    }
+                }
+            Section("Channel list") {
                 Picker(selection: $draft.OTA_lineup_hour) {
                     Text("Never").tag(-1)
                     ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                 } label: {
-                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
+                    HStack { Text("Rescan channel list"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. The guide itself is read for the stations you pick below, and for all of them if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself.", about: "Rescan channel list") }
                 }
                 .accessibilityIdentifier("settings-ota-lineup-hour")
-                Text("The guide from the air is a backup: it is used only when no other guide is available. A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
+                Text("A scan tunes every TV channel in turn and reads the listings stations broadcast with their signal; the channel list alone takes a few minutes, the full guide about 15. It uses idle tuners only and steps aside for a recording or a viewer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 AirLastScanLines(progress: state.otaProgress)
@@ -554,9 +609,10 @@ struct SettingsView: View {
                     }
                 }
             }
+            }
         }
         .formStyle(.grouped)
-        .navigationTitle("Guide")
+        .navigationTitle("Over the Air")
     }
 
     // Live preview for the auto-refresh Picker's option labels — reuses the exact same
@@ -1172,21 +1228,11 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("dev-guide-source")
-                Text("Switching saves the choice, drops the guide in memory and fetches it again from the new source. The same two switches exist under Guide → Source (JSON / XMLTV, and the air guide).")
+                Text("Switching saves the choice, drops the guide in memory and fetches it again from the new source. The same switch exists under Guide → Source (XMLTV).")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Lineup source") {
-                Picker("Lineup", selection: Binding(
-                    get: { state.config.lineupFromAir },
-                    set: { air in Task { @MainActor in await state.setLineupSource(air: air) } })) {
-                    Text("The tuner").tag(false)
-                    Text("From the air").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("dev-lineup-source")
-                Text("The air lineup is the saved scan (Guide → Lineup (Over the Air)), tuned by frequency and program number, so it includes channels the tuner's own lineup lacks. Favorites do not apply to it. Falls back to the tuner's lineup when no scan under 36 hours old exists.")
-                    .font(.caption).foregroundStyle(.secondary)
-                maintenanceRow("Reload Lineup", "Fetches the lineup again from the chosen source") {
+            Section("Lineup") {
+                maintenanceRow("Reload Lineup", "Fetches the lineup again (from the tuner, or the saved air scan in \"Always use\" mode)") {
                     await state.reloadLineups()
                     return "Lineup reloaded — \(state.lineups.values.map(\.count).reduce(0, +)) channel(s)"
                 }

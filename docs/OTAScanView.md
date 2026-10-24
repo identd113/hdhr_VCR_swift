@@ -67,4 +67,4 @@ Accessibility identifiers: `ota-scan-window`, `ota-scan-progress`, `ota-scan-cou
 `ota-scan-lane-<n>` / `ota-scan-lane-progress-<n>`, `ota-scan-multiplexes` / `-channels` / `-listings` (label + value), `ota-scan-dial`, `ota-scan-tab-<RF>` (a dial bar),
 `ota-scan-mux-<RF>` (the selected multiplex's panel), `ota-scan-follow`, `ota-scan-signal`, `ota-scan-sub-<number>`, `ota-scan-budget`,
 `ota-scan-cancel`, `ota-scan-close`. Settings: `settings-ota-scan`, `settings-ota-lineup-scan`, `settings-ota-cancel`, `settings-ota-lineup-hour`.
-Without the UI: `POST /api/ota-scan` / `GET /api/ota-status` (docs/OTAGuide.md).
+Without the UI: `GET /api/ota-status` (docs/OTAGuide.md). Scans can only be started from the app (Settings → Over the Air, the embedded guide's Air Only selection).

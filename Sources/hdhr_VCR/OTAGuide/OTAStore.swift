@@ -197,6 +197,23 @@ enum OTAStore {
         return out
     }
 
+    /// Per RF channel, when the last saved listing on `numbers` (channel numbers) ends; an RF channel with no saved listing is absent.
+    /// Decodes the whole saved guide: call it off the main actor.
+    static func listingCoverage(deviceId: String, numbers: Set<String>, root: URL = OTAStore.root) -> [Int: Date] {
+        guard !numbers.isEmpty, let lineup = allSavedLineup(deviceId: deviceId, root: root),
+              let data = try? Data(contentsOf: guideFile(deviceId: deviceId, root: root)),
+              let channels = try? JSONDecoder().decode([GuideChannel].self, from: data) else { return [:] }
+        var rfByNumber: [String: Int] = [:]
+        for e in lineup where numbers.contains(e.GuideNumber) { rfByNumber[e.GuideNumber] = rfByNumber[e.GuideNumber] ?? e.RF }
+        var out: [Int: Date] = [:]
+        for c in channels {
+            guard let rf = rfByNumber[c.GuideNumber], let end = (c.Guide ?? []).map(\.EndTime).max() else { continue }
+            let date = Date(timeIntervalSince1970: TimeInterval(end))
+            if date > (out[rf] ?? .distantPast) { out[rf] = date }
+        }
+        return out
+    }
+
     /// The air channels the tuner's own lineup does not have (matched by channel number), sorted by number: what the web guide's "Air only" section lists.
     static func airOnly(saved: [OTALineupEntry], tunerLineup: [LineupEntry]) -> [OTALineupEntry] {
         let known = Set(tunerLineup.map(\.GuideNumber))

@@ -60,8 +60,10 @@ final class GuideStore {
     private var seriesIDsByDevice: [String: Set<String>] = [:]     // deviceId → seriesIDs it contributed to seriesIndex (so a reload prunes only those)
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
-    /// `Guide_use_ota`: try the saved over-the-air guide before the cloud one (set by AppState when the config changes).
+    /// "Always use the OTA lineup and guide": try the saved over-the-air guide before the cloud one (set by AppState when the config changes).
     var preferOTA = false
+    /// "Scan OTA for Lineup and Guide" is on: the saved air guide may stand in when the cloud fetch fails. Off, it is never read.
+    var airGuideAllowed = false
     /// Bumped by invalidateAll() — lets fetchAndIndex detect that an in-flight fetch it started
     /// before the invalidation was requested is now stale, and should not resurrect old data after
     /// the fact. See invalidateAll()'s own doc comment.
@@ -295,7 +297,7 @@ final class GuideStore {
         // older disk copy.
         func failed(_ why: LoadFailure) async -> Bool {
             lastFailure[id] = why
-            if (channelsByDevice[id] ?? []).isEmpty, !preferOTA, await loadOTA(deviceId: id) {
+            if (channelsByDevice[id] ?? []).isEmpty, !preferOTA, airGuideAllowed, await loadOTA(deviceId: id) {
                 glog("[\(id)] guide refresh failed — using the saved over-the-air guide until it succeeds", level: .warning)
             } else if (channelsByDevice[id] ?? []).isEmpty, let cacheFile,
                let modified = await applyDiskCache(id: id, file: cacheFile, maxAge: Self.staleFallbackMaxAge,

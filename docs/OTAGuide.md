@@ -17,7 +17,7 @@ SiliconDust guide service and no internet. Research and findings: `overtime/` (R
   A scan that finds nothing never replaces an earlier one.
 - **`AppState.startOTAScan` / `cancelOTAScan`** (`AppState+OTA.swift`): the app side; `otaScanStatus` is the status line.
 - **`GuideStore.loadOTA(deviceId:)`**: indexes the saved guide like any other. Its load timestamp is the file's own, so an old scan
-  never counts as fresh. It is used (1) first when `Guide_use_ota` is on, and (2) as the fallback when the cloud fetch fails and the
+  never counts as fresh. It is used (1) first when the air is the source (`OTA_always_use`, Settings → Over the Air), and (2) as the fallback (only while `OTA_enabled`) when the cloud fetch fails and the
   device has no guide in memory (before the older on-disk cloud copy). Scans older than 36 h are ignored.
 
 ## Tuner rules (never regress)
@@ -34,10 +34,8 @@ The scan runs on every free tuner and gives way to anything else, so nothing nee
 The scan uses `recordableDevices` only (never the virtual relay), and is off the main actor throughout.
 
 ## Where to run it
-- Settings → Guide → Source (developer): **Use the guide from the air (beta)** (`Guide_use_ota`).
-- Settings → Guide → **Lineup (Over the Air)**: *Scan the Air Now* / *Cancel Scan*, with the status line.
-- Web API (LAN, like the other routes): `POST /api/ota-scan` with `{"rf":[31,32],"seconds":90,"lineupOnly":true}` (all optional), `{"tuners":1}` (sets the running scan's tuner allowance) or `{"cancel":true}`;
-  `GET /api/ota-status` → `{"status","running","finished","total","multiplexes","channels","listings","tuners","tunersMax","secondsLeft"}` (`secondsLeft` -1 = unknown).
+- Settings → **Over the Air** (see "Scan OTA for Lineup and Guide" below): the switch, the source, the channel-list rescan, *Scan the Air Now* / *Cancel Scan*, with the status line.
+- Web API (LAN): `GET /api/ota-status` → `{"status","running","finished","total","multiplexes","channels","listings","tuners","tunersMax","secondsLeft"}` (`secondsLeft` -1 = unknown). **There is no route that starts, changes or cancels a scan** (the old `POST /api/ota-scan` was removed 2026-10-24): scans are started from the app only, and the web guide shows the air data without being able to request it.
 
 ## Known gaps
 No series IDs (series recording falls back on titles), no genre tags (genre dimming and the sports Bonus Time default have nothing to
@@ -60,8 +58,8 @@ read), no images. Some stations send no guide (RF 14, 21 and 26 in the Twin Citi
 ## Fallback only, and an automatic channel list (2026-10-21)
 - **The air guide is only a fallback.** A shipped app never tries it before the SiliconDust guide: `AppConfig.guidePrefersAir` is false outside debug builds, and the old
   General toggle "Use the guide from the air" is gone. `GuideStore` loads the saved air guide only when a guide fetch fails and the device has no guide in memory (and
-  the saved one is under 36 h old). The Developer section can still make a debug build prefer it (`Guide_use_ota`), for testing.
-- **The channel list is rescanned daily.** `OTA_lineup_hour` (default 3 = 03:00, -1 = never; Settings → Guide → Lineup (Over the Air) and the first-run wizard; migrated from the old `OTA_lineup_auto`) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
+  the saved one is under 36 h old). (Superseded 2026-10-24: with the air as the source it is preferred; see below.)
+- **The channel list is rescanned daily.** `OTA_lineup_hour` (default 3 = 03:00, -1 = never; Settings → Over the Air and the first-run wizard; migrated from the old `OTA_lineup_auto`) → `AppState.startScheduledOTALineupRefreshIfDue`, called from the idle loop: a
   lineup-only scan (a few minutes, no window) once the hour has passed and the saved list is older than today's mark, at most one try a day
   (`AppState.lineupScanDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
 - **Guide failure** (`AppState.offerAirGuideFallback`, called once per outage from `handleGuideLoadFailure`, only when no saved air guide under 36 h exists and no scan is running): an in-app alert (Scan Now / Not Now) and a Discord message (honors the Guide-error Discord toggle). Scan Now starts a full scan (list, then guide); Not Now ends the offer for this outage; with no answer for an hour the full scan starts by itself. The guide loading again cancels the offer (`endAirGuideFallbackOffer`). The Discord message is one-way: the answer is given in the app.
@@ -81,3 +79,17 @@ the web guide's summary shows "Guide read <date>". `scan.json` (the "a full scan
 Caveat: the fallback guide's 36 h age test (`GuideStore.loadOTA`, `hasFreshGuide`) looks at `guide.json`'s file date, which a one-station refresh also moves, so other multiplexes can be older than that date suggests.
 
 Scan callbacks and saving (`AppState+OTA.swift`): the held-tuner, status-line and event callbacks all check `otaScanGeneration`, so a cancelled scan's late callbacks cannot touch a newer scan's state. Status lines are not written while the menu is open (`menuIsOpen`; the final status always is). `OTAStore.save` runs in a detached task, not on the main actor; state updates hop back after it. `savedLineup` / `lineupEntries` keep one entry per `GuideNumber` (first wins) so list and picker ids are unique.
+
+## Scan OTA for Lineup and Guide (2026-10-24)
+One switch in Settings → Over the Air decides whether the app does anything over the air (`AppConfig.OTA_enabled`, **off by default**). Off: `startOTAScan` refuses, no daily channel-list rescan
+(`startScheduledOTALineupRefreshIfDue`), no guide-failure offer (`offerAirGuideFallback`), no saved-guide fallback (`GuideStore.airGuideAllowed`), no Air Only rows (`airOnlyChannels`), no gap-fill. On, there are two sources:
+- **SiliconDust** (default; `OTA_always_use` false). SiliconDust's lineup and guide stay the source. The toggle **Use OTA to get guide data SiliconDust does not provide** (`OTA_fill_gaps`, default on; `AppConfig.airFillsGaps`)
+  fills the gaps: the stations in the saved air lineup that the tuner's lineup lacks (the Air Only rows, watch-only) have their multiplexes read for listings, and nothing else is read.
+- **The air (OTA)** (`OTA_always_use` true; `AppConfig.airReplacesSiliconDust`, which also drives `lineupFromAir` and `guidePrefersAir` in every build). The air is the lineup and guide; the fill toggle is not offered. Every saved multiplex is kept fed.
+
+**Keeping listings from running dry** (`AppState.startScheduledOTAGapFillIfDue`, idle loop; pure rule `OTAGapFill`, unit-tested): every `checkEvery` (5 min) it reads how far ahead the saved listings of the wanted channels reach
+(`OTAStore.listingCoverage`, off the main actor); each multiplex whose last listing ends within `horizon` (6 h) is read again with a normal rf-list scan (`startOTAScan(rfChannels:)`, no window, idle tuners only, steps aside for recordings and viewers).
+Not while a scan runs or every tuner is busy. A multiplex is tried at most once an hour (`retry`); one read to the end less than a day ago that held no listings at all (a station that sends no guide) is left alone for a day (`noGuideRetry`).
+It needs a saved channel list, which the daily rescan and the manual scans provide. Saving the switch or the source calls `AppState.airSourceChanged()`.
+
+**Scanning one multiplex** is available only in the app: the embedded guide's Air Only selection posts a `scanMultiplex` message (`AddShowView`), which starts that RF channel's scan. The web server never starts a scan.

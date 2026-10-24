@@ -46,7 +46,7 @@ func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — thin wra
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
-| POST | `/api/ota-scan` / `/api/signal-scan` (status codes) | A scan that is already running is **never restarted** from the network: **409 Conflict** (`/api/ota-scan` new scan, `/api/signal-scan` with or without `force`); only `{"cancel":true}` (OTA) ends one. **503 Service Unavailable** with `Retry-After: 30` when no tuner can be used right now: none available, or every tuner on the device busy (`tunersFull`); OTA also answers 503 for an unknown `deviceId`. `400` stays for a bad `rf`. |
+| POST | `/api/signal-scan` (status codes) | A signal scan that is already running is **never restarted** from the network: **409 Conflict** (with or without `force`). **503 Service Unavailable** with `Retry-After: 30` when no tuner can be used right now. **There is no `/api/ota-scan` route (removed 2026-10-24):** scans of the air are started from the app only; the web reads `GET /api/ota-status` and the saved air data but cannot request a scan. |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
@@ -1384,7 +1384,7 @@ Every web API route is under `/api/` **except** the virtual tuner's HDHomeRun-pr
 
 ## Air only section (watch-only; 2026-10-22)
 Guide rows for channels the saved over-the-air scan found that the tuner's own lineup lacks (`AppState.airOnlyChannels(deviceId:)` → `OTAStore.airOnly`, matched by channel number;
-empty when no scan is saved or the Developer lineup source is "From the air", where they already are the lineup). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
+empty when "Scan OTA for Lineup and Guide" and "Use OTA to get guide data SiliconDust does not provide" are not both on, when no scan is saved, or when the air is the lineup (Settings → Over the Air → The air), where they already are the lineup). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
 (`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row shows **what the saved scan knows is on the channel**: its listings (`AppState.airListings` ← `OTAStore.savedListings`, the `guide.json` a full scan wrote; one block per program with its title, selecting it shows the episode title and synopsis). A channel with no listings falls back to **4-hour blocks from local
 midnight** (`WebServer.airBlocks`, 12–4 AM, 4–8 AM …, clipped to the guide window). Clicking any block (or Enter/Space) selects it in the summary panel (`showAirInfo`: channel, whole 4-hour slot, "Watch only · cannot be recorded", no Record button); for the block in progress,
 with web streaming on, the panel's **Watch Now!** button (`#sum-watch`, via `watchNowFromSummary` → `airWatch`) starts live TV in the browser (below), tuned by frequency and
@@ -1403,7 +1403,7 @@ device first (same grace as the in-app Watch Now preemption). Live sessions are 
 `/api/hls/<showId>/…` only starts for a recording in progress (`recordingIsWatchable`).
 
 ### Refreshing one multiplex's guide (2026-10-22, per-multiplex since the same day)
-Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`): `POST /api/ota-scan {"rf":[<RF>],"seconds":90,"deviceId":…,"window":false}`
+Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`) **only inside the app's own embedded guide** (Add Show, a `WKWebView` with the `scanMultiplex` script-message handler; `canScanMultiplex()` in guide.js): the click posts `{rf, deviceId}` to the app, `AddShowView` starts `startOTAScan(rfChannels:[rf])` and answers through `airScanStatus(text)`. A LAN browser has no such handler, so the button is not shown and no HTTP route can start a scan (2026-10-24). The scan
 reads just that station (about a minute or less, one idle tuner, no scan window on the Mac). **Every multiplex is saved and dated on its own** (`OTAStore.save` merges per RF, `mux.json`, see docs/OTAGuide.md): the refresh
 replaces only that station's channels and listings, the others keep theirs, and the summary line shows "Guide read <date>" for the selected channel's multiplex (`data-gread` on the row's blocks). When the scan finishes the
 web guide is pushed a `guide_refreshed` event and the rows show the new listings.

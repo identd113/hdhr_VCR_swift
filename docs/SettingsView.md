@@ -34,7 +34,7 @@ Selected row highlighted in accent color. Each row carries `accessibilityIdentif
 ### Category: General
 Two `Section`s:
 - **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`, `Picker("Appearance")` — bound to `draft.Appearance_mode` (`"auto"` | `"light"` | `"dark"`, default `"auto"`). Applied via `.preferredColorScheme(_:)` to every one of this app's own `Window` scenes (`hdhr_VCRApp.swift`'s `resolvedColorScheme`, `nil` for `"auto"` so a window just follows the system the normal SwiftUI way) — takes effect live the moment it's saved, no relaunch needed, since every window scene reads `appState.config` directly. Also applied to the web guide when it's loaded inside this app's own embedded `WKWebView` (`AddShowView`'s guide step — see `docs/AddShowView.md`'s "Appearance sync"), two-way: that embedded instance's own theme-switcher buttons update this same setting too. Does **not** reach a browser connecting over Web LAN — that's a structurally separate client with no channel back to this setting at all, not something this toggle has to specifically exclude (`docs/WebServer.md`'s dark-mode section).
-- ~~**Guide**: `Toggle("Use the guide from the air (beta)")`~~ — **removed 2026-10-21**: the air guide is a fallback only (docs/OTAGuide.md "Fallback only"); only Settings → Developer can make a debug build prefer it (`Guide_use_ota`).
+- ~~**Guide**: `Toggle("Use the guide from the air (beta)")`~~ — **removed 2026-10-21**: the air guide is a fallback only (docs/OTAGuide.md "Fallback only"); `Guide_use_ota` is gone (2026-10-24): the new **Over the Air** tab owns every air setting.
 
 ### Category: Recording
 Two `Section`s:
@@ -52,7 +52,7 @@ Two `Section`s:
 - Post-recording script: path field + `"Choose…"` button — runs after a recording finishes
 
 ### Category: Guide
-Three `Section`s, in order (2026-10-22): **Source** (the XMLTV toggle `Guide_use_xml` with its caveat banner, moved from General), **Fetch**, **Lineup (Over the Air)** (rescan hour, scan buttons, last-scan lines; moved from Advanced).
+Two `Section`s, in order: **Source** (the XMLTV toggle `Guide_use_xml` with its caveat banner, moved from General), **Fetch**. The over-the-air section moved to its own **Over the Air** tab (2026-10-24).
 
 **Fetch** section:
 - Guide hours: `Stepper` `"Show next N hours"`, range 1–28
@@ -269,7 +269,18 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
 - At rest: a **Tuner** pulldown ("All Tuners", then each recordable device as `FriendlyName (DeviceID)`; a selection whose device has gone away behaves as "All Tuners") followed by one **Measure Signal** button (disabled with no devices). Calls `state.startSignalScan(force: true, deviceId:)` — `deviceId` is nil for "All Tuners", else only that device is scanned; `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
-**Lineup (Over the Air) section** (Guide tab, below Fetch; moved from Advanced 2026-10-22, and the JSON/XMLTV toggle moved from General to this tab's **Source** section, shown first; `docs/OTAGuide.md`): two caption lines first, `AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
+### Over the Air (tab, `SettingsCategory.overTheAir`, icon `dot.radiowaves.left.and.right`; added 2026-10-24; `docs/OTAGuide.md`)
+
+Native Settings only. The web guide can read the air data but has no way to start a scan.
+
+- **Section "Over the Air"**: `Toggle` **Scan OTA for Lineup and Guide** (`OTA_enabled`, default off, `settings-ota-enabled`) with an InfoButton explaining why (SiliconDust's lineup and guide can lack stations or shows that are on the air). Off shows "Off. Nothing is scanned or read from the air." and nothing else: no scans (`startOTAScan` answers "Over-the-air scanning is off"), no daily channel-list rescan, no guide-failure offer, no saved-guide fallback, no Air Only rows.
+- When on, **Section "Lineup and guide from"**: `radioGroup` `Picker` **Source** (`OTA_always_use`, `settings-ota-source`): **SiliconDust** (default) / **The air (OTA)**.
+  - SiliconDust: a `Toggle` **Use OTA to get guide data SiliconDust does not provide** (`OTA_fill_gaps`, default on, `settings-ota-fill-gaps`, with an InfoButton). On: stations missing from SiliconDust's lineup are listed as Air Only rows and only their multiplexes are read for listings, again whenever the saved listings run out within 6 hours (`OTAGapFill`). Off: SiliconDust only, the air is just scanned on request and as a backup guide.
+  - The air (OTA): the toggle goes away (the air carries everything it can); a caption (`settings-ota-source-note`) says saved listings are read again when they run out within 6 hours, favorites do not apply and series recording falls back on titles.
+  - Saving a change to the switch, the source or the gap toggle calls `AppState.airSourceChanged()` (clears the air caches, reloads lineups and the guide).
+- **Section "Channel list"**: the controls that were Guide → Lineup (Over the Air) before 2026-10-24, unchanged:
+
+`AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
 - Caption text, then: while scanning, a `Label` (`dot.radiowaves.left.and.right`) with `state.otaScanStatus` and a red **Cancel Scan** button (`settings-ota-cancel`); at rest the last status line (if any) and **Scan the Air Now** (`settings-ota-scan`, disabled with no recordable device). Calls `state.startOTAScan()` / `cancelOTAScan()`.
 
 ---
@@ -462,12 +473,12 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 **Dialogs (2026-10-14):** the unsaved-changes prompt on window close is a sheet on the Settings window, not `runModal()` (`WindowCloseInterceptor.windowShouldClose` returns `false`, asks via `promptUnsavedChanges(…on:)`, then `close()`s once answered); Export/Import Config and the folder/script pickers are `Dialogs.choose` sheets; the "Config imported — restart required" alert is `Dialogs.show`. Nothing in Settings blocks the main thread, so the web server keeps answering while any of them is open.
 
-**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Guide → Lineup (Over the Air) now has **Rescan channel list** (was "Rescan the channel list from the air") (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
+**(Removed 2026-10-21.)** The flow that kept the current guide, jumped to Advanced and offered a scan when "Use the guide from the air" was turned on went with that toggle (`offerAirScan`, `scrollToOTA`). Over the Air → Channel list now has **Rescan channel list** (was "Rescan the channel list from the air") (`OTA_lineup_hour`, `settings-ota-lineup-hour`; Never / Daily at HH:00, default 03:00; a quick channel-list scan once a day on idle tuners) and the scan buttons. (The weekly toggle `OTA_lineup_auto` and "Rescan the backup guide daily" `OTA_scan_hour` were replaced 2026-10-21: the guide is scanned only after a guide failure.)
 
 ## Developer (debug builds only)
 `SettingsCategory.developer` (`hammer`) exists only under `#if DEBUG` — `deploy.sh` builds debug, so both dev Macs show it; `deploy_release.sh` builds release, which compiles the whole section out (nothing to switch off before a release). Contents (`developerView`, all actions immediate, none go through the Save draft):
-- **Guide source** (segmented, `dev-guide-source`): SiliconDust JSON / SiliconDust XMLTV / From the air → `AppState.setGuideSource`, which sets `Guide_use_xml` / `Guide_use_ota`, saves, `invalidateAll()`, and refetches.
-- **Lineup source** (segmented, `dev-lineup-source`): The tuner / From the air → `AppState.setLineupSource` (`Dev_lineup_source`, honoured only in debug builds via `AppConfig.lineupFromAir`) and a lineup reload. The air lineup is `OTAStore.lineupEntries`: the saved scan as `LineupEntry`s with `URL = http://<tuner>:5004/auto/ch<Hz>-<program>` (verified live: the tuner returns only that program), no copy-protected or hidden services, no favorites. It falls back to the tuner's lineup when no scan under 36 h exists. **Reload Lineup** refetches.
+- **Guide source** (segmented, `dev-guide-source`): SiliconDust JSON / SiliconDust XMLTV → `AppState.setGuideSource`, which sets `Guide_use_xml`, saves, `invalidateAll()`, and refetches. (The "From the air" choice and the **Lineup source** switch were removed 2026-10-24: Settings → Over the Air → Source does that for every build.)
+- **Lineup → Reload Lineup** refetches the lineup (the tuner's, or the saved air scan's in "The air" mode; the air lineup is `OTAStore.lineupEntries`: `URL = http://<tuner>:5004/auto/ch<Hz>-<program>`, no copy-protected or hidden services, no favorites, the tuner's lineup when no scan under 36 h exists).
 - **Purges:** four checkboxes — guide in memory (on by default), cached SiliconDust guide files, saved air guide, saved air lineup — and one **Run** that removes what is ticked, reloads the guide (and the lineup if the air lineup was removed), then starts an air scan and opens its window (a channel-list-only scan when just the air lineup was ticked). Run is disabled with nothing ticked.
 
 
