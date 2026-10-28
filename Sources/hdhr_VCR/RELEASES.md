@@ -10,9 +10,9 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ### The headline: Your antenna, now in the guide
 
-Every morning, hdhrVCRplus quietly listens to the airwaves and finds the stations your SiliconDust lineup leaves out. They show up in the web guide, ready to watch. Allow it, and their listings fill the gaps in your guide too. And if SiliconDust is ever down, the air keeps your guide alive.
+Every morning, hdhrVCRplus quietly listens to the airwaves and finds the stations your SiliconDust lineup leaves out. They show up in your guide like any other channel, with a colour of their own, ready to watch. Allow it, and their listings fill the gaps in your guide too. And if SiliconDust is ever down, the air keeps your guide alive.
 
-**Coming soon, in testing:** watch live TV and recordings in your browser, channels seen on the air in the web guide, and a guide built entirely from the air with no internet at all. All three are beta. Try them, and tell us what you think.
+**Coming soon, in testing:** watch live TV and recordings in your browser, record the channels seen on the air, and a guide built entirely from the air with no internet at all. All three are beta. Try them, and tell us what you think.
 
 **What else is new.**
 - **Pick your guide.** JSON, XMLTV or the air, side by side with what each is good and bad at. If one of SiliconDust's two formats fails, the other is tried before the app asks about the air.
@@ -20,6 +20,9 @@ Every morning, hdhrVCRplus quietly listens to the airwaves and finds the station
 - **Maintenance that helps.** Tick what to redo (find tuners, reload lineups, refresh the guide) and run it in one go, and see how much space the guide cache, saved air data and logos take, with a button to clear each.
 - **A tidier About tab,** with release notes you can browse version by version.
 - **The web guide fits phones again,** in portrait and landscape.
+- **The browser player looks like the app's,** with a show strip, a clock timeline, and it reconnects itself. Streams start in about 10 seconds.
+- **The terminal guide starts on what is on now,** can no longer wander into the past, and is quicker over slow connections (press **r** to redraw).
+- **Pictures fall back neatly:** the show's image, then its network logo, then the app's icon, everywhere.
 
 ---
 
