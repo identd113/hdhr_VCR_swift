@@ -111,6 +111,10 @@ Each bullet is the binding rule; the **→ full text** link has the complete ori
 
 - **No blocking dialogs** — never call `NSAlert.runModal()` / `NSSavePanel.runModal()` (or `NSOpenPanel.runModal()`): the main thread sits in the modal's event loop, so the web server, SSE, FEED viewers, idle loop and recording start/stop all stop until someone answers (2026-10-14: a stray "No Tuner Available" froze `:1980`). Use `Dialogs.show(alert)` (fire-and-forget), `await Dialogs.present(alert)` (needs the answer; same `.alertFirstButtonReturn…` values) or `Dialogs.choose(panel) { url in … }`; they use a sheet on the frontmost window or a floating window when none is open. Only `AppRelocator`'s launch-time prompt is exempt (`NoBlockingDialogsTests` enforces it). A `windowShouldClose` that needs a prompt returns `false`, asks, then `close()`s (see `WindowCloseInterceptor`).
 
+- **Show pictures** — anywhere a show's picture is drawn: the show's own image, then its network logo, then the app logo (`stationLogoPlaceholder` / web `/api/icon`); never a bare symbol, grey box or hidden image. Web uses `imgChain()` in `guide.js`. → [full text](docs/Invariants.md#show-pictures-show-image-then-network-logo-then-app-logo)
+
+- **OTA-only channels are ordinary channels** — merged into `lineups` (frequency-tuned, `LineupEntry.isAirTuned`) and the guide (`GuideStore.setSupplement`, genre "Over the Air"); never add a separate OTA-only code path, row or tile type. → [full text](docs/Invariants.md#ota-only-channels-are-ordinary-channels)
+
 - **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
 - **Per-show runtime tracking** — Per-show runtime state lives in `AppState.showRuntime[show_id]` (`ShowRuntimeState`); `deleteShow` clears it with one `removeValue`. `tunerStatus` stays a separate `@Published` dict on purpose (menu rebuild churn). → [full text](docs/Invariants.md#per-show-runtime-tracking)
@@ -165,6 +169,7 @@ Each bullet is the binding rule; the **→ full text** link has the complete ori
 | `tools/generate_favicon.py` | Build `Resources/favicon.ico` from two PNGs |
 | `tools/feed_diagnostics/` | FEED stall root-cause toolkit (capture tagger, window extractor, TS PCR analyzer) |
 | `hdhrVCRplus.app/Contents/Helpers/hdhr_guide` | Bundled terminal client for the guide (`docs/TUIGuide.md`) |
+| `tools/apple_bug_repro/make_samples.sh` + `read_samples.swift` | Reproduces the AVFoundation MPEG-TS bug (timestamps crossing 2^32) with generated test streams; see `docs/AppleBugReport_TS_2e32.md` |
 | `tools/perf_baseline.py <prime\|run\|compare>` | Release-to-release performance baseline (launch, idle CPU, memory, web timings) in an isolated temp home; results in `docs/perf/`, history in `docs/PerformanceHistory.md` |
 | `tools/release_checklist.py <preflight\|stamp\|notes\|publish> <version>` | Release paperwork around `deploy_release.sh`: readiness report, CHANGELOG stamp, GitHub Release notes + (draft) Release, README "Latest" update; dry-run by default, never pushes or builds |
 

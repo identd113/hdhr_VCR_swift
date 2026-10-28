@@ -250,16 +250,6 @@ struct OTAStoreTests {
         #expect(OTAStore.savedListings(deviceId: "TEST", only: [], root: root).isEmpty)
     }
 
-    @Test func theAirOnlyRowsAreFourHourBlocksFromMidnight() {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
-        func ts(_ h: Int, _ m: Int = 0) -> Int { Int(cal.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: h, minute: m))!.timeIntervalSince1970) }
-        let blocks = WebServer.airBlocks(winStart: ts(1, 30), winEnd: ts(9), nowTs: ts(5), calendar: cal)
-        #expect(blocks.count == 3)
-        #expect(blocks[0].start == ts(1, 30) && blocks[0].end == ts(4) && blocks[0].label == "12 AM – 4 AM")   // clipped to the window, labelled by the whole slot
-        #expect(blocks[1].start == ts(4) && blocks[1].end == ts(8) && blocks[1].isNow)
-        #expect(blocks[2].end == ts(9) && !blocks[2].isNow)
-    }
-
     @Test func theScanWindowFollowsTheStationBeingRead() throws {
         let progress = OTAScanProgress()
         progress.reset(lineupOnly: false)

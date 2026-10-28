@@ -338,16 +338,6 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-rec-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--vc-rec) 13%,transparent)}
 /* Air only (watch-only): channels seen in the saved over-the-air scan that the tuner's own lineup lacks. Sits between Recording and Favorites.
    Rows hold 4-hour blocks from local midnight; only the block in progress is live (click selects it in the summary panel, whose Watch Now! plays it live in the browser; never a recording). */
-.g-air-sep{display:flex;border-bottom:1px solid var(--b0)}
-.g-air-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--air) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--air);font-size:.6875rem;font-weight:700;letter-spacing:.07em}
-.g-air-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--air) 13%,transparent)}
-.g-air-blk{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font-size:.6875rem;color:var(--t4);border:1px dashed var(--b1);background:color-mix(in srgb,var(--air) 6%,transparent);user-select:none}
-.g-air-now{border:1px solid var(--air);background:color-mix(in srgb,var(--air) 24%,transparent);color:var(--t0);font-weight:700;cursor:pointer}
-.g-air-now:hover,.g-air-now:focus-visible{background:color-mix(in srgb,var(--air) 38%,transparent);outline:none}
-.g-air-blk{cursor:pointer}
-.g-air-prog{border-style:solid;border-color:var(--b1);padding:0 4px;justify-content:flex-start;text-overflow:ellipsis}
-.g-air-prog.g-air-now{border-color:var(--air)}
-.g-air-blk.g-sel{outline:2px solid var(--ac);outline-offset:-1px}
 .g-row[data-rec="1"] .g-ch{background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1))}
 .g-row[data-rec="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--vc-rec) 13%,transparent),color-mix(in srgb,var(--vc-rec) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 /* The 16% background tint above reads as a muddy olive/brown rather than a clear "this is
@@ -418,8 +408,8 @@ html.lm .g-bonus-overlay span{color:#5a3a00;background:rgba(255,255,255,.7)}
   .g-prog.g-st-rec{animation:none;box-shadow:0 0 0 2.5px var(--vc-rec)}
   .g-prog.g-st-rec::after{animation:none}
 }
-:root{--gg-drama:hsl(216,48%,36%);--gg-drama-now:hsl(216,52%,44%);--gg-comedy:hsl(47,48%,36%);--gg-comedy-now:hsl(47,52%,44%);--gg-news:hsl(342,43%,36%);--gg-news-now:hsl(342,47%,44%);--gg-sports:hsl(119,48%,33%);--gg-sports-now:hsl(119,52%,41%);--gg-reality:hsl(25,48%,36%);--gg-reality-now:hsl(25,52%,44%);--gg-movie:hsl(270,58%,38%);--gg-movie-now:hsl(270,62%,46%);--gg-talk:hsl(173,43%,34%);--gg-talk-now:hsl(173,47%,42%);--gg-children:hsl(315,43%,35%);--gg-children-now:hsl(315,47%,43%);--gg-crime:hsl(0,55%,33%);--gg-crime-now:hsl(0,60%,41%);--gg-romance:hsl(333,50%,37%);--gg-romance-now:hsl(333,54%,45%);--gg-thriller:hsl(238,48%,38%);--gg-thriller-now:hsl(238,52%,46%);--gg-action:hsl(12,52%,35%);--gg-action-now:hsl(12,56%,43%);--gg-mystery:hsl(255,52%,38%);--gg-mystery-now:hsl(255,56%,46%);--gg-doc:hsl(202,48%,35%);--gg-doc-now:hsl(202,52%,43%);--gg-science:hsl(188,52%,33%);--gg-science-now:hsl(188,56%,41%);--gg-nature:hsl(82,50%,33%);--gg-nature-now:hsl(82,54%,41%);--gg-history:hsl(28,50%,34%);--gg-history-now:hsl(28,54%,42%);--gg-music:hsl(287,52%,37%);--gg-music-now:hsl(287,56%,45%);--gg-food:hsl(52,52%,34%);--gg-food-now:hsl(52,56%,42%);--gg-travel:hsl(182,48%,33%);--gg-travel-now:hsl(182,52%,41%);--gg-gameshow:hsl(58,55%,34%);--gg-gameshow-now:hsl(58,60%,42%);--gg-home:hsl(35,46%,33%);--gg-home-now:hsl(35,50%,41%);--gg-health:hsl(148,50%,32%);--gg-health-now:hsl(148,54%,40%);--gg-faith:hsl(65,48%,32%);--gg-faith-now:hsl(65,52%,40%)}
-html.lm{--gg-drama:hsl(216,52%,70%);--gg-drama-now:hsl(216,57%,78%);--gg-comedy:hsl(47,58%,68%);--gg-comedy-now:hsl(47,65%,76%);--gg-news:hsl(342,52%,70%);--gg-news-now:hsl(342,57%,78%);--gg-sports:hsl(119,57%,68%);--gg-sports-now:hsl(119,62%,76%);--gg-reality:hsl(25,58%,70%);--gg-reality-now:hsl(25,67%,78%);--gg-movie:hsl(270,62%,72%);--gg-movie-now:hsl(270,68%,80%);--gg-talk:hsl(173,52%,68%);--gg-talk-now:hsl(173,57%,76%);--gg-children:hsl(315,55%,72%);--gg-children-now:hsl(315,62%,78%);--gg-crime:hsl(0,60%,68%);--gg-crime-now:hsl(0,65%,76%);--gg-romance:hsl(333,55%,70%);--gg-romance-now:hsl(333,62%,78%);--gg-thriller:hsl(238,52%,70%);--gg-thriller-now:hsl(238,58%,78%);--gg-action:hsl(12,57%,68%);--gg-action-now:hsl(12,65%,76%);--gg-mystery:hsl(255,57%,70%);--gg-mystery-now:hsl(255,65%,78%);--gg-doc:hsl(202,52%,68%);--gg-doc-now:hsl(202,58%,76%);--gg-science:hsl(188,57%,66%);--gg-science-now:hsl(188,65%,74%);--gg-nature:hsl(82,55%,66%);--gg-nature-now:hsl(82,62%,74%);--gg-history:hsl(28,55%,68%);--gg-history-now:hsl(28,62%,76%);--gg-music:hsl(287,57%,70%);--gg-music-now:hsl(287,65%,78%);--gg-food:hsl(52,58%,68%);--gg-food-now:hsl(52,65%,76%);--gg-travel:hsl(182,52%,66%);--gg-travel-now:hsl(182,58%,74%);--gg-gameshow:hsl(58,62%,68%);--gg-gameshow-now:hsl(58,68%,76%);--gg-home:hsl(35,50%,68%);--gg-home-now:hsl(35,56%,76%);--gg-health:hsl(148,55%,66%);--gg-health-now:hsl(148,62%,74%);--gg-faith:hsl(65,53%,66%);--gg-faith-now:hsl(65,60%,74%)}
+:root{--gg-drama:hsl(216,48%,36%);--gg-drama-now:hsl(216,52%,44%);--gg-comedy:hsl(47,48%,36%);--gg-comedy-now:hsl(47,52%,44%);--gg-news:hsl(342,43%,36%);--gg-news-now:hsl(342,47%,44%);--gg-sports:hsl(119,48%,33%);--gg-sports-now:hsl(119,52%,41%);--gg-reality:hsl(25,48%,36%);--gg-reality-now:hsl(25,52%,44%);--gg-movie:hsl(270,58%,38%);--gg-movie-now:hsl(270,62%,46%);--gg-talk:hsl(173,43%,34%);--gg-talk-now:hsl(173,47%,42%);--gg-children:hsl(315,43%,35%);--gg-children-now:hsl(315,47%,43%);--gg-crime:hsl(0,55%,33%);--gg-crime-now:hsl(0,60%,41%);--gg-romance:hsl(333,50%,37%);--gg-romance-now:hsl(333,54%,45%);--gg-thriller:hsl(238,48%,38%);--gg-thriller-now:hsl(238,52%,46%);--gg-action:hsl(12,52%,35%);--gg-action-now:hsl(12,56%,43%);--gg-mystery:hsl(255,52%,38%);--gg-mystery-now:hsl(255,56%,46%);--gg-doc:hsl(202,48%,35%);--gg-doc-now:hsl(202,52%,43%);--gg-science:hsl(188,52%,33%);--gg-science-now:hsl(188,56%,41%);--gg-nature:hsl(82,50%,33%);--gg-nature-now:hsl(82,54%,41%);--gg-history:hsl(28,50%,34%);--gg-history-now:hsl(28,54%,42%);--gg-music:hsl(287,52%,37%);--gg-music-now:hsl(287,56%,45%);--gg-food:hsl(52,52%,34%);--gg-food-now:hsl(52,56%,42%);--gg-travel:hsl(182,48%,33%);--gg-travel-now:hsl(182,52%,41%);--gg-gameshow:hsl(58,55%,34%);--gg-gameshow-now:hsl(58,60%,42%);--gg-home:hsl(35,46%,33%);--gg-home-now:hsl(35,50%,41%);--gg-health:hsl(148,50%,32%);--gg-health-now:hsl(148,54%,40%);--gg-faith:hsl(65,48%,32%);--gg-faith-now:hsl(65,52%,40%);--gg-ota:hsl(195,62%,41%);--gg-ota-now:hsl(195,64%,52%)}
+html.lm{--gg-drama:hsl(216,52%,70%);--gg-drama-now:hsl(216,57%,78%);--gg-comedy:hsl(47,58%,68%);--gg-comedy-now:hsl(47,65%,76%);--gg-news:hsl(342,52%,70%);--gg-news-now:hsl(342,57%,78%);--gg-sports:hsl(119,57%,68%);--gg-sports-now:hsl(119,62%,76%);--gg-reality:hsl(25,58%,70%);--gg-reality-now:hsl(25,67%,78%);--gg-movie:hsl(270,62%,72%);--gg-movie-now:hsl(270,68%,80%);--gg-talk:hsl(173,52%,68%);--gg-talk-now:hsl(173,57%,76%);--gg-children:hsl(315,55%,72%);--gg-children-now:hsl(315,62%,78%);--gg-crime:hsl(0,60%,68%);--gg-crime-now:hsl(0,65%,76%);--gg-romance:hsl(333,55%,70%);--gg-romance-now:hsl(333,62%,78%);--gg-thriller:hsl(238,52%,70%);--gg-thriller-now:hsl(238,58%,78%);--gg-action:hsl(12,57%,68%);--gg-action-now:hsl(12,65%,76%);--gg-mystery:hsl(255,57%,70%);--gg-mystery-now:hsl(255,65%,78%);--gg-doc:hsl(202,52%,68%);--gg-doc-now:hsl(202,58%,76%);--gg-science:hsl(188,57%,66%);--gg-science-now:hsl(188,65%,74%);--gg-nature:hsl(82,55%,66%);--gg-nature-now:hsl(82,62%,74%);--gg-history:hsl(28,55%,68%);--gg-history-now:hsl(28,62%,76%);--gg-music:hsl(287,57%,70%);--gg-music-now:hsl(287,65%,78%);--gg-food:hsl(52,58%,68%);--gg-food-now:hsl(52,65%,76%);--gg-travel:hsl(182,52%,66%);--gg-travel-now:hsl(182,58%,74%);--gg-gameshow:hsl(58,62%,68%);--gg-gameshow-now:hsl(58,68%,76%);--gg-home:hsl(35,50%,68%);--gg-home-now:hsl(35,56%,76%);--gg-health:hsl(148,55%,66%);--gg-health-now:hsl(148,62%,74%);--gg-faith:hsl(65,53%,66%);--gg-faith-now:hsl(65,60%,74%);--gg-ota:hsl(195,53%,79%);--gg-ota-now:hsl(195,50%,88%)}
 .gg-drama    {background:hsl(216,48%,36%)}
 .gg-comedy   {background:hsl(47,48%,36%)}
 .gg-news     {background:hsl(342,43%,36%)}
@@ -444,6 +434,7 @@ html.lm{--gg-drama:hsl(216,52%,70%);--gg-drama-now:hsl(216,57%,78%);--gg-comedy:
 .gg-home     {background:hsl(35,46%,33%)}
 .gg-health   {background:hsl(148,50%,32%)}
 .gg-faith    {background:hsl(65,48%,32%)}
+.gg-ota      {background:hsl(195,62%,41%)}
 html.lm .gg-drama    {background:hsl(216,52%,70%);border-color:hsl(216,52%,48%)}
 html.lm .gg-comedy   {background:hsl(47,58%,68%);border-color:hsl(47,58%,46%)}
 html.lm .gg-news     {background:hsl(342,52%,70%);border-color:hsl(342,52%,48%)}
@@ -468,6 +459,7 @@ html.lm .gg-gameshow {background:hsl(58,62%,68%);border-color:hsl(58,62%,46%)}
 html.lm .gg-home     {background:hsl(35,50%,68%);border-color:hsl(35,50%,46%)}
 html.lm .gg-health   {background:hsl(148,55%,66%);border-color:hsl(148,55%,44%)}
 html.lm .gg-faith    {background:hsl(65,53%,66%);border-color:hsl(65,53%,44%)}
+html.lm .gg-ota      {background:hsl(195,53%,79%);border-color:hsl(195,53%,52%)}
 .g-prog-now.gg-drama, .g-prog-sched.gg-drama {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
 .g-prog-now.gg-comedy, .g-prog-sched.gg-comedy {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
 .g-prog-now.gg-news, .g-prog-sched.gg-news {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
@@ -492,6 +484,7 @@ html.lm .gg-faith    {background:hsl(65,53%,66%);border-color:hsl(65,53%,44%)}
 .g-prog-now.gg-home, .g-prog-sched.gg-home {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
 .g-prog-now.gg-health, .g-prog-sched.gg-health {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
 .g-prog-now.gg-faith, .g-prog-sched.gg-faith {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
+.g-prog-now.gg-ota, .g-prog-sched.gg-ota {background:hsl(195,64%,52%);border-color:hsl(195,66%,69%)}
 html.lm .g-prog-now.gg-drama, html.lm .g-prog-sched.gg-drama {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
 html.lm .g-prog-now.gg-comedy, html.lm .g-prog-sched.gg-comedy {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
 html.lm .g-prog-now.gg-news, html.lm .g-prog-sched.gg-news {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
@@ -516,6 +509,7 @@ html.lm .g-prog-now.gg-gameshow, html.lm .g-prog-sched.gg-gameshow {background:h
 html.lm .g-prog-now.gg-home, html.lm .g-prog-sched.gg-home {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
 html.lm .g-prog-now.gg-health, html.lm .g-prog-sched.gg-health {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
 html.lm .g-prog-now.gg-faith, html.lm .g-prog-sched.gg-faith {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
+html.lm .g-prog-now.gg-ota, html.lm .g-prog-sched.gg-ota {background:hsl(195,50%,88%);border-color:hsl(195,53%,52%)}
 .g-prog-now  {background:#424242;border-color:#787878}
 .g-prog-rec  {background:#3c1818;border-color:#c03030}
 .g-prog-sched{background:#1a1a40;border-color:#4848c8}
@@ -648,21 +642,73 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 .kb-foot{margin-top:10px;font-size:.72rem;color:var(--t4);text-align:center}
 
 /* Watch Now! player (web streaming) */
-.wn-sheet{width:min(960px,calc(100vw - 32px));max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
-.wn-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.wn-titles{min-width:0}
+.wn-sheet{position:relative;width:min(960px,calc(100vw - 32px));max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.wn-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.wn-titles{min-width:0;flex:1 1 200px}
+.wn-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .wn-title{font-weight:600;font-size:.94rem;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn-sub{font-size:.72rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wn-stage{position:relative;background:#000;border-radius:8px;overflow:hidden;aspect-ratio:16/9;max-height:calc(100vh - 210px);max-height:calc(100dvh - 210px);width:100%}
+.wn-stage{position:relative;background:#000;border-radius:8px;overflow:hidden;aspect-ratio:16/9;max-height:calc(100vh - 270px);max-height:calc(100dvh - 270px);width:100%}
 .wn-stage video{width:100%;height:100%;display:block;background:#000}
+/* Live TV that is not being recorded cannot be scrubbed: no seek bar or elapsed time in the browser's own controls (guide.js also refuses backward seeks, for browsers that cannot restyle them). */
+.wn-stage.wn-live video::-webkit-media-controls-timeline,.wn-stage.wn-live video::-webkit-media-controls-current-time-display,.wn-stage.wn-live video::-webkit-media-controls-time-remaining-display{display:none}
+.wn-live-tl .wn-t-bar{cursor:default;pointer-events:none}
 .wn-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#ddd;font-size:.86rem;line-height:1.45;pointer-events:none}
-.wn-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.wn-grow{flex:1}
 .wn-state{font-size:.76rem;color:var(--t2);font-variant-numeric:tabular-nums}
 .wn-state .wn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0;background:var(--t5)}
 .wn-state.wn-live .wn-dot{background:#d33}
 .wn-keys{font-size:.6875rem;color:var(--t4)}
 @media (max-width:600px){.wn-keys{display:none}}
+
+/* Clock timeline under the picture: the show's start time, a marker for the time being watched, its scheduled end */
+.wn-time{display:flex;align-items:center;gap:8px;font-size:.7rem;color:var(--t2);font-variant-numeric:tabular-nums}
+.wn-t{white-space:nowrap}
+.wn-t-now{min-width:5.2em;text-align:right;color:var(--t1)}
+.wn-t-bar{position:relative;flex:1;height:14px;cursor:pointer;touch-action:none}
+.wn-t-bar::before{content:"";position:absolute;left:0;right:0;top:6px;height:3px;border-radius:2px;background:var(--b3,rgba(128,128,128,.35))}
+.wn-t-bar i{position:absolute;left:0;top:6px;height:3px;border-radius:2px;background:var(--accent,#4a9eff);width:0}
+.wn-t-bar b{position:absolute;top:3px;width:2px;height:9px;margin-left:-1px;background:#d33;border-radius:1px;left:0}
+.wn-t-bar u{position:absolute;top:2px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--t0);box-shadow:0 0 0 2px var(--s4,#333);left:0;text-decoration:none}
+/* Status bar under the player: the web twin of the app's PlayerStatusBar (52 pt strip, genre-tinted, slides open and shut) */
+.wn-info-btn{font-size:1rem;line-height:1;padding:3px 9px}
+.wn-info-btn.wn-on{color:var(--accent,#4a9eff)}
+.wn-info-btn.wn-pulse{animation:wn-pulse .7s ease-in-out 3}
+@keyframes wn-pulse{50%{transform:scale(1.35);color:var(--accent,#4a9eff)}}
+.wn-sbar-wrap{height:0;overflow:hidden;transition:height .45s ease-in-out;flex:none}
+.wn-sbar-wrap.wn-open{height:52px}
+.wn-sbar{--wn-accent:transparent;position:relative;height:52px;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;overflow:hidden;cursor:pointer;
+  background:var(--s4);background:color-mix(in srgb,var(--wn-accent) 22%,var(--s4))}
+.wn-prog{position:absolute;left:0;right:0;top:0;height:2px;display:none}
+.wn-sbar.wn-has-prog .wn-prog{display:block}
+.wn-prog i{display:block;height:100%;width:0;background:var(--wn-accent,#4a9eff);background:color-mix(in srgb,var(--wn-accent) 100%,#fff 20%)}
+.wn-thumb{width:56px;height:32px;object-fit:contain;border-radius:4px;background:rgba(0,0,0,.25);flex:none}
+.wn-sinfo{min-width:0;flex:0 1 460px;display:flex;flex-direction:column;gap:1px}
+.wn-s1{display:flex;align-items:center;gap:6px;min-width:0}
+.wn-s-title{font-weight:700;font-size:.8rem;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wn-s-tags{display:inline-flex;gap:4px;flex:none}
+.wn-s-tags .sum-tag{padding:0 6px;font-size:.6rem}
+.wn-s-line{font-size:.68rem;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wn-s-syn{color:var(--t3)}
+.wn-next{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;justify-content:flex-end}
+.wn-next::-webkit-scrollbar{display:none}
+.wn-card{flex:none;width:190px;height:42px;box-sizing:border-box;padding:4px 8px;border-radius:6px;display:flex;flex-direction:column;justify-content:center;gap:1px;
+  background:var(--s4);background:color-mix(in srgb,var(--wn-card) 28%,var(--s4))}
+.wn-card b{font-size:.58rem;letter-spacing:.06em;color:var(--t3);font-weight:700}
+.wn-card span{font-size:.7rem;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){.wn-next{display:none}}
+@media (max-width:480px){.wn-s-syn,.wn-thumb{display:none}}
+.wn-pop{position:absolute;right:16px;bottom:44px;width:min(320px,calc(100% - 32px));max-height:60%;overflow:auto;z-index:2;padding:10px 12px;border-radius:10px;font-size:.72rem;color:var(--t1);
+  background:var(--mat-bg);border:1px solid var(--mat-border);box-shadow:0 10px 28px rgba(0,0,0,.45);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.wn-pop h4{margin:8px 0 3px;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--t4);font-weight:700}
+.wn-pop h4:first-child{margin-top:0}
+.wn-pop .wn-kv{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
+.wn-pop .wn-kv span:first-child{color:var(--t3)}
+.wn-pop .wn-kv span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.wn-pop .wn-hd{display:flex;align-items:center;gap:6px;font-weight:600;font-size:.8rem}
+.wn-pop .wn-hd i{width:9px;height:9px;border-radius:50%;background:var(--t5);display:inline-block}
+.wn-pop .wn-good i{background:#2ea043}.wn-pop .wn-fair i{background:#d4a017}.wn-pop .wn-poor i{background:#d33}
+.wn-pop svg{display:block;width:100%;height:34px;margin-top:3px}
+@media (prefers-reduced-motion:reduce){.wn-sbar-wrap{transition:none}.wn-info-btn.wn-pulse{animation:none}}
 /* Reduced motion, part 2 — kept at the end of the file so these win over the same-specificity rules defined above (sbPulse, searchIconPop, splash, pull-snap). */
 @media (prefers-reduced-motion: reduce){
   .sb-anim{animation:none}

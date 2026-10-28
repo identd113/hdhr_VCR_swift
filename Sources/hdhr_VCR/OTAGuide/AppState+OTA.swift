@@ -107,7 +107,7 @@ extension AppState {
                 // A cancelled scan's late finish must not clear the state of a scan started right after it.
                 let current = self.otaScanGeneration == generation
                 if current { self.otaScanTask = nil; self.otaProgress.running = false; self.otaProgress.endedAt = Date(); self.otaProgress.lanes = [:]; self.otaProgress.note = nil; self.otaHeldResources = [] }
-                if saved != nil, rfChannels != nil, !lineupOnly { self.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self) }   // the web guide's Air Only rows show the new listings
+                if saved != nil { Task { await self.airScanSaved(deviceId: id) } }   // the air-only channels' listings and lineup follow the scan
                 if let summary = saved {
                     let done = "Done: \(summary.channels) channels, \(summary.events) events from \(summary.multiplexes) multiplexes"
                     if current { self.otaScanStatus = done }
@@ -264,9 +264,13 @@ extension AppState {
 
     /// Channels the saved air lineup has and this tuner's own lineup does not (empty when no scan is saved).
     func airOnlyChannels(deviceId: String) -> [OTALineupEntry] {
+        airOnlyChannels(deviceId: deviceId, tunerLineup: (lineups[deviceId] ?? []).filter { !$0.isAirTuned })
+    }
+
+    /// Same, against a tuner lineup that has not been stored yet (the lineup fetch merges these channels in as it stores it).
+    func airOnlyChannels(deviceId: String, tunerLineup tuner: [LineupEntry]) -> [OTALineupEntry] {
         // With the Developer lineup source "From the air" the air channels ARE the lineup: nothing is left over to list separately.
         guard !config.airReplacesSiliconDust, !lineupFromAirByDevice.contains(deviceId), let date = OTAStore.lineupDate(deviceId: deviceId) else { airOnlyCache[deviceId] = nil; return [] }
-        let tuner = lineups[deviceId] ?? []
         let stamp = "\(date.timeIntervalSince1970)-\(tuner.count)"
         if let hit = airOnlyCache[deviceId], hit.stamp == stamp { return hit.entries }
         let entries = OTAStore.airOnly(saved: OTAStore.savedLineup(deviceId: deviceId) ?? [], tunerLineup: tuner)
@@ -274,16 +278,39 @@ extension AppState {
         return entries
     }
 
-    /// What the saved scan knows is on each air-only channel (the web guide's Air Only rows show it instead of plain 4-hour blocks).
-    func airListings(deviceId: String, channel: String) -> [GuideEntry] {
-        let file = OTAStore.guideFile(deviceId: deviceId)
-        guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date else { return [] }
-        let numbers = Set(airOnlyChannels(deviceId: deviceId).map(\.GuideNumber))
-        let stamp = "\(modified.timeIntervalSince1970)-\(numbers.count)"
-        if airListingsCache[deviceId]?.stamp != stamp {
-            airListingsCache[deviceId] = (stamp, OTAStore.savedListings(deviceId: deviceId, only: numbers))
+    /// The air-only channels as lineup entries, tuned by frequency and program (`/auto/ch<Hz>-<program>`). The address is built from the
+    /// tuner's current IP and the latest saved scan every time the lineup is stored, so it follows a changed IP or a rescanned frequency.
+    func airOnlyLineupEntries(deviceId: String, host: String, tunerLineup: [LineupEntry]) -> [LineupEntry] {
+        airOnlyChannels(deviceId: deviceId, tunerLineup: tunerLineup).map {
+            LineupEntry(GuideNumber: $0.GuideNumber, GuideName: $0.GuideName, URL: "http://\(host):5004/auto/ch\($0.Frequency)-\($0.ProgramNumber)",
+                        HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil)
         }
-        return airListingsCache[deviceId]?.listings[channel] ?? []
+    }
+
+    /// Genre the air-only listings carry (the air guide has none): gives these channels their own guide colour and a genre-picker entry.
+    nonisolated static let airOnlyGenre = "Over the Air"
+
+    /// Adds the saved listings of the air-only channels to the device's guide, as ordinary channels (the guide store keeps them across reloads).
+    func supplementGuideWithAirOnly(deviceId: String) async {
+        let numbers = Set(airOnlyChannels(deviceId: deviceId).map(\.GuideNumber))
+        let names = Dictionary(airOnlyChannels(deviceId: deviceId).map { ($0.GuideNumber, $0.GuideName) }, uniquingKeysWith: { a, _ in a })
+        let listings = numbers.isEmpty ? [:] : await Task.detached(priority: .utility) { OTAStore.savedListings(deviceId: deviceId, only: numbers) }.value
+        let channels = numbers.sorted().map { number in
+            GuideChannel(GuideNumber: number, GuideName: names[number] ?? number,
+                         Guide: (listings[number] ?? []).map { var e = $0; e.Filter = [Self.airOnlyGenre]; return e })
+        }
+        guideStore.setSupplement(deviceId: deviceId, channels: channels)
+        webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self)
+    }
+
+    /// A scan saved new air data: rebuild the air-only part of the lineup and guide from it.
+    func airScanSaved(deviceId: String) async {
+        airOnlyCache[deviceId] = nil
+        guard let device = devices.first(where: { $0.DeviceID == deviceId }), !lineupFromAirByDevice.contains(deviceId) else { return }
+        let tuner = (lineups[deviceId] ?? []).filter { !$0.isAirTuned }
+        guard !tuner.isEmpty else { return }   // no lineup yet: the lineup fetch merges them when it arrives
+        lineups[deviceId] = tuner + airOnlyLineupEntries(deviceId: deviceId, host: device.LocalIP, tunerLineup: tuner)
+        await supplementGuideWithAirOnly(deviceId: deviceId)
     }
 }
 

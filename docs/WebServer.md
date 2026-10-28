@@ -261,7 +261,7 @@ Off by default; a Settings toggle with no restart. Full design and live-test log
 - `GET /api/hls/<show_id>/index.m3u8 | init.mp4 | seg-NNNNN.m4s` — an on-demand HLS stream (hardware H.264 + AAC, fragmented MP4) of the show's active or last recording file, made by `StreamSessions`/`HLSFollower`. Only those file names are served (`HLSPlaylist.isServableName`); ids are letters/digits/`-`/`_` only; anything else, an unknown show, a missing file, or the setting being off is a 404. The playlist request waits up to 25 s for the first playlist (a live playlist is withheld until it lists 3 segments, because Chrome's built-in HLS player fails on fewer). Runs entirely off the main thread; the app is asked about shows with a 2 s timeout. Playlists are `Cache-Control: no-store`.
 - `GET /api/hls-status` → `{"enabled":true|false}` — lets the guide show or hide **Watch Now!** without a reload.
 - `GET /hls.min.js` — hls.js 1.5.17 (Apache-2.0, `Resources/hls.min.js`), loaded by the guide only for browsers without native HLS.
-- Web guide: a blue **Watch Now!** button (`#sum-watch`) in the summary panel for a show that is recording (when streaming is on) opens the player modal `#wn-modal` (`openWatchNow` in `guide.js`): Live Edge, Fullscreen, state line ("LIVE" / "N s behind live" / "recording ended"), keys Space, ←/→ (10 s), L, M, F, Esc. While it is open it owns the keyboard (the guide's search and shortcuts are suppressed).
+- Web guide: a blue **Watch Now!** button (`#sum-watch`) in the summary panel for a show that is recording (when streaming is on) opens the player modal `#wn-modal` (`openWatchNow` in `guide.js`): toolbar (Live Edge, Fullscreen, ⓘ, state "LIVE" / "N s behind live" / "recording ended") over the video, plus the app-style info strip and Stream popover (`docs/WebStreaming.md` "Status bar"), keys Space, ←/→ (10 s), L, M, F, I, Esc. While it is open it owns the keyboard (the guide's search and shortcuts are suppressed).
 
 ## Recording playback relay — `/api/watch-recording?show={id}&start={byteOffset}`
 
@@ -820,7 +820,7 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 
 **Viewport fitting** — modal sheets (`.sheet-cap`, `.wn-sheet`, `.wn-stage`) and `.tdrop` use `100dvh` after a `100vh` fallback. `.tdrop` and `#t-pop-c` have `max-width: min(…, 100vw - 16px)`; `toggleTunerDrop` measures the opened dropdown and right-aligns it (`.tdrop-r`, or shifts it left) if it would overflow; `showTunerInfo` caps the popover's `left` to the viewport. Scripted `scrollIntoView` uses `scrollBehavior()` (`auto` under `prefers-reduced-motion`); a second reduced-motion block at the end of guide.css also stops `sbPulse`, `searchIconPop`, the splash fade and the pull-to-refresh snap.
 
-**Selection hygiene** — `applyGuidePayload` calls `closeSummary()` when the previously selected airing is no longer in the refreshed grid (an air-only selection is kept as before); `setDev` calls it when the tuner actually switches. `#sum-title`/`#sum-ep`/`#sum-ct` get `title` tooltips for their truncated text.
+**Selection hygiene** — `applyGuidePayload` calls `closeSummary()` when the previously selected airing is no longer in the refreshed grid; `setDev` calls it when the tuner actually switches. `#sum-title`/`#sum-ep`/`#sum-ct` get `title` tooltips for their truncated text.
 
 **Offline / error states (additive)** — `#net-banner` ("Disconnected – retrying…", "– reload the page" when the EventSource is permanently closed) is driven by the SSE `onerror`/`onopen`; `refreshGuide()` failures show a transient `#g-toast` ("Couldn't refresh the guide", 4 s); a failed show search shows "Search failed" in `#search-drop`. **Splash fallback:** `#splash` has a CSS-only `splash-timeout` animation that hides it after ~8 s, and `#splash-fail` ("Guide failed to load…") fades in at the same moment via CSS; guide.js removes `#splash-fail` when it takes over, so it only ever appears when the script never ran. **Empty state** (`buildGuideGridHTML`): "No tuners found — …" when `recordableDevices` is empty, otherwise "No guide data yet — loading…", plus a **Retry** button (`refreshGuide()`).
 
@@ -1227,6 +1227,7 @@ curl -s -X POST http://localhost:1980/api/record \
 {"ok": false, "error": "Guide entry not found"}
 ```
 
+
 **Expected 400 (missing field):**
 ```
 Missing required fields: deviceId, guideNumber, startTime
@@ -1382,28 +1383,23 @@ Every station-logo `<img>` in the web guide — the grid's `.g-logo`, the Up Nex
 
 Every web API route is under `/api/` **except** the virtual tuner's HDHomeRun-protocol routes (`/discover.json`, `/lineup.json`, `/status.json`, `/auto/v<channel>`), which stay at the root on purpose: other hdhrVCRplus instances and HDHomeRun-style clients look for them there. `APIDocs` lists them in their own group saying so. (Pages and assets — `/`, `/vertical`, `/hls.min.js`, `/favicon.ico` — are not APIs.)
 
-## Air only section (watch-only; 2026-10-22)
-Guide rows for channels the saved over-the-air scan found that the tuner's own lineup lacks (`AppState.airOnlyChannels(deviceId:)` → `OTAStore.airOnly`, matched by channel number;
-empty when no channel scan is saved, or when the air is the lineup (Guide format = OTA), where they already are the lineup; the channel scan needs no permission, so the rows appear by default, and their listings come only with "Use the air for guide data"). `buildGuideGridHTML` adds an **AIR ONLY · WATCH** separator
-(`.g-air-sep`, in `--air`) between RECORDING and FAVORITES and one `.g-row.g-air-row[data-air="1"]` per channel. A row shows **what the saved scan knows is on the channel**: its listings (`AppState.airListings` ← `OTAStore.savedListings`, the `guide.json` a full scan wrote; one block per program with its title, selecting it shows the episode title and synopsis). A channel with no listings falls back to **4-hour blocks from local
-midnight** (`WebServer.airBlocks`, 12–4 AM, 4–8 AM …, clipped to the guide window). Clicking any block (or Enter/Space) selects it in the summary panel (`showAirInfo`: channel, whole 4-hour slot, "Watch only · cannot be recorded", no Record button); for the block in progress,
-with web streaming on, the panel's **Watch Now!** button (`#sum-watch`, via `watchNowFromSummary` → `airWatch`) starts live TV in the browser (below), tuned by frequency and
-program (`http://<tuner>:5004/auto/ch<Hz>-<program>`). **Watching = live TV in the browser** (below). **There is no recording path**: these rows have no `.g-prog` blocks, so the schedule,
-favorites, genre filter and search never see them, and `/api/record` rejects a channel that is not in the tuner lineup. Visible by default while the feature is built; a Ctrl+D toggle is planned.
+## OTA-only channels are ordinary channels (2026-10-28)
+Channels the saved over-the-air scan found that the tuner's own lineup lacks (`AppState.airOnlyChannels(deviceId:)` → `OTAStore.airOnly`, matched by channel number) used to get their own watch-only "Air only" section with
+special blocks. They are now **merged in as ordinary channels**, so every path that handles a channel handles them, with nothing special-cased:
+- **Lineup:** `AppState.airOnlyLineupEntries` adds them to `lineups[device]` (after the tuner's own channels) as `LineupEntry`s tuned by frequency and program, `http://<tuner>:5004/auto/ch<Hz>-<program>` (`LineupEntry.isAirTuned`
+  recognises them; `airOnlyChannels` ignores them when computing what the tuner lacks). The address is built from the tuner's current IP and the latest saved scan each time the lineup is stored (`fetchAllLineups`, and `airScanSaved` after a scan), so an IP change or a rescanned frequency is followed. A recorded show stores that address in `show_url` like any lineup channel's.
+- **Guide:** `supplementGuideWithAirOnly` → `GuideStore.setSupplement` adds their saved listings (`OTAStore.savedListings`) to the device's guide as ordinary channels; the store re-adds them after every guide reload. Each listing is tagged with the genre **"Over the Air"** (`AppState.airOnlyGenre`; the air carries no genre of its own: measured on a real capture, the only event descriptor in 4,449 EIT events was the content advisory), which gives the tiles their own colour (`--gg-ota` / `--gg-ota-now`, pale sky blue; in light mode exactly `#add8e6`; the colours were checked against every other genre in CIELAB, nearest ΔE 13.6–16.1) and an entry in the genre picker.
+- **Web guide:** they are normal rows and `.g-prog` tiles, so selecting one gives the normal summary with **Record** (Single or DateTime; the SeriesID types are dimmed and `/api/record` refuses them for an airing with no SeriesID), the scheduled/recording rings, Edit, the genre filter, search and **Watch Now!** (live TV, below). A channel with no listings keeps its row with no tiles.
+- **Gone with the special code:** the `.g-air-*` blocks and separator, `showAirInfo`, the 4-hour slot blocks (`airBlocks`), the record-route branch, and the app-only "Refresh this multiplex's guide" button (and its `scanMultiplex` bridge in `AddShowView`). Scans start from Settings → Over the Air or the gap-fill logic.
+Not yet checked: whether the tuner accepts `?duration=` and `?transcode=` on the `/auto/ch…` address (test once a tuner is idle).
 
-### Live TV in the browser (2026-10-22)
-Kept light by reusing the web-streaming pieces (`docs/WebStreaming.md`): `POST /api/live-start {deviceId, guideNumber}` → `AppState.startWebLive` (needs Web Streaming on) takes a lineup
-channel's URL, or an air-only one's `ch<Hz>-<program>` URL, and spools it into a temp `.ts` under the FEED cache folder with the existing puller (`RecordingManager.startFeedCachePull`,
+### Live TV in the browser (2026-10-22; any airing-now tile, 2026-10-28)
+Kept light by reusing the web-streaming pieces (`docs/WebStreaming.md`): `POST /api/live-start {deviceId, guideNumber}` → `AppState.startWebLive` (needs Web Streaming on) takes the channel's lineup URL (an OTA-only channel's is its `ch<Hz>-<program>` address) and spools it into a temp `.ts` under the FEED cache folder with the existing puller (`RecordingManager.startFeedCachePull`,
 curl); `StreamSessions` then converts that growing file like a recording that is never saved (the snapshot closure maps the id `live-<device>-<8 hex>` to the spool file), and the guide opens
 its Watch Now! player on `/api/hls/<id>/index.m3u8`. It answers once the first bytes arrive (up to 6 s). A tuner must be free (`tunersFull`; live sessions count in `activeTunerCount`), a second
 viewer of the same channel joins the same spool (each viewer is counted). Before checking for a free tuner it asks a running air scan to step aside (`yieldOTAScan`). `POST /api/live-stop {id}` (sent when the player closes) frees the tuner when the **last** viewer has gone; otherwise `reapWebLiveSessions` (idle loop) stops a spool 45 s
-after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 15–20 s. The HLS side keeps the last half hour, but **the spool file itself is the whole stream from the first byte**, so `reapWebLiveSessions` ends a session past 6 GB
+after the HLS session goes quiet, or when its puller dies or streaming is switched off. Latency is the web player's usual 10–15 s (2 s segments since 2026-10-28; was 15–20 s). The HLS side keeps the last half hour, but **the spool file itself is the whole stream from the first byte**, so `reapWebLiveSessions` ends a session past 6 GB
 (about 3 hours) or when free space drops under the FEED cache's stop floor; the file is deleted on stop. **A scheduled recording wins:** when it needs the tuner, `startRecording` stops the browser's live sessions on that
 device first (same grace as the in-app Watch Now preemption). Live sessions are also stopped on quit, relaunch and SIGTERM (`stopAllWebLive`) so no puller outlives the app. A finished recording is never converted for the web:
 `/api/hls/<showId>/…` only starts for a recording in progress (`recordingIsWatchable`).
 
-### Refreshing one multiplex's guide (2026-10-22, per-multiplex since the same day)
-Selecting an air-only block also shows **Refresh this multiplex's guide** (the summary's button slot, `#sum-btn`, restored to Record by `showInfo`) **only inside the app's own embedded guide** (Add Show, a `WKWebView` with the `scanMultiplex` script-message handler; `canScanMultiplex()` in guide.js): the click posts `{rf, deviceId}` to the app, `AddShowView` starts `startOTAScan(rfChannels:[rf])` and answers through `airScanStatus(text)`. A LAN browser has no such handler, so the button is not shown and no HTTP route can start a scan (2026-10-24). The scan
-reads just that station (about a minute or less, one idle tuner; the scan window opens on the Mac). **Every multiplex is saved and dated on its own** (`OTAStore.save` merges per RF, `mux.json`, see docs/OTAGuide.md): the refresh
-replaces only that station's channels and listings, the others keep theirs, and the summary line shows "Guide read <date>" for the selected channel's multiplex (`data-gread` on the row's blocks). When the scan finishes the
-web guide is pushed a `guide_refreshed` event and the rows show the new listings.

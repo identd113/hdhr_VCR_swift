@@ -170,16 +170,35 @@
   <div class="mac-sheet wn-sheet" role="dialog" aria-modal="true" aria-labelledby="wn-title">
     <div class="wn-head">
       <div class="wn-titles"><div id="wn-title" class="wn-title"></div><div id="wn-sub" class="wn-sub"></div></div>
-      <button onclick="closeWatchNow()" class="mac-btn mac-btn-plain" aria-label="Close">&#10005;</button>
+      <div class="wn-tools">
+        <span id="wn-state" class="wn-state" role="status" aria-live="polite"></span>
+        <button id="wn-live" onclick="watchNowGoLive()" class="mac-btn mac-btn-plain" title="Jump to the newest picture (L)">Live Edge</button>
+        <button onclick="watchNowFullscreen()" class="mac-btn mac-btn-plain" title="Fullscreen (F)">Fullscreen</button>
+        <button id="wn-info-btn" onclick="wnToggleBar()" onmouseenter="wnPopHover(true)" onmouseleave="wnPopHover(false)" class="mac-btn mac-btn-plain wn-info-btn" aria-label="Show or hide the info bar" aria-expanded="false" title="Show/Hide info bar (I)">&#9432;</button>
+        <button onclick="closeWatchNow()" class="mac-btn mac-btn-plain" aria-label="Close">&#10005;</button>
+      </div>
     </div>
     <div class="wn-stage"><video id="wn-video" playsinline controls></video><div id="wn-msg" class="wn-msg"></div></div>
-    <div class="wn-bar">
-      <span id="wn-state" class="wn-state" role="status" aria-live="polite"></span>
-      <span class="wn-grow"></span>
-      <button id="wn-live" onclick="watchNowGoLive()" class="mac-btn mac-btn-plain" title="Jump to the newest picture (L)">Live Edge</button>
-      <button onclick="watchNowFullscreen()" class="mac-btn mac-btn-plain" title="Fullscreen (F)">Fullscreen</button>
+    <div id="wn-time" class="wn-time" style="display:none">
+      <span id="wn-t-start" class="wn-t"></span>
+      <div id="wn-t-bar" class="wn-t-bar" onclick="wnTimeSeek(event)" title="Click to jump to a time in the show"><i id="wn-t-fill"></i><b id="wn-t-live" title="Live edge"></b><u id="wn-t-pos"></u></div>
+      <span id="wn-t-end" class="wn-t"></span>
+      <span id="wn-t-now" class="wn-t wn-t-now" aria-live="off"></span>
     </div>
-    <div class="wn-keys">Space play/pause &middot; &larr; &rarr; skip 10 s &middot; L live edge &middot; M mute &middot; F fullscreen &middot; Esc close</div>
+    <div id="wn-sbar-wrap" class="wn-sbar-wrap">
+      <div class="wn-sbar" id="wn-sbar" onclick="wnPopToggle()" title="Stream details">
+        <div class="wn-prog"><i id="wn-prog-fill"></i></div>
+        <img id="wn-thumb" class="wn-thumb" src="" alt="">
+        <div class="wn-sinfo">
+          <div class="wn-s1"><span id="wn-s-title" class="wn-s-title"></span><span id="wn-s-tags" class="wn-s-tags"></span></div>
+          <div id="wn-s-ep" class="wn-s-line"></div>
+          <div id="wn-s-syn" class="wn-s-line wn-s-syn"></div>
+        </div>
+        <div id="wn-next" class="wn-next"></div>
+      </div>
+    </div>
+    <div id="wn-pop" class="wn-pop" role="group" aria-label="Stream details" style="display:none" onmouseenter="wnPopHover(true)" onmouseleave="wnPopHover(false)"></div>
+    <div class="wn-keys">Space play/pause &middot; &larr; &rarr; skip 10 s &middot; L live edge &middot; M mute &middot; F fullscreen &middot; I info bar &middot; Esc close</div>
   </div>
 </div>
 <div class="gw-outer"><div id="pull-refresh" class="pull-refresh"><div class="pull-spin"></div></div><div class="gw"><div class="gi">

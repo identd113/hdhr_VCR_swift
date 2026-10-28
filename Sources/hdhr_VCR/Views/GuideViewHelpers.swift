@@ -486,6 +486,8 @@ private let _genreColorMap: [String: Color] = [
     "home":     Color(hue: 0.097, saturation: 0.62, brightness: 0.58),
     "health":   Color(hue: 0.411, saturation: 0.62, brightness: 0.58),
     "faith":    Color(hue: 0.181, saturation: 0.62, brightness: 0.58),
+    // OTA-only channels (AppState.airOnlyGenre): a pale sky blue, >13 apart (CIELAB) from every other genre.
+    "ota":      Color(hue: 0.542, saturation: 0.45, brightness: 0.78),
 ]
 
 // Raw genre tag → color-map key. Mirrors WebServer.swift's server-side `ggAlias` (same reasoning:
@@ -494,6 +496,7 @@ private let _genreColorMap: [String: Color] = [
 private let _genreAlias: [String: String] = [
     "sport": "sports", "movies": "movie", "sitcom": "comedy", "kids": "children",
     "documentary": "doc", "game show": "gameshow", "animation": "children", "animated": "children",
+    "over the air": "ota",
 ]
 
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {

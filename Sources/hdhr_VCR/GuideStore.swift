@@ -24,6 +24,8 @@ final class GuideStore {
     // MARK: - State
 
     private(set) var channelsByDevice: [String: [GuideChannel]] = [:]
+    /// Channels the device's own guide lacks (the air-only ones, from the saved scan). Kept apart so every guide reload adds them back.
+    private var supplementByDevice: [String: [GuideChannel]] = [:]
     private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
@@ -553,8 +555,24 @@ final class GuideStore {
     // Merges a prepared device fetch into the shared indexes. Cheap (dictionary inserts over
     // this device's own entries) compared to the sort/decode that already happened — fine to run
     // on the main actor.
-    private func applyIndex(_ prepared: PreparedIndex) {
-        let deviceId = prepared.deviceId
+    /// Sets the extra channels for a device (replacing the previous ones) and indexes them with the guide already loaded, if any.
+    func setSupplement(deviceId: String, channels: [GuideChannel]) {
+        let old = Set((supplementByDevice[deviceId] ?? []).map(\.GuideNumber))
+        supplementByDevice[deviceId] = channels
+        guard let loaded = channelsByDevice[deviceId], !loaded.isEmpty else { return }   // nothing loaded yet: applyIndex adds them
+        applyIndex(Self.prepareIndex(deviceId: deviceId, channels: loaded.filter { !old.contains($0.GuideNumber) }))
+    }
+
+    private func applyIndex(_ fetched: PreparedIndex) {
+        let deviceId = fetched.deviceId
+        var prepared = fetched
+        if let extra = supplementByDevice[deviceId], !extra.isEmpty {
+            let have = Set(fetched.sortedChannels.map(\.GuideNumber))
+            let more = Self.prepareIndex(deviceId: deviceId, channels: extra.filter { !have.contains($0.GuideNumber) })
+            prepared = PreparedIndex(deviceId: deviceId, sortedChannels: fetched.sortedChannels + more.sortedChannels,
+                                     channelEntryIndex: fetched.channelEntryIndex.merging(more.channelEntryIndex) { a, _ in a },
+                                     seriesEntries: fetched.seriesEntries)
+        }
 
         // Drop stale entries for this device from series index
         for sid in seriesIDsByDevice[deviceId] ?? [] {

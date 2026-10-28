@@ -12,12 +12,13 @@ private let genreHSL: [String: (h: Double, s: Double, l: Double)] = [
     "crime": (0, 55, 33), "romance": (333, 50, 37), "thriller": (238, 48, 38), "action": (12, 52, 35),
     "mystery": (255, 52, 38), "doc": (202, 48, 35), "science": (188, 52, 33), "nature": (82, 50, 33),
     "history": (28, 50, 34), "music": (287, 52, 37), "food": (52, 52, 34), "travel": (182, 48, 33),
-    "gameshow": (58, 55, 34), "home": (35, 46, 33), "health": (148, 50, 32), "faith": (65, 48, 32)
+    "gameshow": (58, 55, 34), "home": (35, 46, 33), "health": (148, 50, 32), "faith": (65, 48, 32), "ota": (195, 62, 41)   // OTA-only channels, "Over the Air"
 ]
 
 private let genreAlias: [String: String] = [
     "sitcom": "comedy", "movies": "movie", "kids": "children", "sport": "sports",
-    "documentary": "doc", "game show": "gameshow", "animation": "children", "animated": "children"
+    "documentary": "doc", "game show": "gameshow", "animation": "children", "animated": "children",
+    "over the air": "ota"
 ]
 
 private func hslToRGB(_ h: Double, _ s: Double, _ l: Double) -> (UInt8, UInt8, UInt8) {

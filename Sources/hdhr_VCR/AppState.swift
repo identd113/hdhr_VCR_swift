@@ -257,9 +257,8 @@ final class AppState: ObservableObject {
     var airFallbackApproved = false
     /// Live TV watched in a browser (AppState+WebLive.swift): session id → the tuner stream being spooled to a temp file that the HLS follower reads.
     var webLiveSessions: [String: WebLiveSession] = [:]
-    /// Web guide "Air only" section: air channels the tuner lacks, cached per device by the saved lineup file's date and the tuner lineup size.
-    /// Listings the saved scan has for the air-only channels, cached like `airOnlyCache` by the saved guide file's date.
-    var airListingsCache: [String: (stamp: String, listings: [String: [GuideEntry]])] = [:]
+    /// Air channels the tuner's own lineup lacks (they are merged into the lineup and guide as ordinary channels, `applyAirOnly`),
+    /// cached per device by the saved lineup file's date and the tuner lineup size.
     var airOnlyCache: [String: (stamp: String, entries: [OTALineupEntry])] = [:]
     var airFallbackTask: Task<Void, Never>? = nil
     var otaScanGeneration = 0
@@ -1012,35 +1011,9 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.checkVLCHotInstall() }
         }
-        // `[weak self]`, not a bare `Task { await startup() }` — see ISSUES.md's "duplicate
-        // [Startup] log lines" entry for the full story. Root-caused 2026-09-11: `@StateObject`'s
-        // documented guarantee is that only one instance's *storage* is ever kept, not that its
-        // initial-value expression (this init()) is only ever *evaluated* once — SwiftUI can
-        // construct and discard an extra AppState while resolving view identity early in launch.
-        // A discarded instance is normally harmless and gets deallocated promptly — except a
-        // *strongly*-capturing `Task { await startup() }` right here kept a discarded instance
-        // alive forever via its own running Task, standing up a full idle loop/recording engine as
-        // a permanent orphan nothing in the UI ever referenced. Confirmed live: two different
-        // `launchInstanceID`s logged one line apart from the exact same pid, both completing full
-        // startups (one losing the web server bind race with "Address already in use"), then both
-        // idle loops still ticking — and both firing duplicate Discord "Recording Started" cards
-        // for the same real recording — hours later.
-        // First fix attempt (2026-09-11, same day, reverted within the hour): moved this call to
-        // `hdhr_VCRApp`'s `MenuContent().onAppear`, the hook this codebase already trusts as a
-        // reliable "fires once, even on the forced silent open+close MenuBarExtra does at launch"
-        // signal for the first-run wizard/donation nag. **Broke on the very next real deploy** —
-        // the status item (and therefore that onAppear) sometimes doesn't render at all this
-        // early/this reliably on this machine's OS, so `startup()` never fired: no web server bind,
-        // no discovery, nothing scheduled, confirmed via a screenshot showing no menu bar icon at
-        // all two minutes after launch. Whatever "forced silent open+close" guarantee the wizard/
-        // nag have relied on is evidently not as bulletproof as this codebase assumed — real, but
-        // apparently not this early/reliably on every launch. Reverted; do not retry that approach
-        // without independently re-verifying the onAppear-fires-at-launch assumption itself first.
-        // Actual fix: keep firing from init() (immediate, doesn't depend on any View ever
-        // appearing) but with `[weak self]` — a discarded instance's Task now resolves `self` to
-        // nil almost immediately (nothing else references it) and no-ops instead of running a full
-        // startup(); the one real, kept instance's `self` stays alive via `@StateObject`'s own
-        // storage exactly as before, so its startup() fires exactly as reliably as it always did.
+        // `[weak self]`, not a bare capture: SwiftUI can construct and discard an extra AppState early in launch, and a strong
+        // capture would keep that orphan alive (a second idle loop and recording engine). Fire from init(), not a view's onAppear:
+        // that was tried and sometimes never fires this early. Details: docs/AppState.md, issues_resolved.md.
         Task { [weak self] in await self?.startup() }
     }
 
@@ -1982,10 +1955,16 @@ final class AppState: ObservableObject {
                     lineupFromAirByDevice.remove(id)
                     if let lu, lu.isEmpty == false { reconcileFavorites(deviceId: id, freshLineup: lu) }
                 }
-                if let lu {
+                if var lu {
+                    // Channels only the air scan found join the lineup as ordinary channels (tuned by frequency), and their saved
+                    // listings join the guide: the rest of the app then treats them like any other channel.
+                    if !lineupFromAirByDevice.contains(id), let device = devices.first(where: { $0.DeviceID == id }) {
+                        lu += airOnlyLineupEntries(deviceId: id, host: device.LocalIP, tunerLineup: lu)
+                    }
                     glog("[Lineup] \(id) loaded \(lu.count) channels")
                     lineups[id] = lu
                     confirmLocalNetworkAccessIfNeeded()
+                    Task { await supplementGuideWithAirOnly(deviceId: id) }
                 }
             }
         }
@@ -2636,35 +2615,11 @@ final class AppState: ObservableObject {
         setYieldProgress("Scheduling the recording…", generation: generation)
         let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
         let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
-        // First attempt: addShow's own "start immediately if airing now" Task may already be
-        // racing to call startRecording concurrently — that's fine, startRecording's own
-        // recordingManager.isRunning(showId:) resync guard makes a second concurrent call here
-        // harmless (never a double curl launch), and this way nothing here has to wait on that
-        // other Task's own timing before trying.
-        //
-        // Originally measured (same day, before the fix below existed) as taking a long time —
-        // ~20s/21s/29s across three real tests — to register the dropped tuner connection from
-        // stop() above, chalked up at the time to the device's own handling of a libvlc-originated
-        // disconnect (a raw `kill -9` on a recording's own curl process, by contrast, frees the
-        // same physical tuner instantly). Part of that theory didn't hold up: the same day,
-        // yieldingWatchNowDeviceID (see its own doc comment, and issues_resolved.md's "Watch Now
-        // yield-tuner-to-Record structurally could never actually succeed") fixed a *separate*,
-        // structural bug — this function's own vlcOccupiesTuner check never clearing its stale
-        // self-reference — that could make this poll never resolve at all, independent of the
-        // device. But a real, variable device-side delay is still genuinely there underneath that:
-        // live-verified twice post-fix, once confirming free in ~1s, once taking 16s (2026-09-11
-        // cross-machine re-test) — so this is not a fixed cost, and the original "device is slow to
-        // notice a libvlc-originated disconnect" theory stands for whatever's left after the
-        // software bug's contribution is subtracted out. See TODO.md's "more insistent tuner
-        // release" entry for the real fix candidate (an HDHomeRun ClientID/SessionID mechanism,
-        // documented for port 4999 but unconfirmed on port 5004) — not attempted here, since a
-        // faster release is a device-protocol question, not something this polling loop itself can
-        // solve; this loop's 45s budget stays generous specifically because that device-side delay
-        // is real and not fully bounded. This loop's 1s poll interval (vs. an initially-tried 300ms,
-        // found unnecessarily aggressive against the device's status.json, per explicit user
-        // direction) predates that finding and stays a reasonable cadence regardless — fast enough
-        // to notice promptly without hammering the device, on a wait that's normally ~1s now but
-        // still budgeted generously in case a real device-side delay ever does occur.
+        // First attempt: addShow's own "start immediately if airing now" Task may be racing to call startRecording; that is
+        // harmless (startRecording's `recordingManager.isRunning(showId:)` resync guard never allows a second curl).
+        // Waiting for the tuner: the device frees a port-5004 tuner only once it notices the TCP close, which took 1 s to 29 s
+        // when measured, so the 45 s budget stays generous; the 1 s poll is deliberate (300 ms was too hard on status.json).
+        // Measurements and the ClientID/SessionID dead end: TODO.md "More insistent tuner release", issues_resolved.md.
         var tunerConfirmedFree = false
         for pollAttempt in 1...45 {   // 45 × 1s = 45s budget
             if Task.isCancelled {
@@ -4915,41 +4870,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Uppercased SxxExx (or bare SxxE-less) episode tags already recorded on disk for a series,
-    /// scanning `<baseDir>/<safeTitle>` (flat files) plus each `Season NN` subfolder. Used by the
-    /// skip-already-recorded feature (record-time skip + the web-guide SKIP pill). Reuses the same
-    /// filename tag parsing (`episodeTag(inFilename:)`) as `organizeSeriesRecordings` so both stay
-    /// consistent.
-    ///
-    /// A file must reach `minBytes` (see below) to count — otherwise a recording truncated by a
-    /// crash/restart mid-episode (curl writes straight to the final filename, no rename-on-
-    /// completion marker, so a truncated file is indistinguishable by name from a finished one)
-    /// would read as "already recorded" forever and never get retried. `expectedMinutes` (the
-    /// show's own `show_length` — every episode of a series is assumed the same length, since a
-    /// per-file guide lookup isn't available for old episodes) turns that into a duration-aware
-    /// floor: `expectedMinutes * minBytesPerMinuteFloor`, then 20% *below* that (only the lower
-    /// bound matters — a genuinely low-bitrate SD/subchannel recording must still pass) so a
-    /// borderline-legitimate file isn't mistaken for a truncated one. `expectedMinutes == 0`
-    /// (default — callers with no duration handy, and existing tests) falls back to the flat
-    /// ~1 MB-total floor this always had, unchanged. **`minBytes` is then raised further** to 80%
-    /// of the largest file this exact series has ever actually produced, if that's stricter — real
-    /// per-series bitrate varies far more than one assumed constant can track, so this alone missed
-    /// a substantially-recorded-but-still-incomplete file (found 2026-08-22: a tuner reboot cut a
-    /// recording off 25 minutes into a 60-minute show, leaving a 1.37 GB file against a ~3.4 GB
-    /// normal episode for that same series — comfortably above the assumed-bitrate floor, comfortably
-    /// below 80% of its own siblings). A series with no sibling yet (or whose only sibling(s) are
-    /// themselves truncated) falls back to the duration floor alone, unchanged.
-    ///
-    /// `nonisolated` — pure `FileManager` I/O, no actor-isolated state touched. Existing callers
-    /// on `@MainActor` (`buildGuideGridHTML`, the synchronous `duplicateEpisodeTag` overload) are
-    /// unaffected — a nonisolated method still runs inline/synchronously when called from an
-    /// isolated context. What this enables is `duplicateEpisodeTag(for:isSeries:baseDir:)`
-    /// invoking it from a detached background task instead, so a slow-to-wake external/NAS-backed
-    /// recording drive can't block the whole app on @MainActor for that one call site.
-    ///
-    /// `renameTruncatedTag` — when set, a below-`minBytes` file matching that tag is renamed to
-    /// `.partial` instead of just being skipped (not deleted). Used by `startRecording` to clear a
-    /// truncated leftover before recording over the same tag.
+    /// Uppercased SxxExx tags already recorded on disk for a series: `<baseDir>/<safeTitle>` plus each `Season NN` subfolder.
+    /// Backs the record-time skip and the web guide's SKIP marker. A file only counts once it reaches a size floor: curl writes
+    /// straight to the final filename, so a recording cut off by a crash looks exactly like a finished one by name alone.
+    /// `nonisolated` (pure file I/O) so `duplicateEpisodeTag(for:isSeries:baseDir:)` can run it off the main actor.
+    /// `renameTruncatedTag`: a too-small file for that tag is renamed `.partial` instead of just being skipped.
+    /// Floor formula and history: docs/Models.md "Size floors", docs/AppState.md.
     nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String, expectedMinutes: Int = 0,
                                           renameTruncatedTag: String? = nil, excludingPath: String? = nil,
                                           ownAirStart: Date? = nil) -> Set<String> {
@@ -5215,7 +5141,9 @@ final class AppState: ObservableObject {
             "fields":      fields,
             "footer":      ["text": "hdhrVCRplus  ·  \(show.hdhr_record)"]
         ]
+        // The show's image, else the network logo (Discord needs a public URL, so the app logo cannot be the last step here).
         if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
+        else if let iconURL = authorDict["icon_url"] { embed["thumbnail"] = ["url": iconURL] }
         return embed
     }
 
@@ -7260,7 +7188,7 @@ extension AppState {
     /// Settings → Over the Air was saved with the switch or the mode changed: the lineup and guide come from a different place now.
     func airSourceChanged() async {
         glog("[OTA] air source settings changed — enabled=\(config.OTA_enabled) alwaysUse=\(config.OTA_always_use)")
-        airOnlyCache = [:]; airListingsCache = [:]
+        airOnlyCache = [:]
         guideStore.invalidateAll()
         guideByDevice = [:]
         await reloadLineups()

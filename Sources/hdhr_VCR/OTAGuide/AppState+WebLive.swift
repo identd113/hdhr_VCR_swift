@@ -29,8 +29,6 @@ extension AppState {
         let url: String, title: String
         if let entry = lineups[deviceId]?.first(where: { $0.GuideNumber == guideNumber }), let u = entry.URL, !u.isEmpty {
             url = u; title = entry.GuideName
-        } else if let air = airOnlyChannels(deviceId: deviceId).first(where: { $0.GuideNumber == guideNumber }) {
-            url = "http://\(device.LocalIP):5004/auto/ch\(air.Frequency)-\(air.ProgramNumber)"; title = air.GuideName
         } else { return .failure(.init("Channel not found")) }
         if let joined = await joinWebLive(deviceId: deviceId, guideNumber: guideNumber) { return .success(joined) }
         await yieldOTAScan(for: device)   // an air scan holding the tuners steps aside first

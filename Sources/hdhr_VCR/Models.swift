@@ -1009,6 +1009,9 @@ struct LineupEntry: Codable, Identifiable {
     var HD: Int?
     var Favorite: Int?
     var isFavorite: Bool { Favorite == 1 }
+    /// A channel only the over-the-air scan found (not in the tuner's own lineup): tuned by frequency and program,
+    /// `/auto/ch<Hz>-<program>`, where the tuner's own channels use `/auto/v<number>`.
+    var isAirTuned: Bool { URL?.contains("/auto/ch") == true }
     // Real, undocumented-in-this-project-until-2026-09-02 fields — confirmed live against a real
     // device's own /lineup.json (curl http://<device-ip>/lineup.json): most channels report
     // "MPEG2"/"AC3", but some report "H264" (15 of 112 on the device this was verified against, a

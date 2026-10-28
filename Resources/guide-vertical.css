@@ -90,11 +90,6 @@ html .g-rec-sep{flex-direction:column;border-bottom:none;border-right:1px solid 
 html .g-rec-sep .g-ch{position:static;top:auto;left:auto;height:var(--ch-h);min-height:var(--ch-h);padding:0;border-right:none;border-bottom:1px solid var(--b1)}
 html .g-rec-sep-txt,html .g-rec-sep-dot{display:none}
 html .g-rec-sep .g-tl{min-height:0;min-width:0}
-/* Air only section — same column treatment as the Recording one above, in --air. */
-html .g-air-sep{flex-direction:column;border-bottom:none;border-right:1px solid var(--b0);flex-shrink:0;width:12px;min-width:12px}
-html .g-air-sep .g-ch{position:static;top:auto;left:auto;height:var(--ch-h);min-height:var(--ch-h);padding:0;border-right:none;border-bottom:1px solid var(--b1)}
-html .g-air-sep-txt,html .g-air-sep-icon{display:none}
-html .g-air-sep .g-tl{min-height:0;min-width:0}
 html .g-ch{width:100%;height:var(--ch-h);min-height:var(--ch-h);position:sticky;top:0;left:auto;border-right:none;border-bottom:1px solid var(--b1)}
 html .g-tl{min-height:{{GUIDE_MIN_HEIGHT}}px;background:repeating-linear-gradient(180deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 html .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(180deg,color-mix(in srgb,var(--fav) 13%,transparent),color-mix(in srgb,var(--fav) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
@@ -103,7 +98,6 @@ html{--gg-dir:to bottom}
 html .g-now-bar{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
 html .g-gap{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
-html .g-air-blk{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto;writing-mode:vertical-rl}
 html .g-bonus-overlay{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto;border-left:0;border-top:1.5px dashed rgba(255,176,32,.7);border-radius:0 0 5px 5px}
 html #g-hscroll{display:none}
 }

@@ -3024,21 +3024,6 @@ final class WebServer: @unchecked Sendable {
         return .found(device, ch)
     }
 
-    /// The 4-hour blocks (from local midnight: 12–4 AM, 4–8 AM …) that overlap the guide window; `isNow` marks the one in progress.
-    nonisolated static func airBlocks(winStart: Int, winEnd: Int, nowTs: Int, calendar: Calendar = .current) -> [(start: Int, end: Int, isNow: Bool, label: String, slotStart: Int, slotEnd: Int)] {
-        let fmt = DateFormatter(); fmt.calendar = calendar; fmt.timeZone = calendar.timeZone; fmt.dateFormat = "h a"
-        func text(_ ts: Int) -> String { fmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))) }
-        var slot = Int(calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(winStart))).timeIntervalSince1970)
-        var out: [(start: Int, end: Int, isNow: Bool, label: String, slotStart: Int, slotEnd: Int)] = []
-        while slot < winEnd {
-            let next = Int(calendar.date(byAdding: .hour, value: 4, to: Date(timeIntervalSince1970: TimeInterval(slot)))!.timeIntervalSince1970)
-            let s = max(slot, winStart), e = min(next, winEnd)
-            if e > s { out.append((s, e, slot <= nowTs && nowTs < next, "\(text(slot)) – \(text(next))", slot, next)) }
-            slot = next
-        }
-        return out
-    }
-
     @MainActor
     // Not `private` — exercised directly (not just through the private `route(_:_:_:)` dispatcher)
     // by RecordFlowTests.swift, which posts hdhr_guide's exact request shape in-process rather than
@@ -3073,6 +3058,9 @@ final class WebServer: @unchecked Sendable {
         else { return json(["ok": false, "error": "Guide entry not found"]) }
 
         let showType = showStateFromString(obj["showType"] as? String ?? "")
+        if showType.isSeries, (entry.SeriesID ?? "").isEmpty {
+            return json(["ok": false, "error": "This airing has no SeriesID (over-the-air guides carry none), so a SeriesID recording could never match. Pick Single or DateTime."])
+        }
         if showType.isSeries, state.guideStore.guideHasNoSeriesIDs(deviceId: deviceId) {
             return json(["ok": false, "error": "This guide has no SeriesIDs, so a SeriesID recording could never match. Pick Single or DateTime."])
         }
@@ -3735,12 +3723,13 @@ final class WebServer: @unchecked Sendable {
     private static let ggSkip: Set<String> = ["series","miniseries","mini-series","mini series","special"]
     private static let ggAlias: [String: String] = [
         "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
-        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
+        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children",
+        "over the air":"ota"   // OTA-only channels (AppState.airOnlyGenre); guide.css --gg-ota
     ]
     private static let ggKnown: Set<String> = [
         "drama","comedy","news","sports","reality","movie","talk","children",
         "crime","romance","thriller","action","mystery","doc","science","nature",
-        "history","music","food","travel","gameshow","home","health","faith"
+        "history","music","food","travel","gameshow","home","health","faith","ota"
     ]
 
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
@@ -4012,37 +4001,9 @@ final class WebServer: @unchecked Sendable {
                 else { otherRows.append(rowHTML) }
             }
             let devId = he(device.DeviceID)
-            // Air only: channels seen on the air (saved scan) that this tuner's own lineup lacks. Watch-only, never recordable (docs/WebServer.md).
-            var airRows: [String] = []
-            let airMux = OTAStore.muxRecords(deviceId: device.DeviceID)   // when each multiplex was last read to the end
-            for air in state.airOnlyChannels(deviceId: device.DeviceID) {
-                // What the saved scan knows is on this channel; with no listings the row falls back to plain 4-hour blocks.
-                let listings = state.airListings(deviceId: device.DeviceID, channel: air.GuideNumber).filter { $0.EndTime > winStart && $0.StartTime < winEnd }
-                let common = "data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-gname=\"\(he(air.GuideName))\" data-rf=\"\(air.RF)\" data-gread=\"\(airMux[air.RF]?.guideDate.map { Int($0.timeIntervalSince1970) } ?? 0)\" role=\"button\" tabindex=\"0\" onclick=\"showAirInfo(this)\""
-                var blocks: [String] = []
-                if !listings.isEmpty {
-                    for e in listings {
-                        let cs = max(e.StartTime, winStart) - winStart, ce = min(e.EndTime, winEnd) - winStart
-                        guard ce > cs else { continue }
-                        let isNow = e.StartTime <= nowTs && e.EndTime > nowTs
-                        let tip = "\(he(e.Title)) (\(he(guideTimeRange(e)))) · \(he(air.GuideName)) — seen on the air, not in the tuner's lineup" + (isNow ? " — select, then Watch Now!" : "")
-                        blocks.append("<div class=\"g-air-blk g-air-prog\(isNow ? " g-air-now" : "")\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\" title=\"\(tip)\" aria-label=\"\(tip)\" \(common) data-title=\"\(he(e.Title))\" data-ep=\"\(he(e.EpisodeTitle ?? ""))\" data-syn=\"\(he(e.Synopsis ?? ""))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\"><span>\(he(e.Title))</span></div>")
-                    }
-                } else {
-                    blocks = Self.airBlocks(winStart: winStart, winEnd: winEnd, nowTs: nowTs).map { b -> String in
-                        let tip = "\(he(air.GuideName)) · \(he(b.label)) (seen on the air, not in the tuner's lineup)" + (b.isNow ? " — select, then Watch Now!" : "")
-                        return "<div class=\"\(b.isNow ? "g-air-blk g-air-now" : "g-air-blk")\" style=\"--gs:\(pct(b.start - winStart))%;--gw:\(pct(b.end - b.start))%\" title=\"\(tip)\" aria-label=\"\(tip)\" \(common) data-start=\"\(b.slotStart)\" data-end=\"\(b.slotEnd)\"><span>\(he(b.label))</span></div>"
-                    }
-                }
-                airRows.append("<div class=\"g-row g-air-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(air.GuideNumber))\" data-air=\"1\"><div class=\"g-ch\"><img class=\"g-logo\" src=\"\(Self.stationLogoFallbackPath)\" alt=\"\" style=\"background:#ddd\"><div class=\"g-cl\"><span class=\"g-cn\">\(he(air.GuideNumber))</span><span class=\"g-cname\">\(he(air.GuideName))</span></div></div><div class=\"g-tl\"><div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>\(blocks.joined())</div></div>")
-            }
             if !recRows.isEmpty {
                 rowParts.append("<div class=\"g-rec-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-rec-sep-dot\">●</span><span class=\"g-rec-sep-txt\"> RECORDING</span></div><div class=\"g-tl\"></div></div>")
                 rowParts.append(contentsOf: recRows)
-            }
-            if !airRows.isEmpty {
-                rowParts.append("<div class=\"g-air-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-air-sep-icon\">📡</span><span class=\"g-air-sep-txt\"> AIR ONLY · WATCH</span></div><div class=\"g-tl\"></div></div>")
-                rowParts.append(contentsOf: airRows)
             }
             if !favRows.isEmpty {
                 rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-fav-sep-star\">★</span><span class=\"g-fav-sep-txt\"> FAVORITES</span></div><div class=\"g-tl\"></div></div>")

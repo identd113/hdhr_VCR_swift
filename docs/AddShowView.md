@@ -44,7 +44,7 @@ The `guide` and `details` steps have no progress indicator (removed 2026-10-19).
 
 ### Step 1 — Guide
 
-`AddShowWebView: NSViewRepresentable` wraps a `WKWebView` loaded with `http://localhost:{port}/`. Three `WKScriptMessageHandler`s are registered (the third, `"scanMultiplex"`, added 2026-10-24: selecting an Air Only block shows *Refresh this multiplex's guide*, which posts `{rf, deviceId}`; the coordinator calls `onScanMultiplex(rf, deviceId)` → `AppState.startOTAScan(rfChannels:[rf])` and answers the page with `airScanStatus(text)`. Only this app can send it: a LAN browser has no bridge and the server has no scan route): `"record"` (user clicks Record in the web summary panel — JS posts the entry data, the coordinator calls `onRecord([String: Any])` on the main queue) and `"appearanceChanged"` (see "Appearance sync" below).
+`AddShowWebView: NSViewRepresentable` wraps a `WKWebView` loaded with `http://localhost:{port}/`. Two `WKScriptMessageHandler`s are registered (a third, `"scanMultiplex"`, for an OTA "Refresh this multiplex's guide" button, was removed 2026-10-28): `"record"` (user clicks Record in the web summary panel — JS posts the entry data, the coordinator calls `onRecord([String: Any])` on the main queue) and `"appearanceChanged"` (see "Appearance sync" below).
 
 `onRecord` in `guideStep` calls `applyWebGuideEntry(...)`, which populates all `show` fields and sets `selectedDevice`, then sets `step = .details`.
 

@@ -151,11 +151,11 @@ _orientMq.addEventListener('change',function(){
   if(_vtEligible){scrollToNow();initRowObserver();}
   updateNowLine();syncHdrPin();
 });
-var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)',crime:'hsl(0,55%,33%)',romance:'hsl(333,50%,37%)',thriller:'hsl(238,48%,38%)',action:'hsl(12,52%,35%)',mystery:'hsl(255,52%,38%)',doc:'hsl(202,48%,35%)',science:'hsl(188,52%,33%)',nature:'hsl(82,50%,33%)',history:'hsl(28,50%,34%)',music:'hsl(287,52%,37%)',food:'hsl(52,52%,34%)',travel:'hsl(182,48%,33%)',gameshow:'hsl(58,55%,34%)',home:'hsl(35,46%,33%)',health:'hsl(148,50%,32%)',faith:'hsl(65,48%,32%)'};
-var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)',crime:'hsl(0,60%,68%)',romance:'hsl(333,55%,70%)',thriller:'hsl(238,52%,70%)',action:'hsl(12,57%,68%)',mystery:'hsl(255,57%,70%)',doc:'hsl(202,52%,68%)',science:'hsl(188,57%,66%)',nature:'hsl(82,55%,66%)',history:'hsl(28,55%,68%)',music:'hsl(287,57%,70%)',food:'hsl(52,58%,68%)',travel:'hsl(182,52%,66%)',gameshow:'hsl(58,62%,68%)',home:'hsl(35,50%,68%)',health:'hsl(148,55%,66%)',faith:'hsl(65,53%,66%)'};
+var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)',crime:'hsl(0,55%,33%)',romance:'hsl(333,50%,37%)',thriller:'hsl(238,48%,38%)',action:'hsl(12,52%,35%)',mystery:'hsl(255,52%,38%)',doc:'hsl(202,48%,35%)',science:'hsl(188,52%,33%)',nature:'hsl(82,50%,33%)',history:'hsl(28,50%,34%)',music:'hsl(287,52%,37%)',food:'hsl(52,52%,34%)',travel:'hsl(182,48%,33%)',gameshow:'hsl(58,55%,34%)',home:'hsl(35,46%,33%)',health:'hsl(148,50%,32%)',faith:'hsl(65,48%,32%)',ota:'hsl(195,62%,41%)'};
+var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)',crime:'hsl(0,60%,68%)',romance:'hsl(333,55%,70%)',thriller:'hsl(238,52%,70%)',action:'hsl(12,57%,68%)',mystery:'hsl(255,57%,70%)',doc:'hsl(202,52%,68%)',science:'hsl(188,57%,66%)',nature:'hsl(82,55%,66%)',history:'hsl(28,55%,68%)',music:'hsl(287,57%,70%)',food:'hsl(52,58%,68%)',travel:'hsl(182,52%,66%)',gameshow:'hsl(58,62%,68%)',home:'hsl(35,50%,68%)',health:'hsl(148,55%,66%)',faith:'hsl(65,53%,66%)',ota:'hsl(195,53%,79%)'};
 function gc(g){var lo=(g||'').toLowerCase();lo=_ggAlias[lo]||lo;var m=isLM()?_gcLk:_gcDk;return m[lo]||(isLM()?'#d8d8d8':'#424242');}
-var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children'};
-var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith'];
+var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children','over the air':'ota'};
+var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith','ota'];
 function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
 var heJs=hej;
 var _bonusMins={{SPORTS_PADDING_MINUTES}};
@@ -180,7 +180,7 @@ function showInfo(el){
   // Mark the selection before renderHeavyFields() runs — paintHeavyFields() gates its
   // _poster update on '.g-sel' being present on el, and the synchronous cache-hit path
   // runs before this function would otherwise reach the old end-of-function assignment.
-  document.querySelectorAll('.g-prog.g-sel,.g-air-blk.g-sel').forEach(function(b){b.classList.remove('g-sel');});
+  document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
   el.classList.add('g-sel');
   _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';_title=d.title||'';_poster=d.poster||'';_logo=d.logo||'';_chname=d.chname||'';
   document.getElementById('sum-ph').style.display='none';
@@ -201,7 +201,7 @@ function showInfo(el){
   var note=document.getElementById('sum-note');
   // Reset all action elements first
   var edit=document.getElementById('sum-edit');
-  btn.onclick=function(){doRecord();};btn.title='';   // an air-only selection (showAirInfo) reuses this button as "Refresh this multiplex's guide"
+  btn.onclick=function(){doRecord();};btn.title='';
   btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
   var watch=document.getElementById('sum-watch');watch.style.display='none';
   del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
@@ -234,6 +234,11 @@ function showInfo(el){
     }
     btn.style.display='inline-block';btn.disabled=false;
   }
+  // Airing now and not being recorded: live TV, when web streaming is on (the same Watch Now! button a recording shows).
+  var liveTs=Math.floor(Date.now()/1000);
+  if(!+d.recording&&_s<=liveTs&&_e>liveTs&&d.device&&d.num){
+    streamingEnabled(function(on){if(on&&document.querySelector('.g-prog.g-sel')===el)watch.style.display='inline-block';});
+  }
 }
 // Double-click on a guide tile skips straight to the relevant modal — same showInfo(el)
 // selection/population step a single click does, immediately followed by whichever action the
@@ -259,21 +264,21 @@ function recordFromDblClick(el){
 // paints whatever's cached/present immediately (avoids a stale-data flash), then — if the row's
 // IntersectionObserver hasn't already fetched it — does a just-in-time fetch for a fast click on
 // a not-yet-observed row, guarded so a slow/superseded fetch can't clobber a later selection.
+// The one picture rule for a show, wherever it is drawn: the show's own image, then its network logo, then the app logo.
+// Each address that fails to load hands over to the next; the app logo is same-origin and always last.
+function imgChain(img,urls){
+  var list=(urls||[]).filter(Boolean);
+  if(list[list.length-1]!=='/api/icon')list.push('/api/icon');
+  var n=0;
+  img.onerror=function(){if(++n<list.length)img.src=list[n];else img.onerror=null;};
+  img.src=list[0];img.style.display='block';
+}
 function paintHeavyFields(el){
   var d=el.dataset;
   if(document.querySelector('.g-prog.g-sel')===el)_poster=d.poster||'';
   var pi=document.getElementById('sum-poster');
   pi.dataset.pgen=(+pi.dataset.pgen||0)+1;
-  if(d.poster&&d.logo){
-    pi.onerror=function(){pi.src=d.logo;pi.onerror=function(){pi.style.display='none';};};
-    pi.src=d.poster;pi.style.display='block';
-  }else if(d.poster){
-    pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
-    pi.src=d.poster;pi.style.display='block';
-  }else if(d.logo){
-    pi.onerror=function(){pi.style.display='none';};
-    pi.src=d.logo;pi.style.display='block';
-  }else{pi.style.display='none';}
+  imgChain(pi,[d.poster,d.logo||_logo]);
   so('sum-ep',d.ep||'');document.getElementById('sum-ep').title=d.ep||'';
   so('sum-date',d.new==='1'?'':(d.date?'Orig. '+d.date:''));
   var sy=document.getElementById('sum-syn');
@@ -329,7 +334,7 @@ function topOptFor(type){ return (type==='seriesChannel'||type==='seriesAll')?'s
 function resolveSeriesTypePick(v,current){
   return (v==='seriesID')?((current==='seriesChannel'||current==='seriesAll')?current:'seriesChannel'):v;
 }
-function renderTypeRow(containerId,descId,selected,onSelect,devId){
+function renderTypeRow(containerId,descId,selected,onSelect,devId,noSeries){
   var container=document.getElementById(containerId);
   var descEl=document.getElementById(descId);
   container.innerHTML='';
@@ -340,7 +345,7 @@ function renderTypeRow(containerId,descId,selected,onSelect,devId){
     btn.className='rm-type-btn'+(o.v===selTop?' sel':'');
     btn.textContent=o.t;
     // The over-the-air guide carries no SeriesIDs, so a SeriesID recording could never match: dim it (a show already of that type stays selected).
-    if(o.v==='seriesID'&&noSeriesIDs(devId)){btn.disabled=true;btn.classList.add('dis');btn.title='This tuner\'s guide has no SeriesIDs (guide from the air)';}
+    if(o.v==='seriesID'&&(noSeriesIDs(devId)||noSeries)){btn.disabled=true;btn.classList.add('dis');btn.title=noSeries?'This airing has no SeriesID (the over-the-air guide carries none)':'This tuner\'s guide has no SeriesIDs (guide from the air)';}
     btn.onclick=function(){
       Array.from(container.querySelectorAll('.rm-type-btn')).forEach(function(b){b.classList.remove('sel');});
       btn.classList.add('sel');
@@ -500,7 +505,7 @@ function doRecord(){
     document.getElementById('rm-new-row').style.display=(_rmType==='single')?'none':'flex';
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
-  },_d);
+  },_d,!_ser);
   openModal('rec-modal');
 }
 var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0,_rmType='single';
@@ -679,8 +684,6 @@ function applyGuidePayload(d,selOverride){
   var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
   var prev=document.querySelector('.g-prog.g-sel');
   var prevStart=prev?prev.dataset.start:null,prevNum=prev?prev.dataset.num:null,prevDev=prev?prev.dataset.device:null;
-  var pa=document.querySelector('.g-air-blk.g-sel');   // an air-only block selected before the refresh
-  var prevAir=pa?{dev:pa.dataset.dev,ch:pa.dataset.ch,start:pa.dataset.start}:null;
   var oldGi=document.querySelector('.gi');
   if(oldGi)oldGi.innerHTML=d.grid;
   // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
@@ -708,10 +711,6 @@ function applyGuidePayload(d,selOverride){
     var match=document.querySelector('.g-prog[data-start="'+cq(prevStart)+'"][data-num="'+cq(prevNum)+'"][data-device="'+cq(prevDev)+'"]');
     if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
     else{closeSummary();}   // the selected airing is gone from the refreshed grid: don't leave its stale details/buttons up
-  }
-  else if(prevAir){   // keep the air-only selection (and its Watch / Refresh buttons) across a refresh, e.g. when the multiplex scan it asked for finishes
-    var am=document.querySelector('.g-air-blk[data-dev="'+cq(prevAir.dev)+'"][data-ch="'+cq(prevAir.ch)+'"][data-start="'+cq(prevAir.start)+'"]');
-    if(am)showAirInfo(am);
   }
 }
 // Transient, non-blocking error toast (#g-toast).
@@ -753,8 +752,7 @@ function typeLabel(t){
 }
 function showDeleteConfirm(title,poster,typeStr,isRec,onConfirm){
   var pi=document.getElementById('dc-poster');
-  if(poster){pi.onerror=function(){pi.style.display='none';};pi.src=poster;pi.style.display='block';}
-  else{pi.style.display='none';}
+  imgChain(pi,[poster]);
   document.getElementById('dc-title').textContent='Delete "'+(title||'this show')+'"?';
   document.getElementById('dc-type').textContent='Type: '+typeLabel(typeStr);
   document.getElementById('dc-warn').textContent=isRec
@@ -1385,7 +1383,6 @@ function setDev(id){
   }
   toggleSectionSep('.g-fav-sep','fav');
   toggleSectionSep('.g-rec-sep','rec');
-  toggleSectionSep('.g-air-sep','air');
 }
 // First click on a tuner's name button switches the guide grid to that tuner (setDev);
 // a second click — the tuner is already selected — opens its hardware-occupancy popover
@@ -1679,24 +1676,29 @@ function cycleSearchEpisode(delta){
 var _streamOn=null,_streamOnAt=0;
 function streamingEnabled(cb){
   if(_streamOn!==null&&Date.now()-_streamOnAt<10000){cb(_streamOn);return;}
-  fetch('/api/hls-status').then(function(r){return r.json();}).then(function(j){_streamOn=!!j.enabled;_streamOnAt=Date.now();cb(_streamOn);}).catch(function(){cb(false);});
+  fetch('/api/hls-status').then(function(r){return r.json();}).then(function(j){_streamOn=!!j.enabled;_streamOnAt=Date.now();cb(_streamOn);}).catch(function(){cb(false,true);});   // 2nd arg: the app could not be reached (not the same as "off")
 }
-var _wn={posTick:0,startEpoch:0,endEpoch:0,open:false,id:'',gen:0,hls:null,timer:null,retries:0,ended:false,hlsLoading:false};
+var _wn={posTick:0,startEpoch:0,endEpoch:0,open:false,id:'',gen:0,hls:null,timer:null,retries:0,ended:false,hlsLoading:false,info:null,barOpen:false,peeking:false,peeked:false,peekTimer:0,popTimer:0,popHover:false,popPinned:false,tp:{samples:[],hist:[],obs:null}};
 function wnVideo(){return document.getElementById('wn-video');}
 function wnMsg(t){var m=document.getElementById('wn-msg');m.textContent=t||'';m.style.display=t?'flex':'none';}
 function watchNowFromSummary(){
-  var air=document.querySelector('.g-air-blk.g-sel');
-  if(air){airWatch(air);return;}
   var el=document.querySelector('.g-prog.g-sel');
-  if(!el||!el.dataset.showId)return;
-  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,document.getElementById('sum-ep').textContent,_poster||_logo||'',_s,_e);
+  if(!el)return;
+  if(!+el.dataset.recording){liveWatch(el);return;}   // airing now but not being recorded: live TV
+  if(!el.dataset.showId)return;
+  var inf=wnInfoFromEl(el),sy=document.getElementById('sum-syn');
+  inf.ep=document.getElementById('sum-ep').textContent||inf.ep;inf.poster=_poster||inf.poster;inf.logo=_logo||inf.logo;
+  if(sy&&sy.style.display!=='none')inf.synopsis=sy.textContent||'';
+  openWatchNow(el.dataset.showId,el.dataset.title||'',document.getElementById('sum-ct').textContent,inf.ep,_poster||_logo||'',_s,_e,inf);
 }
 function watchNowFromEdit(){
   var t=document.getElementById('em-title-in').value,id=_editId;
   closeEditShow();
   var sx=+(_editRow&&_editRow.next)||0,len=(+(_editRow&&_editRow.length)||0)*60;
   if(!sx||sx>Date.now()/1000||Date.now()/1000-sx>len*1.5)sx=0;   // show_next is only the start while the show is airing
-  openWatchNow(id,t,'Recording now','',_editPoster||'',sx,sx?sx+len:0);
+  var gel=document.querySelector('.g-prog[data-show-id="'+cq(id)+'"]'),inf=gel?wnInfoFromEl(gel):{title:t,tags:[]};
+  if(_editPoster)inf.poster=_editPoster;
+  openWatchNow(id,t,'Recording now','',_editPoster||'',sx,sx?sx+len:0,inf);
 }
 function loadHlsJs(cb){
   if(window.Hls){cb(true);return;}
@@ -1705,39 +1707,23 @@ function loadHlsJs(cb){
   s.onerror=function(){cb(false);};
   document.head.appendChild(s);
 }
-function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
+function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch,info){
   closeWatchNow();
+  art=art||(info&&(info.poster||info.logo))||'/api/icon';   // poster art: the show's image, else the network logo, else the app logo, everywhere
   var _wnAe=document.activeElement;_wn.prevFocus=(_wnAe&&_wnAe!==document.body)?_wnAe:null;
-  _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;_wn.failed=false;
+  _wn.open=true;_wn.id=id;_wn.gen++;_wn.retries=0;_wn.ended=false;_wn.failed=false;_wn.lostAt=0;_wn.recovering=false;_wn.stuck=0;_wn.lastT=-1;_wn.tlStart=startEpoch||0;_wn.tlEnd=endEpoch||0;wnClockSkew();
   var gen=_wn.gen;
   document.getElementById('wn-title').textContent=title;
   document.getElementById('wn-sub').textContent=sub||'';
+  wnBarInit(info||{title:title,tags:[]},startEpoch,endEpoch);
   document.getElementById('wn-modal').style.display='flex';
   wnState('Starting\u2026',false);wnMsg('Preparing the stream\u2026 this can take a few seconds.');
   var v=wnVideo();
-  var url='/api/hls/'+encodeURIComponent(id)+'/index.m3u8';
   v.muted=false;
-  if(v.canPlayType('application/vnd.apple.mpegurl')){
-    v.src=url;
-    v.onerror=function(){if(gen===_wn.gen)wnFailed();};
-    v.play().catch(function(){});
-  }else{
-    loadHlsJs(function(ok){
-      if(gen!==_wn.gen)return;
-      if(!ok){wnMsg('This browser cannot play the stream (no HLS support).');wnState('Unavailable',false);return;}
-      var h=new Hls({liveSyncDurationCount:3,maxBufferLength:30,manifestLoadingTimeOut:20000,manifestLoadingMaxRetry:2});
-      _wn.hls=h;
-      h.on(Hls.Events.FRAG_LOADED,function(){_wn.retries=0;});
-      h.on(Hls.Events.ERROR,function(e,d){
-        if(gen!==_wn.gen||!d.fatal)return;
-        if(d.type===Hls.ErrorTypes.MEDIA_ERROR&&_wn.retries<3){_wn.retries++;h.recoverMediaError();}
-        else if(d.type===Hls.ErrorTypes.NETWORK_ERROR&&_wn.retries<3){_wn.retries++;setTimeout(function(){if(gen===_wn.gen)h.startLoad();},2000);}
-        else wnFailed();
-      });
-      h.loadSource(url);h.attachMedia(v);
-      v.play().catch(function(){});
-    });
-  }
+  wnLiveMode(false);_wn.lastPlayed=0;
+  v.onseeking=function(){if(gen===_wn.gen)wnSeekGuard();};
+  v.ontimeupdate=function(){if(gen===_wn.gen&&!v.seeking)_wn.lastPlayed=Math.max(_wn.lastPlayed||0,v.currentTime);};
+  wnAttach(gen);
   // Lock screen / Control Center: show name, episode and art. iOS pauses the video when the screen locks; pressing Play there
   // starts the audio-only stream instead (no button needed), and coming back to the page returns to the picture.
   _wn.audioUrl='/api/hls/'+encodeURIComponent(id)+'/'+'audio.m3u8';
@@ -1753,18 +1739,261 @@ function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch){
     navigator.mediaSession.setActionHandler('play',function(){wnRemotePlay();});
     navigator.mediaSession.setActionHandler('pause',function(){wnActive().pause();});
   }}catch(e){}
-  v.onplaying=function(){if(gen===_wn.gen){wnMsg('');wnPosition();}};
+  v.onplaying=function(){if(gen===_wn.gen){wnMsg('');wnPosition();wnPeek();}};
   v.onpause=function(){if(gen===_wn.gen)wnPosition();};
   v.onwaiting=function(){if(gen===_wn.gen&&!_wn.ended)wnState('Buffering\u2026',false);};
   clearInterval(_wn.timer);
   _wn.timer=setInterval(function(){if(gen===_wn.gen)wnTick();},1000);
 }
+// ---- Status bar under the player: the web twin of the app's PlayerStatusBar (docs/WebStreaming.md "Status bar") ----
+function wnInfoFromEl(el){
+  var d=el.dataset,tags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
+  return {title:d.title||'',ep:d.ep||'',synopsis:d.syn||'',tags:tags.slice(0,2),isNew:d.new==='1',poster:d.poster||'',logo:d.logo||'',
+          ch:d.chname||'',num:d.num||'',start:+d.start||0,end:+d.end||0,genre:d.genre||'',dev:d.device||'',el:el};
+}
+// True while the player shows live TV that is not being recorded (the tuner is in use; it has no recording to scrub).
+function wnIsLiveTv(){return !!_wn.liveId;}
+// Live TV that is not being recorded: no scrubbing. Seeking backwards is refused; forward (to the live edge) is fine.
+function wnLiveMode(on){
+  document.querySelector('.wn-stage').classList.toggle('wn-live',on);
+  document.getElementById('wn-time').classList.toggle('wn-live-tl',on);
+}
+function wnSeekGuard(){
+  var v=wnVideo();
+  if(!wnIsLiveTv()||!_wn.peeked)return;
+  if(v.currentTime<_wn.lastPlayed-2){v.currentTime=_wn.lastPlayed;}   // a backward jump (the user dragged the seek bar): put it back
+}
+function wnBarInit(i,startEpoch,endEpoch){
+  _wn.info=i;_wn.peeked=false;_wn.peeking=false;_wn.popPinned=false;_wn.popHover=false;
+  _wn.tp={samples:[],hist:[],obs:null};
+  var bar=document.getElementById('wn-sbar');
+  bar.style.setProperty('--wn-accent',i.genre?gc(i.genre):'transparent');
+  var th=document.getElementById('wn-thumb');
+  th.onerror=function(){if(th.getAttribute('src')!=='/api/icon')th.src='/api/icon';};
+  th.src=i.poster||i.logo||'/api/icon';
+  document.getElementById('wn-s-title').textContent=i.title||'';
+  var tg=document.getElementById('wn-s-tags');tg.textContent='';
+  var tags=(i.isNew?['__new__']:[]).concat(i.tags||[]);
+  tags.forEach(function(f){
+    var sp=document.createElement('span');sp.className='sum-tag';
+    if(f==='__new__'){sp.textContent='NEW';sp.style.cssText='background:#1e8449;color:#fff;font-weight:800;letter-spacing:.07em';}
+    else{sp.textContent=f.toUpperCase();var c=tagBg(f);if(c)sp.style.background=c;}
+    tg.appendChild(sp);
+  });
+  var s=i.start||startEpoch||0,e=i.end||endEpoch||0;
+  var when=s?ft(new Date(s*1000))+(e?' – '+ft(new Date(e*1000)):''):'';
+  var ep=[i.ep||(i.num?'Ch '+i.num+(i.ch?' \u00b7 '+i.ch:''):''),when].filter(Boolean).join(' \u00b7 ');
+  var el=document.getElementById('wn-s-ep');el.textContent=ep;el.title=ep;
+  var sy=document.getElementById('wn-s-syn');sy.textContent=i.synopsis||'';sy.title=i.synopsis||'';sy.style.display=i.synopsis?'':'none';
+  wnNextCards(i);
+  var saved=false;try{saved=localStorage.getItem('wnStatusBar')==='1';}catch(x){}
+  wnSetBar(saved,false);
+  wnProgress();
+  try{
+    if(window.PerformanceObserver){
+      var key='/api/hls/'+encodeURIComponent(_wn.id)+'/';
+      _wn.tp.obs=new PerformanceObserver(function(list){
+        list.getEntries().forEach(function(en){
+          if(en.name.indexOf(key)<0||!/\/seg-\d/.test(en.name))return;
+          _wn.tp.samples.push({t:en.responseEnd,b:en.encodedBodySize||en.transferSize||0});
+        });
+      });
+      _wn.tp.obs.observe({type:'resource'});
+    }
+  }catch(x){_wn.tp.obs=null;}
+}
+function wnBarTeardown(){
+  clearTimeout(_wn.peekTimer);clearTimeout(_wn.popTimer);_wn.peeking=false;
+  if(_wn.tp&&_wn.tp.obs){try{_wn.tp.obs.disconnect();}catch(x){}_wn.tp.obs=null;}
+  wnPopClose();
+  var w=document.getElementById('wn-sbar-wrap');if(w)w.classList.remove('wn-open');
+}
+function wnNextCards(i){
+  var box=document.getElementById('wn-next');box.textContent='';
+  if(!i.el||!i.end)return;
+  var row=i.el.closest('.g-row')||i.el.parentElement;if(!row)return;
+  var list=[].slice.call(row.querySelectorAll('.g-prog')).filter(function(p){return p.dataset.title&&+p.dataset.start>=i.end-60&&(!i.dev||p.dataset.device===i.dev);})
+    .sort(function(a,b){return +a.dataset.start-+b.dataset.start;}).slice(0,4);
+  list.forEach(function(p,n){
+    var c=document.createElement('div');c.className='wn-card';c.style.setProperty('--wn-card',gc(p.dataset.genre));
+    var h=document.createElement('b');h.textContent=(n===0?'NEXT':'LATER')+' · '+ft(new Date(+p.dataset.start*1000));
+    var t=document.createElement('span');t.textContent=p.dataset.title||'';c.title=p.dataset.title||'';
+    c.appendChild(h);c.appendChild(t);box.appendChild(c);
+  });
+}
+function wnSetBar(open,persist){
+  _wn.barOpen=open;
+  document.getElementById('wn-sbar-wrap').classList.toggle('wn-open',open);
+  var b=document.getElementById('wn-info-btn');b.classList.toggle('wn-on',open);b.setAttribute('aria-expanded',open?'true':'false');
+  if(persist){try{localStorage.setItem('wnStatusBar',open?'1':'0');}catch(x){}}
+}
+function wnPulse(){var b=document.getElementById('wn-info-btn');b.classList.remove('wn-pulse');void b.offsetWidth;b.classList.add('wn-pulse');b.onanimationend=function(){b.classList.remove('wn-pulse');};}
+function wnToggleBar(){
+  clearTimeout(_wn.peekTimer);
+  if(_wn.peeking){_wn.peeking=false;wnSetBar(true,true);return;}   // a click during the brief peek keeps the bar open
+  var open=!_wn.barOpen;wnSetBar(open,true);
+  if(!open){wnPopClose();wnPulse();}
+}
+// The first picture opens the bar for 5 s when it is off, then it closes and the (i) pulses, as in the app.
+function wnPeek(){
+  if(_wn.peeked)return;_wn.peeked=true;
+  if(_wn.barOpen)return;
+  _wn.peeking=true;wnSetBar(true,false);
+  _wn.peekTimer=setTimeout(function(){if(!_wn.peeking)return;_wn.peeking=false;wnSetBar(false,false);wnPulse();},5000);
+}
+function wnProgress(){
+  var i=_wn.info,bar=document.getElementById('wn-sbar');
+  var on=!!(i&&wnIsLiveTv()&&i.start&&i.end>i.start);   // like the app: wall-clock progress means something for live TV only
+  bar.classList.toggle('wn-has-prog',on);
+  if(on)document.getElementById('wn-prog-fill').style.width=Math.max(0,Math.min(100,(Date.now()/1000-i.start)/(i.end-i.start)*100))+'%';
+}
+// ---- Stream popover (hover the (i), or click the bar) ----
+function wnPopHover(on){
+  if(!window.matchMedia||!matchMedia('(hover:hover)').matches)return;
+  clearTimeout(_wn.popTimer);
+  if(on){_wn.popHover=true;wnPopOpen();}
+  else _wn.popTimer=setTimeout(function(){_wn.popHover=false;if(!_wn.popPinned)wnPopClose();},250);
+}
+function wnPopToggle(){if(_wn.popPinned){wnPopClose();}else{_wn.popPinned=true;wnPopOpen();}}
+function wnPopOpen(){var p=document.getElementById('wn-pop');p.style.display='block';wnPopRefresh();}
+function wnPopClose(){_wn.popPinned=false;_wn.popHover=false;var p=document.getElementById('wn-pop');if(p)p.style.display='none';}
+function wnTpTick(){
+  var tp=_wn.tp,now=performance.now(),b=0;
+  tp.samples=tp.samples.filter(function(s){return s.t>=now-130000;});
+  tp.samples.forEach(function(s){if(s.t>=now-12000)b+=s.b;});
+  tp.hist.push(b*8/12/1e6);if(tp.hist.length>120)tp.hist.shift();
+}
+// Same rule as the app's ThroughputTracker, on what this browser has downloaded; not judged while paused or well behind live.
+function wnTpState(behind){
+  var h=_wn.tp.hist,v=wnVideo();
+  if(h.length<30||v.paused||behind>20)return 'measuring';
+  var avg=h.reduce(function(a,x){return a+x;},0)/h.length;
+  if(avg<0.5)return 'steady';
+  if(h.slice(-2).every(function(x){return x<avg*0.25;}))return 'stalled';
+  var l3=h.slice(-3).reduce(function(a,x){return a+x;},0)/Math.min(3,h.length);
+  return l3<avg*0.75?'trending':'steady';
+}
+function wnPopRefresh(){
+  var p=document.getElementById('wn-pop');
+  if(!p||p.style.display==='none')return;
+  var v=wnVideo(),i=_wn.info||{},edge=wnLiveEdge(),behind=isNaN(edge)?0:Math.max(0,edge-v.currentTime);
+  var st=wnTpState(behind),h=_wn.tp.hist,cur=h.length?h[h.length-1]:0,avg=h.length?h.reduce(function(a,x){return a+x;},0)/h.length:0;
+  var word,cls;
+  if(_wn.failed||st==='stalled'){word='Poor';cls='wn-poor';}
+  else if(st==='trending'||behind>30){word='Fair';cls='wn-fair';}
+  else if(!v.readyState||st==='measuring'&&!h.some(function(x){return x>0;})){word='Starting';cls='';}
+  else{word='Good';cls='wn-good';}
+  var src=wnIsLiveTv()?'Live TV \u00b7 '+(i.num?'Ch '+i.num+' ':'')+(i.ch||i.title||'tuner')+' \u00b7 tuner in use':'From disk \u00b7 no tuner used';
+  var vw=v.videoWidth,vh=v.videoHeight,cw=Math.round(v.clientWidth),scale='';
+  if(vw&&cw){var pc=Math.round((cw/vw-1)*100);scale=Math.abs(pc)>=3?' ('+Math.abs(pc)+'% '+(pc<0?'smaller':'larger')+')':'';}
+  var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;
+  function kv(a,b){return '<div class="wn-kv"><span>'+hej(a)+'</span><span>'+hej(b)+'</span></div>';}
+  var mx=Math.max(1,Math.max.apply(null,h.length?h:[0])),pts=h.map(function(x,n){return (n/Math.max(1,h.length-1)*120).toFixed(1)+','+(32-x/mx*30).toFixed(1);}).join(' ');
+  var tpOk=!!_wn.tp.obs&&_wn.tp.samples.length>0;
+  p.innerHTML='<h4>Health</h4><div class="wn-hd '+cls+'"><i></i>'+hej(word)+'</div><div class="wn-kv"><span>'+hej(src)+'</span><span></span></div>'+
+    '<h4>Source</h4>'+kv('Stream',wnIsLiveTv()?'Live from the tuner':'Recording in progress')+kv('Position',behind<12?'Live':Math.round(behind)+' s behind live')+
+    '<h4>Video</h4>'+kv('Picture',vw?vw+'×'+vh:'—')+kv('Shown at',cw?cw+'×'+Math.round(v.clientHeight)+scale:'—')+kv('Codecs','H.264 + AAC (converted by the app)')+
+    (q&&q.totalVideoFrames?kv('Dropped frames',q.droppedVideoFrames+' of '+q.totalVideoFrames):'')+
+    '<h4>Throughput to this browser</h4>'+(tpOk?kv('Now',cur.toFixed(1)+' Mbps')+kv('2-min average',avg.toFixed(1)+' Mbps')+kv('State',{steady:'Steady',trending:'Trending down',stalled:'Stalled',measuring:'Measuring'}[st])+
+      '<svg viewBox="0 0 120 34" preserveAspectRatio="none" aria-hidden="true"><polyline points="'+pts+'" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>'
+      :'<div class="wn-kv"><span>Not reported by this browser</span><span></span></div>');
+}
+// (Re)builds the player on the stream. Runs again from wnRecover() after the stream is lost (an app restart ends every
+// session; the restarted app serves a fresh stream, so the old player cannot continue it and is rebuilt instead).
+function wnAttach(gen){
+  _wn.lastPlayed=0;   // a rebuilt stream starts its clock again: forget the position the seek guard remembers
+  var v=wnVideo(),url='/api/hls/'+encodeURIComponent(_wn.id)+'/index.m3u8';
+  if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=url;
+    v.onerror=function(){if(gen===_wn.gen)wnRecover();};
+    v.play().catch(function(){});
+  }else{
+    loadHlsJs(function(ok){
+      if(gen!==_wn.gen)return;
+      if(!ok){wnMsg('This browser cannot play the stream (no HLS support).');wnState('Unavailable',false);return;}
+      var h=new Hls({liveSyncDurationCount:3,maxBufferLength:30,manifestLoadingTimeOut:20000,manifestLoadingMaxRetry:2});
+      _wn.hls=h;
+      h.on(Hls.Events.FRAG_LOADED,function(){_wn.retries=0;});
+      h.on(Hls.Events.ERROR,function(e,d){
+        if(gen!==_wn.gen||!d.fatal)return;
+        if(d.type===Hls.ErrorTypes.MEDIA_ERROR&&_wn.retries<3){_wn.retries++;h.recoverMediaError();}
+        else wnRecover();
+      });
+      h.loadSource(url);h.attachMedia(v);
+      v.play().catch(function(){});
+    });
+  }
+}
+// The stream was lost (fatal error, or the picture has been stuck): rebuild the player every 3 s for up to 90 s, then give up.
+function wnRecover(){
+  if(!_wn.open||_wn.recovering||_wn.failed)return;
+  var gen=_wn.gen;
+  if(!_wn.lostAt)_wn.lostAt=Date.now();
+  if(Date.now()-_wn.lostAt>90000){_wn.lostAt=0;wnFailed();return;}
+  _wn.recovering=true;_wn.stuck=-15;   // after a rebuild the picture gets 30 s to start before the watchdog fires again
+  wnState('Reconnecting\u2026',false);wnMsg('Lost the stream. Reconnecting\u2026');
+  if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
+  setTimeout(function(){
+    _wn.recovering=false;
+    if(gen!==_wn.gen)return;
+    var v=wnVideo();v.removeAttribute('src');try{v.load();}catch(e){}
+    wnAttach(gen);
+  },3000);
+}
+// ---- Clock timeline: wall-clock time of what is on screen, against the show's scheduled start and end ----
+// The stream runs about 17 s behind the broadcast (hold-back + segments + encoder), so the live edge of the player is
+// "now minus WN_LATENCY"; any other position is that much earlier. The server's clock comes from a response header so a
+// PC with a wrong clock still shows the right times.
+var WN_LATENCY=17;
+function wnClockSkew(){
+  _wn.skew=0;
+  try{fetch('/api/hls-status',{cache:'no-store'}).then(function(r){var d=r.headers.get('Date');if(d){var t=Date.parse(d);if(t)_wn.skew=t-Date.now();}}).catch(function(){});}catch(e){}
+}
+function wnNowSec(){return (Date.now()+(_wn.skew||0))/1000;}
+function wnClock(sec,withSeconds){
+  var d=new Date(sec*1000),h=d.getHours(),m=('0'+d.getMinutes()).slice(-2),s=('0'+d.getSeconds()).slice(-2),ap=h>=12?' PM':' AM';
+  h=h%12||12;return h+':'+m+(withSeconds?':'+s:'')+ap;
+}
+// Wall-clock second of the picture on screen, or NaN when it cannot be known (a finished recording, nothing playing yet).
+function wnWallAt(t){
+  var edge=wnLiveEdge();
+  if(isNaN(edge)||!wnIsLive())return NaN;
+  return wnNowSec()-WN_LATENCY-(edge-t);
+}
+function wnTimeline(){
+  var box=document.getElementById('wn-time'),v=wnVideo();
+  var wall=wnWallAt(v.currentTime);
+  if(isNaN(wall)){box.style.display='none';return;}
+  box.style.display='flex';
+  var s=_wn.tlStart,e=_wn.tlEnd,have=s&&e>s;
+  document.getElementById('wn-t-start').textContent=have?wnClock(s,false):'';
+  document.getElementById('wn-t-end').textContent=have?wnClock(e,false):'';
+  document.getElementById('wn-t-now').textContent=wnClock(wall,true);
+  var bar=document.getElementById('wn-t-bar');bar.style.visibility=have?'':'hidden';
+  if(!have)return;
+  function pct(x){return Math.max(0,Math.min(100,(x-s)/(e-s)*100));}
+  var p=pct(wall);
+  document.getElementById('wn-t-pos').style.left=p+'%';
+  document.getElementById('wn-t-fill').style.width=p+'%';
+  document.getElementById('wn-t-live').style.left=pct(wnNowSec()-WN_LATENCY)+'%';
+}
+// Click on the timeline: jump to that clock time, kept inside what the player can reach (the 30-minute window).
+function wnTimeSeek(ev){
+  var s=_wn.tlStart,e=_wn.tlEnd,v=wnVideo(),edge=wnLiveEdge();
+  if(wnIsLiveTv()||!(s&&e>s)||isNaN(edge))return;   // live TV that is not recorded cannot be scrubbed
+  var r=document.getElementById('wn-t-bar').getBoundingClientRect();
+  var target=s+Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width))*(e-s);
+  var t=edge-((wnNowSec()-WN_LATENCY)-target);
+  var lo=v.seekable&&v.seekable.length?v.seekable.start(0):0;
+  v.currentTime=Math.max(lo,Math.min(edge,t));
+}
 function wnFailed(){
   var g=_wn.gen;_wn.failed=true;_streamOn=null;
   if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
-  streamingEnabled(function(on){
+  streamingEnabled(function(on,unreachable){
     if(g!==_wn.gen)return;   // the player was closed or reopened while we asked
     wnState('Unavailable',false);
+    if(unreachable){wnMsg('Lost contact with the app (it may be restarting). Close this window and try again in a moment.');return;}
     wnMsg(on?'The stream could not be started. The recording may have no file yet, or the app is busy. Close this window and try again.'
             :'Web streaming is turned off. Turn it on in hdhr_VCR Settings \u2192 Web Streaming.');
   });
@@ -1810,12 +2039,18 @@ function wnArtwork(src,cb){
     }catch(e){cb('');}
   };
   img.onerror=function(){cb('');};
-  img.src='/api/art?u='+encodeURIComponent(src);
+  img.src=src.charAt(0)==='/'?src:'/api/art?u='+encodeURIComponent(src);   // an app path (the icon) is same-origin; posters go through the app
 }
 function wnTick(){
   if(_wn.failed)return;
-  if(++_wn.posTick%5===0)wnPosition();
+  if(++_wn.posTick%5===0){wnPosition();wnProgress();}
+  wnTimeline();
+  wnTpTick();wnPopRefresh();
   var v=wnVideo();
+  if(_wn.peeked&&!v.paused&&!_wn.recovering&&!_wn.ended){   // has played once and should be playing: time must move
+    if(v.currentTime===_wn.lastT){if(++_wn.stuck>=15){_wn.stuck=0;wnRecover();}}
+    else{_wn.stuck=0;_wn.lastT=v.currentTime;_wn.lostAt=0;}
+  }
   if(!v.currentTime&&v.paused&&!v.readyState)return;
   var live=wnIsLive();
   if(!live&&v.readyState>0&&_wn.hls&&_wn.hls.levels&&_wn.hls.levels.length&&_wn.hls.levels[0].details){_wn.ended=true;}
@@ -1860,9 +2095,10 @@ function closeWatchNow(){
     try{fetch('/api/live-stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lid}),keepalive:true});}catch(e){}}
   _wn.open=false;_wn.gen++;
   clearInterval(_wn.timer);_wn.timer=null;
+  wnBarTeardown();document.getElementById('wn-time').style.display='none';
   if(_wn.hls){try{_wn.hls.destroy();}catch(e){}_wn.hls=null;}
   var v=wnVideo();
-  v.onerror=v.onplaying=v.onwaiting=v.onpause=null;
+  v.onerror=v.onplaying=v.onwaiting=v.onpause=v.onseeking=v.ontimeupdate=null;wnLiveMode(false);
   try{if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);}}catch(e){}
   wnStopAudio();
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
@@ -1879,9 +2115,10 @@ document.addEventListener('keydown',function(e){
   var v=wnVideo(),k=e.key;
   // A focused button keeps Space/Enter, and Tab / function keys keep working: only keys the player uses are taken.
   if((k===' '||k==='Enter')&&e.target&&e.target.tagName==='BUTTON')return;
-  if(k==='Escape'){if(!document.fullscreenElement)closeWatchNow();}
+  if(k==='Escape'){if(_wn.popPinned||_wn.popHover){wnPopClose();}else if(!document.fullscreenElement)closeWatchNow();}
+  else if(k==='i'||k==='I'){wnToggleBar();}
   else if(k===' '||k==='k'){if(v.paused)v.play().catch(function(){});else v.pause();}
-  else if(k==='ArrowLeft'){v.currentTime=Math.max(0,v.currentTime-10);}
+  else if(k==='ArrowLeft'){if(!wnIsLiveTv())v.currentTime=Math.max(0,v.currentTime-10);}
   else if(k==='ArrowRight'){var edge=wnLiveEdge();v.currentTime=isNaN(edge)?v.currentTime+10:Math.min(edge,v.currentTime+10);}
   else if(k==='l'||k==='L'){watchNowGoLive();}
   else if(k==='m'||k==='M'){v.muted=!v.muted;}
@@ -2072,62 +2309,20 @@ function toggleFav(evt,btn){
 // Air only (watch-only): clicking a block of an air-only channel fills the summary panel like any other block, with a Watch Now! button when it is the block in
 // progress and web streaming is on. Watching starts live TV in the Watch Now! player (the app spools the tuner stream and converts it to HLS like a recording,
 // docs/WebStreaming.md "Live TV"). There is no Record button: these channels are never recorded.
-function showAirInfo(el){
-  var d=el.dataset;
-  document.querySelectorAll('.g-prog.g-sel,.g-air-blk.g-sel').forEach(function(b){b.classList.remove('g-sel');});
-  el.classList.add('g-sel');
-  _d=d.dev;_n=d.ch;_s=+d.start;_e=+d.end;_ser='';_genre='';_title=d.gname||'';_poster='';_logo='';_chname=d.gname||'';
-  document.getElementById('sum-ph').style.display='none';
-  var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background='color-mix(in srgb,var(--air) 22%,var(--s1))';
-  var li=document.getElementById('sum-logo');li.src='/api/icon';li.style.display='inline';
-  document.getElementById('sum-title').textContent=d.title||d.gname||('Channel '+d.ch);
-  ['sum-genre','sum-date','sum-poster'].forEach(function(i){document.getElementById(i).style.display='none';});
-  so('sum-ep',d.ep||'');document.getElementById('sum-ep').title=d.ep||'';
-  var sy=document.getElementById('sum-syn');if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
-  document.getElementById('sum-ct').textContent='Ch '+d.ch+' · '+(d.gname||'')+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
-  var gr=+d.gread;   // when this multiplex's guide was last read to the end (0 = never)
-  var grText=gr?'Guide read '+new Date(gr*1000).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Guide not read yet';
-  ['sum-btn','sum-edit','sum-del','sum-bonus-star'].forEach(function(i){document.getElementById(i).style.display='none';});
-  var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
-  watch.style.display='none';note.style.color='var(--t2)';
-  var rb=document.getElementById('sum-btn');   // the Record button slot becomes "Refresh guide" here: reads just this multiplex off the air
-  if(d.rf&&canScanMultiplex()){rb.textContent='Refresh this multiplex\'s guide';rb.title='Scans RF '+d.rf+' (about a minute, one idle tuner) and replaces the saved air guide with it';rb.style.background='var(--air)';rb.style.color='#fff';rb.style.display='inline-block';rb.disabled=false;rb.onclick=function(){airRefresh(el);};}
-  var nowTs=Math.floor(Date.now()/1000);
-  if(_s<=nowTs&&_e>nowTs){
-    note.textContent='Seen on the air, not in your tuner\'s lineup · watch only · '+grText;note.style.display='inline';
-    streamingEnabled(function(on){
-      if(document.querySelector('.g-air-blk.g-sel')!==el)return;
-      if(on)watch.style.display='inline-block';else{note.textContent='Turn on Web Streaming in Settings to watch live';}
-    });
-  }else{note.textContent='Seen on the air, not in your tuner\'s lineup · only what is on now can be watched · '+grText;note.style.display='inline';}
-}
-// Only the app's own embedded guide (a WKWebView with the scanMultiplex bridge) can ask for a scan; a LAN browser has no such bridge and the server has no scan route.
-function canScanMultiplex(){return !!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.scanMultiplex);}
-function airRefresh(el){
-  var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');
-  rb.disabled=true;note.style.color='var(--t2)';note.style.display='inline';note.textContent='Asking the app to scan RF '+el.dataset.rf+'… the guide updates here when it is done';
-  try{window.webkit.messageHandlers.scanMultiplex.postMessage({rf:+el.dataset.rf,deviceId:el.dataset.dev});}catch(e){note.textContent='Could not reach the app';rb.disabled=false;}
-}
-// The app's answer to airRefresh (evaluated by AddShowView): a scan that could not start leaves the button usable again.
-function airScanStatus(s){
-  var note=document.getElementById('sum-note'),rb=document.getElementById('sum-btn');
-  if(!note||!rb)return;
-  note.textContent=s;
-  if(/already|No tuner|off/.test(s))rb.disabled=false;
-}
-function airWatch(el){
-  var note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
+// Live TV for a tile that is airing now and not being recorded: the app tunes the channel and spools it for the player (Watch Now!).
+function liveWatch(el){
+  var d=el.dataset,note=document.getElementById('sum-note'),watch=document.getElementById('sum-watch');
   function fail(msg){note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';watch.disabled=false;}
-  note.style.color='var(--t2)';note.textContent='Tuning…';note.style.display='inline';watch.disabled=true;
-  postJSON('/api/live-start',{deviceId:el.dataset.dev,guideNumber:el.dataset.ch}).then(function(r){return r.json();}).then(function(d){
+  note.style.color='var(--t2)';note.textContent='Tuning\u2026';note.style.display='inline';watch.disabled=true;
+  postJSON('/api/live-start',{deviceId:d.device,guideNumber:d.num}).then(function(r){return r.json();}).then(function(j){
     watch.disabled=false;
-    if(d&&d.ok){note.textContent='Watch only · cannot be recorded';openWatchNow(d.id,d.title||el.dataset.ch,'Live · '+el.dataset.ch,'','',0,0);_wn.liveId=d.id;}
-    else fail((d&&d.error)||'Could not start');
+    if(j&&j.ok){
+      note.style.display='none';
+      var inf=wnInfoFromEl(el);
+      openWatchNow(j.id,inf.title||j.title||d.chname||'',document.getElementById('sum-ct').textContent,inf.ep,_poster||_logo||'',+d.start,+d.end,inf);_wn.liveId=j.id;wnLiveMode(true);
+    }else fail((j&&j.error)||'Could not start');
   }).catch(function(){fail('Could not reach the app');});
 }
-document.addEventListener('keydown',function(e){
-  if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('g-air-blk')){e.preventDefault();showAirInfo(e.target);}
-});
 // Rebuilds the genre filter from whatever's actually on the currently-viewed tuner's guide right
 // now (scoped by data-device to curDev, so switching tuners shows that tuner's own genres — not a
 // stale union from whichever tuner happened to be selected at page load). Re-run after every guide
