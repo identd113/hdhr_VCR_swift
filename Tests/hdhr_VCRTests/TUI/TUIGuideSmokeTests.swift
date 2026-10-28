@@ -259,12 +259,36 @@ private final class PTYSession: @unchecked Sendable {
 
     // MARK: screen model
 
-    /// Lines of the most recent *complete* frame (ANSI stripped, blank lines dropped). Frames are written atomically between
-    /// the synchronized-output markers (ESC[?2026h … ESC[?2026l), so a half-written frame is never returned.
+    /// The screen as the terminal would show it now (ANSI stripped, blank lines dropped). The TUI sends either a whole frame
+    /// (cursor home, every line, erase below) or just the changed lines (`ESC[row;1H<line>ESC[K`), each update between the
+    /// synchronized-output markers (ESC[?2026h … ESC[?2026l) so a half-written one is never applied. Updates are applied in order
+    /// to a model of the screen, the way a terminal does, so the result is the same whichever kind was sent.
     func lastFrame() -> [String] {
-        let frames = output.components(separatedBy: "\u{1B}[?2026h").filter { $0.contains("\u{1B}[?2026l") }
-        guard let f = frames.last else { return [] }
-        return stripANSI(f).components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let esc = "\u{1B}"
+        let token = try! NSRegularExpression(pattern: "\u{1B}\\[([0-9;?]*)([A-Za-z])|\n|[^\u{1B}\n]+")
+        var screen: [String] = []
+        for part in output.components(separatedBy: esc + "[?2026h") where part.contains(esc + "[?2026l") {
+            let body = part.components(separatedBy: esc + "[?2026l")[0]
+            var row = 0, cur = "", lineWritten = false
+            for m in token.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
+                let text = String(body[Range(m.range, in: body)!])
+                if text == "\n" { row += 1; cur = ""; lineWritten = false; continue }
+                guard text.hasPrefix(esc), let finalRange = Range(m.range(at: 2), in: body) else { cur += text; continue }
+                let params = Range(m.range(at: 1), in: body).map { String(body[$0]) } ?? ""
+                switch body[finalRange] {
+                case "H":   // cursor position: ESC[H = home, ESC[r;cH = row r
+                    row = max(0, (Int(params.split(separator: ";").first ?? "1") ?? 1) - 1); cur = ""; lineWritten = false
+                case "K":   // erase to end of line: the text written so far is this row's content
+                    while screen.count <= row { screen.append("") }
+                    screen[row] = cur; lineWritten = true
+                case "J":   // erase to end of screen: keep the row just written, drop everything after it
+                    screen = Array(screen.prefix(lineWritten ? row + 1 : row))
+                case "m": cur += text   // colour: kept in the line, stripped below
+                default: break
+                }
+            }
+        }
+        return screen.map { stripANSI($0).trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
     /// The channel the grid's ">" gutter marker is on, e.g. ("5.3", "CH11").
@@ -390,6 +414,37 @@ struct TUIGuideSmokeTests {
         #expect(tty.waitFor("\u{2713}"), "status line should confirm the toggle (✓), got: \(stripANSI(tty.output).suffix(200))")
         #expect(post?.body.contains("\"guideNumber\":\"5.1\"") == true)
         #expect(post?.body.contains("AABBCCDD") == true)
+        tty.send("q"); _ = tty.waitForExit()
+    }
+
+    @Test func rKeyRepaintsTheWholeScreen() throws {
+        let stub = StubGuideServer(guideJSON: guideJSON())
+        try stub.start(); defer { stub.stop() }
+        guard let tty = PTYSession(port: stub.port) else { return }
+        #expect(tty.waitFor("KFOO"))
+        tty.waitIdle()
+        let before = tty.output.utf8.count
+        tty.send("r")
+        #expect(tty.waitFor("Redrawn."), "the status line should say so")
+        let after = String(decoding: Array(tty.output.utf8.dropFirst(before)), as: UTF8.self)
+        #expect(after.contains("\u{1B}[?2026h\u{1B}[H"), "r should send the whole frame (cursor home first), not just changed lines")
+        tty.send("q"); _ = tty.waitForExit()
+    }
+
+    @Test func anArrowKeySendsOnlyTheLinesThatChanged() throws {
+        let stub = StubGuideServer(guideJSON: guideJSON())
+        try stub.start(); defer { stub.stop() }
+        guard let tty = PTYSession(port: stub.port) else { return }
+        #expect(tty.waitFor("KBAR"))
+        tty.waitIdle()
+        let first = tty.output.utf8.count               // the first frame is a full repaint
+        tty.send(K.down)
+        tty.waitIdle()
+        let delta = String(decoding: Array(tty.output.utf8.dropFirst(first)), as: UTF8.self)
+        #expect(!delta.isEmpty)
+        #expect(!delta.contains("\u{1B}[H"), "a keypress should not repaint from the top")
+        #expect(delta.contains(";1H"), "changed lines are positioned by row")
+        #expect(delta.utf8.count < first / 2, "expected well under half a full frame, got \(delta.utf8.count) of \(first) bytes")
         tty.send("q"); _ = tty.waitForExit()
     }
 

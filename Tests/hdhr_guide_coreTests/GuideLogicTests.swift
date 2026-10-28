@@ -376,3 +376,49 @@ struct PastTimeTests {
         #expect(searchShows(query: "macgyver", in: [ch], limit: 8, now: 400).isEmpty)
     }
 }
+
+@Suite("frameUpdate — only the lines that changed are sent")
+struct FrameUpdateTests {
+    private let esc = "\u{1B}"
+    private let frame = ["header", "row A", "row B", "row C"]
+
+    @Test func withoutAPreviousFrameItRepaintsEverythingExactlyAsBefore() {
+        #expect(frameUpdate(previous: nil, next: frame) ==
+                "\(esc)[?2026h\(esc)[H" + "header\(esc)[K\nrow A\(esc)[K\nrow B\(esc)[K\nrow C" + "\(esc)[K\(esc)[J\(esc)[?2026l")
+    }
+
+    @Test func anIdenticalFrameSendsNothing() {
+        #expect(frameUpdate(previous: frame, next: frame) == "")
+    }
+
+    @Test func onlyChangedLinesAreSentEachAtItsOwnRow() {
+        var next = frame; next[1] = "row A!"; next[3] = "row C!"
+        let out = frameUpdate(previous: frame, next: next)
+        #expect(out == "\(esc)[?2026h\(esc)[2;1Hrow A!\(esc)[K\(esc)[4;1Hrow C!\(esc)[K\(esc)[?2026l")
+        #expect(!out.contains("header") && !out.contains("row B"))
+    }
+
+    @Test func aMovedSelectionRepaintsBothTheOldAndTheNewPosition() {
+        // a box drawn around row 2, then around row 3: the old box lines and the new ones all differ
+        let before = ["top", "+--+", "sel", "+--+", "other", "end"]
+        let after  = ["top", "other0", "+--+", "sel", "+--+", "end"]
+        let out = frameUpdate(previous: before, next: after)
+        for row in [2, 3, 4, 5] { #expect(out.contains("\(esc)[\(row);1H")) }
+        #expect(!out.contains("\(esc)[1;1H") && !out.contains("\(esc)[6;1H"))
+    }
+
+    @Test func aShorterFrameClearsWhatIsBelowIt() {
+        let out = frameUpdate(previous: frame, next: Array(frame.prefix(2)))
+        #expect(out == "\(esc)[?2026h\(esc)[3;1H\(esc)[J\(esc)[?2026l")
+    }
+
+    @Test func aLongerFrameSendsTheNewLines() {
+        let out = frameUpdate(previous: Array(frame.prefix(2)), next: frame)
+        #expect(out == "\(esc)[?2026h\(esc)[3;1Hrow B\(esc)[K\(esc)[4;1Hrow C\(esc)[K\(esc)[?2026l")
+    }
+
+    @Test func anEmptyPreviousOrNextFallsBackToAFullRepaint() {
+        #expect(frameUpdate(previous: [], next: frame).hasPrefix("\(esc)[?2026h\(esc)[H"))
+        #expect(frameUpdate(previous: frame, next: []).hasPrefix("\(esc)[?2026h\(esc)[H"))
+    }
+}

@@ -16,6 +16,7 @@ public let tuiShortcuts: [TUIShortcut] = [
     TUIShortcut(keys: "[  ]",        description: "Page back / forward in time"),
     TUIShortcut(keys: "Tab",         description: "Switch tuner"),
     TUIShortcut(keys: "f",           description: "Toggle favorite channel"),
+    TUIShortcut(keys: "r",           description: "Redraw the whole screen (if it looks garbled)"),
     TUIShortcut(keys: "/",           description: "Search shows, or #5.1 to jump to a channel"),
     TUIShortcut(keys: "Enter",       description: "Schedule / manage the selected program"),
     TUIShortcut(keys: "1 2 3 4",     description: "Once / Weekly / Series (channel) / Series (tuner)"),

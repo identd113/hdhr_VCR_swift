@@ -24,6 +24,7 @@ enum Terminal {
     private nonisolated(unsafe) static var exitHookInstalled = false
 
     static func enterRawScreen() {
+        lastLines = nil   // (re)entering the screen, e.g. after Ctrl-Z: whatever was on it is unknown
         // Safety net for any exit path that skips the normal teardown (exit() from deep in a handler, a fatal
         // signal path that still runs atexit): a no-op unless raw mode is still active.
         if !exitHookInstalled { exitHookInstalled = true; atexit { Terminal.leaveRawScreen() } }
@@ -72,9 +73,22 @@ enum Terminal {
     // deliver to the far end in one piece — so without this, a terminal that repaints as bytes
     // arrive can flash a partial frame (e.g. just the header line) before the rest lands. A
     // terminal that doesn't recognize the mode just ignores it — safe to send unconditionally.
-    static func writeFrame(_ body: String) {
-        let cleared = body.replacingOccurrences(of: "\n", with: "\u{1B}[K\n")
-        write("\u{1B}[?2026h\u{1B}[H" + cleared + "\u{1B}[K\u{1B}[J\u{1B}[?2026l")
+    // Only the lines that changed since the last frame are sent (`frameUpdate`, hdhr_guide_core): a keypress is ~1-3 KB instead of
+    // ~14 KB. The whole frame is sent when `full` is set, on the first frame, when the terminal size changed, and after
+    // `invalidateFrame()` (resume after Ctrl-Z, the periodic refresh), so the screen cannot stay out of step with what we think it shows.
+    private nonisolated(unsafe) static var lastLines: [String]? = nil
+    private nonisolated(unsafe) static var lastSize = (cols: 0, rows: 0)
+
+    static func invalidateFrame() { lastLines = nil }
+
+    static func writeFrame(_ body: String, full: Bool = false) {
+        let lines = body.components(separatedBy: "\n")
+        let now = size()
+        let sameSize = now.cols == lastSize.cols && now.rows == lastSize.rows
+        let out = frameUpdate(previous: (full || !sameSize) ? nil : lastLines, next: lines)
+        lastLines = lines
+        lastSize = now
+        if !out.isEmpty { write(out) }
     }
 
     static func size() -> (cols: Int, rows: Int) {

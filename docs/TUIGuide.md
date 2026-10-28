@@ -222,6 +222,8 @@ Like the `SIGINT`/`SIGTERM` handlers, it only sets a flag — a signal handler c
 arbitrary Swift code (`render()` included) directly. Verified via a real pty: resizing mid-session
 and sending `SIGWINCH` updates the header's own `{cols}x{rows}` readout with no keypress needed.
 
+**Only the changed lines are sent (2026-10-28).** A full frame is ~14 KB at 200×50 (~31 KB at 300×70), but one arrow key changes about 11 of the 51 lines (the summary panel at the top, the selection box's two border lines, the row now inside it and its neighbours), so over ssh, a VPN or Screen Sharing every keypress was repainting ~90% unchanged text. `Terminal.writeFrame(_:full:)` now compares each line with the last frame it sent (`frameUpdate(previous:next:)`, pure, in `hdhr_guide_core/FrameDiff.swift`) and writes only the changed ones, each placed with `ESC[row;1H` and followed by `ESC[K`, inside the same `ESC[?2026h … l` wrapper; a shorter frame clears below itself with `ESC[row;1H ESC[J`; an identical frame writes nothing. Lines that moved (the box borders above and below the selection) simply count as changed. The **whole frame** is still sent (same bytes as before) on the first frame, whenever the terminal size changed, after Ctrl-Z/resume (`enterRawScreen` forgets the last frame), on every 20 s poll refresh (`Terminal.invalidateFrame()`, so a screen that drifted out of step heals itself), for the "terminal too narrow" message, and on the **`r`** key. Measured on the live guide: keypress to first redraw byte 3–4 ms locally (the computing was never slow). The smoke-test harness (`PTYSession.lastFrame()`) now applies updates to a small screen model the way a terminal does; tests `rKeyRepaintsTheWholeScreen` and `anArrowKeySendsOnlyTheLinesThatChanged` cover both paths.
+
 Every redraw (a keypress, a poll tick) goes through `Terminal.writeFrame(_:)`, not a full-screen
 clear — it homes the cursor (`\u{1B}[H`), overwrites each line in place with a trailing
 `\u{1B}[K` (erase-to-end-of-line, so a shorter new line doesn't leave a stale tail from a longer
@@ -358,6 +360,7 @@ Table entries below name the physical keys; the footer's own on-screen hint spel
 | `←` / `→` | Move the selected program within that channel — at the first/last entry, pages the shared timeline viewport instead of stopping, so holding the key scrolls continuously across the whole grid to later/earlier times (`moveEntry(_:)`, `main.swift`) |
 | `[` / `]` | Page the visible time window by one screen-width directly, without needing to reach a channel's edge first |
 | `f` | Toggle favorite for the selected channel (`POST /api/toggle-favorite`, same endpoint the web guide's star buttons use) |
+| `r` | Redraw the whole screen (normal mode and the schedule screen; in search it is just a letter). For a garbled terminal or a bad ssh hop; sets the status line to "Redrawn." |
 | `/` | Enter search / channel-jump mode (`#5.1` jumps to a channel number; anything else searches show titles) — see "Search / channel-jump" below |
 | `?` | Shortcuts card (`Mode.help`) — bordered box over the dimmed grid listing every key (`tuiShortcuts`, `hdhr_guide_core/Shortcuts.swift`); any key closes it |
 | `Tab` | Switch to the next tuner |

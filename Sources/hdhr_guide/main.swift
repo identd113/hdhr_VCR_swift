@@ -542,6 +542,7 @@ func handle(_ key: Key) {
     if mode == .recordSummary {
         let isScheduled = currentEntry()?.entry.isScheduled ?? false
         switch key {
+        case .char(let c) where c == "r" || c == "R": Terminal.invalidateFrame(); statusMsg = "Redrawn."   // repaint the whole screen
         case .char(let c) where isScheduled && (c == "d" || c == "D"): confirmDelete()
         case .char(let c) where !isScheduled && "1234".contains(c): confirmRecord(c)
         case .char(let c) where !isScheduled && (c == "n" || c == "N"): pendingNewOnly.toggle()
@@ -637,6 +638,7 @@ func handle(_ key: Key) {
     case .char("["): pageTime(-1)
     case .char("]"): pageTime(1)
     case .char("f"), .char("F"): toggleFavorite()
+    case .char("r"), .char("R"): Terminal.invalidateFrame(); statusMsg = "Redrawn."   // repaint the whole screen (a garbled terminal, a bad ssh hop)
     case .char("/"): beginSearch()
     case .tab: switchDevice()
     case .enter:
@@ -682,7 +684,7 @@ func renderSummaryScreen() {
     let (cols, _) = Terminal.size()
     var out = ""
 
-    guard let (ch, e) = currentEntry() else { Terminal.writeFrame(out); return }
+    guard let (ch, e) = currentEntry() else { Terminal.writeFrame(out, full: true); return }
 
     let bg = genreBackground(e.genre)
     let titleColor = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m").color
@@ -921,7 +923,7 @@ func render() {
     // grid at all below that width, rather than rendering one that's guaranteed to overflow.
     guard cols >= channelColWidth + slotWidth else {
         let msg = "Terminal too narrow for the guide grid (need >= \(channelColWidth + slotWidth) cols, have \(cols))."
-        Terminal.writeFrame(truncate(msg, max(1, cols)))
+        Terminal.writeFrame(truncate(msg, max(1, cols)), full: true)
         return
     }
     let vc = visibleCols()
@@ -1201,7 +1203,7 @@ func render() {
             hint = "/\(searchQuery)_  ^v show \(searchHi + 1)/\(searchResults.count)\(airingPart)  Enter/Esc clear"
         }
     } else {
-        hint = "^v channel  <> show  [] page  f fav  / search  Enter record  Tab tuner  ? keys  q quit"
+        hint = "^v channel  <> show  [] page  f fav  r redraw  / search  Enter record  Tab tuner  ? keys  q quit"
     }
     out += dim + truncate(hint, cols) + reset + "\n"
     // statusMsg embeds the show's own title (e.g. "✓ Scheduled: <title>") — unbounded length,
@@ -1285,6 +1287,7 @@ while !interrupted && !Terminal.stdinClosed {
             statusMsg = "\u{26A0} web server unreachable - showing last known data."
         }
         lastPoll = Date()
+        Terminal.invalidateFrame()   // the periodic refresh repaints everything, so a screen that drifted out of step heals
         render()
     }
 }
