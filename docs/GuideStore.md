@@ -47,6 +47,7 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 func load(for device: HDHRDevice, hours: Int, useXML: Bool = false, maxCacheAge: TimeInterval? = nil)    // a second caller for a device whose load is in flight JOINS it and gets its real result (no more "false" = spurious failure; `inFlightLoads`); fetch + index one device; useXML routes to XMLTV endpoint if DeviceAuth present; maxCacheAge (nil = always network) lets a recent on-disk copy stand in — see "On-disk guide cache"
 func loadAll(devices: [HDHRDevice], hours: Int, useXML: Bool = false, maxCacheAge: TimeInterval? = nil)  // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
+func setSupplement(deviceId: String, channels: [GuideChannel])   // extra channels the device's own guide lacks (the OTA-only ones); re-added by every reload; never replaces a channel the guide already has
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
 func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferUnrecorded: ((GuideEntry) -> Bool)?, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferUnrecorded: ((GuideEntry) -> Bool)?, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
@@ -104,6 +105,10 @@ A SeriesID(All) show can have candidates airing on multiple channels of one devi
 `AppState.resolveSeriesAir` and `AppState.scheduleNextAir` — the two places that actually decide which channel a SeriesID show records — pass `AppState.preferUnrecordedEpisode(for:)` (wraps the same on-disk check `duplicateEpisodeTag(title:episodeTag:baseDir:)` uses at record time, so this can never disagree with whether the episode would actually be skipped as a duplicate; returns `nil` — no preference — when `show_ignore_duplicate_once` is set) and `AppState.isFavoriteChannel(deviceId:channelNum:)` (looks up `LineupEntry.isFavorite` in `lineups`) as these two closures. Other `nextEpisode` callers (`nextGuideEpisode(for:)`, the menu's scheduled-entry lookup) are display-only and don't pass either — they don't decide what records, so an incidental tie there doesn't change behavior.
 
 ---
+
+## Supplement: channels the device's guide lacks (2026-10-28)
+
+`setSupplement(deviceId:channels:)` stores extra `GuideChannel`s for a device (`AppState.supplementGuideWithAirOnly`: the over-the-air channels the tuner's lineup lacks, their saved listings tagged with the genre "Over the Air"). They are kept in `supplementByDevice`, separate from the fetched guide, and `applyIndex` adds them to every freshly indexed guide (skipping a channel number the fetched guide already has), so a guide reload, a disk-cache load or an OTA fallback never drops them. Called with a guide already loaded it re-indexes that device at once (the previous supplement's channels removed first); called before any guide has loaded it just stores them. After indexing they are ordinary channels for every query (`channels`, `entries`, `currentEntryByTitle`, ...); they carry no SeriesID, so the series indexes are untouched. Tests: `OTAOnlyMergeTests`. See `docs/WebServer.md` "OTA-only channels are ordinary channels".
 
 ## Entry Stamping
 

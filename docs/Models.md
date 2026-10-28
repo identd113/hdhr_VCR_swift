@@ -208,6 +208,10 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 ---
 
+## LineupEntry Notable Fields
+
+`LineupEntry.URL` is the stream address the recorder and player use. A tuner's own channels use `http://<ip>:5004/auto/v<number>`; a channel only the over-the-air scan found (not in the tuner's lineup) is merged into `lineups[device]` tuned by frequency and program, `…/auto/ch<Hz>-<program>`, and `LineupEntry.isAirTuned` (true when the address contains `/auto/ch`) recognises it. The address is rebuilt from the tuner's current IP and the latest saved scan each time the lineup is stored, so a recording of one stores it in `show_url` like any other and the IP-change refresh in `AppState` follows it. See `docs/WebServer.md` "OTA-only channels are ordinary channels".
+
 ## ManagedGuideMatcher
 
 `struct ManagedGuideMatcher: Equatable` in `Models.swift` is the **single source of truth** for managed-show identification *and* ownership. Used by WebServer to flag managed shows in the guide HTML and to embed the owning show's config for the edit modal. Callers pass `activeManagedShows` once at construction; then call `owner(for:)` per block (`isManaged(entry:)` is a thin `owner(for:) != nil` wrapper kept for call sites that only need the boolean).

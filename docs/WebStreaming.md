@@ -60,7 +60,7 @@ A 1080i recording was written to disk at ~16 Mb/s while a follower re-opened it 
 - A single read of the finished file over the same span gave 2811 frames (the follower is not missing any).
 - Audio blocks arrive in fixed ~0.17 s buffers (8192 samples at 48 kHz), so the 0.17 s "max gap" is one block, not a hole.
 
-So following a growing recording in passes is sound. Keeping the last 1.5 s unread per pass avoids a half-written tail at the cost of ~1.5 s added delay.
+So following a growing recording in passes is sound. Keeping the last 1.5 s unread per pass avoids a half-written tail at the cost of ~1.5 s added delay (1.0 s since 2026-10-28; see "Start-up time").
 
 ## Browser playback (2026-10-19)
 
@@ -99,7 +99,7 @@ Stalls found by this test (neither shows up with the 6 s synthetic file, both wi
 1. The writer holds one track back until the other has caught up. A loop that insisted on offering the earlier-timestamp track waited forever while the writer waited for the other one (video "not ready", audio never offered). Now it offers whichever track the writer is ready for and waits only when neither is, for a bounded time, resuming on the next pass.
 2. A recording whose audio ends before its video (or lags it) left the writer holding the video back at the end: the final pass now finishes audio first, then drains the video. Regression test `finishesWhenAudioEndsBeforeVideo` (30 s timeout; fails on the old code).
 
-Also found: a writer that has failed never becomes ready again, so every pass would wait for nothing; the follower now checks the writer's status and reports the error. Latency is ~15–18 s behind the recording (hold-back + 3 s pass interval + 4 s segments + encoder buffering); tuning is still to do.
+Also found: a writer that has failed never becomes ready again, so every pass would wait for nothing; the follower now checks the writer's status and reports the error. Latency was ~15–18 s behind the recording (hold-back + 3 s pass interval + 4 s segments + encoder buffering); tuned on 2026-10-28 (2 s segments, 1 s passes, 1.0 s hold-back: ~10–15 s, see "Start-up time").
 
 ## Test log (2026-10-19/20, Mini M2 + laptop M4, Chrome on the laptop, real tuner recordings)
 

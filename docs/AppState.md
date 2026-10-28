@@ -293,3 +293,12 @@ Fired by the "Relaunch Now" action on the VLC-detected notification above; also 
 
 - **No recordings** — same as `quit()`'s first branch, then opens a new instance before terminating.
 - **Recordings in progress** — a lighter-weight `NSAlert` than `quit()`'s (`"Relaunch"` / `"Cancel"`, informational style, no destructive "stop recordings" option — relaunching for VLC has no reason to offer stopping them) explains that recordings will keep running through the relaunch; confirming does `releasePlayer()` → `webServer.stop()` → `saveConfig()` → open new instance → terminate. Relies on the exact same orphan-and-reattach mechanism `quit()`'s "Keep Recording & Quit" already depends on (`reattachRecordings()` on the next launch) — a relaunch is not a materially different case from that path already handles, just triggered by a different reason.
+
+## OTA-only channels (`AppState+OTA.swift`, 2026-10-28)
+
+Channels the saved air scan found and the tuner's own lineup lacks are merged in as ordinary channels:
+- `airOnlyChannels(deviceId:)` — what the scan has that the tuner's lineup (its own entries only, `!isAirTuned`) lacks, cached per device by the saved lineup's date and the tuner lineup size; empty when the air is the lineup.
+- `airOnlyLineupEntries(deviceId:host:tunerLineup:)` — those channels as `LineupEntry`s tuned `…/auto/ch<Hz>-<program>` with the tuner's current IP. `fetchAllLineups` appends them as it stores each device's lineup.
+- `supplementGuideWithAirOnly(deviceId:)` — their saved listings (`OTAStore.savedListings`, decoded off the main actor), tagged with the genre `AppState.airOnlyGenre` ("Over the Air"), go to `GuideStore.setSupplement`; then the web guide is pushed `guide_refreshed`.
+- `airScanSaved(deviceId:)` — after a scan saved new air data: forget the cache, re-merge the lineup, re-supplement the guide.
+Everything downstream (web grid, `/api/record`, Edit, Watch Now!, recording via `show_url`) sees ordinary channels. See `docs/WebServer.md` "OTA-only channels are ordinary channels" and the invariant in `docs/Invariants.md`.
