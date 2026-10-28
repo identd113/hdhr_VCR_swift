@@ -777,7 +777,7 @@ struct SettingsView: View {
 
                 if draft.Discord_enabled {
                     HStack(spacing: 8) {
-                        TextField("https://discord.com/api/webhooks/…", text: $draft.Discord_webhook_url)
+                        TextField("https://discord.com/api/webhooks/…", text: $draft.Discord_webhook_url).focusEffectDisabled(false)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Webhook URL")
                             .accessibilityIdentifier("settings-discord-url")
@@ -1008,7 +1008,7 @@ struct SettingsView: View {
                 }
                 if draft.Web_server_enabled {
                     LabeledContent {
-                        TextField("Port", value: $draft.Web_server_port, format: .number.grouping(.never))
+                        TextField("Port", value: $draft.Web_server_port, format: .number.grouping(.never)).focusEffectDisabled(false)
                             .labelsHidden()
                             .accessibilityIdentifier("settings-web-port")
                             .frame(width: 80)

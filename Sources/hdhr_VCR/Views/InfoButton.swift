@@ -14,6 +14,7 @@ struct InfoButton: View {
                 .foregroundStyle(.tertiary)
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()   // no blue focus square when a window opens with this the first control (the scan window's "The airwaves" (i))
         .padding(2)
         .contentShape(Rectangle())
         .help("Show help")

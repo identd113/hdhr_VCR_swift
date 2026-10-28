@@ -153,7 +153,7 @@ struct EditShowView: View {
                     LabeledContent("Channel") {
                         TextField("e.g. 5.4", text: Binding(
                             get: { show?.show_channel ?? "" },
-                            set: { show?.show_channel = $0 }))
+                            set: { show?.show_channel = $0 })).focusEffectDisabled(false)
                             .frame(width: 80)
                     }
                     .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
@@ -163,7 +163,7 @@ struct EditShowView: View {
                 LabeledContent("Length (min)") {
                     TextField("", value: Binding(
                         get: { show?.show_length ?? 60 },
-                        set: { show?.show_length = $0 }), format: .number.grouping(.never))
+                        set: { show?.show_length = $0 }), format: .number.grouping(.never)).focusEffectDisabled(false)
                         .frame(width: 60)
                 }
                 .help("Recording duration in minutes, set from the guide end time. Bonus Time adds extra minutes past the guide end.")

@@ -63,7 +63,7 @@ A divider separates show sections from the **Quit hdhrVCRplus** destructive butt
 ### Show submenu appearance (recording, scheduled, paused)
 Opening a show's submenu reveals a rich detail panel:
 
-1. **Poster image** — 460pt wide, 258pt tall, cornerRadius 6, fills the menu width. If no poster URL: a gray rounded rectangle placeholder fills the same space.
+1. **Poster image** — 460pt wide, 258pt tall, cornerRadius 6, fills the menu width. With no poster URL (or one that fails to load): the show's network logo, fitted on the gray rounded rectangle, and the app logo when there is no network logo — the show-picture rule in `docs/Invariants.md` (changed 2026-10-28; the header is now always drawn).
 2. **Title** — `.title3` size, `labelColor`
 3. **Episode info** — `.callout` size, if present
 4. **Synopsis** — up to 160 chars, `.callout` size, `labelColor`
@@ -218,7 +218,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 
 Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
 
-1. **Poster** — `MenuPosterImage` (a private view in `MenuContent.swift`) of `show.show_logo_url` (460×258, `.fill` content mode, clipped, cornerRadius 6) with a gray placeholder when absent. Routed through `ChannelIconCache.shared.image(for:)` (disk+memory cache) rather than `AsyncImage`, since the `.menu`-style `MenuBarExtra` rebuilds its whole view graph fresh on every menu open — a raw `AsyncImage` would re-download/re-decode the same poster over the network every time. Accessibility label: `"\(show.show_title) poster"`.
+1. **Poster** — `MenuPosterImage` (a private view in `MenuContent.swift`) of `show.show_logo_url` (460×258, `.fill` content mode, clipped, cornerRadius 6); when absent or failed, the network logo (`fallback:`, from `state.channelIconImages`), else the app logo, fitted on a gray background. Routed through `ChannelIconCache.shared.image(for:)` (disk+memory cache) rather than `AsyncImage`, since the `.menu`-style `MenuBarExtra` rebuilds its whole view graph fresh on every menu open — a raw `AsyncImage` would re-download/re-decode the same poster over the network every time. Accessibility label: `"\(show.show_title) poster"`.
 2. **Title** — `menuInfo(show.show_title, font: .title3, maxWidth: 460)`
 3. **Episode info** — `entry.episodeInfoLabel` if the entry is non-nil
 4. **Synopsis** — `entry.Synopsis` truncated to 160 chars

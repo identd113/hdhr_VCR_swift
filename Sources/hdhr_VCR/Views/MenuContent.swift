@@ -772,10 +772,10 @@ struct MenuContent: View {
     // Renders poster (460×258), title, episode info, and synopsis in a consistent layout.
     @ViewBuilder
     private func showInfoHeader(_ show: Show, entry: GuideEntry?) -> some View {
-        if !show.show_logo_url.isEmpty, URL(string: show.show_logo_url) != nil {
-            MenuPosterImage(urlString: show.show_logo_url)
-                .accessibilityLabel("\(show.show_title) poster")
-        }
+        // The show's image, else its network logo, else the app logo (the one picture rule, docs/Invariants.md).
+        MenuPosterImage(urlString: show.show_logo_url,
+                        fallback: state.channelImageURLs["\(show.hdhr_record):\(show.show_channel)"].flatMap { state.channelIconImages[$0] })
+            .accessibilityLabel("\(show.show_title) poster")
         menuInfo(show.show_title, font: .title3, maxWidth: 460)
         if let ep = entry?.episodeInfoLabel {
             menuInfo(ep, font: .callout, maxWidth: 460)
@@ -818,6 +818,8 @@ struct MenuContent: View {
 // the same poster over the network on every single menu open.
 private struct MenuPosterImage: View {
     let urlString: String
+    /// The network logo, shown (fitted) when the show has no image of its own or it failed to load; the app logo after that.
+    var fallback: NSImage? = nil
     @State private var img: NSImage? = nil
 
     var body: some View {
@@ -825,14 +827,17 @@ private struct MenuPosterImage: View {
             if let img {
                 Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
             } else {
-                RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.separatorColor))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.separatorColor))
+                    Image(nsImage: fallback ?? stationLogoPlaceholder).resizable().scaledToFit().padding(24)
+                }
             }
         }
         .frame(width: 460, height: 258)
         .clipped()
         .cornerRadius(6)
         .task(id: urlString) {
-            img = await ChannelIconCache.shared.image(for: urlString)
+            img = urlString.isEmpty ? nil : await ChannelIconCache.shared.image(for: urlString)
         }
     }
 }

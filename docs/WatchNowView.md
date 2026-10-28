@@ -44,7 +44,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 
 `ZStack` (`.accessibilityHidden(true)` — entirely decorative):
 - If a poster image is available (`.scaledToFill`, from `ChannelIconCache`): just the image.
-- Otherwise: genre-color background from `guideEntryColor(for:onAir:true)` at 55% opacity, then the `tv` SF Symbol at 40% white.
+- Otherwise: genre-color background from `guideEntryColor(for:onAir:true)` at 55% opacity, then the channel's network logo (`channelLogo`, `.scaledToFit`, 10 pt padding), and the app logo (`stationLogoPlaceholder`) when there is no network logo either — the show-picture rule in `docs/Invariants.md` (changed 2026-10-28; was the `tv` SF Symbol).
 - Clip: `RoundedRectangle(cornerRadius: 6)`
 - **Favorite stripe**: a 5pt-wide, full-height `favAmber` bar overlaid on the leading edge (`.overlay(alignment: .leading)`, applied after the clip), shown only when `channel.isFavorite` — an opaque bar sitting on top of the poster art rather than a translucent wash blended into it, so it reads the same regardless of what's underneath. Genre color is *not* shown here — it lives on the row's own tile background (see above) instead, since it would otherwise be invisible under a poster image just like this stripe would be if it were a wash.
 - **Card border**: a quiet `RoundedRectangle(cornerRadius: 6).strokeBorder(.white.opacity(0.15), lineWidth: 1)` overlay so each tile reads as a distinct card against its neighbors and the row background, even with no status ring. Applied *before* the status ring overlay below, so when a ring is present its thicker, saturated stroke paints on top and stays the dominant edge — this border only reads on its own when `ringState == .none`.

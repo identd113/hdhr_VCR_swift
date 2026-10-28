@@ -219,6 +219,7 @@ struct hdhr_VCRApp: App {
             AddShowView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -228,6 +229,7 @@ struct hdhr_VCRApp: App {
             EditShowView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -238,6 +240,7 @@ struct hdhr_VCRApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -248,6 +251,7 @@ struct hdhr_VCRApp: App {
             WatchNowView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
@@ -261,6 +265,7 @@ struct hdhr_VCRApp: App {
             OTAScanView(progress: appState.otaProgress)
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
@@ -273,6 +278,7 @@ struct hdhr_VCRApp: App {
             PiPPickerView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -287,6 +293,7 @@ struct hdhr_VCRApp: App {
             DonationNagView()
                 .environmentObject(appState)
                 .preferredColorScheme(resolvedColorScheme)
+                .focusEffectDisabled()   // no blue focus square on whichever button happens to be the window's first control
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -301,6 +308,7 @@ struct hdhr_VCRApp: App {
             FirstRunWizardView()
                 .environmentObject(appState)
                 .preferredColorScheme(.dark)   // the launch splash's look — always dark, whatever the Appearance setting
+                .focusEffectDisabled()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

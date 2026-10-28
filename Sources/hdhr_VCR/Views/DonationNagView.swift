@@ -156,7 +156,7 @@ struct DonationNagView: View {
                     .foregroundStyle(.white.opacity(0.6))
 
                 HStack(spacing: 8) {
-                    TextField("6-digit hex code", text: $enteredCode)
+                    TextField("6-digit hex code", text: $enteredCode).focusEffectDisabled(false)
                         .font(.system(.body, design: .monospaced))
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 12)

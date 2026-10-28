@@ -292,7 +292,7 @@ struct VLCPlayerView: View {
     // instead of the generic "tv" placeholder icon.
     private var effectivePosterImageURL: String? {
         currentGuideEntry?.ImageURL
-            ?? (device.isVirtualRelay ? currentFeedEntry?.virtualRelayImageURL : nil)
+            ?? (isFeedPlayback ? currentFeedEntry?.virtualRelayImageURL : nil)
     }
 
     private var lineup: [LineupEntry] {
@@ -310,7 +310,7 @@ struct VLCPlayerView: View {
     // always offers the full Recording → FEED → Favorites → rest stack (2026-10-02, explicit
     // request). With several real tuners only the first is listed here.
     private var channelSourceDevice: HDHRDevice? {
-        device.isVirtualRelay ? state.recordableDevices.first : device
+        isFeedPlayback ? state.recordableDevices.first : device
     }
     private var channelLineup: [LineupEntry] {
         guard let src = channelSourceDevice else { return [] }
@@ -465,7 +465,7 @@ struct VLCPlayerView: View {
         // codec, so this is authoritative rather than a guess from a URL query string (raw
         // passthrough of an already-modern-codec recording never carries &transcode= at all,
         // which the old URL-only heuristic had no way to see past).
-        if device.isVirtualRelay {
+        if isFeedPlayback {
             // feedIsTranscoding first: once the viewer's own H.264 toggle has requested a
             // software transcode (&transcode=auto on the remote URL), what's actually arriving
             // is genuinely H.264 regardless of what the *source* recording itself is — checking
@@ -553,7 +553,7 @@ struct VLCPlayerView: View {
         // local relay is in play, bridge.currentURL holds a LOCAL http://127.0.0.1/api/
         // feed-local-relay?... URL (see currentFeedRemoteURL's own doc comment), which would never
         // match any of this device's real lineup entries.
-        guard device.isVirtualRelay, let url = VLCPlayerWindowManager.shared.currentFeedRemoteURL else { return nil }
+        guard isFeedPlayback, let url = VLCPlayerWindowManager.shared.currentFeedRemoteURL else { return nil }
         let target = url.urlBase
         return lineup.first { ($0.URL ?? "").urlBase == target }
     }
@@ -567,7 +567,7 @@ struct VLCPlayerView: View {
     // rawSyncURL means selectedChannel stays nil), so bridge.isPlaying can never flip true — the
     // ordinary Start/Connecting… button below would otherwise render permanently disabled.
     private var isPrimaryIdle: Bool {
-        initialURL.isEmpty && selectedChannel == nil && bridge.recordingShowId == nil
+        initialURL.isEmpty && selectedChannel == nil && !isRecordingPlayback
     }
 
     // Mirrors MenuContent's own `alreadyModern` check — unset/"unknown" VideoCodec (older
@@ -704,8 +704,8 @@ struct VLCPlayerView: View {
     // a live broadcast feed. Indigo (between blue and purple) reflects that it's genuinely a blend
     // of both, not a strict either/or the binary above assumes.
     private var nativeIconSourceColor: Color {
-        if device.isVirtualRelay { return .indigo }
-        return bridge.recordingShowId != nil ? .purple : .blue
+        if isFeedPlayback { return .indigo }
+        return isRecordingPlayback ? .purple : .blue
     }
 
     // body is split into staged `let` bindings (core → withDialogs → withTasks → return) rather
@@ -770,7 +770,7 @@ struct VLCPlayerView: View {
                 if bridge.keyboardHelpVisible {
                     KeyboardShortcutsOverlay(
                         title: "Keyboard Shortcuts",
-                        rows: PlayerShortcuts.rows(canSeek: bridge.recordingShowId != nil,
+                        rows: PlayerShortcuts.rows(canSeek: isRecordingPlayback,
                                                    canPause: bridge.canPause || bridge.isPaused,
                                                    hasPiP: bridge.secondaryURL != nil,
                                                    isFullScreen: isFullScreen),
@@ -1041,7 +1041,7 @@ struct VLCPlayerView: View {
             // being said otherwise. selectedSpuTrackId is set (not just the direct VLCBridge
             // call) so the Picker's own label reflects the auto-selection instead of drifting
             // from what's actually playing.
-            if volume == 0, bridge.recordingShowId == nil, let first = bridge.spuTracks.first {
+            if volume == 0, !isRecordingPlayback, let first = bridge.spuTracks.first {
                 selectedSpuTrackId = first.id
                 spuChoiceIsExplicit = false
                 VLCBridge.shared.setSpuTrack(id: first.id)
@@ -1061,7 +1061,7 @@ struct VLCPlayerView: View {
             // apart) or this is a recording-relay session (CC picker is hidden there entirely —
             // see its guard).
             if newValue == 0, oldValue > 0, !spuChoiceIsExplicit,
-               bridge.recordingShowId == nil, let first = bridge.spuTracks.first {
+               !isRecordingPlayback, let first = bridge.spuTracks.first {
                 selectedSpuTrackId = first.id
                 VLCBridge.shared.setSpuTrack(id: first.id)
                 return
@@ -1175,7 +1175,7 @@ struct VLCPlayerView: View {
     // info can come back as part of it later if wanted.
     private var infoBanner: some View {
         let entry = currentGuideEntry
-        let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
+        let feedEntry = (entry == nil && isFeedPlayback) ? currentFeedEntry : nil
 
         let (title, episodeInfo) = titleAndEpisode(entry: entry, feedEntry: feedEntry)
         let sourceLine = infoBannerSourceLine(feedEntry: feedEntry)
@@ -1384,9 +1384,14 @@ struct VLCPlayerView: View {
         return (title, episode)
     }
 
+    /// A recording is playing from disk through the local relay (no tuner involved): the one place this question is asked.
+    private var isRecordingPlayback: Bool { bridge.recordingShowId != nil }
+    /// This window is showing a remote FEED (another Mac's in-progress recording), i.e. its device is a virtual relay.
+    private var isFeedPlayback: Bool { device.isVirtualRelay }
+
     private var statusBarSource: PlayerStatusInfo.Source {
-        if bridge.recordingShowId != nil { return .recording }
-        let isFeed = device.isVirtualRelay || (selectedChannel?.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) ?? false)
+        if isRecordingPlayback { return .recording }
+        let isFeed = isFeedPlayback || (selectedChannel?.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) ?? false)
         if isFeed {
             var host = currentFeedEntry?.virtualRelaySourceHostname
             if host == nil, let ch = selectedChannel, ch.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) {
@@ -1406,7 +1411,7 @@ struct VLCPlayerView: View {
         // bar shows the same time, genre and synopsis a local show does.
         let guide = currentGuideEntry
         let entry = guide ?? feedMatchSnapshot?.entry   // the FEED match is looked up once per show (see computeUpcoming)
-        let feedEntry = (guide == nil && device.isVirtualRelay) ? currentFeedEntry : nil
+        let feedEntry = (guide == nil && isFeedPlayback) ? currentFeedEntry : nil
         let source = statusBarSource
         let (title, episode) = titleAndEpisode(entry: entry, feedEntry: feedEntry)
         return PlayerStatusInfo(
@@ -1441,7 +1446,7 @@ struct VLCPlayerView: View {
     /// The airing a FEED session's show came from, found by title in the guides we hold (the relay's lineup carries
     /// no channel number). Anchored to when its recording file began so a later airing of the same series isn't picked.
     private func feedGuideMatch(guide: GuideEntry?) -> GuideStore.SeriesMatch? {
-        guard guide == nil, device.isVirtualRelay, let feed = currentFeedEntry,
+        guard guide == nil, isFeedPlayback, let feed = currentFeedEntry,
               let title = feed.virtualRelayShowTitle, !title.isEmpty else { return nil }
         let at = feed.virtualRelayFileStartedAt.map { Date(timeIntervalSince1970: $0 + 60) } ?? Date()
         return state.guideStore.currentEntryByTitle(title, at: at)
@@ -1475,7 +1480,7 @@ struct VLCPlayerView: View {
     /// Same conditions as the toolbar's Record button, minus the "on now" requirement: a live tuner session, a real
     /// channel, and no active managed show already covering this channel.
     private var statusBarCanRecordUpcoming: Bool {
-        guard bridge.recordingShowId == nil, !device.isVirtualRelay, let ch = selectedChannel else { return false }
+        guard !isRecordingPlayback, !isFeedPlayback, let ch = selectedChannel else { return false }
         return !state.shows.contains { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
     }
 
@@ -1494,9 +1499,11 @@ struct VLCPlayerView: View {
                             .resizable()
                             .scaledToFit()
                     } else {
-                        Image(systemName: "tv")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(0.25))
+                        // No show image: the network logo, then the app logo (the one picture rule, docs/Invariants.md).
+                        Image(nsImage: statusBarChannelLogoURL.flatMap { state.channelIconImages[$0] } ?? stationLogoPlaceholder)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(16)
                     }
                 }
                 .containerRelativeFrame(.horizontal) { w, _ in w * 0.30 }
@@ -1538,7 +1545,7 @@ struct VLCPlayerView: View {
                                 .lineLimit(4)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                    } else if device.isVirtualRelay, let feedEntry = currentFeedEntry,
+                    } else if isFeedPlayback, let feedEntry = currentFeedEntry,
                               let feedTitle = feedEntry.virtualRelayShowTitle, !feedTitle.isEmpty {
                         // currentGuideEntry is always nil for a remote FEED device — nothing
                         // populates a discoverer's guideByDevice[relayId] today (a known,
@@ -1610,7 +1617,7 @@ struct VLCPlayerView: View {
                         .foregroundStyle(.white.opacity(0.45))
                         .accessibilityLabel("hdhrVCRplus — \(yieldProgress)")
                         .padding(.top, 4)
-                    } else if device.isVirtualRelay {
+                    } else if isFeedPlayback {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("Buffering…")
@@ -2136,19 +2143,19 @@ struct VLCPlayerView: View {
     /// when nothing's currently airing on the selected channel, or when this exact channel already has an
     /// active managed show (avoids offering a redundant add).
     private var quickRecordTarget: (channel: LineupEntry, entry: GuideEntry)? {
-        guard bridge.recordingShowId == nil, let ch = selectedChannel, let entry = currentGuideEntry,
+        guard !isRecordingPlayback, let ch = selectedChannel, let entry = currentGuideEntry,
               !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber })
         else { return nil }
         return (ch, entry)
     }
 
-    private var showsH264Toggle: Bool { device.isVirtualRelay && !feedSourceAlreadyModern }
+    private var showsH264Toggle: Bool { isFeedPlayback && !feedSourceAlreadyModern }
 
     /// The responsive toolbar's plan (docs/VLCPlayerView.md, "Responsive toolbar"): which controls are full, compact or
     /// folded into the "…" menu for the width measured so far. Unmeasured (0) = everything on the bar.
     private var toolbarPlan: ToolbarOverflowPlanner.Plan {
         let specs = PlayerToolbarItem.specs(hasRecord: quickRecordTarget != nil, bufferEnabled: bridge.bufferInfo.enabled,
-                                            recordingRelay: bridge.recordingShowId != nil, hasH264: showsH264Toggle)
+                                            recordingRelay: isRecordingPlayback, hasH264: showsH264Toggle)
         return ToolbarOverflowPlanner.plan(items: specs, available: toolbarWidth > 0 ? toolbarWidth : .greatestFiniteMagnitude,
                                            previous: toolbarPlanMemo)
     }
@@ -2395,7 +2402,7 @@ struct VLCPlayerView: View {
             // hidden here when not applicable (e.g. a single-audio-track live channel shows no
             // "Audio Track" row at all, same as it previously showed no picker at all).
             let hasAudioTrackChoice = bridge.audioTracks.count > 1
-            let hasCaptionChoice = !bridge.spuTracks.isEmpty && bridge.recordingShowId == nil
+            let hasCaptionChoice = !bridge.spuTracks.isEmpty && !isRecordingPlayback
             let hasOutputChoice = !systemDevices.isEmpty
             let hasDisplayChoice = availableScreens.count > 1
             // Unlike the other three, this doesn't hide when empty — Chromecast discovery is
@@ -2577,7 +2584,7 @@ struct VLCPlayerView: View {
 
     /// Approximate distance behind the recording's live edge, for a recording (or FEED cache) played from disk.
     private func behindLiveSeconds(at date: Date) -> Double? {
-        guard bridge.recordingShowId != nil, let start = bridge.recordingStartDate else { return nil }
+        guard isRecordingPlayback, let start = bridge.recordingStartDate else { return nil }
         return max(0, date.timeIntervalSince(start) - bridge.recordingPlaybackSeconds)
     }
 
@@ -2679,7 +2686,7 @@ struct VLCPlayerView: View {
                 }
             case PlayerToolbarItem.catchUp:
                 Button { performCatchUp() } label: {
-                    if bridge.recordingShowId != nil {
+                    if isRecordingPlayback {
                         let behind = behindLiveSeconds(at: Date()).flatMap(Self.behindText)
                         Label(behind.map { "Live Edge · \($0)" } ?? "Live Edge", systemImage: "forward.end.circle")
                     } else {
@@ -2729,7 +2736,7 @@ struct VLCPlayerView: View {
             Group {
                 if showLabel {
                     // Fixed widths + one line: the toolbar planner budgets these constants (PlayerToolbarItem).
-                    if bridge.recordingShowId != nil {
+                    if isRecordingPlayback {
                         TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                             let behind = behindLiveSeconds(at: ctx.date).flatMap(Self.behindText)
                             Label(behind.map { "Live Edge · \($0)" } ?? "Live Edge", systemImage: "forward.end.circle")
@@ -2749,13 +2756,13 @@ struct VLCPlayerView: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(bridge.recordingShowId != nil
+        .help(isRecordingPlayback
               ? (behindLiveSeconds(at: Date()).map { Self.behindText($0) ?? "At the live edge" } ?? "Jump to the live edge of the recording")
               : "Speed up to live — discard buffer and jump to live edge")
         // The icon-only (showLabel: false) case has no Text for SwiftUI to auto-derive a label
         // from — explicit here so VoiceOver announces something meaningful either way, not just
         // the SF Symbol's raw name.
-        .accessibilityLabel(bridge.recordingShowId != nil ? "Live Edge" : "Catch Up")
+        .accessibilityLabel(isRecordingPlayback ? "Live Edge" : "Catch Up")
         .accessibilityIdentifier("vlc-catch-up-button")
     }
 
@@ -2812,15 +2819,15 @@ struct VLCPlayerView: View {
         // FEED reads over the network like a live tuner, but what arrives is the source Mac's recording off *its* disk.
         HStack {
             Circle().fill(nativeIconSourceColor).frame(width: 8, height: 8)
-            if device.isVirtualRelay {
+            if isFeedPlayback {
                 Text("Network → Disk (FEED" + (currentFeedEntry?.virtualRelaySourceHostname.map { " from \($0)" } ?? "") + ")")
             } else {
-                Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
+                Text(isRecordingPlayback ? "Local recording (disk)" : "Live network stream")
             }
         }
         // A one-shot snapshot taken when the popover opens (the ⓘ button's .onHover), not a ticking value.
-        if bridge.recordingShowId != nil, let recordingSizeSnapshot { row("On disk", recordingSizeSnapshot) }
-        if bridge.recordingShowId != nil {
+        if isRecordingPlayback, let recordingSizeSnapshot { row("On disk", recordingSizeSnapshot) }
+        if isRecordingPlayback {
             TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                 let behind = behindLiveSeconds(at: ctx.date)
                 row("Behind live", behind.map { Self.behindText($0) ?? "at live edge" } ?? "—")
@@ -2899,7 +2906,7 @@ struct VLCPlayerView: View {
     /// played from disk — nothing crosses the network then.
     @ViewBuilder
     private var connectionSection: some View {
-        if bridge.recordingShowId == nil, let link = linkInfo {
+        if !isRecordingPlayback, let link = linkInfo {
             Divider()
             groupHeader("Connection")
             HStack {
@@ -2909,7 +2916,7 @@ struct VLCPlayerView: View {
             }
             if let rtt = link.rttMs {
                 HStack {
-                    Text(device.isVirtualRelay ? "Ping to source" : "Ping to tuner").foregroundStyle(.secondary)
+                    Text(isFeedPlayback ? "Ping to source" : "Ping to tuner").foregroundStyle(.secondary)
                     Spacer()
                     Text(String(format: "%.1f ms", rtt)).monospacedDigit()
                         .foregroundStyle(PlayerStatusFormat.color(link.quality ?? .measuring))
@@ -2920,7 +2927,7 @@ struct VLCPlayerView: View {
 
     /// Measured once each time the popover opens (a few short TCP connects), never on a timer.
     private func measureLink() async {
-        guard streamInfoHovered, bridge.recordingShowId == nil else { return }
+        guard streamInfoHovered, !isRecordingPlayback else { return }
         let comps = URLComponents(string: device.BaseURL ?? "")
         let host = comps?.host ?? device.LocalIP
         let port = UInt16(comps?.port ?? 80)
@@ -2949,7 +2956,7 @@ struct VLCPlayerView: View {
         // relay device, which can never match anything in `lineup` (this device's real, remote
         // lineup entries). Same fix as currentFeedEntry/feedIsTranscoding above: substitute the
         // true remote URL before matching.
-        let url = device.isVirtualRelay ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? rawSyncURL) : rawSyncURL
+        let url = isFeedPlayback ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? rawSyncURL) : rawSyncURL
         let base = url.urlBase
         // A FEED swapped in as primary from a *different* device than this window's own bound
         // `device` — device.isVirtualRelay is false here (this window opened on a real tuner, not
@@ -3128,7 +3135,7 @@ struct VLCPlayerView: View {
             ownStreamStoppedForSwitch = false
             guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
             state.watchRecordingInApp(show)
-        } else if device.isVirtualRelay, let src = channelSourceDevice {
+        } else if isFeedPlayback, let src = channelSourceDevice {
             // A real channel picked from a FEED-bound window — open it on the real tuner
             // (watchInApp's tuner check; open() rebinds this window to that device).
             // FEED rows themselves never get here: they're all "live-feed:" rows above,

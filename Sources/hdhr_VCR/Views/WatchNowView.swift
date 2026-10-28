@@ -505,9 +505,11 @@ struct WatchNowRow: View {
                     .scaledToFill()
             } else {
                 guideEntryColor(for: entry, onAir: true).opacity(0.55)
-                Image(systemName: "tv")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.4))
+                // No show image: the network logo, then the app logo (the one picture rule, docs/Invariants.md).
+                Image(nsImage: channelLogo ?? stationLogoPlaceholder)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(10)
             }
         }
         .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }

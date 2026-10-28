@@ -99,7 +99,7 @@ struct ShowFormSection: View {
     var body: some View {
         Group {
             LabeledContent("Title") {
-                TextField("Title", text: $show.show_title)
+                TextField("Title", text: $show.show_title).focusEffectDisabled(false)
             }
             if let titleError { FormErrorCaption(text: titleError) }
 
