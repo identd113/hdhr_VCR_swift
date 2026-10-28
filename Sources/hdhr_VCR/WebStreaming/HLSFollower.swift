@@ -13,9 +13,9 @@ final class HLSFollower: @unchecked Sendable {
     struct Options {
         var convert = HLSConversionOptions()
         /// How often to look for new data.
-        var passInterval = 3.0
+        var passInterval = 1.0
         /// Seconds at the end of each snapshot left unread (the tail may be half-written).
-        var holdBack = 1.5
+        var holdBack = 1.0
         /// For a file that is still growing: begin this many seconds before its end instead of at its first frame,
         /// so a viewer joining a long recording is not made to wait for (or store) the whole backlog. nil = from the start.
         var startBehindLive: Double?
@@ -117,7 +117,7 @@ final class HLSFollower: @unchecked Sendable {
                         // Used to be swallowed: a picture the writer cannot take left this loop retrying silently forever.
                         writerFailures += 1
                         if writerFailures == 1 || writerFailures % 10 == 0 {
-                            glog("[Stream] \(input.lastPathComponent): could not set up the writer (\(writerFailures) in a row): \(error.localizedDescription)", level: .warning)
+                            glog("[Stream] \(input.lastPathComponent): could not set up the writer (\(writerFailures) in a row): \(error.localizedDescription) [\(error)]", level: .warning)
                         }
                         if finalPass || writerFailures >= Self.maxFailedPasses { throw error }
                     }
@@ -217,7 +217,8 @@ final class HLSFollower: @unchecked Sendable {
     private func makeWriter(video: AVAssetTrack, hasAudio: Bool, sink: HLSConverter.SegmentSink, startOffset: Double?) async throws
         -> (writer: AVAssetWriter, video: AVAssetWriterInput, audio: AVAssetWriterInput?, start: CMTime) {
         let size = try await video.load(.naturalSize)
-        let trackStart = try await video.load(.timeRange).start
+        // A file still being recorded can refuse to report the track's range (-12990); finished files start at 0.
+        let trackStart = (try? await video.load(.timeRange).start) ?? .zero
         let start = startOffset.map { CMTimeAdd(trackStart, CMTime(seconds: $0, preferredTimescale: 90000)) } ?? trackStart
         let writer = HLSConverter.makeHLSWriter(start: start, options: options.convert, sink: sink)
         let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: HLSConverter.videoInputSettings(width: Int(size.width), height: Int(size.height), options: options.convert))

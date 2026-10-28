@@ -45,8 +45,8 @@ actor StreamSessions {
 
     /// A viewer joining a recording that is still being written starts this far behind its end (the rest of the backlog is not converted).
     static let joinBehindLive = 120.0
-    /// Segments kept per stream: 450 × 4 s = 30 minutes (about 0.9 GB at 4 Mb/s).
-    static let keepSegments = 450
+    /// Segments kept per stream: 900 × 2 s = 30 minutes (about 0.9 GB at 4 Mb/s).
+    static let keepSegments = 900
 
     private let root: URL
     private let snapshot: @Sendable ([String]) async -> StreamSnapshot
@@ -130,9 +130,23 @@ actor StreamSessions {
         // is converted whole from the start, so every part can be reached.
         var options = followerOptions
         if !src.isRecording { options.startBehindLive = nil; options.keepSegments = nil }
-        let follower = HLSFollower(input: URL(fileURLWithPath: src.path), outputDir: dir, options: options,
-                                   isGrowing: { [growing = session.growing] in growing.isOn })
+        // AVFoundation cannot read a recording whose timestamps cross 2^32 (docs/WebStreaming.md "Timestamp rebasing"), so the
+        // follower reads a rebased copy that a second task keeps filling from the recording.
+        let spool = TSRebaseSpool(source: URL(fileURLWithPath: src.path), destination: dir.appendingPathComponent("source.ts"),
+                                  joinBehindLive: options.startBehindLive,
+                                  sourceIsGrowing: { [growing = session.growing] in growing.isOn })
+        options.startBehindLive = nil   // the copy already begins near the live end
+        let follower = HLSFollower(input: spool.destination, outputDir: dir, options: options,
+                                   isGrowing: { [growing = session.growing] in growing.isOn || !spool.drained })
         session.task = Task.detached(priority: .utility) { [weak self] in
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let copier = Task.detached(priority: .utility) {
+                do { try await spool.run() } catch is CancellationError {} catch {
+                    glog("[Stream] \(showId): could not copy the recording: \(error.localizedDescription)", level: .warning)
+                    spool.finish()
+                }
+            }
+            defer { copier.cancel() }
             do { _ = try await follower.run() } catch is CancellationError {} catch {
                 // After a stop the folder is already gone and the follower may trip over that: not worth a warning.
                 if !Task.isCancelled {

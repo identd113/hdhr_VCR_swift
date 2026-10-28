@@ -8,7 +8,8 @@ import UniformTypeIdentifiers
 struct HLSConversionOptions {
     var videoKbps = 4000
     var audioKbps = 128
-    var segmentSeconds = 4.0
+    /// Segment length. A live player needs three segments before it starts, so this sets the start-up time: 2 s = 6 s of picture.
+    var segmentSeconds = 2.0
     /// Convert only this many seconds from the start of the file (nil = all of it).
     var maxSeconds: Double?
 }
@@ -30,7 +31,7 @@ extension HLSConverter {
          AVVideoCompressionPropertiesKey: [
             AVVideoAverageBitRateKey: options.videoKbps(width: width, height: height) * 1000,
             AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-            AVVideoMaxKeyFrameIntervalDurationKey: 2,   // a keyframe at least every 2 s so every segment starts on one
+            AVVideoMaxKeyFrameIntervalDurationKey: max(1, options.segmentSeconds / 2),   // a keyframe at least twice per segment so every segment starts on one
             AVVideoAllowFrameReorderingKey: true]]
     }
     static func aacInputSettings(options: HLSConversionOptions) -> [String: Any] {

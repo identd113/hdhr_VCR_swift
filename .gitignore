@@ -64,3 +64,7 @@ CLAUDE.md
 /tools/donation_target.txt
 
 /tools/gitignored/
+
+# generated AVFoundation repro streams (tools/apple_bug_repro/make_samples.sh)
+tools/apple_bug_repro/*.ts
+tools/apple_bug_repro/read_samples
