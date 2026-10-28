@@ -345,3 +345,34 @@ struct NearestAiringIndexTests {
         #expect(bonusSpill(into: 1, in: [GuideEntryDTO(title: "Game", startTime: 0, endTime: 3600), b]) == nil)
     }
 }
+
+@Suite("Time that has passed cannot be selected or scrolled back to")
+struct PastTimeTests {
+    private func entry(_ title: String, _ start: Int, _ end: Int) -> GuideEntryDTO {
+        GuideEntryDTO(title: title, startTime: start, endTime: end)
+    }
+    private func entries() -> [GuideEntryDTO] { [entry("Ended", 0, 100), entry("OnNow", 100, 200), entry("Later", 200, 300)] }
+
+    @Test func selectableIsTheAiringOnNowOrTheNextOneToCome() {
+        #expect(firstSelectableEntryIndex(in: entries(), now: 150) == 1)    // on now
+        #expect(firstSelectableEntryIndex(in: entries(), now: 100) == 1)    // an airing starting exactly now is on now
+        #expect(firstSelectableEntryIndex(in: entries(), now: 250) == 2)
+        #expect(firstSelectableEntryIndex(in: entries(), now: 300) == nil)  // everything has ended
+        #expect(firstSelectableEntryIndex(in: [], now: 10) == nil)
+    }
+
+    @Test func theViewportFloorIsTheSlotThatContainsNow() {
+        #expect(nowFloorSlot(winStart: 0, now: 4000, secondsPerSlot: 1800, maxSlot: 10) == 2)
+        #expect(nowFloorSlot(winStart: 3600, now: 4000, secondsPerSlot: 1800, maxSlot: 10) == 0)    // now is in the first slot
+        #expect(nowFloorSlot(winStart: 3600, now: 100, secondsPerSlot: 1800, maxSlot: 10) == 0)     // never negative
+        #expect(nowFloorSlot(winStart: 0, now: 999_999, secondsPerSlot: 1800, maxSlot: 10) == 10)   // never past the window
+    }
+
+    @Test func searchLeavesOutAiringsThatHaveEnded() {
+        let ch = GuideChannelDTO(guideNumber: "5.8", guideName: "Ion", entries: [entry("MacGyver", 0, 100), entry("MacGyver", 100, 200), entry("MacGyver", 200, 300)])
+        #expect(searchShows(query: "macgyver", in: [ch], limit: 8).first?.airings.count == 3)           // no `now`: unchanged
+        let live = searchShows(query: "macgyver", in: [ch], limit: 8, now: 150).first?.airings.map(\.entryIndex)
+        #expect(live == [1, 2])
+        #expect(searchShows(query: "macgyver", in: [ch], limit: 8, now: 400).isEmpty)
+    }
+}

@@ -251,15 +251,35 @@ func visibleEntries(_ ch: GuideChannelDTO) -> [GuideEntryDTO] { ch.entries }
 
 func maxSlot() -> Int { payload.winSec / secondsPerSlot }
 
+func nowTs() -> Int { Int(Date().timeIntervalSince1970) }
+
+/// The leftmost slot the viewport may show (the one containing now): time that has passed cannot be moved back to.
+func floorSlot() -> Int {
+    min(nowFloorSlot(winStart: payload.winStart, now: nowTs(), secondsPerSlot: secondsPerSlot, maxSlot: maxSlot()),
+        max(0, maxSlot() - visibleCols()))
+}
+
+/// Puts the selection on what is airing now on the current channel and the viewport at now (start-up, tuner switch).
+func snapToNow() {
+    if let ch = currentChannel() {
+        let entries = visibleEntries(ch)
+        selEntry = entryIndex(nearestTo: nowTs(), in: entries)
+        if selEntry < entries.count, entries[selEntry].endTime <= nowTs(), let first = firstSelectableEntryIndex(in: entries, now: nowTs()) { selEntry = first }
+    }
+    verticalAnchorTime = nil
+    colStart = floorSlot()
+    ensureEntryVisible()
+}
+
 func ensureEntryVisible() {
     guard let ch = currentChannel() else { return }
     let entries = visibleEntries(ch)
     guard selEntry >= 0, selEntry < entries.count else { return }
     let startSlot = (entries[selEntry].startTime - payload.winStart) / secondsPerSlot
     let vc = visibleCols()
-    if startSlot < colStart { colStart = max(0, startSlot) }
+    if startSlot < colStart { colStart = max(floorSlot(), startSlot) }
     if startSlot >= colStart + vc { colStart = startSlot }
-    colStart = max(0, min(colStart, max(0, maxSlot() - vc)))
+    colStart = max(floorSlot(), min(colStart, max(0, maxSlot() - vc)))
 }
 
 // The absolute time the current selection represents — the currently selected entry's own start
@@ -289,14 +309,16 @@ func selectRow(_ newRow: Int) {
     // at or near the currently visible anchor) — so in the common case colStart doesn't move at
     // all, and any shift that does happen is at most the small schedule-alignment gap between
     // channels, never a jump back to the start of the guide window.
-    let anchorTime = verticalAnchorTime ?? currentAnchorTime()
+    let anchorTime = max(verticalAnchorTime ?? currentAnchorTime(), nowTs())   // never anchor on time that has passed
     verticalAnchorTime = anchorTime
     selRow = max(0, min(payload.channels.count - 1, newRow))
     // Routed through visibleEntries(_:), not `.entries` directly — every other read site in this
     // file does, and visibleEntries is where any future filtering/sorting of a channel's entries
     // would live (see its own comment); bypassing it here would silently desync anchor-time
     // channel-switch selection from what render() actually draws if that function ever grows one.
-    selEntry = entryIndex(nearestTo: anchorTime, in: currentChannel().map(visibleEntries) ?? [])
+    let rowEntries = currentChannel().map(visibleEntries) ?? []
+    selEntry = entryIndex(nearestTo: anchorTime, in: rowEntries)
+    if selEntry < rowEntries.count, rowEntries[selEntry].endTime <= nowTs(), let first = firstSelectableEntryIndex(in: rowEntries, now: nowTs()) { selEntry = first }
     ensureEntryVisible()
 }
 
@@ -344,7 +366,7 @@ func updateSearchResults() {
         searchResults = []
         searchHi = -1
     } else if searchQuery.count >= searchMinChars {
-        searchResults = searchShows(query: searchQuery, in: payload.channels, limit: searchResultLimit)
+        searchResults = searchShows(query: searchQuery, in: payload.channels, limit: searchResultLimit, now: nowTs())
         searchHi = searchResults.isEmpty ? -1 : 0
         if searchHi >= 0 { focusCurrentSearchAiring() }
     } else {
@@ -402,6 +424,11 @@ func moveEntry(_ delta: Int) {
         pageTime(delta > 0 ? 1 : -1)
         return
     }
+    if visibleEntries(ch)[newIndex].endTime <= nowTs() {
+        statusMsg = "That time has already passed."
+        DebugLog.log("moveEntry(\(delta)): entry \(newIndex) on \(ch.guideNumber) has ended — staying put")
+        return
+    }
     DebugLog.log("moveEntry(\(delta)): selEntry \(selEntry) -> \(newIndex) on \(ch.guideNumber)")
     selEntry = newIndex
     verticalAnchorTime = nil
@@ -412,7 +439,7 @@ func pageTime(_ dir: Int) {
     let vc = visibleCols()
     let cap = max(0, maxSlot() - vc)
     let before = colStart
-    colStart = max(0, min(cap, colStart + dir * vc))
+    colStart = max(floorSlot(), min(cap, colStart + dir * vc))
     DebugLog.log("pageTime(\(dir)): vc=\(vc) cap=\(cap) colStart \(before) -> \(colStart)")
 }
 
@@ -424,8 +451,8 @@ func switchDevice() {
     guard let fresh = API.fetchGuide(device: next) else { statusMsg = "Failed to switch tuner."; return }
     payload = fresh
     currentDeviceId = next
-    selRow = 0; selEntry = 0; colStart = 0
-    verticalAnchorTime = nil
+    selRow = 0
+    snapToNow()
     statusMsg = "Switched to HDHR-\(next.uppercased())."
 }
 
@@ -1185,6 +1212,7 @@ func render() {
     Terminal.writeFrame(mode == .help ? overlayShortcuts(onto: out, cols: cols, rows: rows) : out)
 }
 
+snapToNow()   // start on what is airing now, not the lookback hour that has already passed
 Terminal.enterRawScreen()
 render()
 

@@ -34,6 +34,17 @@ public func computeVisibleCols(cols: Int, channelColWidth: Int, slotWidth: Int, 
 // row, rather than always landing on that row's own entry 0 — which is what used to make switching
 // channels reset the horizontal (time) scroll position back to the start of the guide window even
 // when scrolled hours into it. See docs/TUIGuide.md's Keybindings table.
+/// Index of the airing that is on at `now`, else the first one still to come; nil when every airing has already ended.
+/// An airing that has ended cannot be recorded, so the TUI never lands on one.
+public func firstSelectableEntryIndex(in entries: [GuideEntryDTO], now: Int) -> Int? {
+    entries.firstIndex { $0.endTime > now }
+}
+
+/// The leftmost slot the timeline may show: the one that contains `now`. Time that has passed cannot be scrolled back to.
+public func nowFloorSlot(winStart: Int, now: Int, secondsPerSlot: Int, maxSlot: Int) -> Int {
+    max(0, min(maxSlot, (now - winStart) / secondsPerSlot))
+}
+
 public func entryIndex(nearestTo anchorTime: Int, in entries: [GuideEntryDTO]) -> Int {
     guard !entries.isEmpty else { return 0 }
     if let idx = entries.firstIndex(where: { $0.startTime <= anchorTime && $0.endTime > anchorTime }) {
@@ -151,14 +162,15 @@ public struct SearchResult: Equatable {
 // show with many reruns collapses into one line instead of crowding the small, `limit`-capped
 // list — the same reason the web guide's own /api/guide-search groups by SeriesID. Sorted by
 // title, capped at `limit`; each result's own `airings` are sorted by start time, earliest first.
-public func searchShows(query: String, in channels: [GuideChannelDTO], limit: Int) -> [SearchResult] {
+public func searchShows(query: String, in channels: [GuideChannelDTO], limit: Int, now: Int? = nil) -> [SearchResult] {
     let q = query.lowercased()
     guard !q.isEmpty else { return [] }
 
     struct Group { var title: String; var airings: [SearchResult.Airing] }
     var groups: [String: Group] = [:]
     for (ci, ch) in channels.enumerated() {
-        for (ei, e) in ch.entries.enumerated() where e.title.lowercased().contains(q) {
+        // With `now` given, airings that have already ended are left out (they cannot be recorded or selected).
+        for (ei, e) in ch.entries.enumerated() where e.title.lowercased().contains(q) && (now == nil || e.endTime > now!) {
             let key = e.seriesId ?? e.title.lowercased()
             let airing = SearchResult.Airing(channelIndex: ci, entryIndex: ei, startTime: e.startTime)
             if var g = groups[key] {

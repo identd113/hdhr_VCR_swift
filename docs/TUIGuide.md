@@ -264,6 +264,9 @@ the panel entirely) before falling back to the `visibleRows` floor of 1, so the 
 fits exactly, or the summary panel — not the channel grid — is what gives up room on a terminal too
 short for both.
 
+## Time that has passed cannot be selected (2026-10-28)
+The server's guide window starts 60–90 minutes in the past, so the grid used to open on airings that had already ended, and a Single recording of one was accepted and then deactivated at once ("DONE single"): reported as "I tried to record MacGyver and I'm not sure it worked" (the 1:00 PM airing, picked at 2:22 PM). Now the TUI never lands on time that has passed: it **starts on what is airing now** and the viewport's left edge is the slot containing now (`snapToNow()`, `floorSlot()` ← `nowFloorSlot(...)` in `hdhr_guide_core`); `[` / `←` at the first selectable airing do not scroll further back (`pageTime`, `ensureEntryVisible` clamp at the floor); `←` onto an ended airing is refused with "That time has already passed." (`moveEntry`); ↑/↓ anchor on `max(selected start, now)` and fall to `firstSelectableEntryIndex` when a channel has nothing on now; Tab (tuner switch) snaps to now; search skips airings that have ended (`searchShows(..., now:)`). The server is unchanged: a Single for a past airing is still accepted and deactivated, which is the intended outcome there. The list itself is not filtered (`visibleEntries` still returns every entry) because search results and the selection index into it.
+
 ## Recording summary screen
 
 `Enter` on a selected program replaces the grid entirely (`Mode.recordSummary`,
