@@ -1,6 +1,6 @@
 # Invariants & Gotchas — full text
 
-The complete, verbatim text of the invariants that `CLAUDE.md` summarizes in one line each. Moved here unchanged so `CLAUDE.md` stays scannable; the two highest-stakes invariants (**Tuner occupancy**, **Virtual tuner relay guardrails**) and the short ones stay in full in `CLAUDE.md` itself. Rules here are as binding as there.
+The complete, verbatim text of the invariants that `CLAUDE.md` summarizes in one line each. Moved here unchanged so `CLAUDE.md` stays small (it is read at the start of every session); `CLAUDE.md` keeps the binding rule of each, in a line or two. Rules here are as binding as there.
 
 ## Web guide genre filter and show search share one dim function and are mutually exclusive
 
@@ -71,3 +71,28 @@ The complete, verbatim text of the invariants that `CLAUDE.md` summarizes in one
 ## OTA-only channels are ordinary channels
 
 **OTA-only channels are ordinary channels** — channels the tuner's own lineup lacks but the saved over-the-air scan found are merged into `lineups[device]` (tuned by frequency and program, `LineupEntry.isAirTuned`) and their saved listings into the device's guide (`GuideStore.setSupplement`, genre "Over the Air"), so every channel/show path (web grid, Record, Edit, rings, Watch Now!, menus, recording) treats them like any other channel. Never add a separate OTA-only code path, row type or tile type; where such a channel needs different behaviour, express it as a property of the data (no SeriesID → SeriesID types dimmed; address built from the saved scan). See `docs/WebServer.md` "OTA-only channels are ordinary channels".
+
+
+## Tuner occupancy
+
+- **Tuner occupancy** — watching and recording both occupy a tuner, *except* watching a currently-recording show via Watch Now! (`AppState.watchRecordingInApp`), which plays it back from disk through the local relay (`docs/WebServer.md`'s `/api/watch-recording`) and consumes none. Always use `AppState.tunersFull(for:)`, which delegates to `activeTunerCount(for:)` = `max(status.json hardware-polled count, recordingShows + in-app VLC stream)` (VLC via the `vlcOccupiesTuner(for:)` helper that excludes a relay session — checks `VLCBridge.shared.recordingShowId == nil`). The hardware-polled half matters when multiple machines run this app against the same physical HDHomeRun device — local `recordingShows` alone only sees this instance's own recordings. Never count recordings alone, and never count the VLC stream unconditionally — check whether it's the relay first.
+
+## Virtual tuner relay guardrails
+
+- **Virtual tuner relay guardrails** — while ≥1 show is actively recording, `VirtualTunerService` advertises a temporary HDHomeRun-like tuner (UDP discovery + `/discover.json`/`/lineup.json`/`/status.json`, see `docs/VirtualTunerService.md`) whose channel(s) relay the in-progress recording(s) from disk, so another hdhrVCRplus instance can watch without opening a second real tuner. Two backstops must never regress: (1) **self-exclusion** — `AppState.excludingOwnVirtualTuner(_:)` filters a newly-discovered device out of `state.devices` whenever its `DeviceID` matches `activeVirtualTunerDeviceID`; both `discoverDevices`/`probeForNewDevices` call sites must keep routing through it, or this instance would show its own relay as a normal, recordable tuner. (2) **watch-only** — `HDHRDevice.isVirtualRelay` (decoded from `/discover.json`'s non-standard `HdhrVCRplusVirtualRelay` field) is checked as a hard backstop in both `AppState.addShow`/`updateShow` (the two universal show-creation/edit funnels) and `WebServer.handleRecord`. (3) **never treated as a real tuner anywhere else** — any device-enumeration/picker AND any background polling loop (guide fetch, signal scan) must build from `AppState.recordableDevices` (`devices.filter { !$0.isVirtualRelay }`) instead of raw `devices`; a picker doesn't inherit backstop (2) for free just because `addShow` will eventually reject the result, and an unfiltered guide-fetch/signal-scan loop doesn't just fail harmlessly — it can fire a real "Guide Load Failed" notification for a device the user never configured, or (signal scan) overwrite a *real* channel's signal history with a bogus reading, since `ChannelSignalStore` keys purely by channel name, not device. Two full audits after initial shipment each found call sites that still missed this — see `docs/VirtualTunerService.md`'s Guardrails section for the current (long) list of everywhere it applies; default new device-facing code to `recordableDevices` rather than assuming raw `devices` is safe.
+
+## No blocking dialogs
+
+- **No blocking dialogs** — never call `NSAlert.runModal()` / `NSSavePanel.runModal()` (or `NSOpenPanel.runModal()`): the main thread sits in the modal's event loop, so the web server, SSE, FEED viewers, idle loop and recording start/stop all stop until someone answers (2026-10-14: a stray "No Tuner Available" froze `:1980`). Use `Dialogs.show(alert)` (fire-and-forget), `await Dialogs.present(alert)` (needs the answer; same `.alertFirstButtonReturn…` values) or `Dialogs.choose(panel) { url in … }`; they use a sheet on the frontmost window or a floating window when none is open. Only `AppRelocator`'s launch-time prompt is exempt (`NoBlockingDialogsTests` enforces it). A `windowShouldClose` that needs a prompt returns `false`, asks, then `close()`s (see `WindowCloseInterceptor`).
+
+## Web server listener is IPv4-only
+
+- **Web server listener is IPv4-only** — `WebServer.start(port:)` sets `NWProtocolIP.Options.version = .v4`. The default dual-stack `NWListener` sent ~500× slower to IPv4 LAN clients under Network.framework's user-space TCP stack (~0.2 MB/s, ~40% retransmits — starved every FEED viewer); IPv4-only measured ~100 MB/s. Don't remove it without re-measuring a LAN client's throughput (`issues_resolved.md`'s "FEED starvation: dual-stack NWListener").
+
+## Discord card sends
+
+- **Discord card sends** — always go through `fireDiscordCard(...)`, never call `discordRecordingCard` directly. `fireDiscordCard` chains per-show sends behind each other via `showRuntime[showId].discordCardTask` (mirrors `ensureLineupLoaded`'s `loadingLineupTasks` idiom) so two lifecycle events for the same show (e.g. a "Recording Started" confirmation racing a "Paused" card) can't race and orphan/duplicate a Discord message.
+
+## Idle-loop show-array safety
+
+- **Idle-loop show-array safety** — `idleLoop()` guards against overlapping runs (`idleLoopRunning`). Its passes, plus `scheduleNextAir`/`stopRecording(showId:)`, re-resolve `shows` by `show_id` after any `await` — never reuse a captured `Int` index, since `shows` can mutate (a web-UI delete, another show's own reschedule) while suspended.
