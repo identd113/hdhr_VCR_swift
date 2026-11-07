@@ -359,7 +359,10 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g-sig{vertical-align:middle;margin-left:2px}
 /* 30-min gridlines */
-.g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
+.g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%);
+  /* Skips layout/paint of off-screen programme strips. On the row itself this does nothing (the sticky .g-ch cell defeats it); on the strip only,
+     vertical scroll drops from ~35 fps with 20+ long tasks per 3 s to 0 long tasks (ISSUES.md, 2026-10-21). guide-vertical.css swaps the intrinsic size. */
+  content-visibility:auto;contain-intrinsic-size:auto {{GUIDE_MIN_WIDTH}}px auto 54px}
 .g-now-bar{position:absolute;left:var(--gs);top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
 .g-gap{position:absolute;left:var(--gs);width:var(--gw);top:0;bottom:0;background:var(--bg);pointer-events:none}
 /* user-select:none only — scoped to the tile itself so #sum-* (Summary panel) stays copyable;
