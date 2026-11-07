@@ -68,6 +68,15 @@ actor OTAScanner {
     }
     static let allRFChannels: [Int] = Array(2...36) + Array(38...51)
 
+    /// The RF channels a channel-list scan still has to look at, given the tuner's own lineup read with `?tuning`: those whose frequency
+    /// carries none of the lineup's channels (the device's own scan already lists every station it can decode on the others). nil when
+    /// the lineup has no tuning data (plain `/lineup.json`, older firmware): the caller then scans the whole band, as before.
+    static func rfChannelsNotCovered(by lineup: [LineupEntry]) -> [Int]? {
+        let freqs = Set(lineup.filter { !$0.isAirTuned }.compactMap(\.Frequency))
+        guard !freqs.isEmpty else { return nil }
+        return allRFChannels.filter { rf in frequencyHz(rf: rf).map { !freqs.contains($0) } ?? true }
+    }
+
     private var queue: [Int] = []
     private var claimed: Set<String> = []
     private var outcome = OTAScanOutcome()

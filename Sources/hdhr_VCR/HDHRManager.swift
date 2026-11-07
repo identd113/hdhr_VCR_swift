@@ -522,9 +522,40 @@ final class HDHRManager {
 
     func fetchLineup(for device: HDHRDevice) async throws -> [LineupEntry] {
         guard let url = URL(string: device.lineupURL) else { throw URLError(.badURL) }
+        // A real tuner's `?tuning` lineup carries each channel's frequency and program (no scan needed). Anything that goes wrong with it
+        // (a relay or older firmware that rejects the query, a body that does not decode) falls back to the plain lineup, as before.
+        if !device.isVirtualRelay, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.query = "tuning"
+            if let tuningURL = comps.url,
+               let (data, resp) = try? await dataSession.data(from: tuningURL),
+               (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+               let entries = try? JSONDecoder().decode([LineupEntry].self, from: data) {
+                return entries
+            }
+            glog("[HDHR] \(device.DeviceID): /lineup.json?tuning failed — using the plain lineup", level: .warning)
+        }
         let (data, _) = try await dataSession.data(from: url)
-        let entries = try JSONDecoder().decode([LineupEntry].self, from: data)
-        return entries
+        return try JSONDecoder().decode([LineupEntry].self, from: data)
+    }
+
+    /// `GET /lineup_status.json` on a real tuner: whether it is rescanning its channels right now (docs/HDHRFindings.md, "Endpoints Not Yet Used").
+    struct LineupStatus: Equatable {
+        var scanInProgress: Bool
+        var scanPossible: Bool
+        var source: String?
+        /// nil when the body is not the expected JSON object.
+        static func decode(_ data: Data) -> LineupStatus? {
+            guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            return LineupStatus(scanInProgress: (o["ScanInProgress"] as? Int ?? 0) != 0, scanPossible: (o["ScanPossible"] as? Int ?? 0) != 0, source: o["Source"] as? String)
+        }
+    }
+
+    /// nil when the device is a virtual relay, does not serve the endpoint, or does not answer: callers then behave as they did before it was used.
+    func lineupStatus(for device: HDHRDevice) async -> LineupStatus? {
+        guard !device.isVirtualRelay, let url = URL(string: device.lineupStatusURL),
+              let (data, resp) = try? await dataSession.data(from: url),
+              (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
+        return LineupStatus.decode(data)
     }
 
     func streamURL(for channel: String, lineup: [LineupEntry]) -> String? {

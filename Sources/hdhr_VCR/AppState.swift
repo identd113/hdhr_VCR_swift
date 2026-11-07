@@ -1944,6 +1944,13 @@ final class AppState: ObservableObject {
                 }
             }
             for await (id, tunerLineup) in group {
+                // An empty lineup from a tuner that is rescanning its channels is expected, not a failure: keep what is loaded.
+                if let fetched = tunerLineup, fetched.isEmpty, let known = lineups[id], !known.isEmpty,
+                   let device = devices.first(where: { $0.DeviceID == id }),
+                   await hdhrManager.lineupStatus(for: device)?.scanInProgress == true {
+                    glog("[Lineup] \(id) is rescanning its channels (lineup_status.json) — keeping the \(known.count) channels already loaded")
+                    continue
+                }
                 var lu = tunerLineup
                 // "Always use the OTA lineup and guide": the saved scan replaces the tuner's own channel list (see OTAStore.lineupEntries).
                 if config.lineupFromAir, let device = devices.first(where: { $0.DeviceID == id }),

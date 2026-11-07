@@ -11,6 +11,7 @@ Live on 105404BE (HDTC-2US EXTEND): 17 distinct frequencies (189 / 473–605 MHz
 `?tuning` also works on `/lineup.xml?tuning` (36 KB, same extra fields); `/lineup.m3u?tuning` is identical to plain.
 `?tuning` is ignored by `/discover.json` and `/status.json`. `show=found|demo|disabled|hidden|all` and `?foo` return the plain lineup.
 Nothing in Sources/ or docs/ mentions `?tuning` or `TransportStreamID`.
+Implemented 2026-11-07 (see `docs/HDHRFindings.md`, "Endpoints Not Yet Used"): lineup fetch with fallback, daily scan skips covered RF channels.
 Why it could help: frequency + program per lineup channel is what an air-tuned (`LineupEntry.isAirTuned`) channel needs; it could
 seed the OTA scanner, group channels by RF channel (shared-tuner-aware scheduling) and validate the OTA-only merge.
 

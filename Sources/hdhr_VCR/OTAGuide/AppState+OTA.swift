@@ -140,7 +140,10 @@ extension AppState {
         guard Self.lineupScanDue(now: now, hour: config.OTA_lineup_hour, lineupDate: OTAStore.lineupDate(deviceId: device.DeviceID), lastAttempt: lastOTALineupAttempt) else { return }
         lastOTALineupAttempt = now
         glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
-        startOTAScan(deviceId: device.DeviceID, lineupOnly: true, userInitiated: false)
+        // With the lineup's own tuning data, skip the RF channels the tuner already lists stations on (a third or so of the band's tuner time).
+        let rfs = OTAScanner.rfChannelsNotCovered(by: (lineups[device.DeviceID] ?? []).filter { !$0.isAirTuned })
+        if let rfs { glog("[OTA] daily scan skips \(OTAScanner.allRFChannels.count - rfs.count) RF channels the tuner's lineup already covers") }
+        startOTAScan(deviceId: device.DeviceID, rfChannels: rfs, lineupOnly: true, userInitiated: false)
     }
 
     // MARK: filling the gaps in SiliconDust's guide

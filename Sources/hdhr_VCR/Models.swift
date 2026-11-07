@@ -914,6 +914,7 @@ struct HDHRDevice: Identifiable, Equatable {
     // this app's own WebServer port rather than a real device's standard 80/5004 split.
     private var basePort: Int { BaseURL.flatMap { URL(string: $0)?.port } ?? 80 }
     var lineupURL:  String { "http://\(LocalIP):\(basePort)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
+    var lineupStatusURL: String { "http://\(LocalIP):\(basePort)/lineup_status.json" }
     var statusURL:  String { "http://\(LocalIP):\(basePort)/status.json" }
 
     // The real per-device capability field only lives on the CGNAT-unsafe cloud discover endpoint
@@ -1024,6 +1025,12 @@ struct LineupEntry: Codable, Identifiable {
     // relay lineup entries, which never set it).
     var VideoCodec: String?
     var AudioCodec: String?
+    // From `GET /lineup.json?tuning` (docs/EndpointDiscoveryLog.md, found 2026-10-28): the channel's RF tuning, with no scan. nil from the
+    // plain lineup, from firmware that ignores `?tuning`, and for this app's own virtual-relay entries and air-only (frequency-tuned) entries.
+    var Frequency: Int?
+    var ProgramNumber: Int?
+    var TransportStreamID: Int?
+    var Modulation: String?
     // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json (VirtualTunerService,
     // buildVirtualTunerLineupJSON) — nil for every real device, which has no notion of "show
     // title" at the lineup level. Lets a discovering hdhrVCRplus instance's menu bar say
@@ -1082,6 +1089,7 @@ struct LineupEntry: Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
+        case Frequency, ProgramNumber, TransportStreamID, Modulation
         case virtualRelayShowTitle = "HdhrVCRplusShowTitle"
         case virtualRelayTranscodeViewers = "HdhrVCRplusTranscodeViewers"
         case virtualRelayRawViewers = "HdhrVCRplusRawViewers"
