@@ -15,6 +15,7 @@ struct EditShowView: View {
     // show's NAS/external volume is offline, so any save — even a title edit — silently re-pointed
     // the show at the local fallback. 2026-10-05 review.)
     @State private var loadedRecordFolder: URL? = nil
+    @State private var upcomingAirings: [(channel: String, entry: GuideEntry)] = []
 
     private var isDirty: Bool { show != nil && show != originalShow }
 
@@ -103,6 +104,10 @@ struct EditShowView: View {
         // window focus, by the onChange(of: state.editingShowId) below.
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss, onBecomeKey: { if !isDirty { loadShow() } }))
         .onAppear { loadShow() }
+        .task(id: upcomingKey) {
+            upcomingAirings = computeUpcoming()
+            if seriesType.isSeries, let id = show?.show_seriesid { await state.ensureEpisodeAirings(seriesID: id) }
+        }
         // The window is a single reusable instance, so onAppear won't fire when it's merely
         // re-focused for a different show — reload whenever the target show id changes.
         // Guard against discarding unsaved edits: if the user re-targets this window to a
@@ -193,8 +198,47 @@ struct EditShowView: View {
                         .foregroundStyle(.secondary).font(.caption).lineLimit(1)
                 }
                 .help("The HDHomeRun tuner stream URL for this channel's live feed. Set automatically when the show is added from the guide.")
+
+                upcomingSection
             }
             .padding()
+        }
+    }
+
+    // MARK: - Upcoming airings (series shows)
+
+    private struct UpcomingKey: Equatable { var seriesId: String, isSeries: Bool, channel: String?, guideGeneration: Int }
+    private var upcomingKey: UpcomingKey {
+        UpcomingKey(seriesId: show?.show_seriesid ?? "", isSeries: seriesType.isSeries,
+                    channel: seriesType == .seriesChannel ? show?.show_channel : nil, guideGeneration: state.guideGeneration)
+    }
+
+    /// The series' upcoming airings, from the guide plus its own schedule (api/episodes) past the guide window; same rows as Add Show's panel.
+    private func computeUpcoming() -> [(channel: String, entry: GuideEntry)] {
+        guard seriesType.isSeries, let id = show?.show_seriesid, !id.isEmpty else { return [] }
+        let channel = seriesType == .seriesChannel ? show?.show_channel : nil
+        return state.upcomingGuideEpisodes(seriesID: id, channelNum: channel, limit: 8)
+    }
+
+    @ViewBuilder
+    private var upcomingSection: some View {
+        if !upcomingAirings.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Upcoming Airings").font(.caption.bold()).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(upcomingAirings.enumerated()), id: \.offset) { index, pair in
+                        if index > 0 { Divider() }
+                        OtherAiringRow(
+                            channel: pair.channel,
+                            entry: pair.entry,
+                            channelName: state.lineups[pair.entry.deviceId]?.first(where: { $0.GuideNumber == pair.channel })?.GuideName,
+                            channelLogo: state.channelImageURLs["\(pair.entry.deviceId):\(pair.channel)"].flatMap { state.channelIconImages[$0] }
+                        )
+                    }
+                }
+            }
+            .padding(8)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 

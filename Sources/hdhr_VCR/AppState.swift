@@ -4563,8 +4563,8 @@ final class AppState: ObservableObject {
     /// is scheduled for its real next airing even when that is past the 28 h guide window. Per series: refreshed every 3 h, retried after 30 min
     /// on a failure. Every failure leaves the guide-only behaviour in place and is counted in `FeatureTracker` ("series.episodes").
     @discardableResult
-    func refreshEpisodeAirings() async -> Bool {
-        let ids = Array(Set(shows.filter { $0.show_active && $0.show_use_seriesid && !$0.show_seriesid.isEmpty }.map(\.show_seriesid)))
+    func refreshEpisodeAirings(seriesIDs only: [String]? = nil) async -> Bool {
+        let ids = only ?? Array(Set(shows.filter { $0.show_active && $0.show_use_seriesid && !$0.show_seriesid.isEmpty }.map(\.show_seriesid)))
         let now = Date()
         let due = EpisodeSchedule.dueSeriesIDs(ids, now: now, lastSuccess: episodeLastSuccess, lastAttempt: episodeLastAttempt)
         guard !due.isEmpty else { return false }
@@ -4591,6 +4591,13 @@ final class AppState: ObservableObject {
             }
         }
         return changed
+    }
+
+    /// Fills in one series' far-future airings for a screen that is showing it (Add Show, Edit Show), fetching only if its schedule is not
+    /// already fresh (same 3 h / 30 min timing as the background refresh). Bumps `guideGeneration` when airings were added so the screen recomputes.
+    func ensureEpisodeAirings(seriesID: String) async {
+        guard !seriesID.isEmpty else { return }
+        if await refreshEpisodeAirings(seriesIDs: [seriesID]) { guideGeneration += 1 }
     }
 
     func rescheduleAllSeries() async {

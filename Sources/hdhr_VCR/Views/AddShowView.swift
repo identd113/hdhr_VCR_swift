@@ -213,6 +213,8 @@ struct AddShowView: View {
         }
         .task(id: otherAiringsKey) {
             otherAiringsCache = computeOtherAirings()
+            // Past the guide window the series' own schedule (api/episodes) fills the list; the guide's airings show at once, these join when they arrive.
+            if seriesType.isSeries { await state.ensureEpisodeAirings(seriesID: show.show_seriesid) }
         }
     }
 
@@ -241,7 +243,7 @@ struct AddShowView: View {
     // Other upcoming airings of the same SeriesID, excluding the airing just selected in Step 2.
     // SeriesID-recording types only (seriesType.isSeries) — a Single/DateTime show records
     // one specific slot, so other airings aren't relevant to what will actually record.
-    // Bounded by GuideStore's ~29h guide window per device — best-effort preview, not exhaustive.
+    // The guide's airings plus the series' own schedule from api/episodes (fetched on demand, see `.task` above), so it reaches past the 28 h guide window; capped at 8 rows.
     private func computeOtherAirings() -> [(channel: String, entry: GuideEntry)] {
         guard seriesType.isSeries, !show.show_seriesid.isEmpty else { return [] }
         let selectedStart = show.show_next.map { Int($0.timeIntervalSince1970) }
@@ -252,7 +254,7 @@ struct AddShowView: View {
         // still shown so double-clicking it can re-anchor the show to that other tuner (see the
         // exclusion filter below and switchToAiring()).
         let channelFilter = (seriesType == .seriesChannel) ? show.show_channel : nil
-        return state.upcomingGuideEpisodes(seriesID: show.show_seriesid, channelNum: channelFilter)
+        return state.upcomingGuideEpisodes(seriesID: show.show_seriesid, channelNum: channelFilter, limit: 8)
             .filter { !($0.channel == show.show_channel && $0.entry.StartTime == selectedStart
                         && $0.entry.deviceId == show.hdhr_record) }
     }
@@ -724,12 +726,12 @@ private struct AddShowWebView: NSViewRepresentable {
 // grid and Watch Now, just condensed to a compact list row. Double-click re-anchors the whole
 // Details step to this airing (see AddShowView.switchToAiring) — a light hover tint plus a
 // tooltip are the only affordance, since double-click isn't otherwise used in this view.
-private struct OtherAiringRow: View {
+struct OtherAiringRow: View {
     let channel: String        // GuideNumber, e.g. "4.1"
     let entry: GuideEntry
     let channelName: String?   // resolved GuideName, if lineup is loaded
     let channelLogo: NSImage?  // resolved from state.channelImageURLs/channelIconImages, if cached
-    let onSwitchTo: () -> Void
+    var onSwitchTo: (() -> Void)? = nil   // nil: a plain list row (Edit Show)
 
     @State private var hovering = false
 
@@ -759,8 +761,8 @@ private struct OtherAiringRow: View {
         .background(hovering ? Color.secondary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 4))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2, perform: onSwitchTo)
-        .help("Double-click to record this airing instead")
+        .onTapGesture(count: 2) { onSwitchTo?() }
+        .help(onSwitchTo == nil ? "" : "Double-click to record this airing instead")
     }
 
     @ViewBuilder
