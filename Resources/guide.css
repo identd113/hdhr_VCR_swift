@@ -223,11 +223,12 @@ html.lm #sum-poster{background:#ccc}
 @media(max-width:600px){
   body{padding:10px}
   h1{font-size:1rem}
-  /* Two aligned rows: title + search/⋯ share row 1 (the title yields width and ellipsizes, so opening the search box never wraps the
-     controls to a new line), the tuner boxes take row 2. Without this the search/⋯ pair sat alone on a third, right-aligned row. */
-  #toolbar h1{order:0;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #toolbar-right{order:1;margin-left:0!important;gap:8px!important;flex-wrap:nowrap!important}
-  #dev-bar{order:2;flex:1 0 100%}
+  /* One toolbar row: a small, muted title, then the tuner boxes, then search and ⋯ flush right. Nothing wraps to a second row; the title
+     gives up width first (ellipsis), then the tuner boxes wrap among themselves (#dev-bar) if there are several. */
+  #toolbar{flex-wrap:nowrap!important;align-items:flex-start!important}
+  #toolbar h1{order:0;flex:0 1 auto;min-width:0;align-self:center;font-size:.66rem;font-weight:600;letter-spacing:.02em;color:var(--t5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #dev-bar{order:1;flex:1 1 0;min-width:0}
+  #toolbar-right{order:2;margin-left:auto!important;gap:8px!important;flex-wrap:nowrap!important;flex-shrink:0}
   :root{--ch-w:100px}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
   .t-info{padding:2px 6px;font-size:.6875rem}
@@ -780,4 +781,14 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   #sum-ct{max-width:90px!important}
   #sum-ep{flex:0 6 auto!important;max-width:none!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #sum-actions button{min-width:0!important;min-height:36px!important;padding:3px 8px!important}
+}
+
+/* ── Phone: an opened search box covers the toolbar row (title + tuner boxes) instead of squeezing them; ⋯ stays put at the right.
+   Last in the file so it beats the earlier width rules for #search-in at equal specificity. ── */
+@media(max-width:600px){
+  #toolbar{position:relative}
+  #toolbar-right{position:static!important}
+  #search-bar:hover,#search-bar:focus-within,#search-bar.has-filter{position:absolute;left:0;right:52px;top:0;height:44px;z-index:30;background:var(--bg);padding:0}
+  #search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{flex:1 1 0;width:auto;min-width:0}
+  #search-drop{left:0;right:0;max-width:none;min-width:0}
 }
