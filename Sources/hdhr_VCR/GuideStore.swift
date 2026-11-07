@@ -621,6 +621,12 @@ final class GuideStore {
         channelsByDevice[deviceId] ?? []
     }
 
+    /// When the latest saved listing ends (epoch seconds), across every device and channel; nil when no guide is loaded. Entries are sorted
+    /// by StartTime, so each channel's last entry carries its latest end. The web guide sizes its scroll window to this.
+    func latestListingEnd() -> Int? {
+        channelEntryIndex.values.compactMap { $0.last?.EndTime }.max()
+    }
+
     /// Guide entries for a device+channel whose EndTime is after `after` (default: now).
     func entries(deviceId: String, channelNum: String, after: Date = Date()) -> [GuideEntry] {
         entries(key: "\(deviceId):\(channelNum)", after: after)

@@ -3598,8 +3598,14 @@ final class WebServer: @unchecked Sendable {
     private func guideWindow(state: AppState) -> (start: Int, sec: Int) {
         let nowTs    = Int(Date().timeIntervalSince1970)
         let halfHour = 30 * 60
-        let winSec   = state.config.GuideHours * 3600
         let winStart = (nowTs / halfHour) * halfHour - 3600
+        // GuideHours is the most the window spans; it shrinks to the latest listing held (the provider's guide ends before 28 h on many days,
+        // which left a blank tail), never under 6 h so a stale or partial guide still shows a usable grid.
+        var winSec = state.config.GuideHours * 3600
+        if let end = state.guideStore.latestListingEnd() {
+            let wanted = (max(end - winStart, 6 * 3600) + halfHour - 1) / halfHour * halfHour
+            winSec = min(winSec, wanted)
+        }
         return (winStart, winSec)
     }
 
