@@ -627,8 +627,12 @@ Full research, band sweep and decoder results: [`overtime/README.md`](../overtim
 
 ## Endpoints Not Yet Used (candidates)
 
+Running probe log with dead (404) paths and re-verified entries: [`docs/EndpointDiscoveryLog.md`](EndpointDiscoveryLog.md).
+
 | Endpoint | Why it could help |
 |---|---|
+| `/lineup.json?tuning` (local device) | Found 2026-10-28 (full write-up in `docs/EndpointDiscoveryLog.md`). Same channels as `/lineup.json`, plus `TransportStreamID`, `Modulation`, `Frequency` (Hz) and `ProgramNumber` per channel, with no scan. Also on `/lineup.xml?tuning`; ignored by `/discover.json` and `/status.json`. Could seed the air scanner, group channels by RF channel (shared-tuner-aware scheduling) and validate the OTA-only merge. Fall back to plain `/lineup.json` when the fields are missing. |
+| `api.hdhomerun.com/api/recording_rules?DeviceAuth=<auth>` | Found 2026-10-28. `200` with `[]` on an account without a DVR subscription; `403` without params. The account's SiliconDust cloud recording-rule list. Untested: a populated list and `Cmd=change`. Only useful if the app ever interoperates with SiliconDust's DVR. |
 | `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
 | `/log.html` | Discovered 2026-08-26 (see "Broader Endpoint Sweep" above). Plain-text device-side tuning/streaming log, including the *device's own* reason a stream ended (`requested time reached` vs `remote closed`) — something `RecordingManager`'s own curl-exit tracking can't see. Would need scrape-and-diff (no JSON form), so only worth it if app-side recording-failure diagnosis genuinely needs the device's perspective on why a stream dropped. |
 | `api.hdhomerun.com/api/account?DeviceAuth=<auth>` | Undocumented, discovered 2026-08-26 while probing alt-auth for the XMLTV backdating question (see "Backdating retest" above). Returns `{"AccountEmail": <string or null>, "AccountDeviceIDs": [...]}` — `403` without `DeviceAuth`. A non-`null` `AccountEmail` is a real, live way to tell whether a device is linked to a SiliconDust account (and by extension, whether a DVR subscription is even possible) instead of assuming "free tier" — useful context for any future Settings/About surface, or for finally testing whether a paid DVR subscription changes `xmltv`'s window. |
