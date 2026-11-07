@@ -788,7 +788,26 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 @media(max-width:600px){
   #toolbar{position:relative}
   #toolbar-right{position:static!important}
-  #search-bar:hover,#search-bar:focus-within,#search-bar.has-filter{position:absolute;left:0;right:52px;top:0;height:44px;z-index:30;background:var(--bg);padding:0}
+  #search-bar:hover,#search-bar:focus-within,#search-bar.has-filter{position:absolute;left:0;right:42px;top:0;height:36px;z-index:30;background:var(--bg);padding:0}
   #search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{flex:1 1 0;width:auto;min-width:0}
   #search-drop{left:0;right:0;max-width:none;min-width:0}
+}
+
+/* ── Phone: compact, self-sizing controls (36px tall instead of the 44px touch minimum; the tuner box takes whatever width is left, ▾ is
+   attached to it, several tuners share the row or wrap among themselves). Last in the file: beats the pointer:coarse sizing above. ── */
+@media(max-width:600px){
+  #toolbar{align-items:stretch!important;gap:6px!important}
+  #toolbar h1{align-self:center}
+  #dev-bar{align-items:stretch;gap:6px}
+  .tuner-box{flex:1 1 140px;min-width:0;display:flex;flex-direction:column}
+  .tuner-row{gap:0;width:100%}
+  .tuner-row .d-btn{display:block;flex:1 1 auto;min-width:0;min-height:36px;height:36px;padding:0 10px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:5px 0 0 5px}
+  .tuner-row .tdrop-btn{min-width:36px;min-height:36px;height:36px;padding:0;border-radius:0 5px 5px 0;margin-left:-1px}
+  #search-icon-btn,#tb-more{min-width:36px;min-height:36px;height:36px;padding:0}
+  #search-in{min-height:36px;height:36px}
+  #search-bar:hover #search-info-btn,#search-bar:focus-within #search-info-btn,#search-bar.has-filter #search-info-btn{min-width:36px}
+  #search-info-btn{min-height:36px}
+  /* Summary card actions: smaller buttons that fill the line and wrap only when they must. */
+  #sum-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  #sum-actions button{flex:0 1 auto;min-width:0;min-height:34px!important;padding:4px 10px!important;font-size:.75rem!important}
 }
