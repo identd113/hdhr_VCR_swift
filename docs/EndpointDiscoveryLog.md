@@ -25,7 +25,7 @@ seed the OTA scanner, group channels by RF channel (shared-tuner-aware schedulin
 `200`, body `[]` on this account (no DVR subscription/rules). `400` without DeviceAuth-style params variants (`Cmd=list`, `V=2` also `[]`/`400`),
 `403` with no params. This is the account's SiliconDust cloud recording-rule list; the only doc mention is the `RecordingRules`
 field inside `episodes?V=2`. Untested: what a populated list looks like (needs a DVR-subscribed account) and whether `Cmd=change`
-adds/removes rules. Not worth using unless the app ever interoperates with SiliconDust's DVR.
+adds/removes rules. Not worth using unless the app ever interoperates with SiliconDust's DVR. **Decision 2026-11-07: not used** (nothing to test against on this account).
 
 ## KNOWN cloud, re-verified 2026-10-28 (all `200` with DeviceAuth)
 `api/guide`, `api/xmltv`, `api/up_next`, `api/account` (`AccountEmail: null`, `AccountDeviceIDs: [105404BE]`), `api/episodes?SeriesID=`,
