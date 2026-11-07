@@ -37,6 +37,7 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 | `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice`; Guide arrays are pre-sorted by `StartTime` by `prepareIndex` (see "Fetch → Index Pipeline" below); each entry has `deviceId` and `channelNum` stamped on it |
 | `channelEntryIndex` | `"deviceId:channelNum"` | `[GuideEntry]` sorted by `StartTime` |
 | `seriesIndex` | `seriesID` | `[SeriesMatch]` sorted by `StartTime` (lazily — sorted on first query per series, not at build time); each carries `deviceId`, `channelNum`, `entry` |
+| `episodeAirings` | `seriesID` | `[SeriesMatch]` from `api/episodes` (`EpisodeSchedule`, set by `AppState.refreshEpisodeAirings`), already mapped to the devices whose lineup has the channel. Kept apart from `seriesIndex` so a guide reload never wipes them. `seriesCandidates(_:)` merges both at lookup time (guide first; an episodes airing for a device + channel + start the guide already has is dropped, so the guide's genre tags win); `nextEpisode` / `currentEpisode` / `nextEpisodes` all read it, so the channel, device, duplicate and favourite rules apply unchanged. With no extras it is `seriesIndex` itself. |
 | `unsortedSeries` | — | `Set<String>` of series IDs needing sort on next `nextEpisode`/`nextEpisodes`/`currentEpisode` call |
 
 ---

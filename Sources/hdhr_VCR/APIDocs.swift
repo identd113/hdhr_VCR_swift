@@ -34,6 +34,7 @@ enum APIDocs {
 
     static let routes: [APIRoute] = [
         // — Status
+        APIRoute(method: "GET", path: "/api/feature-stats", group: "Status", summary: "How often each newer data source (lineup ?tuning, lineup_status, api/episodes, the daily scan skip) was used versus fell back to the older method since launch, with the last reason."),
         APIRoute(method: "GET", path: "/api/ping", group: "Status", summary: "Liveness and build identity: ok, version stamp, release, build number."),
         APIRoute(method: "GET", path: "/api/events", group: "Status", summary: "Server-sent events: guide, recording and tuner changes pushed to the web guide.", response: "text/event-stream", streaming: true),
         APIRoute(method: "GET", path: "/api/now.json", group: "Status", summary: "What is recording and what is up next."),

@@ -28,6 +28,9 @@ final class GuideStore {
     private var supplementByDevice: [String: [GuideChannel]] = [:]
     private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
+    /// Extra airings per seriesID from `api/episodes` (beyond the guide window), already mapped to devices; see `EpisodeSchedule`. Kept apart from
+    /// `seriesIndex` so a guide reload never wipes them; merged at lookup time by `seriesCandidates`.
+    private var episodeAirings: [String: [SeriesMatch]] = [:]
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
     /// True when this device's loaded guide carries no SeriesIDs at all (the over-the-air guide never does), so a SeriesID recording
     /// could never match anything. False while no guide is loaded: unknown is not "none".
@@ -638,6 +641,26 @@ final class GuideStore {
         return (channelEntryIndex[key] ?? []).filter { $0.EndTime > epoch }
     }
 
+    /// Replaces the extra airings for a series (empty removes them).
+    func setEpisodeAirings(seriesID: String, matches: [SeriesMatch]) {
+        if matches.isEmpty { episodeAirings[seriesID] = nil } else { episodeAirings[seriesID] = matches.sorted { $0.entry.StartTime < $1.entry.StartTime } }
+    }
+
+    /// How many extra airings are held for a series (for logs and tests).
+    func episodeAiringCount(seriesID: String) -> Int { episodeAirings[seriesID]?.count ?? 0 }
+
+    /// Every known airing of a series, sorted by StartTime: the guide's own, plus the `api/episodes` ones for a device + channel + start the guide
+    /// does not already have. With no extras this is the guide index itself, so nothing changes when the endpoint is unused or failed.
+    private func seriesCandidates(_ seriesID: String) -> [SeriesMatch] {
+        sortIfNeeded(seriesID)
+        let guide = seriesIndex[seriesID] ?? []
+        guard let extra = episodeAirings[seriesID], !extra.isEmpty else { return guide }
+        var seen = Set(guide.map { "\($0.deviceId)|\($0.channelNum)|\($0.entry.StartTime)" })
+        let added = extra.filter { seen.insert("\($0.deviceId)|\($0.channelNum)|\($0.entry.StartTime)").inserted }
+        guard !added.isEmpty else { return guide }
+        return (guide + added).sorted { $0.entry.StartTime < $1.entry.StartTime }
+    }
+
     /// First episode matching seriesID with StartTime > after, optionally constrained by
     /// channelNum (for SeriesID-channel shows) or deviceId.
     ///
@@ -656,11 +679,11 @@ final class GuideStore {
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
-        let candidates = seriesIndex[seriesID]?.filter { m in
+        let candidates = seriesCandidates(seriesID).filter { m in
             m.entry.StartTime > epoch
                 && (channelNum == nil || m.channelNum == channelNum)
                 && (deviceId == nil || m.deviceId == deviceId)
-        } ?? []
+        }
         guard let first = candidates.first else { return nil }
         guard isNotRecorded != nil || isFavorite != nil else { return first }
         let tied = Array(candidates.prefix(while: { $0.entry.StartTime == first.entry.StartTime }))
@@ -685,11 +708,11 @@ final class GuideStore {
     func nextEpisodes(seriesID: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
         sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
-        let all = seriesIndex[seriesID]?.filter { m in
+        let all = seriesCandidates(seriesID).filter { m in
             m.entry.StartTime > epoch
                 && (channelNum == nil || m.channelNum == channelNum)
                 && (deviceId == nil || m.deviceId == deviceId)
-        } ?? []
+        }
         // Same airing appears once per device when multiple tuners share a channel lineup;
         // keep only the first occurrence per (channel, StartTime) to avoid duplicate menu rows.
         // Only matters for the unfiltered (deviceId == nil) cross-device case above — a
@@ -718,11 +741,11 @@ final class GuideStore {
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
         let epoch = Int(date.timeIntervalSince1970)
-        let candidates = seriesIndex[seriesID]?.filter { m in
+        let candidates = seriesCandidates(seriesID).filter { m in
             m.entry.StartTime <= epoch && m.entry.EndTime > epoch
                 && (channelNum == nil || m.channelNum == channelNum)
                 && (deviceId == nil || m.deviceId == deviceId)
-        } ?? []
+        }
         guard let first = candidates.first else { return nil }
         if let isNotRecorded {
             let unrecorded = candidates.filter { isNotRecorded($0.entry) }
@@ -915,6 +938,7 @@ final class GuideStore {
         seriesIndex = [:]
         unsortedSeries = []
         seriesIDsByDevice = [:]
+        episodeAirings = [:]
         sourceByDevice = [:]
         loadTimestamps = [:]
         // The saved copies too — otherwise the next load() quietly restores the very data this was

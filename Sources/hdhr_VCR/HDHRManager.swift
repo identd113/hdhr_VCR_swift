@@ -530,9 +530,11 @@ final class HDHRManager {
                let (data, resp) = try? await dataSession.data(from: tuningURL),
                (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
                let entries = try? JSONDecoder().decode([LineupEntry].self, from: data) {
+                if entries.isEmpty || entries.contains(where: { $0.Frequency != nil }) { FeatureTracker.shared.used("lineup.tuning") }
+                else { FeatureTracker.shared.fellBack("lineup.tuning", "answered without tuning fields") }
                 return entries
             }
-            glog("[HDHR] \(device.DeviceID): /lineup.json?tuning failed — using the plain lineup", level: .warning)
+            FeatureTracker.shared.fellBack("lineup.tuning", "request failed or body did not decode")
         }
         let (data, _) = try await dataSession.data(from: url)
         return try JSONDecoder().decode([LineupEntry].self, from: data)
@@ -552,10 +554,16 @@ final class HDHRManager {
 
     /// nil when the device is a virtual relay, does not serve the endpoint, or does not answer: callers then behave as they did before it was used.
     func lineupStatus(for device: HDHRDevice) async -> LineupStatus? {
-        guard !device.isVirtualRelay, let url = URL(string: device.lineupStatusURL),
+        guard !device.isVirtualRelay else { return nil }
+        guard let url = URL(string: device.lineupStatusURL),
               let (data, resp) = try? await dataSession.data(from: url),
-              (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
-        return LineupStatus.decode(data)
+              (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+              let status = LineupStatus.decode(data) else {
+            FeatureTracker.shared.fellBack("lineup.status", "unavailable")
+            return nil
+        }
+        FeatureTracker.shared.used("lineup.status")
+        return status
     }
 
     func streamURL(for channel: String, lineup: [LineupEntry]) -> String? {

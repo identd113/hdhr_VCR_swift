@@ -861,6 +861,9 @@ final class AppState: ObservableObject {
     // "FEED####  — unavailable" rows with no show ever assigned to any of them).
     private static let staleDeviceForgetAfter: TimeInterval = 3600
     private var guideRefreshInFlight: Bool = false
+    /// `api/episodes` bookkeeping per seriesID (see `refreshEpisodeAirings`).
+    private var episodeLastSuccess: [String: Date] = [:]
+    private var episodeLastAttempt: [String: Date] = [:]
     // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
     // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
     // second caller silently skipping and reading stale tunerStatus. That distinction matters here:
@@ -2062,6 +2065,8 @@ final class AppState: ObservableObject {
         statusMessage = "\(shows.count) \(plural(shows.count, "show")) — \(availableDeviceCount) \(plural(availableDeviceCount, "tuner")) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
+        // Series schedules beyond the guide window (api/episodes); series are re-resolved only if that added airings.
+        if loadedCount > 0 { Task { [weak self] in if let self, await self.refreshEpisodeAirings() { await self.rescheduleAllSeries() } } }
         if loadedCount > 0 {
             // The page rebuild + gzip is a long MainActor block; during the launch splash's fly-in it shows as dropped frames.
             // The web server already has a (guide-less) page from startup()'s early prebuild, so wait for the animation to settle.
@@ -2115,6 +2120,7 @@ final class AppState: ObservableObject {
         Task { await prefetchChannelIcons(allChannels) }
         // Re-evaluate all series shows against fresh guide data so any that were bumped
         // past the guide window get scheduled as soon as a matching episode appears.
+        await refreshEpisodeAirings()
         await rescheduleAllSeries()
         // Notify connected web clients that guide data has changed so they can refresh the grid.
         // Builds the grid once and reuses it for both the page cache and the SSE broadcast.
@@ -4135,7 +4141,7 @@ final class AppState: ObservableObject {
                     shows[idx].show_next    = match.entry.startDate
                     shows[idx].show_end     = match.entry.endDate
                     shows[idx].show_channel = match.channelNum
-                    shows[idx].show_genre   = match.entry.firstGenre ?? ""
+                    shows[idx].show_genre   = match.entry.firstGenre ?? shows[idx].show_genre   // an api/episodes airing has no genre tags: keep what is known
                     shows[idx].hdhr_record  = match.deviceId
                     if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[match.deviceId] ?? []) {
                         shows[idx].show_url = url
@@ -4552,6 +4558,40 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Maintenance actions (Settings → Maintenance panel)
+
+    /// Pulls each active SeriesID show's upcoming airings from `api/episodes` and hands them to the guide store as extra candidates, so a series
+    /// is scheduled for its real next airing even when that is past the 28 h guide window. Per series: refreshed every 3 h, retried after 30 min
+    /// on a failure. Every failure leaves the guide-only behaviour in place and is counted in `FeatureTracker` ("series.episodes").
+    @discardableResult
+    func refreshEpisodeAirings() async -> Bool {
+        let ids = Array(Set(shows.filter { $0.show_active && $0.show_use_seriesid && !$0.show_seriesid.isEmpty }.map(\.show_seriesid)))
+        let now = Date()
+        let due = EpisodeSchedule.dueSeriesIDs(ids, now: now, lastSuccess: episodeLastSuccess, lastAttempt: episodeLastAttempt)
+        guard !due.isEmpty else { return false }
+        // Airings are mapped to tuners by their lineups: with none loaded yet (early startup) there is nothing to map to, so try again later.
+        let devices = recordableDevices.filter { !$0.isVirtualRelay }.map { (id: $0.DeviceID, lineup: lineups[$0.DeviceID] ?? []) }.filter { !$0.lineup.isEmpty }
+        guard !devices.isEmpty else { return false }
+        guard let auth = recordableDevices.first(where: { !$0.isVirtualRelay && $0.DeviceAuth != nil })?.DeviceAuth else {
+            for _ in due { FeatureTracker.shared.fellBack("series.episodes", "no tuner with a DeviceAuth") }
+            return false
+        }
+        var changed = false
+        for sid in due {
+            episodeLastAttempt[sid] = now
+            let (airings, reason) = await EpisodeSchedule.fetch(seriesID: sid, deviceAuth: auth)
+            guard let airings else { FeatureTracker.shared.fellBack("series.episodes", reason ?? "failed"); continue }
+            let matches = EpisodeSchedule.matches(for: airings, seriesID: sid, after: now, devices: devices)
+            guideStore.setEpisodeAirings(seriesID: sid, matches: matches)
+            episodeLastSuccess[sid] = now
+            if matches.isEmpty { FeatureTracker.shared.fellBack("series.episodes", airings.isEmpty ? "no upcoming airings listed" : "no airing on a channel this tuner has") }
+            else {
+                changed = true
+                FeatureTracker.shared.used("series.episodes")
+                glog("[Episodes] \(sid): \(matches.count) upcoming airing(s) from api/episodes (\(airings.count) listed)")
+            }
+        }
+        return changed
+    }
 
     func rescheduleAllSeries() async {
         // Iterate by show_id, not a snapshotted index — scheduleNextAir's internal guide-fetch

@@ -142,6 +142,7 @@ extension AppState {
         glog("[OTA] daily channel-list scan due (\(config.OTA_lineup_hour):00)")
         // With the lineup's own tuning data, skip the RF channels the tuner already lists stations on (a third or so of the band's tuner time).
         let rfs = OTAScanner.rfChannelsNotCovered(by: (lineups[device.DeviceID] ?? []).filter { !$0.isAirTuned })
+        if rfs != nil { FeatureTracker.shared.used("scan.skipCovered") } else { FeatureTracker.shared.fellBack("scan.skipCovered", "lineup has no tuning data") }
         if let rfs { glog("[OTA] daily scan skips \(OTAScanner.allRFChannels.count - rfs.count) RF channels the tuner's lineup already covers") }
         startOTAScan(deviceId: device.DeviceID, rfChannels: rfs, lineupOnly: true, userInitiated: false)
     }

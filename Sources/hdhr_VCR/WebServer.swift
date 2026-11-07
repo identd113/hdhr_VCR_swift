@@ -2783,6 +2783,10 @@ final class WebServer: @unchecked Sendable {
                                  "listings": p.listingCount, "tuners": state.otaTunerLimit, "tunersMax": state.otaTunerMax,
                                  "secondsLeft": p.estimatedSecondsRemaining().map { Int($0) } ?? -1])
 
+        case "/api/feature-stats":
+            // Read-only counters: how often each newer endpoint was used versus fell back to the older method (FeatureTracker).
+            return jsonResponse(FeatureTracker.shared.jsonObject())
+
         case "/api/ping":
             // "version" (the build stamp) is load-bearing — guide.js's checkFreshness() compares
             // it against the page's baked-in _ver to detect a redeploy and reload. "release"/
