@@ -31,3 +31,6 @@ adds/removes rules. Not worth using unless the app ever interoperates with Silic
 `api/guide`, `api/xmltv`, `api/up_next`, `api/account` (`AccountEmail: null`, `AccountDeviceIDs: [105404BE]`), `api/episodes?SeriesID=`,
 `api/search?Search=`, `api/suggest?Category=`, `api.hdhomerun.com/discover?DeviceID=` (same as `/discover`; `v=2` ignored).
 Dead (404): `api/{recorded_files,recording_rule,rules,series,channels,lineup(403)}`.
+
+## Two programs on one RF channel take two tuners — tested 2026-11-07
+Streams of 2.1 and 2.2 (both 593 MHz) opened at once on the HDTC-2US: `status.json` showed **tuner0 and tuner1 both busy**, one per stream, both at 593000000. This tuner does not share a tuner between programs on the same frequency, so frequency grouping from `?tuning` must not be used to lower tuner-occupancy counts or to schedule two shows on one tuner. (It is used for the signal scan, where signal quality belongs to the RF channel.)

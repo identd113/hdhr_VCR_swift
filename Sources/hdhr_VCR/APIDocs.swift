@@ -56,7 +56,7 @@ enum APIDocs {
         APIRoute(method: "GET", path: "/api/now-airing/{deviceId}/{channel}", group: "Guide", summary: "The program airing now on a channel.",
                  params: [APIParam(name: "deviceId", place: .path, summary: "DeviceID", example: "105404BE"),
                           APIParam(name: "channel", place: .path, summary: "GuideNumber", example: "4.1")]),
-        APIRoute(method: "GET", path: "/api/airings/{seriesId}", group: "Guide", summary: "Up to 4 upcoming airings of a series, across tuners.",
+        APIRoute(method: "GET", path: "/api/airings/{seriesId}", group: "Guide", summary: "Up to 8 upcoming airings of a series, across tuners (the guide's plus the series' own schedule from api/episodes).",
                  params: [APIParam(name: "seriesId", place: .path, summary: "SiliconDust SeriesID")]),
         // — Recording
         APIRoute(method: "POST", path: "/api/record", group: "Recording", summary: "Schedule a recording of a guide airing.",

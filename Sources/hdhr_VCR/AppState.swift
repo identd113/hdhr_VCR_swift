@@ -6760,9 +6760,12 @@ final class AppState: ObservableObject {
                     glog("[Signal] scan: skipping device \(device.DeviceID) — invalid statusURL '\(device.statusURL)'", level: .warning)
                     continue outer
                 }
-                let batchSize = 1
+                // One tune per frequency when the lineup carries `?tuning` data (see SignalScanPlan); otherwise one per channel, as before.
+                let groups = SignalScanPlan.groups(entries)
+                if groups.count < entries.count { FeatureTracker.shared.used("scan.signalByFrequency") }
+                else if !entries.contains(where: { $0.Frequency != nil }) { FeatureTracker.shared.fellBack("scan.signalByFrequency", "lineup has no tuning data") }
                 var j = 0
-                while j < entries.count {
+                while j < groups.count {
                     guard !Task.isCancelled else { break outer }
                     // A scan opens a REAL tuner for ~1.5 s per channel. Never do that when every tuner on
                     // the device is already busy (the tune would be refused — and used to be recorded as
@@ -6771,16 +6774,17 @@ final class AppState: ObservableObject {
                     // the moment it launches). The channels left unscanned stay "needs a sample" and are
                     // picked up by the next scan. 2026-10-05 review.
                     if tunersFull(for: device.DeviceID) {
-                        glog("[Signal] scan: all tuners on \(device.DeviceID) are busy — skipping its remaining \(entries.count - j) channel(s) for now")
+                        glog("[Signal] scan: all tuners on \(device.DeviceID) are busy — skipping its remaining \(groups[j...].reduce(0) { $0 + 1 + $1.siblings.count }) channel(s) for now")
                         continue outer
                     }
                     if deviceHasImminentRecording(device.DeviceID, within: 120) {
-                        glog("[Signal] scan: a recording on \(device.DeviceID) starts within 2 min — skipping its remaining \(entries.count - j) channel(s) for now")
+                        glog("[Signal] scan: a recording on \(device.DeviceID) starts within 2 min — skipping its remaining \(groups[j...].reduce(0) { $0 + 1 + $1.siblings.count }) channel(s) for now")
                         continue outer
                     }
-                    let batch  = Array(entries[j ..< min(j + batchSize, entries.count)])
-                    j       += batchSize
-                    scanned += batch.count
+                    let batch  = [groups[j].rep]
+                    let siblings = groups[j].siblings   // same frequency as `batch[0]`: they take its samples
+                    j       += 1
+                    scanned += batch.count + siblings.count
 
                     // Gated on menuIsOpen like every other high-frequency @Published writer in this
                     // file (see fetchDeviceStatusUncached's identical reasoning) — a scan can run
@@ -6798,6 +6802,7 @@ final class AppState: ObservableObject {
                     // channel — gives the rolling average enough data on the first scan.
                     var gotSample = Set<String>()
                     var refusedTune = Set<String>()
+                    var repSamples: [Int] = []
                     await withTaskGroup(of: String?.self) { group in
                         for entry in batch {
                             // Device-reported lineup URL — same source every other stream URL in the
@@ -6821,6 +6826,7 @@ final class AppState: ObservableObject {
                                     guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
                                           let snq = match.SignalQualityPercent else { continue }
                                     ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                                    repSamples.append(snq)
                                     gotSample.insert(ChannelSignalStore.key(for: entry.GuideName))
                                 }
                             }
@@ -6841,19 +6847,23 @@ final class AppState: ObservableObject {
                         ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
                     if !refusedTune.isEmpty { continue outer }   // device is busy: stop scanning it for now
+                    // The channels sharing this frequency get the same samples (or the same "never locked" 0).
+                    for sib in siblings {
+                        for snq in (repSamples.isEmpty ? [0] : repSamples) { ChannelSignalStore.shared.record(guideName: sib.GuideName, snq: snq) }
+                    }
 
                     // Flush every 10 channels (not every single one) so partial progress still
                     // survives a quit without rewriting the whole history file per channel —
                     // flush() forces an immediate full-file write, and doing that per-channel
                     // meant a full scan (e.g. 106 channels) cost ~106 full rewrites of the same
                     // file instead of ~11.
-                    unflushedCount += batch.count
+                    unflushedCount += batch.count + siblings.count
                     if unflushedCount >= 10 {
                         await ChannelSignalStore.shared.flush()
                         unflushedCount = 0
                     }
 
-                    for entry in batch {
+                    for entry in batch + siblings {
                         let key = ChannelSignalStore.key(for: entry.GuideName)
                         webServer.broadcastEvent(["type": "signal_update",
                                                   "gname": key,

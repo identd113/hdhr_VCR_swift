@@ -196,3 +196,23 @@ final class ChannelSignalStore {
         }
     }
 }
+
+/// Which channels a signal scan has to tune. Signal quality belongs to the RF channel, not the program, so with the lineup's `?tuning` data one
+/// tune per frequency samples every channel that shares it (17 tunes instead of 112 on the reference tuner). Entries with no frequency
+/// (a plain lineup, older firmware, air-only or relay entries) are each their own group, i.e. scanned one by one as before.
+enum SignalScanPlan {
+    struct Group { var rep: LineupEntry; var siblings: [LineupEntry] }
+
+    static func groups(_ entries: [LineupEntry]) -> [Group] {
+        var out: [Group] = []
+        var indexByFreq: [Int: Int] = [:]
+        for e in entries {
+            if let f = e.Frequency, !e.isAirTuned {
+                if let i = indexByFreq[f] { out[i].siblings.append(e) } else { indexByFreq[f] = out.count; out.append(Group(rep: e, siblings: [])) }
+            } else {
+                out.append(Group(rep: e, siblings: []))
+            }
+        }
+        return out
+    }
+}

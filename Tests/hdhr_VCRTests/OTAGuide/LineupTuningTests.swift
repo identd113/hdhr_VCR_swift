@@ -54,3 +54,29 @@ struct LineupStatusTests {
         #expect(HDHRManager.LineupStatus.decode(Data("<html>".utf8)) == nil)
     }
 }
+
+// A signal scan tunes one channel per frequency when the lineup has `?tuning` data, and every channel otherwise.
+struct SignalScanPlanTests {
+    private func e(_ n: String, _ f: Int?, url: String = "http://h:5004/auto/v") -> LineupEntry {
+        LineupEntry(GuideNumber: n, GuideName: "ch\(n)", URL: url + n, HD: 1, Favorite: nil, VideoCodec: nil, AudioCodec: nil, Frequency: f)
+    }
+    @Test func channelsSharingAFrequencyShareOneTune() {
+        let g = SignalScanPlan.groups([e("2.1", 593), e("2.2", 593), e("5.1", 551), e("2.3", 593)])
+        #expect(g.count == 2)
+        #expect(g[0].rep.GuideNumber == "2.1" && g[0].siblings.map(\.GuideNumber) == ["2.2", "2.3"])
+        #expect(g[1].rep.GuideNumber == "5.1" && g[1].siblings.isEmpty)
+    }
+    @Test func noTuningDataMeansOneTunePerChannel() {
+        let g = SignalScanPlan.groups([e("2.1", nil), e("2.2", nil), e("5.1", nil)])
+        #expect(g.count == 3 && g.allSatisfy { $0.siblings.isEmpty })
+    }
+    @Test func entriesWithoutAFrequencyAreNeverMergedIntoOthers() {
+        let g = SignalScanPlan.groups([e("2.1", 593), e("9.9", nil), e("2.2", 593)])
+        #expect(g.count == 2 && g[0].siblings.map(\.GuideNumber) == ["2.2"])
+    }
+    @Test func airTunedEntriesAreScannedOnTheirOwn() {
+        let air = e("19.1", 503, url: "http://h:5004/auto/ch503000000-")
+        let g = SignalScanPlan.groups([air, e("19.2", 503, url: "http://h:5004/auto/ch503000000-")])
+        #expect(g.count == 2)
+    }
+}

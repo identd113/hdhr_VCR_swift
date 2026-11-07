@@ -2636,6 +2636,17 @@ final class WebServer: @unchecked Sendable {
         if method == "GET", path.hasPrefix("/api/guide-search/") {
             return await handleGuideSearch(path: path, state: appState)
         }
+        // The Record modal's "Other Upcoming Airings": fill in the series' own schedule (api/episodes) first, but wait at most 3 s so a slow or
+        // unreachable cloud never holds the modal up (the guide's own airings are answered either way).
+        if method == "GET", path.hasPrefix("/api/airings/"), let state = appState {
+            let sid = String(path.dropFirst("/api/airings/".count)).removingPercentEncoding ?? ""
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await state.ensureEpisodeAirings(seriesID: sid) }
+                group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+                await group.next()
+                group.cancelAll()
+            }
+        }
         return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
     }
 
@@ -2912,11 +2923,11 @@ final class WebServer: @unchecked Sendable {
                 return jsonResponse(result)
             }
             if path.hasPrefix("/api/airings/") {
-                // /api/airings/{seriesId} — up to 4 upcoming episodes of a series across all
+                // /api/airings/{seriesId} — up to 8 upcoming episodes (the guide's plus api/episodes' past the guide window) of a series across all
                 // devices/channels, for the web Record modal's "Other Upcoming Airings" preview.
                 // Mirrors the native otherAirings computed property in AddShowView.swift.
                 let seriesId = String(path.dropFirst("/api/airings/".count)).removingPercentEncoding ?? ""
-                let items: [[String: Any]] = state.upcomingGuideEpisodes(seriesID: seriesId).map { pair in
+                let items: [[String: Any]] = state.upcomingGuideEpisodes(seriesID: seriesId, limit: 8).map { pair in
                     let chName = state.lineups[pair.entry.deviceId]?
                         .first(where: { $0.GuideNumber == pair.channel })?.GuideName
                     let logoURL = state.channelImageURLs["\(pair.entry.deviceId):\(pair.channel)"] ?? ""
