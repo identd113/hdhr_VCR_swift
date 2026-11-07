@@ -223,6 +223,11 @@ html.lm #sum-poster{background:#ccc}
 @media(max-width:600px){
   body{padding:10px}
   h1{font-size:1rem}
+  /* Two aligned rows: title + search/⋯ share row 1 (the title yields width and ellipsizes, so opening the search box never wraps the
+     controls to a new line), the tuner boxes take row 2. Without this the search/⋯ pair sat alone on a third, right-aligned row. */
+  #toolbar h1{order:0;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #toolbar-right{order:1;margin-left:0!important;gap:8px!important;flex-wrap:nowrap!important}
+  #dev-bar{order:2;flex:1 0 100%}
   :root{--ch-w:100px}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
   .t-info{padding:2px 6px;font-size:.6875rem}
@@ -752,7 +757,13 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   .em-check{min-height:44px;align-items:center;padding-top:0}
   .mac-check{width:22px;height:22px}
   .mac-check:checked::after{left:7px;top:3px;width:5px;height:11px}
-  #search-in{min-height:44px}
+  /* 16px: iOS Safari zooms the whole page when an input under 16px is focused, and it stays zoomed (cards and toolbar then run off the screen). */
+  #search-in{min-height:44px;font-size:16px}
+  /* min-width beats max-width, so the collapsed ⓘ (max-width:0) kept a 44px invisible slot beside the search icon; it only gets the
+     target size when it is shown. The bar's own padding made it 4px taller than the buttons beside it. */
+  #search-info-btn{min-width:0}
+  #search-bar:hover #search-info-btn,#search-bar:focus-within #search-info-btn,#search-bar.has-filter #search-info-btn{min-width:44px}
+  #search-bar{padding:0}
   .tdrop a,.tdrop button,.tdrop .tdrop-ui{min-height:44px;display:inline-flex;align-items:center}
   /* The grid header's corner (Ch label + Now/refresh) stays compact: 44 px buttons there stacked and made the whole header row ~90 px tall. */
   #search-icon-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px}
