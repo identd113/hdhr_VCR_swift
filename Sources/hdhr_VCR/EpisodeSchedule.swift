@@ -58,6 +58,18 @@ enum EpisodeSchedule {
     /// How long a fetched schedule is trusted, and how soon a failed fetch is tried again.
     static let refreshInterval: TimeInterval = 3 * 3600
     static let retryInterval: TimeInterval = 30 * 60
+    /// Airings held for a series whose refreshes keep failing are dropped after this long without a success, so a cancelled or moved airing is
+    /// not offered as a candidate forever.
+    static let staleAfter: TimeInterval = 2 * refreshInterval
+
+    static func isStale(lastSuccess: Date?, now: Date) -> Bool {
+        guard let ok = lastSuccess else { return false }
+        return now.timeIntervalSince(ok) > staleAfter
+    }
+
+    /// How far past the end of the guide data a SeriesID show with no airing is parked: an hour normally; a day when the series' own schedule
+    /// (`api/episodes`) said nothing is upcoming, since the guide's ~28 h window cannot hold something that endpoint does not list either.
+    static func parkPad(nothingUpcoming: Bool) -> TimeInterval { nothingUpcoming ? 24 * 3600 : 3600 }
 
     /// Series whose schedule is due: not fetched within `refreshInterval`, or last tried more than `retryInterval` ago after a failure.
     static func dueSeriesIDs(_ ids: [String], now: Date, lastSuccess: [String: Date], lastAttempt: [String: Date]) -> [String] {
@@ -67,6 +79,9 @@ enum EpisodeSchedule {
             return true
         }
     }
+
+    /// `fetch`'s reason when the caller's task was cancelled: not a failure of the cloud, so it is neither counted nor held off.
+    static let cancelledReason = "cancelled"
 
     static let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -84,6 +99,7 @@ enum EpisodeSchedule {
             guard let airings = decode(data) else { return (nil, "unexpected response body") }
             return (airings, nil)
         } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return (nil, cancelledReason) }
             return (nil, (error as NSError).domain == NSURLErrorDomain ? "network error \((error as NSError).code)" : "request failed")
         }
     }

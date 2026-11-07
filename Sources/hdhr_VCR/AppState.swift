@@ -864,6 +864,12 @@ final class AppState: ObservableObject {
     /// `api/episodes` bookkeeping per seriesID (see `refreshEpisodeAirings`).
     private var episodeLastSuccess: [String: Date] = [:]
     private var episodeLastAttempt: [String: Date] = [:]
+    /// `guideStore.invalidationEpoch` the two dictionaries above belong to; an invalidation empties the store's airings, so they restart too.
+    private var episodeEpoch = 0
+    /// Series whose last `api/episodes` answer was "nothing upcoming" (a literal `null`); `seriesParkedTime` parks these further out.
+    private var episodeNothingUpcoming: Set<String> = []
+    /// One running fetch per series, so a second caller waits on it instead of seeing a series that is "already tried". Resolves to "airings changed".
+    private var episodeInFlight: [String: Task<Bool, Never>] = [:]
     // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
     // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
     // second caller silently skipping and reading stale tunerStatus. That distinction matters here:
@@ -4181,8 +4187,10 @@ final class AppState: ObservableObject {
             // recording already scheduled is not thrown away by a guide that is merely missing.
             let guideLoaded = !(guideStore.channelsByDevice[shows[idx].hdhr_record] ?? []).isEmpty
             if guideLoaded || (shows[idx].show_next.map({ $0 <= Date() }) ?? true) {
-                let parked = seriesParkedTime(deviceId: shows[idx].hdhr_record)
-                glog("[\(show.show_title)] no episode found — parked until \(shortTime(parked)) (an hour past the guide); re-checked when newer guide data arrives", level: .warning)
+                let nothingUpcoming = episodeNothingUpcoming.contains(show.show_seriesid)
+                let parked = seriesParkedTime(deviceId: shows[idx].hdhr_record, seriesID: show.show_seriesid)
+                glog("[\(show.show_title)] no episode found — parked until \(shortTime(parked)) (\(nothingUpcoming ? "a day" : "an hour") past the guide); re-checked when newer guide data arrives",
+                     level: nothingUpcoming ? .info : .warning)
                 shows[idx].show_next = parked
             } else {
                 glog("[\(show.show_title)] no episode found in guide — show_next already future, leaving unchanged", level: .warning)
@@ -4213,10 +4221,11 @@ final class AppState: ObservableObject {
     /// Where a SeriesID show with no airing in the guide is parked: an hour past the last listing the tuner's guide has (never earlier than an
     /// hour from now), or past the whole fetch window when no guide is loaded. A real airing can only show up in newer guide data, which
     /// re-evaluates the show, so this time is only a marker that keeps it from looking like it is about to air.
-    func seriesParkedTime(deviceId: String, now: Date = Date()) -> Date {
+    /// With `seriesID` set and `api/episodes` having said nothing is upcoming for it, the pad is a day instead of an hour (`EpisodeSchedule.parkPad`).
+    func seriesParkedTime(deviceId: String, seriesID: String? = nil, now: Date = Date()) -> Date {
         let lastEnd = (guideStore.channelsByDevice[deviceId] ?? []).flatMap { $0.Guide ?? [] }.map(\.EndTime).max()
         let edge = lastEnd.map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? now.addingTimeInterval(Double(config.GuideHours) * 3600)
-        return max(edge, now).addingTimeInterval(3600)
+        return max(edge, now).addingTimeInterval(EpisodeSchedule.parkPad(nothingUpcoming: seriesID.map { episodeNothingUpcoming.contains($0) } ?? false))
     }
 
     // Pass after: Date() to include today (menu display); after: startOfTomorrow to always skip today (rescheduling).
@@ -4568,39 +4577,92 @@ final class AppState: ObservableObject {
     /// on a failure. Every failure leaves the guide-only behaviour in place and is counted in `FeatureTracker` ("series.episodes").
     @discardableResult
     func refreshEpisodeAirings(seriesIDs only: [String]? = nil) async -> Bool {
-        let ids = only ?? Array(Set(shows.filter { $0.show_active && $0.show_use_seriesid && !$0.show_seriesid.isEmpty }.map(\.show_seriesid)))
-        let now = Date()
-        let due = EpisodeSchedule.dueSeriesIDs(ids, now: now, lastSuccess: episodeLastSuccess, lastAttempt: episodeLastAttempt)
-        guard !due.isEmpty else { return false }
-        // Airings are mapped to tuners by their lineups: with none loaded yet (early startup) there is nothing to map to, so try again later.
-        let devices = recordableDevices.filter { !$0.isVirtualRelay }.map { (id: $0.DeviceID, lineup: lineups[$0.DeviceID] ?? []) }.filter { !$0.lineup.isEmpty }
-        guard !devices.isEmpty else { return false }
-        guard let auth = recordableDevices.first(where: { !$0.isVirtualRelay && $0.DeviceAuth != nil })?.DeviceAuth else {
-            for _ in due { FeatureTracker.shared.fellBack("series.episodes", "no tuner with a DeviceAuth") }
-            return false
+        if episodeEpoch != guideStore.invalidationEpoch {
+            episodeEpoch = guideStore.invalidationEpoch
+            episodeLastSuccess = [:]; episodeLastAttempt = [:]; episodeNothingUpcoming = []
         }
-        var changed = false
-        for sid in due {
-            episodeLastAttempt[sid] = now
-            let (airings, reason) = await EpisodeSchedule.fetch(seriesID: sid, deviceAuth: auth)
-            guard let airings else { FeatureTracker.shared.fellBack("series.episodes", reason ?? "failed"); continue }
-            let matches = EpisodeSchedule.matches(for: airings, seriesID: sid, after: now, devices: devices)
-            guideStore.setEpisodeAirings(seriesID: sid, matches: matches)
-            episodeLastSuccess[sid] = now
-            if matches.isEmpty { FeatureTracker.shared.fellBack("series.episodes", airings.isEmpty ? "no upcoming airings listed" : "no airing on a channel this tuner has") }
-            else {
-                changed = true
-                FeatureTracker.shared.used("series.episodes")
-                glog("[Episodes] \(sid): \(matches.count) upcoming airing(s) from api/episodes (\(airings.count) listed)")
+        let ids = only ?? Array(Set(shows.filter { $0.show_active && $0.show_use_seriesid && !$0.show_seriesid.isEmpty }.map(\.show_seriesid)))
+        if only == nil {
+            // A series no active show uses any more: forget its airings and bookkeeping.
+            for sid in Set(episodeLastSuccess.keys).union(episodeLastAttempt.keys).subtracting(ids) where episodeInFlight[sid] == nil {
+                guideStore.setEpisodeAirings(seriesID: sid, matches: [])
+                episodeLastSuccess[sid] = nil; episodeLastAttempt[sid] = nil; episodeNothingUpcoming.remove(sid)
             }
         }
+        let now = Date()
+        // A series already being fetched is waited on, not skipped: its caller may be a screen that needs to redraw when it lands.
+        var tasks = ids.compactMap { episodeInFlight[$0] }
+        let due = EpisodeSchedule.dueSeriesIDs(ids, now: now, lastSuccess: episodeLastSuccess, lastAttempt: episodeLastAttempt)
+        if !due.isEmpty {
+            // Airings are mapped to tuners by their lineups: with none loaded yet (early startup) there is nothing to map to, so try again later.
+            let devices = recordableDevices.filter { !$0.isVirtualRelay }.map { (id: $0.DeviceID, lineup: lineups[$0.DeviceID] ?? []) }.filter { !$0.lineup.isEmpty }
+            if !devices.isEmpty {
+                if let auth = recordableDevices.first(where: { !$0.isVirtualRelay && $0.DeviceAuth != nil })?.DeviceAuth {
+                    let epoch = guideStore.invalidationEpoch
+                    // The series are independent, so each is its own task: a slow or unreachable cloud costs one request timeout, not one per series.
+                    for sid in due {
+                        episodeLastAttempt[sid] = now
+                        let task = Task { [weak self] () -> Bool in
+                            let r = await EpisodeSchedule.fetch(seriesID: sid, deviceAuth: auth)
+                            guard let self else { return false }
+                            defer { self.episodeInFlight[sid] = nil }
+                            return self.applyEpisodeResult(seriesID: sid, airings: r.airings, reason: r.reason, now: now, devices: devices, epoch: epoch)
+                        }
+                        episodeInFlight[sid] = task
+                        tasks.append(task)
+                    }
+                } else {
+                    for _ in due { FeatureTracker.shared.fellBack("series.episodes", "no tuner with a DeviceAuth") }
+                }
+            }
+        }
+        var changed = false
+        for t in tasks where await t.value { changed = true }
         return changed
+    }
+
+    /// Records one series' `api/episodes` answer. True when the airings the guide store holds for it changed.
+    private func applyEpisodeResult(seriesID sid: String, airings: [EpisodeAiring]?, reason: String?, now: Date,
+                                    devices: [(id: String, lineup: [LineupEntry])], epoch: Int) -> Bool {
+        // Cancelled (the screen asking went away), or the guide was invalidated mid-fetch: no verdict on the cloud, so allow an immediate retry.
+        if reason == EpisodeSchedule.cancelledReason || epoch != guideStore.invalidationEpoch { episodeLastAttempt[sid] = nil; return false }
+        guard let airings else {
+            FeatureTracker.shared.fellBack("series.episodes", reason ?? "failed")
+            // Keep serving the last good schedule for a while, but not forever.
+            if EpisodeSchedule.isStale(lastSuccess: episodeLastSuccess[sid], now: now), guideStore.episodeAiringCount(seriesID: sid) > 0 {
+                guideStore.setEpisodeAirings(seriesID: sid, matches: [])
+                episodeLastSuccess[sid] = nil
+                glog("[Episodes] \(sid): dropped airings older than \(Int(EpisodeSchedule.staleAfter / 3600)) h (api/episodes keeps failing)")
+                return true
+            }
+            return false
+        }
+        let matches = EpisodeSchedule.matches(for: airings, seriesID: sid, after: now, devices: devices)
+        let had = guideStore.episodeAiringCount(seriesID: sid)
+        guideStore.setEpisodeAirings(seriesID: sid, matches: matches)
+        episodeLastSuccess[sid] = now
+        if airings.isEmpty {
+            // An empty answer is a valid one: the series has nothing scheduled. Not a fall-back; remembered so the show is parked further out.
+            episodeNothingUpcoming.insert(sid)
+            FeatureTracker.shared.used("series.episodes")
+            glog("[Episodes] \(sid): nothing upcoming according to api/episodes", level: .info)
+            return had > 0
+        }
+        episodeNothingUpcoming.remove(sid)
+        if matches.isEmpty {
+            FeatureTracker.shared.fellBack("series.episodes", "no airing on a channel this tuner has")
+            return had > 0
+        }
+        FeatureTracker.shared.used("series.episodes")
+        glog("[Episodes] \(sid): \(matches.count) upcoming airing(s) from api/episodes (\(airings.count) listed)")
+        return true
     }
 
     /// Fills in one series' far-future airings for a screen that is showing it (Add Show, Edit Show), fetching only if its schedule is not
     /// already fresh (same 3 h / 30 min timing as the background refresh). Bumps `guideGeneration` when airings were added so the screen recomputes.
     func ensureEpisodeAirings(seriesID: String) async {
-        guard !seriesID.isEmpty else { return }
+        // Only series this app already knows (a show, or an airing in the loaded guide): the web endpoint passes a client-supplied ID.
+        guard !seriesID.isEmpty, shows.contains(where: { $0.show_seriesid == seriesID }) || guideStore.knowsSeries(seriesID) else { return }
         if await refreshEpisodeAirings(seriesIDs: [seriesID]) { guideGeneration += 1 }
     }
 

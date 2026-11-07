@@ -72,7 +72,7 @@ final class GuideStore {
     /// Bumped by invalidateAll() — lets fetchAndIndex detect that an in-flight fetch it started
     /// before the invalidation was requested is now stale, and should not resurrect old data after
     /// the fact. See invalidateAll()'s own doc comment.
-    private var invalidationEpoch = 0
+    private(set) var invalidationEpoch = 0
 
     // Injected at init so tests can supply a mock session
     private let session: URLSession
@@ -645,6 +645,9 @@ final class GuideStore {
     func setEpisodeAirings(seriesID: String, matches: [SeriesMatch]) {
         if matches.isEmpty { episodeAirings[seriesID] = nil } else { episodeAirings[seriesID] = matches.sorted { $0.entry.StartTime < $1.entry.StartTime } }
     }
+
+    /// Whether the loaded guide has any airing of this SeriesID (gates cloud lookups for client-supplied IDs).
+    func knowsSeries(_ seriesID: String) -> Bool { !(seriesIndex[seriesID] ?? []).isEmpty }
 
     /// How many extra airings are held for a series (for logs and tests).
     func episodeAiringCount(seriesID: String) -> Int { episodeAirings[seriesID]?.count ?? 0 }

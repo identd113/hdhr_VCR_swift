@@ -49,6 +49,25 @@ struct EpisodeScheduleTests {
         #expect(Set(due) == ["b", "d"])
     }
 
+    @Test func staleAfterTwoRefreshIntervals() {
+        #expect(!EpisodeSchedule.isStale(lastSuccess: nil, now: now))
+        #expect(!EpisodeSchedule.isStale(lastSuccess: now - 5 * 3600, now: now))
+        #expect(EpisodeSchedule.isStale(lastSuccess: now - 7 * 3600, now: now))
+    }
+
+    @Test func emptyAnswerParksADayPastTheGuide() {
+        #expect(EpisodeSchedule.parkPad(nothingUpcoming: false) == 3600)
+        #expect(EpisodeSchedule.parkPad(nothingUpcoming: true) == 24 * 3600)
+    }
+
+    @Test func parkedTimeWithoutAnEmptyAnswerIsAnHourPastTheGuide() {
+        let state = makeTestAppState(guideStore: store(guideStarts: [t0 + 1000]))
+        let lastEnd = Date(timeIntervalSince1970: TimeInterval(t0 + 1000 + 3600))
+        // Not told "nothing upcoming" for this series (nor for no series at all): the one-hour pad.
+        #expect(state.seriesParkedTime(deviceId: "DEV", seriesID: "C1", now: now) == lastEnd.addingTimeInterval(3600))
+        #expect(state.seriesParkedTime(deviceId: "DEV", now: now) == lastEnd.addingTimeInterval(3600))
+    }
+
     // MARK: merged into the guide store
 
     private func store(guideStarts: [Int]) -> GuideStore {
