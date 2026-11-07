@@ -7,9 +7,9 @@ import Foundation
 // resolveSeriesAir is a separate function from scheduleNextAir — called once, from the Add Show
 // flow (applyGuideEntry), to seed a brand-new SeriesID(Channel)/SeriesID(All) show's initial
 // show_next/show_end/show_channel/hdhr_record — not on every idle-loop tick the way
-// scheduleNextAir is. It has its own copy of the same four-tier lookup order (currentEpisode →
-// currentEntryByTitle → nextEpisode → nextEntryByTitle — note currentEntryByTitle is tier 2 here,
-// not tier 3 like scheduleNextAir's own ordering) and its own channel-scoping rule (chFilter nil
+// scheduleNextAir is. Both share AppState.findSeriesAiring, which resolveSeriesAir calls with
+// onAirTitleBeforeNext: true (currentEpisode → currentEntryByTitle → nextEpisode → nextEntryByTitle —
+// currentEntryByTitle is tier 2 here, tier 3 for scheduleNextAir) and its own channel-scoping rule (chFilter nil
 // for seriesAll, pinned for seriesChannel). Unlike scheduleNextAir, a total no-match leaves `show`
 // completely untouched (no retry-bump fallback) — whatever the caller already set on it (the
 // guide entry the user picked when adding the show) simply stands. Mirrors

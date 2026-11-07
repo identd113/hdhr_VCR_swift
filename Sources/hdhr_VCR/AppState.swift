@@ -2746,6 +2746,38 @@ final class AppState: ObservableObject {
     // only in channel scope (any channel on that device vs. one fixed channel), not device scope;
     // both are confined to a single assigned tuner (see CLAUDE.md's "Web guide managed markers"
     // invariant and the seriesAll-scoping fix this is part of).
+    /// How `findSeriesAiring` found its airing (the caller words its log line from this).
+    enum SeriesFind { case onAir, next, onAirByTitle, nextByTitle }
+
+    /// The airing a SeriesID show should record: the airing on now by SeriesID (unless `skipCurrentlyAiring`), the next one by SeriesID, and the same
+    /// two by title for guide entries that carry no SeriesID (the over-the-air guide never has one). The SeriesID matches include the series' own
+    /// schedule from api/episodes past the guide window (`GuideStore.seriesCandidates`). `chFilter` nil = any channel on `devFilter`'s device; the
+    /// device is always pinned so a show never hops tuners.
+    ///
+    /// The tier order differs by caller, on purpose. `scheduleNextAir` (every reschedule) tries on-air SeriesID, next SeriesID, then the title
+    /// matches. `resolveSeriesAir` seeds a brand-new show from the airing the user just picked, so it passes `onAirTitleBeforeNext: true`: a
+    /// currently-airing title match beats a future SeriesID airing (pinned by AppStateResolveSeriesAirTests).
+    func findSeriesAiring(for show: Show, channel chFilter: String?, device devFilter: String, now: Date,
+                          skipCurrentlyAiring: Bool = false, onAirTitleBeforeNext: Bool = false) -> (match: GuideStore.SeriesMatch, how: SeriesFind)? {
+        let unrecorded = preferUnrecordedEpisode(for: show)
+        func onAirByTitle() -> GuideStore.SeriesMatch? {
+            skipCurrentlyAiring ? nil : guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: unrecorded, preferFavorite: isFavoriteChannel)
+        }
+        if !skipCurrentlyAiring,
+           let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: unrecorded, preferFavorite: isFavoriteChannel) {
+            return (m, .onAir)
+        }
+        if onAirTitleBeforeNext, let m = onAirByTitle() { return (m, .onAirByTitle) }
+        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: unrecorded, preferFavorite: isFavoriteChannel) {
+            return (m, .next)
+        }
+        if !onAirTitleBeforeNext, let m = onAirByTitle() { return (m, .onAirByTitle) }
+        if let m = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: unrecorded, preferFavorite: isFavoriteChannel) {
+            return (m, .nextByTitle)
+        }
+        return nil
+    }
+
     func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
         let devFilter = device.DeviceID
@@ -2774,22 +2806,7 @@ final class AppState: ObservableObject {
             }
         }
 
-        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-            apply(m); return
-        }
-        // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is
-        // absent. chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
-        // devFilter is always set, so this never scans devices beyond the one being added from.
-        if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-            apply(m); return
-        }
-        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-            apply(m); return
-        }
-        // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
-        if let m = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-            apply(m); return
-        }
+        if let found = findSeriesAiring(for: show, channel: chFilter, device: devFilter, now: now, onAirTitleBeforeNext: true) { apply(found.match) }
     }
 
     // ~/Movies is TCC-free for non-sandboxed apps and visible in the Finder sidebar.
@@ -4147,27 +4164,14 @@ final class AppState: ObservableObject {
                         shows[idx].show_url = url
                     }
                 }
-                if !skipCurrentlyAiring, let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-                    glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
-                    applyMatch(match); return
-                }
-                if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
-                                                      channelNum: chFilter,
-                                                      deviceId: devFilter,
-                                                      preferUnrecorded: preferUnrecordedEpisode(for: show),
-                                                      preferFavorite: isFavoriteChannel) {
-                    glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) \(match.entry.Title)")
-                    applyMatch(match); return
-                }
-                // Fallback: title match — handles guide entries where SeriesID is absent.
-                // chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
-                // devFilter is always set, so this never scans devices beyond the assigned one.
-                if !skipCurrentlyAiring, let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-                    glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
-                    applyMatch(match); return
-                }
-                if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
-                    glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
+                if let found = findSeriesAiring(for: show, channel: chFilter, device: devFilter, now: now, skipCurrentlyAiring: skipCurrentlyAiring) {
+                    let match = found.match
+                    switch found.how {
+                    case .onAir:        glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
+                    case .next:         glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) \(match.entry.Title)")
+                    case .onAirByTitle: glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
+                    case .nextByTitle:  glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
+                    }
                     applyMatch(match); return
                 }
             }
