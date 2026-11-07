@@ -808,6 +808,12 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   #search-bar:hover #search-info-btn,#search-bar:focus-within #search-info-btn,#search-bar.has-filter #search-info-btn{min-width:36px}
   #search-info-btn{min-height:36px}
   /* Summary card actions: smaller buttons that fill the line and wrap only when they must. */
-  #sum-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-  #sum-actions button{flex:0 1 auto;min-width:0;min-height:34px!important;padding:4px 10px!important;font-size:.75rem!important}
+  #sum-actions{display:flex;flex-wrap:nowrap!important;align-items:center;gap:3px!important}
+  #sum-actions button{flex:0 1 auto;min-width:0;min-height:32px!important;padding:3px 4px!important;font-size:.68rem!important;white-space:nowrap}
+  #sum-poster{width:56px!important;min-width:56px!important;height:32px!important;max-height:32px!important}
+  /* (gap and flex-wrap above carry !important: the shell sets both inline) */
+  #sum-note{flex:0 1 auto;min-width:0;font-size:.66rem!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Channel line stays on one row beside its logo and ellipsizes rather than wrapping under it. */
+  #sum-ch-row{flex-wrap:nowrap!important;min-width:0;gap:6px}
+  #sum-ct{flex:1 1 0;min-width:0;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
