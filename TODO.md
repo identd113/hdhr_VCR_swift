@@ -10,6 +10,23 @@ Only ATSC tuners (US/Canada) have been tested; the README now says European/DVB 
 
 ---
 
+## ~~Series scheduling: an empty `api/episodes` answer is normal, not a fall-back~~ — done 2026-11-07
+
+An empty (`null`) answer now counts as a use and logs `[INFO]` (no fall-back); the series is remembered in `AppState.episodeNothingUpcoming` and parked 24 h past the guide data (`EpisodeSchedule.parkPad`, `seriesParkedTime(deviceId:seriesID:)`) instead of 1 h, logged `[INFO]`. The 3 h refresh is unchanged. Tests in `EpisodeScheduleTests`; docs in `AppState.md` and `HDHRFindings.md`. The 24 h pad is the proposed value and not yet confirmed by the owner.
+
+---
+
+## Series scheduling: open items from the 2026-11-07 code review of `api/episodes` / `FeatureTracker`
+
+The review of `61b6198~1..HEAD` found ten things. Six are fixed (cancelled fetch counted as a failure, the guide refresh waiting on one fetch per series, the 3 h timers surviving `invalidateAll()`, the LAN endpoint passing any SeriesID to the cloud, concurrent callers getting nothing, stale airings never expiring). Still open:
+1. **Genre carried over from the old match** (`AppState.swift`, `show_genre = match.entry.firstGenre ?? shows[idx].show_genre`). This also applies to guide matches, which used to clear the genre, so a show that moves from a sports airing to an untagged one keeps "Sports" and its Bonus Time default. Fix: use the fallback only when the match came from `api/episodes`.
+2. **Siblings recorded as never locked** (signal scan, one tune per frequency). If the representative channel is never tuned (nil or invalid URL), every sibling on that RF channel gets a 0 sample. Fix: record the siblings only when the representative was really tuned.
+3. **Misplaced comment.** `SeriesFind` / `findSeriesAiring` sit between `resolveSeriesAir` and its four-line comment about device pinning. Move the comment back above `resolveSeriesAir`.
+4. **No docs.** `docs/EpisodeSchedule.md` and `docs/FeatureTracker.md` do not exist; the repo rule is one doc per system file (refresh timing, matching rules, fall-back counting).
+5. **No tests for the earlier fixes.** Cancellation not counted, concurrent fetch / in-flight sharing, epoch reset, stale-airing expiry and the unknown-SeriesID gate need AppState-level tests (only the pure helpers are tested).
+
+---
+
 ## Test: launch with no cached show icons
 
 Try launching with the show/channel icon caches empty (cold `ChannelIconCache` disk cache, no cached posters) and see what the menu, Watch Now, guide and launch splash do: placeholders, layout shifts, blocking fetches, CPU spike while ~100+ logos download. Not started — wanted as a check, not a known bug.
