@@ -817,3 +817,13 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
   #sum-ch-row{flex-wrap:nowrap!important;min-width:0;gap:6px}
   #sum-ct{flex:1 1 0;min-width:0;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
+
+/* ── Phone: Watch Now! popup — compact tool buttons (36px, so state + Live Edge + Fullscreen + PiP + info + close fit in about two short rows)
+   and a wider stage (less margin and padding around the video). ── */
+@media(max-width:600px){
+  #wn-modal{padding:8px!important}
+  .wn-sheet{width:calc(100vw - 16px);padding:10px}
+  .wn-tools{gap:6px}
+  .wn-tools .mac-btn{min-width:0;min-height:36px;padding:0 10px;font-size:.74rem}
+  .wn-tools .wn-info-btn{padding:0 10px;font-size:.9rem}
+}

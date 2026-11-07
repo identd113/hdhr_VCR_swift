@@ -1717,6 +1717,7 @@ function openWatchNow(id,title,sub,episode,art,startEpoch,endEpoch,info){
   document.getElementById('wn-sub').textContent=sub||'';
   wnBarInit(info||{title:title,tags:[]},startEpoch,endEpoch);
   document.getElementById('wn-modal').style.display='flex';
+  _wn.pip=false;document.getElementById('wn-pip').style.display=wnPipSupported()?'':'none';
   wnState('Starting\u2026',false);wnMsg('Preparing the stream\u2026 this can take a few seconds.');
   var v=wnVideo();
   v.muted=false;
@@ -2067,6 +2068,37 @@ function watchNowFullscreen(){
   var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;
   if(f)try{f.call(v);}catch(e){}
 }
+// Native Picture-in-Picture (Chrome, Edge, Safari on Mac/iPhone/iPad; Firefox has its own toggle but no API, so the button stays hidden there).
+// While the browser's floating window plays, the popup steps aside (the guide is usable underneath) and the stream keeps running; leaving
+// PiP ("back to tab" or closing the floating window) brings the popup back with the video in it.
+function wnPipSupported(){
+  var v=wnVideo();
+  return !!(document.pictureInPictureEnabled&&v.requestPictureInPicture&&!v.disablePictureInPicture)
+    ||!!(v.webkitSupportsPresentationMode&&v.webkitSupportsPresentationMode('picture-in-picture'));
+}
+function wnPipActive(){return !!document.pictureInPictureElement||wnVideo().webkitPresentationMode==='picture-in-picture';}
+function watchNowPip(){
+  var v=wnVideo();
+  if(wnPipActive()){
+    if(document.pictureInPictureElement&&document.exitPictureInPicture)document.exitPictureInPicture().catch(function(){});
+    else try{v.webkitSetPresentationMode('inline');}catch(e){}
+    return;
+  }
+  if(v.requestPictureInPicture)v.requestPictureInPicture().catch(function(){showToast('Picture-in-Picture is not ready yet \u2014 try again once the picture shows.');});
+  else if(v.webkitSetPresentationMode)try{v.webkitSetPresentationMode('picture-in-picture');}catch(e){}
+}
+function wnPipChanged(on){
+  if(!_wn.open)return;
+  _wn.pip=on;
+  document.getElementById('wn-modal').style.display=on?'none':'flex';
+}
+(function wnPipWire(){
+  var v=wnVideo();
+  if(!v){document.addEventListener('DOMContentLoaded',wnPipWire,{once:true});return;}
+  v.addEventListener('enterpictureinpicture',function(){wnPipChanged(true);});
+  v.addEventListener('leavepictureinpicture',function(){wnPipChanged(false);});
+  v.addEventListener('webkitpresentationmodechanged',function(){wnPipChanged(v.webkitPresentationMode==='picture-in-picture');});
+})();
 var _wnAudio=null;
 function wnActive(){return _wn.audio&&_wnAudio?_wnAudio:wnVideo();}
 // Play pressed in Control Center / on the lock screen: while the page is hidden, play the sound-only stream.
@@ -2103,6 +2135,8 @@ function closeWatchNow(){
   wnStopAudio();
   v.pause();v.removeAttribute('src');try{v.load();}catch(e){}
   if(document.fullscreenElement)try{document.exitFullscreen();}catch(e){}
+  _wn.pip=false;
+  if(document.pictureInPictureElement)try{document.exitPictureInPicture().catch(function(){});}catch(e){}
   document.getElementById('wn-modal').style.display='none';
   var pf=_wn.prevFocus;_wn.prevFocus=null;
   if(pf&&document.body.contains(pf)&&pf.focus)try{pf.focus({preventScroll:true});}catch(e){}
@@ -2110,7 +2144,7 @@ function closeWatchNow(){
 window.addEventListener('pagehide',closeWatchNow);
 // While the player is open it owns the keyboard: nothing reaches the guide's search/shortcut handlers underneath.
 document.addEventListener('keydown',function(e){
-  if(!_wn.open)return;
+  if(!_wn.open||_wn.pip)return;   // in PiP the popup is hidden and the guide has its keys back
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   var v=wnVideo(),k=e.key;
   // A focused button keeps Space/Enter, and Tab / function keys keep working: only keys the player uses are taken.
@@ -2123,6 +2157,7 @@ document.addEventListener('keydown',function(e){
   else if(k==='l'||k==='L'){watchNowGoLive();}
   else if(k==='m'||k==='M'){v.muted=!v.muted;}
   else if(k==='f'||k==='F'){watchNowFullscreen();}
+  else if(k==='p'||k==='P'){if(wnPipSupported())watchNowPip();}
   else{if(k.length===1)e.stopPropagation();return;}   // other printable keys must not reach the guide's search; everything else is left alone
   e.preventDefault();e.stopPropagation();
 },true);
