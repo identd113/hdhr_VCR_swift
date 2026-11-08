@@ -68,3 +68,7 @@ CLAUDE.md
 # generated AVFoundation repro streams (tools/apple_bug_repro/make_samples.sh)
 tools/apple_bug_repro/*.ts
 tools/apple_bug_repro/read_samples
+
+# Agent instructions and Claude Code config: kept local, not published
+CLAUDE.md
+.claude/
