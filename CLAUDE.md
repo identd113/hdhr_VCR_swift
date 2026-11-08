@@ -101,3 +101,27 @@ Scripts in `tools/` (setup_signing.sh, mock_hdhr.py, mock_tuner.py, mock_scenari
 ## Agents (`.claude/agents/`)
 
 `log-detective` (answers "what happened?" from the log) · `docs-auditor` (docs vs code drift; reports, never reconciles) · `invariants-reviewer` (a diff against the invariants above) · `swift-quality-reviewer` (craftsmanship, scope, dead code; appends to `.claude/CODE_NOTES.md`).
+
+## Scripts
+
+Scripts marked **destructive** change or delete data, so confirm before running them. Scripts marked **sudo** need root. Scripts marked **launchd** or **cron** run on a schedule and are not normally run by hand.
+
+
+| Script | What it does | Arguments |
+|---|---|---|
+| `deploy.sh` | Builds and deploys the dev app. | `--clear` clears the cache |
+| `deploy_release.sh` | Builds a signed release (Developer ID or ad-hoc), notarizes it, and staples and opens it. | `<version>` `--skip-notarize` `--adhoc` |
+| `tools/build_dmg.sh` | Builds the installer DMG from a built .app. | `<version> <path-to-app>` |
+| `tools/build_readme_manual.swift` | Generates the DMG user manual from the screenshots. | `<repo_root>` |
+| `tools/apply_finder_icon.swift` | Sets a custom Finder icon on a file or folder. | `<icon.icns> <target>` |
+| `tools/generate_favicon.py` | Builds a .ico from two PNGs. | `<16px.png> <32px.png> <out.ico>` |
+| `tools/ax_query.swift` | Accessibility queries for UI tests. | `windows`, `find WINDOW MATCH [--press]`, `count`, `text`, `row` |
+| `tools/apple_bug_repro/make_samples.sh` | Makes test transport streams for an AVFoundation bug. Needs ffmpeg. | `-h` help |
+| `tools/band_sweep.py` | Sweeps an HDHomeRun's ATSC band and lists what is on the air. | `--ip` (required) `--tuner` `--channels 2-51` `--seconds 6` `--map-lineup` `--analyze` `--analyze-seconds 30` `--out` |
+| `tools/feed_diagnostics/feed_capture_tagger.py` | Records a feed URL to disk with time checkpoints. | `--url` `--out` `--offsets` (all required) `--tag-interval 1.0` `--chunk-size` |
+| `tools/feed_diagnostics/extract_window.py` | Cuts a time window out of a capture. | `--src` `--offsets` `--start-epoch` `--end-epoch` `--out` (all required) `--pad 3.0` |
+| `tools/feed_diagnostics/analyze_pcr.py` | Checks a window for PCR discontinuities. | `<window.ts>` |
+| `tools/feed_diagnostics/watch_and_extract.sh` | Watches the app log for VLC stalls and runs the extract and analysis steps. | `[log_file]` (default `~/Library/Logs/hdhrVCRplus.log`) |
+| `overtime/build_offline.py` | Builds a channel lineup and guide from the air, with no internet. | `--ip` (required) `--rf` `--seconds 75` `--out` `--workers 2` `--compare` `--redo` |
+| `overtime/psip.py` | Decodes an ATSC capture into a channel list and guide. | `<capture.ts>` `--json out.json` |
+| `overtime/split_program.py` | Prototype: cuts one program out of a capture by PID. | `<capture> <pid> <out>` |
