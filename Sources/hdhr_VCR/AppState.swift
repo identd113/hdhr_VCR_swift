@@ -4632,15 +4632,17 @@ final class AppState: ObservableObject {
             }
             return false
         }
-        let matches = EpisodeSchedule.matches(for: airings, seriesID: sid, after: now, devices: devices)
+        let listed = airings.count
+        let inRange = airings.filter { EpisodeSchedule.isInHorizon($0, after: now) }
+        let matches = EpisodeSchedule.matches(for: inRange, seriesID: sid, after: now, devices: devices)
         let had = guideStore.episodeAiringCount(seriesID: sid)
         guideStore.setEpisodeAirings(seriesID: sid, matches: matches)
         episodeLastSuccess[sid] = now
-        if airings.isEmpty {
-            // An empty answer is a valid one: the series has nothing scheduled. Not a fall-back; remembered so the show is parked further out.
+        if inRange.isEmpty {
+            // An empty answer (or one with nothing inside the horizon) is a valid one: nothing to schedule yet. Not a fall-back; remembered so the show is parked further out.
             episodeNothingUpcoming.insert(sid)
             FeatureTracker.shared.used("series.episodes")
-            glog("[Episodes] \(sid): nothing upcoming according to api/episodes", level: .info)
+            glog("[Episodes] \(sid): nothing within \(Int(EpisodeSchedule.horizon / 3600)) h according to api/episodes (\(listed) listed)", level: .info)
             return had > 0
         }
         episodeNothingUpcoming.remove(sid)
@@ -4649,7 +4651,7 @@ final class AppState: ObservableObject {
             return had > 0
         }
         FeatureTracker.shared.used("series.episodes")
-        glog("[Episodes] \(sid): \(matches.count) upcoming airing(s) from api/episodes (\(airings.count) listed)")
+        glog("[Episodes] \(sid): \(matches.count) upcoming airing(s) from api/episodes (\(listed) listed)")
         return true
     }
 

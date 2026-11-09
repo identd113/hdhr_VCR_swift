@@ -35,6 +35,13 @@ struct EpisodeScheduleTests {
         #expect(m.count == 1 && m[0].deviceId == "DEV" && m[0].channelNum == "5.1" && m[0].entry.SeriesID == "C1")
     }
 
+    @Test func airingsBeyondTheHorizonAreIgnored() {
+        let h = Int(EpisodeSchedule.horizon)
+        let a = [airing(t0 + h - 60), airing(t0 + h + 60)]
+        let m = EpisodeSchedule.matches(for: a, seriesID: "C1", after: now, devices: [(id: "DEV", lineup: [line("5.1")])])
+        #expect(m.map(\.entry.StartTime) == [t0 + h - 60])
+    }
+
     @Test func oneMatchPerDeviceThatCarriesTheChannel() {
         let m = EpisodeSchedule.matches(for: [airing(t0 + 100)], seriesID: "C1", after: now,
                                         devices: [(id: "A", lineup: [line("5.1")]), (id: "B", lineup: [line("5.1")]), (id: "C", lineup: [line("7.1")])])
@@ -88,9 +95,9 @@ struct EpisodeScheduleTests {
 
     @Test func episodesExtendPastTheGuideWindow() {
         let s = store(guideStarts: [t0 + 1000])
-        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 5 * 86_400]))
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 2 * 86_400]))
         let next = s.nextEpisode(seriesID: "C1", after: Date(timeIntervalSince1970: TimeInterval(t0 + 2000)))
-        #expect(next?.entry.StartTime == t0 + 5 * 86_400)
+        #expect(next?.entry.StartTime == t0 + 2 * 86_400)
         #expect(next?.deviceId == "DEV" && next?.channelNum == "5.1")
     }
 
@@ -119,10 +126,10 @@ struct EpisodeScheduleTests {
 
     @Test func mergedCandidatesAreRebuiltWhenTheExtrasChange() {
         let s = store(guideStarts: [t0 + 1000])
-        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 5 * 86_400]))
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 2 * 86_400]))
         #expect(s.nextEpisodes(seriesID: "C1", after: now).count == 2)
-        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 6 * 86_400]))
-        #expect(s.nextEpisodes(seriesID: "C1", after: now).map(\.entry.StartTime) == [t0 + 1000, t0 + 6 * 86_400])
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 2 * 86_400 + 3600]))
+        #expect(s.nextEpisodes(seriesID: "C1", after: now).map(\.entry.StartTime) == [t0 + 1000, t0 + 2 * 86_400 + 3600])
         s.setEpisodeAirings(seriesID: "C1", matches: [])
         #expect(s.nextEpisodes(seriesID: "C1", after: now).count == 1)
     }

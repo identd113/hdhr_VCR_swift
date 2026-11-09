@@ -522,23 +522,34 @@ final class HDHRManager {
 
     func fetchLineup(for device: HDHRDevice) async throws -> [LineupEntry] {
         guard let url = URL(string: device.lineupURL) else { throw URLError(.badURL) }
-        // A real tuner's `?tuning` lineup carries each channel's frequency and program (no scan needed). Anything that goes wrong with it
-        // (a relay or older firmware that rejects the query, a body that does not decode) falls back to the plain lineup, as before.
-        if !device.isVirtualRelay, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-            comps.query = "tuning"
-            if let tuningURL = comps.url,
-               let (data, resp) = try? await dataSession.data(from: tuningURL),
-               (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
-               let entries = try? JSONDecoder().decode([LineupEntry].self, from: data) {
-                if entries.isEmpty || entries.contains(where: { $0.Frequency != nil }) { FeatureTracker.shared.used("lineup.tuning") }
-                else { FeatureTracker.shared.fellBack("lineup.tuning", "answered without tuning fields") }
-                return entries
-            }
-            FeatureTracker.shared.fellBack("lineup.tuning", "request failed or body did not decode")
-        }
+        if !device.isVirtualRelay, let entries = try await fetchTuningLineup(url) { return entries }
         let (data, _) = try await dataSession.data(from: url)
         return try JSONDecoder().decode([LineupEntry].self, from: data)
     }
+
+    /// A real tuner's `?tuning` lineup carries each channel's frequency and program (no scan needed). nil when the tuner answered but not
+    /// usefully (a relay or older firmware that rejects the query, a body that does not decode): the caller then asks for the plain lineup.
+    /// A tuner that does not answer at all (timeout, unreachable) throws instead, since the plain lineup is on the same host and asking again
+    /// would only double the wait; that is no verdict on the feature, so it is not counted as a fall-back.
+    private func fetchTuningLineup(_ url: URL) async throws -> [LineupEntry]? {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        comps.query = "tuning"
+        guard let tuningURL = comps.url else { return nil }
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await dataSession.data(from: tuningURL) }
+        catch let e as URLError where Self.hostUnreachable.contains(e.code) { throw e }
+        catch { FeatureTracker.shared.fellBack("lineup.tuning", "request failed"); return nil }
+        guard Self.isSuccess(resp), let entries = try? JSONDecoder().decode([LineupEntry].self, from: data) else {
+            FeatureTracker.shared.fellBack("lineup.tuning", "request failed or body did not decode")
+            return nil
+        }
+        if entries.isEmpty || entries.contains(where: { $0.Frequency != nil }) { FeatureTracker.shared.used("lineup.tuning") }
+        else { FeatureTracker.shared.fellBack("lineup.tuning", "answered without tuning fields") }
+        return entries
+    }
+
+    private static let hostUnreachable: Set<URLError.Code> = [.timedOut, .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet, .networkConnectionLost]
+    private static func isSuccess(_ resp: URLResponse) -> Bool { (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? true }
 
     /// `GET /lineup_status.json` on a real tuner: whether it is rescanning its channels right now (docs/HDHRFindings.md, "Endpoints Not Yet Used").
     struct LineupStatus: Equatable {
@@ -556,8 +567,7 @@ final class HDHRManager {
     func lineupStatus(for device: HDHRDevice) async -> LineupStatus? {
         guard !device.isVirtualRelay else { return nil }
         guard let url = URL(string: device.lineupStatusURL),
-              let (data, resp) = try? await dataSession.data(from: url),
-              (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+              let (data, resp) = try? await dataSession.data(from: url), Self.isSuccess(resp),
               let status = LineupStatus.decode(data) else {
             FeatureTracker.shared.fellBack("lineup.status", "unavailable")
             return nil

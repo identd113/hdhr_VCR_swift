@@ -1,7 +1,7 @@
 import Foundation
 
 /// `GET https://api.hdhomerun.com/api/episodes?DeviceAuth=…&SeriesID=…` (docs/HDHRFindings.md, "Cloud API — api/episodes"): every upcoming airing of one
-/// series on every channel carrying it, a week to ~17 days ahead, far past the guide's 28 h. Its airings are fed to `GuideStore` as extra candidates
+/// series on every channel carrying it, a week to ~17 days ahead, far past the guide's 28 h. Only the next `horizon` (72 h) of them is used. Its airings are fed to `GuideStore` as extra candidates
 /// for the SeriesID lookups, so the existing channel/device/duplicate/favourite rules apply unchanged; a guide entry always beats an episodes entry
 /// for the same device + channel + start (it carries the genre tags Bonus Time needs).
 struct EpisodeAiring: Equatable {
@@ -35,15 +35,24 @@ enum EpisodeSchedule {
         }
     }
 
+    /// How far ahead an airing is used: past the guide's 28 h so a series is found before its guide data arrives, but not so far that a show's
+    /// next air time jumps a week out. Anything later is ignored until a refresh brings it inside.
+    static let horizon: TimeInterval = 72 * 3600
+
+    static func isInHorizon(_ a: EpisodeAiring, after: Date) -> Bool {
+        let cutoff = Int(after.timeIntervalSince1970)
+        return a.startTime > cutoff && a.startTime <= cutoff + Int(horizon)
+    }
+
     /// The airings that a recordable device can actually tune: one match per device whose lineup carries the airing's channel number
-    /// (an airing on a channel the tuner does not have could never be recorded). Only airings starting after `after` are kept.
+    /// (an airing on a channel the tuner does not have could never be recorded). Only airings starting after `after` and within `horizon` of it are kept.
     static func matches(for airings: [EpisodeAiring], seriesID: String, after: Date,
                         devices: [(id: String, lineup: [LineupEntry])]) -> [GuideStore.SeriesMatch] {
-        let cutoff = Int(after.timeIntervalSince1970)
+        let upcoming = airings.filter { isInHorizon($0, after: after) }
         var out: [GuideStore.SeriesMatch] = []
         for device in devices {
             let have = Set(device.lineup.map(\.GuideNumber))
-            for a in airings where a.startTime > cutoff && have.contains(a.channelNumber) {
+            for a in upcoming where have.contains(a.channelNumber) {
                 var e = GuideEntry(StartTime: a.startTime, EndTime: a.endTime, Title: a.title)
                 e.EpisodeTitle = a.episodeTitle; e.EpisodeNumber = a.episodeNumber; e.Synopsis = a.synopsis
                 e.SeriesID = seriesID; e.ImageURL = a.imageURL; e.OriginalAirdate = a.originalAirdate
