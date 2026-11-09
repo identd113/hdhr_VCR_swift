@@ -48,7 +48,7 @@ first successful fetch and exits immediately if false ("disabled — Settings �
 Guide is off."). This is a courtesy/discoverability gate only, **not a security boundary**:
 `/api/guide.json` (and `/api/record`, `/api/delete`, `/api/toggle-favorite`) are the same endpoints
 the browser guide already uses, already reachable to any device on the LAN once `Web_server_enabled`
-is on regardless of this flag (`CLAUDE.md`'s "No auth beyond LAN-subnet matching" invariant) —
+is on regardless of this flag (`Invariants.md`'s "No auth beyond LAN-subnet matching" invariant) —
 turning this off doesn't restrict what the *server* returns to a caller that ignores it (e.g. via
 `curl`), only whether the bundled `hdhr_guide` binary itself chooses to proceed. It exists for
 someone who wants the web guide shared with the household without also advertising/allowing the
@@ -73,7 +73,7 @@ gutter's signal dot. Scheduling/deleting/favoriting all go straight to the exist
 `POST /api/record`/`/api/delete`/`/api/toggle-favorite` — `hdhr_guide` has added no new mutating
 endpoint of its own, only the read-side `/api/guide.json`.
 
-**Per-tuner, like the web guide** (see `CLAUDE.md`'s "Web guide is per-tuner" invariant) — no
+**Per-tuner, like the web guide** (see `Invariants.md`'s "Web guide is per-tuner" invariant) — no
 combined multi-device view. `Tab` re-fetches the next device in the roster returned alongside the
 current one.
 
@@ -198,7 +198,7 @@ a show's color here matches its color there.
 Recording/scheduled status is shown two ways at once, so it's obvious rather than something you
 have to spot: an `o` badge in front of the title, *and* the whole title recolored to match, instead
 of the default white — on top of the genre tint, mirroring the web guide's own "ring + badge over
-genre tint" model (`CLAUDE.md`'s "Status ring + badge"), just carried further than a single small
+genre tint" model (`Invariants.md`'s "Status ring + badge"), just carried further than a single small
 icon since a 1-glyph badge alone wasn't reliably noticeable against a busy grid. Colors are the
 web guide's own status-ring colors (`Resources/guide.css`'s `--vc-rec`/`--vc-sched`), not
 independent ANSI picks — `recordingColor`/`scheduledColor` in `main.swift` — bold bright red
@@ -309,7 +309,7 @@ this, only the `scheduledShowId` field needed to address the existing one.
 **Bonus Time is auto-detected for sports, same as the native wizard — and gated on the same
 setting.** `addShowFromGuide` (what both the web Record modal and `POST /api/record` ultimately
 call) defaults `bonusTime` to `false` and does not look at genre itself — that auto-default
-(`CLAUDE.md`'s "Bonus Time" invariant) lives only in `applyGuideEntry()`, the *native* Add Show
+(`Invariants.md`'s "Bonus Time" invariant) lives only in `applyGuideEntry()`, the *native* Add Show
 wizard's own path; the web modal covers the gap with its own checkbox. `confirmRecord` mirrors
 this via `genreImpliesBonusTime(_:)` (matching `Show.genreImpliesBonusTime`'s `"sport"`-not-
 `"sports"` substring check, duplicated rather than imported since `hdhr_VCR` is an executable,
@@ -425,7 +425,7 @@ note called out. Once in, every printed character is appended to `searchQuery` a
     the grid's currently-visible time window.
   - Every grid entry that ISN'T the representative airing of a current match renders dim
     (`isShowSearchFiltering()`/the `matchKeys` set, `render()` in `main.swift`) — the same "fade,
-    don't hide" philosophy `CLAUDE.md`'s "Web guide rows are never hidden" invariant documents for
+    don't hide" philosophy `Invariants.md`'s "Web guide rows are never hidden" invariant documents for
     the web guide's own `.g-prog-dim` — while each match's representative airing keeps its normal
     genre/status coloring, so you can also see *when* it actually airs relative to everything else.
 
@@ -510,7 +510,7 @@ covered above. Fixed, low-code (no architecture change):
 - **Signal dot silently blank for whitespace-padded channel names** — the gutter's signal lookup
   (`main.swift`, the row-render loop) only lowercased `ch.guideName` before looking it up in
   `signalMap`, but the canonical key (`ChannelSignalStore.key(for:)`, what `/api/signal`'s keys are
-  actually built from) also trims whitespace first (`CLAUDE.md`'s "Signal keys" invariant). Now
+  actually built from) also trims whitespace first (`Invariants.md`'s "Signal keys" invariant). Now
   matches: `.trimmingCharacters(in: .whitespaces).lowercased()`.
 - **Ctrl-C ignored, whole app frozen, for up to ~9s** if the web server was slow or hung —
   `API.syncData()` waited on its semaphore once for the full timeout with nothing checking
@@ -553,7 +553,7 @@ that boundary. Worth doing if this logic needs to change again; not on its own.
 - Polling only, no `/api/events` SSE subscription — up to ~20s of staleness between actions
 - Offline/undetected devices *are* now listed (`/api/guide.json`'s `devices` field unions in any
   device referenced by a show's `hdhr_record` but never discovered — mirrors `buildDevBarHTML`'s
-  own union, CLAUDE.md's "Web guide offline devices" invariant) — `Tab` will cycle to one, but
+  own union, Invariants.md's "Web guide offline devices" invariant) — `Tab` will cycle to one, but
   since it was never discovered there's no lineup/guide data for it, so it just shows an empty
   grid rather than anything useful about what's actually stuck there. Real parity needs the
   "no overview of everything scheduled/recording on this tuner" gap below closed first.

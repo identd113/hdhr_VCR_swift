@@ -40,7 +40,7 @@ echo "    Xcode Command Line Tools: OK"
 find . -maxdepth 1 -name "hdhrVCRplus [0-9]*.app" -exec rm -rf {} +
 
 # hdhrVCRplus.app (and Info.plist specifically, since it's the one file this script never
-# regenerates from source — deliberately not SPM-generated, see CLAUDE.md) live in a folder under
+# regenerates from source — deliberately not SPM-generated, see docs/Distribution.md) live in a folder under
 # active iCloud Drive "Desktop & Documents" sync, which does not reliably keep an app bundle
 # (a directory macOS treats as one atomic unit) intact — observed live 2026-09-06 silently evicting
 # either just Info.plist or the entire bundle between one deploy and the next, with nothing else on

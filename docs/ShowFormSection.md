@@ -41,7 +41,7 @@ Transcode    — Picker: None | Heavy | Mobile | Internet 720
                is false — "This tuner doesn't support transcoding — the Transcode setting above
                will be ignored and recorded as None." Informational only: the actual enforcement
                happens unconditionally in AppState.startRecording regardless of whether this banner
-               was ever seen — see CLAUDE.md's "Transcode capability gate" invariant. The device
+               was ever seen — see Invariants.md's "Transcode capability gate" invariant. The device
                lookup (selectedDeviceSupportsTranscode) defaults to *true* (no warning) only when
                no tuner has been picked at all (hdhr_record empty — before a tuner is selected in
                the Add wizard, which shouldn't read as "detected unsupported"). Once hdhr_record is

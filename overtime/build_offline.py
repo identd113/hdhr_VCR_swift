@@ -8,9 +8,9 @@ For each RF channel that has signal: capture the whole multiplex from an IDLE tu
                {GuideNumber, GuideName, Guide:[{StartTime, EndTime, Title, Synopsis, ...}]}, times in epoch seconds
   rf<N>.json   the raw decode of each multiplex
 
-  overtime/build_offline.py --ip 10.0.2.101                          # RF channels with signal from the latest sweep report
-  overtime/build_offline.py --ip 10.0.2.101 --rf 31,32 --seconds 90  # just these
-  overtime/build_offline.py --ip 10.0.2.101 --compare                # afterwards: compare with the tuner's real lineup
+  overtime/build_offline.py --ip 192.0.2.10                          # RF channels with signal from the latest sweep report
+  overtime/build_offline.py --ip 192.0.2.10 --rf 31,32 --seconds 90  # just these
+  overtime/build_offline.py --ip 192.0.2.10 --compare                # afterwards: compare with the tuner's real lineup
 
 Uses one idle tuner at a time and waits when both are busy, so it never takes a tuner from a recording.
 What the air does not carry: SeriesID, genre tags, episode titles/numbers, images. Everything else the app's guide needs is there.

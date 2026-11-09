@@ -1064,7 +1064,7 @@ struct LineupEntry: Codable, Identifiable {
     // when not yet known or the source tuner isn't currently locked.
     var virtualRelaySignalQualityPercent: Int?
     // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — the source Mac's
-    // own hostname (`ProcessInfo.processInfo.hostName`, e.g. "woodflix.local"), added 2026-09-07
+    // own hostname (`ProcessInfo.processInfo.hostName`, e.g. "mini.local"), added 2026-09-07
     // so MenuContent's "Recording on Another Mac" row can say *which* Mac, not just which show —
     // matters once more than one Mac on the LAN is relaying at the same time. Always present on a
     // relay-produced entry (unlike the fields above, there's no "not yet known" case for this

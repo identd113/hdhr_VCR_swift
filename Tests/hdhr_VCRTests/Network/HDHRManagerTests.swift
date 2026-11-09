@@ -62,12 +62,12 @@ struct HDHRManagerTests {
     @Test func fetchDeviceInfo_withModelNumber_decodesAndComputesSupportsTranscode() async throws {
         HDHRMockURLProtocol.requestHandler = { req in
             let json = """
-            {"DeviceID":"105404BE","LocalIP":"10.0.2.101","TunerCount":2,"FirmwareVersion":"20230629","ModelNumber":"HDTC-2US"}
+            {"DeviceID":"105404BE","LocalIP":"192.0.2.10","TunerCount":2,"FirmwareVersion":"20230629","ModelNumber":"HDTC-2US"}
             """
             return (hdhrOKResponse(for: req.url!), Data(json.utf8))
         }
         let manager = makeHDHRManager()
-        let device = try await manager.fetchDeviceInfo(ip: "10.0.2.101")
+        let device = try await manager.fetchDeviceInfo(ip: "192.0.2.10")
         #expect(device.ModelNumber == "HDTC-2US")
         #expect(device.supportsTranscode)
     }

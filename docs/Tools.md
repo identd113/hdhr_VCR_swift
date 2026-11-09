@@ -1,6 +1,6 @@
 # Tools — full reference
 
-Full, verbatim descriptions for every script in `tools/` (and the bundled terminal client). `CLAUDE.md`'s Tools table carries a one-line summary of each; add new tools to both. Per `.claude/CONVENTIONS.md`: script repeatable tasks, give them `--help`.
+Full, verbatim descriptions for every script in `tools/` (and the bundled terminal client). Add new tools here. Script repeatable tasks, give them `--help`.
 
 | | |
 |---|---|

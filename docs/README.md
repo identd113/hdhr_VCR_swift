@@ -1,6 +1,6 @@
 # hdhr_VCR Swift — Documentation Index
 
-Doc per view/system: intent, architecture, key behaviors. Source of truth for visual layout — read before editing the matching view, cross-check after (see root `CLAUDE.md`).
+Doc per view/system: intent, architecture, key behaviors. Source of truth for visual layout — read before editing the matching view, cross-check after (see [`Invariants.md`](Invariants.md)).
 
 ## Views
 
@@ -42,4 +42,4 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | [MAS_COMPLIANCE.md](MAS_COMPLIANCE.md) | Mac App Store sandboxing compliance status — a distribution-path decision doc, not a code reference |
 | [CODE_REVIEW_2026-08-02.md](CODE_REVIEW_2026-08-02.md) | Unactioned simplification/efficiency triage snapshot across all `Sources/` files — proposals for the user to review, not yet applied |
 
-Root-level reference: [`CLAUDE.md`](../CLAUDE.md) — architecture overview, invariant rules, build/deploy. Full text: [`Invariants.md`](Invariants.md), [`Tools.md`](Tools.md), [`Logging.md`](Logging.md).
+Reference: [`Invariants.md`](Invariants.md), [`Tools.md`](Tools.md), [`Logging.md`](Logging.md).

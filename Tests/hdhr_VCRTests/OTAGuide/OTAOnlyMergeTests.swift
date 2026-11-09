@@ -18,8 +18,8 @@ struct OTAOnlyMergeTests {
 
     @Test func aFrequencyAddressIsRecognisedAndATunerAddressIsNot() {
         func line(_ url: String) -> LineupEntry { LineupEntry(GuideNumber: "1.1", GuideName: "X", URL: url, HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil) }
-        #expect(line("http://10.0.2.101:5004/auto/ch503000000-2").isAirTuned)
-        #expect(!line("http://10.0.2.101:5004/auto/v5.1").isAirTuned)
+        #expect(line("http://192.0.2.10:5004/auto/ch503000000-2").isAirTuned)
+        #expect(!line("http://192.0.2.10:5004/auto/v5.1").isAirTuned)
         #expect(!LineupEntry(GuideNumber: "1.1", GuideName: "X", URL: nil, HD: nil, Favorite: nil, VideoCodec: nil, AudioCodec: nil).isAirTuned)
     }
 

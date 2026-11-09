@@ -143,10 +143,10 @@ Because the recorder writes the HTTP body verbatim (`curl -o`, no remux), the co
 
 **Superseded finding, kept below for context — the "GuideNumber, GuideName, URL per channel, nothing else" summary-table entry was wrong.** Found the same way the `Transcode` cloud field above was found: by reading the old AppleScript app's (`identd113/hdhr_VCR`) git history. `VideoCodec`/`AudioCodec`-keyed `NEAT`-level logging existed there as of commit `bfc8a5d` (2025-03-24) — `if VideoCodec of item i of temp is not "MPEG2" then ... logger(... "NEAT" ...)`, reading straight off `hdhr_lineup`, which is the *raw, unmodified* `/lineup.json` response (`hdhr_api(...)` fetches it directly, no enrichment step). That logging was swept away as incidental cleanup in an unrelated `"SeriesScan fix"` commit (`b40e760`, 2025-06-19), not because the field stopped existing.
 
-Verified live 2026-09-02 against the same real EXTEND (105404BE, `curl http://10.0.2.101/lineup.json`):
+Verified live 2026-09-02 against the same real EXTEND (105404BE, `curl http://192.0.2.10/lineup.json`):
 
 ```json
-{"GuideNumber": "2.1", "GuideName": "TPT 2", "VideoCodec": "MPEG2", "AudioCodec": "AC3", "HD": 1, "URL": "http://10.0.2.101:5004/auto/v2.1"}
+{"GuideNumber": "2.1", "GuideName": "TPT 2", "VideoCodec": "MPEG2", "AudioCodec": "AC3", "HD": 1, "URL": "http://192.0.2.10:5004/auto/v2.1"}
 ```
 
 Both fields are present today, on every one of the device's 112 channels — `AudioCodec` was uniformly `"AC3"`, but `VideoCodec` was **`"H264"` on 15 channels** (channel 21's entire sub-multiplex — Newsmax, OAN, ZLiving, etc.), not `"MPEG2"`. So this isn't a theoretical edge case: some real, currently-airing channels genuinely broadcast H.264 natively rather than MPEG-2. `LineupEntry.VideoCodec`/`.AudioCodec` (`Models.swift`) now decode these; `VirtualTunerService`'s transcode-skip check (`docs/VirtualTunerService.md`'s "Already-modern-codec skip") reads `VideoCodec` as its fast, proactive first check, falling back to the on-disk PAT/PMT probe (`mpegTSVideoStreamType(inFileAt:)`, `CompatibilityHelpers.swift`) only when this field is absent (older firmware, or this app's own synthetic virtual-relay lineup entries, which don't set it).
@@ -164,7 +164,7 @@ params — it identifies "your" device purely by the **public IPv4 address the r
 Live-tested 2026-08-27 against a real EXTEND (HDTC-2US, DeviceID 105404BE):
 
 ```json
-[{"DeviceID":"105404BE","LocalIP":"10.0.2.101","Transcode":1,"BaseURL":"http://10.0.2.101","DiscoverURL":"http://10.0.2.101/discover.json","LineupURL":"http://10.0.2.101/lineup.json"}]
+[{"DeviceID":"105404BE","LocalIP":"192.0.2.10","Transcode":1,"BaseURL":"http://192.0.2.10","DiscoverURL":"http://192.0.2.10/discover.json","LineupURL":"http://192.0.2.10/lineup.json"}]
 ```
 
 A literal **`"Transcode": 1`** field, straight from SiliconDust's own cloud inventory of the
@@ -198,7 +198,7 @@ is deliberately excluded from this list — it exists, but is not safe to call.
 is the `ModelNumber`-`"HDTC"`-prefix check described above, gating `AppState.startRecording` —
 a show's actual recording always forces `transcode=none` on a device this returns `false` for,
 regardless of what `show_transcode`/`Default_transcode` say, so an unsupported profile is never
-attempted (see CLAUDE.md's "Transcode capability gate" invariant). Both the native Add/Edit form
+attempted (see Invariants.md's "Transcode capability gate" invariant). Both the native Add/Edit form
 (`ShowFormSection`, `docs/ShowFormSection.md`) and the web guide's Record modal
 (`docs/WebServer.md`'s "No-transcode warning") surface this proactively as a UI warning before the
 user ever hits signal (2) reactively. `hdhrErrorLabel` itself is unchanged — code 802 ("Unknown
@@ -231,7 +231,7 @@ Practical takeaway at the time: the only two signals available were thought to b
 
 ### Device tested
 
-HDHomeRun EXTEND, Model HDTC-2US, Firmware 20260313, DeviceID 105404BE, at 10.0.2.101. Tested 2026-06-03.
+HDHomeRun EXTEND, Model HDTC-2US, Firmware 20260313, DeviceID 105404BE, at 192.0.2.10. Tested 2026-06-03.
 
 ### Local `/guide.json` — Not present on EXTEND
 
@@ -493,7 +493,7 @@ which needs credentials this device doesn't have — not something further guess
 ## Broader Endpoint Sweep — Local Device + Cloud — 2026-08-26
 
 Systematic sweep for anything not already covered above. Same device (105404BE, HDTC-2US EXTEND,
-LocalIP `10.0.2.101`), fresh `DeviceAuth`. Recorded here so a future session doesn't re-guess the
+LocalIP `192.0.2.10`), fresh `DeviceAuth`. Recorded here so a future session doesn't re-guess the
 same dead names.
 
 **Local device — new finds:**
@@ -553,11 +553,11 @@ same dead names.
 
 ## Device Emulation Ground Truth — live-captured 2026-10-03
 
-Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_atsc` `20260313`, 10.0.2.101) while trying to make the Recording FEED pass real third-party clients. That mode was removed the same day; see `docs/VirtualTunerService.md`'s "Third-party HDHomeRun clients". `tools/mock_tuner.py` reproduces everything below.
+Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_atsc` `20260313`, 192.0.2.10) while trying to make the Recording FEED pass real third-party clients. That mode was removed the same day; see `docs/VirtualTunerService.md`'s "Third-party HDHomeRun clients". `tools/mock_tuner.py` reproduces everything below.
 
 **HTTP (port 80)**
 - Every response: `Server: HDHomeRun/1.0`, `Connection: close` (no keep-alive). JSON: `Content-Type: application/json; charset="utf-8"`, `Cache-Control: no-cache`, `Access-Control-Allow-Origin: *`.
-- `/discover.json` key order: `FriendlyName, ModelNumber, FirmwareName, FirmwareVersion, DeviceID, DeviceAuth, BaseURL, LineupURL, TunerCount`. **No `LocalIP`.** `BaseURL` has no port (`http://10.0.2.101`). Slashes are *not* escaped.
+- `/discover.json` key order: `FriendlyName, ModelNumber, FirmwareName, FirmwareVersion, DeviceID, DeviceAuth, BaseURL, LineupURL, TunerCount`. **No `LocalIP`.** `BaseURL` has no port (`http://192.0.2.10`). Slashes are *not* escaped.
 - `/lineup.json` entry order: `GuideNumber, GuideName, VideoCodec, AudioCodec, HD, Favorite, URL`. `HD` and `Favorite` appear only when 1. `URL` is `http://<ip>:5004/auto/v<ch>`, no query. `?show=found` returns the same list (it would include disabled channels with `"Enabled":0`).
 - `/lineup.xml` (`text/xml; charset="utf-8"`): `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`, then `<Lineup>`, one `<Program>` per line with the same fields, then `</Lineup>`.
 - `/lineup.m3u` (`text/plain`): `#EXTM3U`, then per channel `#EXTINF:-1 channel-id="2.1" channel-number="2.1" tvg-name="TPT 2",2.1 TPT 2` followed by the URL.
@@ -579,7 +579,7 @@ Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_
 
 **DeviceAuth**
 - It rotates every few minutes: four different values seen over about 40 minutes. Older values stay valid for a while (`guide.php` and `api/account` → 200).
-- The cloud maps any current key to its device: `GET https://ipv4-api.hdhomerun.com/discover?DeviceAuth=<key>` (`api.hdhomerun.com` 301-redirects there) returns `[{"DeviceID":"105404BE","LocalIP":"10.0.2.101","Transcode":1,"BaseURL":…,"DiscoverURL":…,"LineupURL":…}]`. **This is why a relay that borrows the key under another DeviceID fails the HDHomeRun app's guide check ("No guide access").** Also note `Transcode:1`, the real per-device transcode capability flag (see "Transcode capability" above).
+- The cloud maps any current key to its device: `GET https://ipv4-api.hdhomerun.com/discover?DeviceAuth=<key>` (`api.hdhomerun.com` 301-redirects there) returns `[{"DeviceID":"105404BE","LocalIP":"192.0.2.10","Transcode":1,"BaseURL":…,"DiscoverURL":…,"LineupURL":…}]`. **This is why a relay that borrows the key under another DeviceID fails the HDHomeRun app's guide check ("No guide access").** Also note `Transcode:1`, the real per-device transcode capability flag (see "Transcode capability" above).
 
 **Client behavior, from captures**
 - **Channels (iOS):** tries `https://<ip>:443` (no SNI, ALPN `h2,http/1.1`) right after each UDP reply, then sends **all HTTP to `<ip>:80`, ignoring `BaseURL`'s port**. Its sequence is `/lineup_status.json` → `POST /lineup.post?scan=start&source=Antenna` → progress polls. Against a device whose DeviceAuth belongs to another DeviceID, it stops there and never requests `/lineup.json`.

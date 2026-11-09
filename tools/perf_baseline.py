@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release-to-release performance baseline for hdhrVCRplus.
 
-  tools/perf_baseline.py run  <app | hdhr_VCR binary | .dmg> --label v2.6.5 [--runs 3] [--no-splash] [--port 1985] [--tuner-ip 10.0.2.101]
+  tools/perf_baseline.py run  <app | hdhr_VCR binary | .dmg> --label v2.6.5 [--runs 3] [--no-splash] [--port 1985] [--tuner-ip 192.0.2.10]
   tools/perf_baseline.py prime <app | binary | .dmg> --label v2.6.5     # once per build: lets macOS ask for Local Network access
   tools/perf_baseline.py compare [--dir docs/perf]            # table of every saved run, change vs the previous row
 

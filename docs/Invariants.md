@@ -1,6 +1,6 @@
 # Invariants & Gotchas — full text
 
-The complete, verbatim text of the invariants that `CLAUDE.md` summarizes in one line each. Moved here unchanged so `CLAUDE.md` stays small (it is read at the start of every session); `CLAUDE.md` keeps the binding rule of each, in a line or two. Rules here are as binding as there.
+The complete, verbatim text of the project invariants (each has a one-line summary in the maintainer's local agent file, which is not published). Rules here are binding.
 
 ## Web guide genre filter and show search share one dim function and are mutually exclusive
 

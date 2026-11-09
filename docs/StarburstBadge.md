@@ -138,7 +138,7 @@ After every 5th tap, `celebCount` increments, re-triggering `keyframeAnimator`. 
 
 ## Web Guide Counterpart (`Resources/guide.css` / `guide.js` / `guide-shell.html`)
 
-The web guide (served on `localhost:1980`, shared by external browsers and in-app `WKWebView` windows) has its own CSS/JS re-implementation of this badge — not the SwiftUI `StarburstBadge` type, since the guide is plain HTML/JS. Guide CSS/JS/HTML live as real files, not Swift string literals (see `CLAUDE.md`), stitched together by `WebServer.buildHTML()`. Two style classes in `Resources/guide.css`:
+The web guide (served on `localhost:1980`, shared by external browsers and in-app `WKWebView` windows) has its own CSS/JS re-implementation of this badge — not the SwiftUI `StarburstBadge` type, since the guide is plain HTML/JS. Guide CSS/JS/HTML live as real files, not Swift string literals (see the "Guide page files" invariant in [Invariants.md](Invariants.md)), stitched together by `WebServer.buildHTML()`. Two style classes in `Resources/guide.css`:
 - `.sb-web` — small 28px inline badge (12-point starburst via `clip-path`, orange `#e86e00` fill)
 - `.sb-web-lg` — 56px × 56px, `position:absolute; top:6px; right:44px`, `pointer-events:none`, `font-size:.42rem` — the large corner-badge variant, analogous to the native `StarburstBadge`'s corner overlay
 

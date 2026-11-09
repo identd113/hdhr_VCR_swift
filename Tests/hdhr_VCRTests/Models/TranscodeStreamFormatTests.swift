@@ -79,7 +79,7 @@ import Foundation
     @Test func lineupEntry_decodesRealVideoCodecAndAudioCodecFields() throws {
         let json = """
         {"GuideNumber":"21.2","GuideName":"Snapshp","VideoCodec":"H264","AudioCodec":"AC3","HD":0,
-         "URL":"http://10.0.2.101:5004/auto/v21.2"}
+         "URL":"http://192.0.2.10:5004/auto/v21.2"}
         """
         let entry = try JSONDecoder().decode(LineupEntry.self, from: Data(json.utf8))
         #expect(entry.VideoCodec == "H264")

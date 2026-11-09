@@ -124,7 +124,7 @@ struct AppStateStatusLightTests {
         let (device, lineups) = makeRemoteRelay()
         let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
         state.config.FEED_feature_enabled = true
-        state.playingStreamURLs = { ["http://10.0.2.101:5004/auto/v5.1"] }   // a live channel on a real tuner
+        state.playingStreamURLs = { ["http://192.0.2.10:5004/auto/v5.1"] }   // a live channel on a real tuner
         #expect(!state.isWatchingRemoteFeed)
         #expect(state.statusLightCandidates == [.feedAvailable])
     }
@@ -141,7 +141,7 @@ struct AppStateStatusLightTests {
         let hosts: Set<String> = ["10.0.2.100"]
         #expect(AppState.isFeedStream(urls: ["http://127.0.0.1:1980\(LocalRelay.feedLocalRelayPath)?session=x"], relayHosts: hosts))
         #expect(AppState.isFeedStream(urls: ["http://10.0.2.100:1980/auto/v4.1?transcode=heavy"], relayHosts: hosts))
-        #expect(!AppState.isFeedStream(urls: ["http://10.0.2.101:5004/auto/v4.1"], relayHosts: hosts))
+        #expect(!AppState.isFeedStream(urls: ["http://192.0.2.10:5004/auto/v4.1"], relayHosts: hosts))
         #expect(!AppState.isFeedStream(urls: [], relayHosts: hosts))
     }
 

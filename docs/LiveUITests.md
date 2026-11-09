@@ -11,7 +11,7 @@ Every skip path prints *why* to stderr (a silent skip once let a broken run "pas
 | `PiPTunerChurnTests` | `Tests/hdhr_VCRTests/Views/PiPTunerChurnTests.swift` | Soak: a seeded random walk over the player window + PiP that checks **tuner state after every step**. Built to *catch something happening* (leaks, phantom counts, stale badges), not to prove one path. |
 
 Shared AppleScript building blocks live in `Tests/hdhr_VCRTests/Views/PiPAXHelpers.swift` (`findWhere` is fast: `tools/ax_query.swift` locates the element natively and returns its child-index path, which is walked with `UI element N of …`; the old recursive System Events walk is only the `findWhereSlow` fallback); the right-click/key helper is
-`tools/ui_events.swift` (see CLAUDE.md's Tools table).
+`tools/ui_events.swift` (see docs/Tools.md).
 
 ```bash
 RUN_WINDOW_NAV_TESTS=1 swift test --filter pipFullWorkoutOverLiveRecording

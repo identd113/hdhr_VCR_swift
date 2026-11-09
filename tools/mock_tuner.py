@@ -39,11 +39,11 @@ Usage:
   python3 tools/mock_tuner.py                                  # this Mac's LAN IP, :80/:5004/:65001
   python3 tools/mock_tuner.py --ip 127.0.0.1 --http-port 18080 --stream-port 15004 --udp-port 0
   python3 tools/mock_tuner.py --profile flex4k --tuners 4
-  python3 tools/mock_tuner.py --mirror 10.0.2.101              # copy a real device's identity+lineup
+  python3 tools/mock_tuner.py --mirror 192.0.2.10              # copy a real device's identity+lineup
                                                                # (DeviceID stays the mock's own)
   python3 tools/mock_tuner.py --ts-file rec.ts                 # stream real TS (looped) instead of nulls
   python3 tools/mock_tuner.py --busy                           # every stream → 805 All Tuners In Use
-  python3 tools/mock_tuner.py compare 10.0.2.101 10.0.2.100    # field-by-field device diff
+  python3 tools/mock_tuner.py compare 192.0.2.10 10.0.2.100    # field-by-field device diff
   sudo python3 tools/mock_tuner.py --ip 10.0.2.240 --alias     # own LAN address (needs root + free IP)
 
 Ports: :80 is often taken (Caddy on the Mac Mini, or the app's own FEED full-tuner listener while a

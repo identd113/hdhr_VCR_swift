@@ -14,11 +14,11 @@ swift build          # build only
 swift test            # full test suite — requires full Xcode installed (not just Command Line Tools)
 ```
 
-`./deploy.sh` builds, ad-hoc signs, and launches a local debug copy of the app if you want to run it interactively — see the top of [CLAUDE.md](../CLAUDE.md) for the full build/deploy reference.
+`./deploy.sh` builds, ad-hoc signs, and launches a local debug copy of the app if you want to run it interactively — see [docs/Tools.md](../docs/Tools.md) for the build/deploy scripts.
 
 ## Code conventions
 
-This project's conventions (commit style, doc-update rules, architectural invariants) are documented in [CLAUDE.md](../CLAUDE.md) and [.claude/CONVENTIONS.md](../.claude/CONVENTIONS.md) — originally written for AI-agent-assisted development, but they apply equally to any contributor and are the fastest way to get oriented. In short:
+This project's conventions (commit style, doc-update rules, architectural invariants) are documented in [docs/Invariants.md](../docs/Invariants.md) and [docs/README.md](../docs/README.md) — the fastest way to get oriented. In short:
 
 - `docs/*.md` are the source of truth for each view/system's documented behavior — if your change affects documented behavior, update the matching doc in the same PR.
 - User-visible fixes and features get a `CHANGELOG.md` entry.

@@ -4,9 +4,9 @@
 Read-only for the app: talks to the tuner directly, never touches hdhrVCRplus's config or lineup. Uses one IDLE tuner
 (it refuses to start if both are busy, and skips a channel the moment the tuner reports busy), a few seconds per channel.
 
-  tools/band_sweep.py --ip 10.0.2.101                   # sweep RF 2-51, print a table, write report.json
-  tools/band_sweep.py --ip 10.0.2.101 --channels 29-35  # just these RF channels
-  tools/band_sweep.py --ip 10.0.2.101 --analyze         # also look at every program with ffmpeg and keep clips of interesting ones
+  tools/band_sweep.py --ip 192.0.2.10                   # sweep RF 2-51, print a table, write report.json
+  tools/band_sweep.py --ip 192.0.2.10 --channels 29-35  # just these RF channels
+  tools/band_sweep.py --ip 192.0.2.10 --analyze         # also look at every program with ffmpeg and keep clips of interesting ones
 
 Frequencies use the ATSC plan (centre of each 6 MHz channel): RF 2-4 = 57/63/69 MHz, 5-6 = 79/85, 7-13 = 177..213, 14-51 = 473..803.
 Raw-tune URL: http://<ip>:5004/tunerN/ch<frequency in Hz>  (gives the whole multiplex; program numbers are the tuner's own).

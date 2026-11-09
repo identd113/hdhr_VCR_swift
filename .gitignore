@@ -37,12 +37,6 @@ tools/dmg_assets/generated/
 # ── Local-only source, not part of the tracked app ────────────────────────
 /src
 
-# ── Claude Code local state (agents/, CONVENTIONS.md stay tracked) ────────
-CLAUDE.md
-/.claude/settings.local.json
-/.claude/worktrees/
-/.claude/scheduled_tasks.lock
-
 # ── Private / secret material — this repo is public. Each of these has a
 # tracked counterpart that stays generic/hashed/placeholder-only so nothing
 # here can be accidentally staged or reconstructed from what IS committed. ─

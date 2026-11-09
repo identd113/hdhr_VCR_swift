@@ -6,7 +6,7 @@ work. Nothing here is wired into the app yet.
 
 Branch: `feature/overtime` (off `main`). The sweep tool is `tools/band_sweep.py`.
 
-## What was proven (2026-10-20, Mini + HDHomeRun EXTEND HDTC-2US at 10.0.2.101)
+## What was proven (2026-10-20, Mini + HDHomeRun EXTEND HDTC-2US at 192.0.2.10)
 
 | Question | Answer | How it was checked |
 |---|---|---|
@@ -90,10 +90,10 @@ KTCI (RF 23) was expected but gave no signal. Program numbers on some multiplexe
 ## Tool: `tools/band_sweep.py`
 
 ```
-tools/band_sweep.py --ip 10.0.2.101                       # sweep RF 2-51, table + report.json
-tools/band_sweep.py --ip 10.0.2.101 --channels 29-35      # just these channels
-tools/band_sweep.py --ip 10.0.2.101 --map-lineup          # also find which frequency each lineup major is on (about 1 min)
-tools/band_sweep.py --ip 10.0.2.101 --analyze             # re-capture 30 s, ffmpeg detectors, keep clips of interesting programs
+tools/band_sweep.py --ip 192.0.2.10                       # sweep RF 2-51, table + report.json
+tools/band_sweep.py --ip 192.0.2.10 --channels 29-35      # just these channels
+tools/band_sweep.py --ip 192.0.2.10 --map-lineup          # also find which frequency each lineup major is on (about 1 min)
+tools/band_sweep.py --ip 192.0.2.10 --analyze             # re-capture 30 s, ffmpeg detectors, keep clips of interesting programs
 ```
 
 - Uses one **idle** tuner only; stops if another client takes it (a 503 with the tuner now in use). Never touches the app's config or lineup.
