@@ -109,6 +109,40 @@ struct EpisodeScheduleTests {
         #expect(s.nextEpisodes(seriesID: "C1", after: now).map(\.entry.StartTime) == [t0 + 1000, t0 + 9000])
     }
 
+    @Test func aStaleEpisodesAiringInsideTheGuideSpanLosesToTheGuide() {
+        // The guide now lists the 10:30-slot airing at t0+4000 (an overrun moved it); the cached episodes entry still says t0+1000.
+        let s = store(guideStarts: [t0 + 100, t0 + 4000])
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 1000]))
+        #expect(s.nextEpisode(seriesID: "C1", after: Date(timeIntervalSince1970: TimeInterval(t0 + 500)))?.entry.StartTime == t0 + 4000)
+        #expect(s.nextEpisodes(seriesID: "C1", after: Date(timeIntervalSince1970: TimeInterval(t0 + 500))).map(\.entry.StartTime) == [t0 + 4000])
+    }
+
+    @Test func mergedCandidatesAreRebuiltWhenTheExtrasChange() {
+        let s = store(guideStarts: [t0 + 1000])
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 5 * 86_400]))
+        #expect(s.nextEpisodes(seriesID: "C1", after: now).count == 2)
+        s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 6 * 86_400]))
+        #expect(s.nextEpisodes(seriesID: "C1", after: now).map(\.entry.StartTime) == [t0 + 1000, t0 + 6 * 86_400])
+        s.setEpisodeAirings(seriesID: "C1", matches: [])
+        #expect(s.nextEpisodes(seriesID: "C1", after: now).count == 1)
+    }
+
+    @Test func onDemandLookupsAreBudgetedPerHour() {
+        var times: [Date] = []
+        for _ in 0..<EpisodeSchedule.onDemandPerHour { #expect(EpisodeSchedule.takeOnDemandSlot(&times, now: now)) }
+        #expect(!EpisodeSchedule.takeOnDemandSlot(&times, now: now + 60))
+        #expect(EpisodeSchedule.takeOnDemandSlot(&times, now: now + 3601))
+    }
+
+    @Test func waitAtMostReturnsAtTheCapWhileTheWorkKeepsRunning() async {
+        let started = Date()
+        await waitAtMost(seconds: 0.2) { try? await Task.sleep(nanoseconds: 5_000_000_000) }
+        #expect(Date().timeIntervalSince(started) < 2)
+        let quick = Date()
+        await waitAtMost(seconds: 5) { }
+        #expect(Date().timeIntervalSince(quick) < 2)
+    }
+
     @Test func clearingEpisodesRestoresGuideOnly() {
         let s = store(guideStarts: [t0 + 1000])
         s.setEpisodeAirings(seriesID: "C1", matches: episodes([t0 + 5000]))

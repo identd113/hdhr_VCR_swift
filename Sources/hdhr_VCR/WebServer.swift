@@ -157,6 +157,9 @@ final class WebServer: @unchecked Sendable {
     // buildGuideGridHTML pass on every hit; nil only before the first prebuildPageHTML ever runs,
     // same as cachedHTML's own live-build fallback below.
     private var cachedGridHTML: String? = nil
+    // Set instead of rebuilding when a guide-changing event fires with no browser connected (no SSE client): the grid, page and gzip are
+    // ~1300 blocks of MainActor work nobody would see. The next request that reads the caches rebuilds them (refreshCachesIfGuideWindowMoved).
+    private var pageCacheDirty = false
     // The guide window start (`guideWindow(state:).start`, which advances every 30 minutes) the cached grid /
     // pages above were built against. When it falls behind the live value the cached HTML is stale (its
     // window and baked-in now-line origin are hours old on a quiet system, since the caches are otherwise
@@ -323,9 +326,21 @@ final class WebServer: @unchecked Sendable {
     /// at most once per 30-minute window step. (CLAUDE.md's old "hourly guide_refreshed" is not what runs.)
     @MainActor
     func refreshCachesIfGuideWindowMoved(state: AppState) {
+        if pageCacheDirty {
+            glog("[WebServer] caches were left stale while no browser was connected — rebuilding the cached grid/pages")
+            prebuildPageHTML(state: state)
+            return
+        }
         guard let built = cachedGridWinStart, built != guideWindow(state: state).start else { return }
         glog("[WebServer] guide window moved on (\(built) → \(guideWindow(state: state).start)) — rebuilding the cached grid/pages")
         prebuildPageHTML(state: state)
+    }
+
+    /// True when at least one browser / native Guide window holds an SSE connection (or a test observer is watching), i.e. a pushed event would be seen.
+    private var hasSSEClients: Bool {
+        if broadcastObserver != nil { return true }
+        sseLock.lock(); defer { sseLock.unlock() }
+        return !sseConns.isEmpty
     }
 
     @MainActor
@@ -334,6 +349,7 @@ final class WebServer: @unchecked Sendable {
         // e.g. a network fetch), so "ran once" and "cache is populated" are equivalent here. See
         // AppState.guidePageCacheWarm's own doc comment.
         defer { state.guidePageCacheWarm = true }
+        pageCacheDirty = false
         // Computed once (it's the expensive part — 1300+ program blocks) and reused for both
         // variants below, which differ only in their <head>/<style>, not the grid itself.
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
@@ -600,6 +616,10 @@ final class WebServer: @unchecked Sendable {
                                   prebuiltGrid: String? = nil, refreshPageCache: Bool = true) {
         // activeTunerCount folds in the in-app VLC stream + externally-used tuners (status.json),
         // so the pushed badge matches the page render instead of undercounting to recordings alone.
+        guard hasSSEClients else {
+            if refreshPageCache { pageCacheDirty = true }
+            return
+        }
         let active = state.activeTunerCount(for: device)
         let total  = state.devices.first(where: { $0.DeviceID == device })?.TunerCount ?? 0
         broadcastEvent([
@@ -641,6 +661,7 @@ final class WebServer: @unchecked Sendable {
         // actually re-scan on the buildGuideGridHTML call right below, instead of trusting a
         // signature match that would otherwise still show this episode as "not yet recorded."
         recordedTagsCacheNeedsRefresh = true
+        guard hasSSEClients else { pageCacheDirty = true; return }
         let grid = buildGuideGridHTML(state: state)
         // refreshPageCache: false — broadcastGuideChangeEvent right below unconditionally calls
         // prebuildPageHTML(prebuiltGrid: grid) itself with this same grid, so letting this call
@@ -715,6 +736,8 @@ final class WebServer: @unchecked Sendable {
     // buildGuideRefreshPayload's own doc comment.
     @MainActor
     func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState, prebuiltGrid: String? = nil, onlyDevices: Set<String>? = nil) {
+        // Nobody to push to: skip the grid, the gzip passes and the page rebuild; the next request rebuilds the caches (pageCacheDirty).
+        guard hasSSEClients else { pageCacheDirty = true; return }
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         var event = extra
         event["type"] = type
@@ -2640,12 +2663,7 @@ final class WebServer: @unchecked Sendable {
         // unreachable cloud never holds the modal up (the guide's own airings are answered either way).
         if method == "GET", path.hasPrefix("/api/airings/"), let state = appState {
             let sid = String(path.dropFirst("/api/airings/".count)).removingPercentEncoding ?? ""
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await state.ensureEpisodeAirings(seriesID: sid) }
-                group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
-                await group.next()
-                group.cancelAll()
-            }
+            await waitAtMost(seconds: 3) { await state.ensureEpisodeAirings(seriesID: sid) }
         }
         return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
     }
@@ -2743,7 +2761,7 @@ final class WebServer: @unchecked Sendable {
         }
 
         // GET routes
-        if path == "/" || path == "/index.html" || path == "/vertical" || path == "/api/guide-refresh" {
+        if path == "/" || path == "/index.html" || path == "/vertical" || path == "/api/guide-refresh" || path == "/api/guide.json" {
             refreshCachesIfGuideWindowMoved(state: state)
         }
         switch path {
@@ -3572,6 +3590,7 @@ final class WebServer: @unchecked Sendable {
     // online/offline state silently went stale until the next full page reload.
     @MainActor
     func broadcastDeviceBarEvent(type: String, deviceId: String, state: AppState) {
+        guard hasSSEClients else { pageCacheDirty = true; return }
         broadcastEvent(["type": type, "deviceId": deviceId, "devbar": buildDevBarHTML(state: state, devTuners: Self.computeDevTuners(state: state))])
         // Keep the cached full-page HTML (served to any new page load / GET /) in sync with this
         // device transition too — same reasoning as broadcastRecordingEvent/broadcastGuideChangeEvent's

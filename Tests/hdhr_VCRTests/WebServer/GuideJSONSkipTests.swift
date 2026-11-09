@@ -161,6 +161,8 @@ struct GuideJSONSkipTests {
 
         // The actual fix: SettingsView.applyAndSave's new skipConfigChanged branch calls exactly this.
         webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: state)
+        // With no browser connected the broadcast only marks the caches stale; the next request that reads them (the route preamble) rebuilds.
+        webServer.refreshCachesIfGuideWindowMoved(state: state)
         let freshEntry = try firstEntry(from: webServer.buildGuideJSON(state: state, deviceId: "AABBCCDD"))
         #expect(freshEntry["isSkipped"] as? Bool == true,
             "refreshPageAndBroadcastGuideChange should rewarm cachedRecordedTagsByShow so the now-enabled setting takes effect immediately")

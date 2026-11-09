@@ -870,6 +870,8 @@ final class AppState: ObservableObject {
     private var episodeNothingUpcoming: Set<String> = []
     /// One running fetch per series, so a second caller waits on it instead of seeing a series that is "already tried". Resolves to "airings changed".
     private var episodeInFlight: [String: Task<Bool, Never>] = [:]
+    /// When screens / the web page started cloud lookups for series no show uses (see `EpisodeSchedule.takeOnDemandSlot`).
+    private var episodeOnDemandTimes: [Date] = []
     // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
     // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
     // second caller silently skipping and reading stale tunerStatus. That distinction matters here:
@@ -1056,15 +1058,8 @@ final class AppState: ObservableObject {
                 // pending (the overwhelmingly common case), so a normal deploy isn't slowed.
                 let pending = self.showRuntime.values.compactMap { $0.discordCardTask }
                 if !pending.isEmpty {
-                    // A real 2 s cap: awaiting an unstructured Task.value ignores cancellation, so a
-                    // task group would block on a slow webhook (60 s URLSession default) regardless
-                    // of cancelAll(). Resume from whichever of {timeout, drained} fires first and
-                    // simply abandon the other.
-                    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                        let once = ResumeOnce(cont)
-                        Task { try? await Task.sleep(nanoseconds: 2_000_000_000); once.resume() }
-                        Task { for t in pending { _ = await t.value }; once.resume() }
-                    }
+                    // A real 2 s cap (a slow webhook can take the 60 s URLSession default) — see waitAtMost.
+                    await waitAtMost(seconds: 2) { for t in pending { _ = await t.value } }
                 }
                 // Same bounded-wait shape as the Discord-card drain just above, for a different
                 // silent-loss mechanism: a web guide request (e.g. Record) that's fully received but
@@ -4624,8 +4619,8 @@ final class AppState: ObservableObject {
     /// Records one series' `api/episodes` answer. True when the airings the guide store holds for it changed.
     private func applyEpisodeResult(seriesID sid: String, airings: [EpisodeAiring]?, reason: String?, now: Date,
                                     devices: [(id: String, lineup: [LineupEntry])], epoch: Int) -> Bool {
-        // Cancelled (the screen asking went away), or the guide was invalidated mid-fetch: no verdict on the cloud, so allow an immediate retry.
-        if reason == EpisodeSchedule.cancelledReason || epoch != guideStore.invalidationEpoch { episodeLastAttempt[sid] = nil; return false }
+        // The guide was invalidated mid-fetch: the answer belongs to the old data and is no verdict on the cloud, so allow an immediate retry.
+        if epoch != guideStore.invalidationEpoch { episodeLastAttempt[sid] = nil; return false }
         guard let airings else {
             FeatureTracker.shared.fellBack("series.episodes", reason ?? "failed")
             // Keep serving the last good schedule for a while, but not forever.
@@ -4662,7 +4657,13 @@ final class AppState: ObservableObject {
     /// already fresh (same 3 h / 30 min timing as the background refresh). Bumps `guideGeneration` when airings were added so the screen recomputes.
     func ensureEpisodeAirings(seriesID: String) async {
         // Only series this app already knows (a show, or an airing in the loaded guide): the web endpoint passes a client-supplied ID.
-        guard !seriesID.isEmpty, shows.contains(where: { $0.show_seriesid == seriesID }) || guideStore.knowsSeries(seriesID) else { return }
+        guard !seriesID.isEmpty else { return }
+        let isShow = shows.contains { $0.show_seriesid == seriesID }
+        guard isShow || guideStore.knowsSeries(seriesID) else { return }
+        // A series no show uses costs a cloud call only within an hourly budget, and only when a call would really start.
+        if !isShow, episodeInFlight[seriesID] == nil,
+           !EpisodeSchedule.dueSeriesIDs([seriesID], now: Date(), lastSuccess: episodeLastSuccess, lastAttempt: episodeLastAttempt).isEmpty,
+           !EpisodeSchedule.takeOnDemandSlot(&episodeOnDemandTimes, now: Date()) { return }
         if await refreshEpisodeAirings(seriesIDs: [seriesID]) { guideGeneration += 1 }
     }
 
@@ -7281,6 +7282,17 @@ final class NotificationActionDelegate: NSObject, UNUserNotificationCenterDelega
     }
 }
 
+
+/// Waits for `work`, but returns after `seconds` at the latest. A real cap: awaiting an unstructured Task.value ignores cancellation, so a task
+/// group would block on slow work regardless of cancelAll(). Whichever of {timeout, work} finishes first resumes the caller and the other is
+/// simply abandoned — `work` keeps running to completion in the background.
+func waitAtMost(seconds: Double, _ work: @escaping @Sendable () async -> Void) async {
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        let once = ResumeOnce(cont)
+        Task { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)); once.resume() }
+        Task { await work(); once.resume() }
+    }
+}
 
 /// Resumes a continuation at most once, from any thread — lets two racing tasks (a timeout and the
 /// work it bounds) both call `resume()` safely; only the first takes effect.

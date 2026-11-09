@@ -1236,6 +1236,8 @@ Missing required fields: deviceId, guideNumber, startTime
 
 ---
 
+**Lazy cache rebuild (2026-11-09).** `broadcastGuideChangeEvent`, `broadcastRecordingEvent`, `broadcastRecordingStopped` and `broadcastDeviceBarEvent` do nothing but set `pageCacheDirty` when no SSE client is connected (a test `broadcastObserver` counts as one): the grid, page and gzip passes are ~1300 blocks of MainActor work nobody would see. The route preamble for `/`, `/vertical`, `/api/guide-refresh` and `/api/guide.json` calls `refreshCachesIfGuideWindowMoved`, which rebuilds when the flag is set (or the guide window moved). Startup and the window-moved rebuild stay eager.
+
 ### GET /api/airings/{seriesId} — other upcoming episodes
 
 ```bash

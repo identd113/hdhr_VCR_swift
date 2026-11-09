@@ -32,6 +32,7 @@ final class GuideStore {
     /// `seriesIndex` so a guide reload never wipes them; merged at lookup time by `seriesCandidates`.
     private var episodeAirings: [String: [SeriesMatch]] = [:]
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
+    private var candidateCache: [String: [SeriesMatch]] = [:]      // seriesID → guide + episodes merge (seriesCandidates); cleared whenever either side changes
     /// True when this device's loaded guide carries no SeriesIDs at all (the over-the-air guide never does), so a SeriesID recording
     /// could never match anything. False while no guide is loaded: unknown is not "none".
     func guideHasNoSeriesIDs(deviceId: String) -> Bool {
@@ -577,6 +578,7 @@ final class GuideStore {
                                      seriesEntries: fetched.seriesEntries)
         }
 
+        candidateCache.removeAll()
         // Drop stale entries for this device from series index
         for sid in seriesIDsByDevice[deviceId] ?? [] {
             seriesIndex[sid]?.removeAll { $0.deviceId == deviceId }
@@ -643,6 +645,7 @@ final class GuideStore {
 
     /// Replaces the extra airings for a series (empty removes them).
     func setEpisodeAirings(seriesID: String, matches: [SeriesMatch]) {
+        candidateCache[seriesID] = nil
         if matches.isEmpty { episodeAirings[seriesID] = nil } else { episodeAirings[seriesID] = matches.sorted { $0.entry.StartTime < $1.entry.StartTime } }
     }
 
@@ -652,16 +655,22 @@ final class GuideStore {
     /// How many extra airings are held for a series (for logs and tests).
     func episodeAiringCount(seriesID: String) -> Int { episodeAirings[seriesID]?.count ?? 0 }
 
-    /// Every known airing of a series, sorted by StartTime: the guide's own, plus the `api/episodes` ones for a device + channel + start the guide
-    /// does not already have. With no extras this is the guide index itself, so nothing changes when the endpoint is unused or failed.
+    /// Every known airing of a series, sorted by StartTime: the guide's own, plus the `api/episodes` ones that start where the guide has nothing
+    /// for that device + channel (before its first listing or at/after its last one). Inside the span the guide covers it is authoritative: a cached episodes airing
+    /// the guide no longer lists (moved by an overrun, cancelled) must not outvote it, least of all at record time. With no extras this is the
+    /// guide index itself, so nothing changes when the endpoint is unused or failed. The merged list is cached until the guide or the extras change.
     private func seriesCandidates(_ seriesID: String) -> [SeriesMatch] {
         sortIfNeeded(seriesID)
         let guide = seriesIndex[seriesID] ?? []
         guard let extra = episodeAirings[seriesID], !extra.isEmpty else { return guide }
-        var seen = Set(guide.map { "\($0.deviceId)|\($0.channelNum)|\($0.entry.StartTime)" })
-        let added = extra.filter { seen.insert("\($0.deviceId)|\($0.channelNum)|\($0.entry.StartTime)").inserted }
-        guard !added.isEmpty else { return guide }
-        return (guide + added).sorted { $0.entry.StartTime < $1.entry.StartTime }
+        if let cached = candidateCache[seriesID] { return cached }
+        let beyondGuide = extra.filter { m in
+            guard let listed = channelEntryIndex["\(m.deviceId):\(m.channelNum)"], let first = listed.first, let last = listed.last else { return true }
+            return m.entry.StartTime < first.StartTime || m.entry.StartTime >= last.EndTime
+        }
+        let merged = beyondGuide.isEmpty ? guide : (guide + beyondGuide).sorted { $0.entry.StartTime < $1.entry.StartTime }
+        candidateCache[seriesID] = merged
+        return merged
     }
 
     /// First episode matching seriesID with StartTime > after, optionally constrained by
@@ -942,6 +951,7 @@ final class GuideStore {
         unsortedSeries = []
         seriesIDsByDevice = [:]
         episodeAirings = [:]
+        candidateCache = [:]
         sourceByDevice = [:]
         loadTimestamps = [:]
         // The saved copies too — otherwise the next load() quietly restores the very data this was
