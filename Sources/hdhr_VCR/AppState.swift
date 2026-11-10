@@ -2864,12 +2864,18 @@ final class AppState: ObservableObject {
 
     // Lightweight 1Hz timer driving the menu bar blink (independent of the idle-loop timer above,
     // which does much heavier network/bookkeeping work on a much slower cadence).
-    func startStatusLightTimer() {
+    func startStatusLightTimer(interval: TimeInterval = AppState.statusLightActiveInterval) {
         statusLightTimer?.invalidate()
-        statusLightTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        statusLightInterval = interval
+        statusLightTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tickStatusLight() }
         }
     }
+
+    /// 1 s while a light is showing or blinking; 5 s when there is nothing to show, so an idle app is not woken every second.
+    static let statusLightActiveInterval: TimeInterval = 1
+    static let statusLightIdleInterval: TimeInterval = 5
+    private var statusLightInterval: TimeInterval = AppState.statusLightActiveInterval
 
     // Builds this tick's candidate set, tier-first: `.recording`/`.feedAvailable` together when
     // either or both are true (order here is also the "pick one" order used when blink is off, and
@@ -2936,8 +2942,10 @@ final class AppState: ObservableObject {
                                                 blinkSetting: config.Status_light_blink_enabled, now: Date()) else {
             if activeStatusLight != nil { activeStatusLight = nil }
             if !statusLightOn { statusLightOn = true }
+            if statusLightInterval != Self.statusLightIdleInterval { startStatusLightTimer(interval: Self.statusLightIdleInterval) }
             return
         }
+        if statusLightInterval != Self.statusLightActiveInterval { startStatusLightTimer(interval: Self.statusLightActiveInterval) }
         if activeStatusLight != state.kind { activeStatusLight = state.kind }
         if statusLightOn != state.lit { statusLightOn = state.lit }
     }
@@ -3342,10 +3350,10 @@ final class AppState: ObservableObject {
 
         // Log untagged (no genre) guide entries as they start airing, once per slot.
         // Helps discover new infomercial SeriesIDs to add to the hidden-by-default filter.
-        // Gated to every 5 minutes rather than every tick — this is a full device×channel guide
+        // Gated to every 30 minutes rather than every tick — this is a full device×channel guide
         // walk (guideStore.entries() filters each channel's entries) purely for diagnostic
         // discovery, not anything a program's actual air time depends on.
-        if now.timeIntervalSince(lastNowAiringScan) > 300 {
+        if now.timeIntervalSince(lastNowAiringScan) > 1800 {
             lastNowAiringScan = now
             // recordableDevices — a virtual relay device is watch-only with no real guide data
             // (CLAUDE.md's "default new device-facing code to recordableDevices" rule); currently

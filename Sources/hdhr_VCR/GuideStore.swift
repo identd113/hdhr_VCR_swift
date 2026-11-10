@@ -26,7 +26,8 @@ final class GuideStore {
     private(set) var channelsByDevice: [String: [GuideChannel]] = [:]
     /// Channels the device's own guide lacks (the air-only ones, from the saved scan). Kept apart so every guide reload adds them back.
     private var supplementByDevice: [String: [GuideChannel]] = [:]
-    private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
+    private var channelEntryIndex: [String: [GuideEntry]] = [:] { didSet { latestEndCache = nil } }   // "devId:chNum" → sorted entries
+    private var latestEndCache: Int??   // nil = not computed since the index last changed; .some(nil) = computed, no listings
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     /// Extra airings per seriesID from `api/episodes` (beyond the guide window), already mapped to devices; see `EpisodeSchedule`. Kept apart from
     /// `seriesIndex` so a guide reload never wipes them; merged at lookup time by `seriesCandidates`.
@@ -629,7 +630,10 @@ final class GuideStore {
     /// When the latest saved listing ends (epoch seconds), across every device and channel; nil when no guide is loaded. Entries are sorted
     /// by StartTime, so each channel's last entry carries its latest end. The web guide sizes its scroll window to this.
     func latestListingEnd() -> Int? {
-        channelEntryIndex.values.compactMap { $0.last?.EndTime }.max()
+        if let cached = latestEndCache { return cached }
+        let latest = channelEntryIndex.values.compactMap { $0.last?.EndTime }.max()
+        latestEndCache = .some(latest)
+        return latest
     }
 
     /// Guide entries for a device+channel whose EndTime is after `after` (default: now).

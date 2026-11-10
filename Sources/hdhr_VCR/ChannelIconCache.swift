@@ -66,6 +66,13 @@ actor ChannelIconCache {
     /// How many of these URLs are not yet on disk (need a download).
     /// Uses a single contentsOfDirectory call instead of one fileExists per URL —
     /// replaces ~400 individual disk stat calls with one directory scan after each guide load.
+    /// Decoded images held in memory: the disk copy stays, so a long session of browsing posters cannot grow this without bound.
+    static let memoryLimit = 1500
+    private func remember(_ img: NSImage, for url: String) {
+        mem[url] = img
+        if mem.count > Self.memoryLimit { for k in mem.keys.prefix(Self.memoryLimit / 3) where k != url { mem[k] = nil } }
+    }
+
     func countMissing(in urlStrings: [String]) -> Int {
         let onDisk = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
         return urlStrings.filter { url in
@@ -141,7 +148,7 @@ actor ChannelIconCache {
 
         if let data = try? Data(contentsOf: diskPath),
            let img  = NSImage(data: data) {
-            mem[urlString] = img
+            remember(img, for: urlString)
             return img
         }
 
@@ -159,7 +166,7 @@ actor ChannelIconCache {
             return nil
         }
 
-        mem[urlString] = img
+        remember(img, for: urlString)
         if mem.count > 600 { mem.removeAll() }
         try? data.write(to: diskPath)
         return img
