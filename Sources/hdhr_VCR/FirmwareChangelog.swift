@@ -83,9 +83,20 @@ enum FirmwareChangelog {
         })
     }
 
+    /// `text` as a bullet wrapped at `width` characters (continuation lines indented under the text), so a tooltip never runs wider than the screen.
+    static func bulletLines(_ text: String, width: Int = 60, bold makeBold: Bool = false) -> [String] {
+        var lines: [String] = [], current = ""
+        for word in text.split(separator: " ") {
+            if !current.isEmpty, current.count + 1 + word.count > width { lines.append(current); current = String(word) }
+            else { current += (current.isEmpty ? "" : " ") + word }
+        }
+        if !current.isEmpty { lines.append(current) }
+        return lines.enumerated().map { ($0.offset == 0 ? "• " : "   ") + (makeBold ? bold($0.element) : $0.element) }
+    }
+
     /// Tooltip text, one block per release: the date, the changes for every tuner, then (when `model` is given) those that name this tuner's model in
     /// bold, then those for other models, with blank lines between blocks.
-    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 24) -> String? {
+    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 20) -> String? {
         guard !releases.isEmpty else { return nil }
         var blocks: [[String]] = []
         for r in releases {
@@ -93,14 +104,14 @@ enum FirmwareChangelog {
             let all = r.changes.filter { !isModelSpecific($0) }
             let mine = r.changes.filter { namesModel($0, model: model) }
             let others = r.changes.filter { isModelSpecific($0) && !namesModel($0, model: model) }
-            lines += all.map { "• " + $0 }
+            lines += all.flatMap { bulletLines($0) }
             if !mine.isEmpty {
                 lines.append("For your \(model ?? "tuner"):")
-                lines += mine.map { "• " + bold($0) }
+                lines += mine.flatMap { bulletLines($0, bold: true) }
             }
             if !others.isEmpty {
                 if !all.isEmpty || !mine.isEmpty { lines.append("Only some models:") }
-                lines += others.map { "• " + $0 }
+                lines += others.flatMap { bulletLines($0) }
             }
             blocks.append(lines)
         }

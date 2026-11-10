@@ -65,6 +65,14 @@ struct FirmwareChangelogTests {
                           "Only some models:", "• ATSC3 models: Fix scan.", "• HDHR5-2DT/4DT: Ham radio."])
     }
 
+    @Test func longChangesWrapUnderTheBulletAndNoLineIsWide() {
+        let long = Array(repeating: "word", count: 40).joined(separator: " ")
+        let lines = FirmwareChangelog.bulletLines(long)
+        #expect(lines.count > 1 && lines[0].hasPrefix("• ") && lines[1].hasPrefix("   ") && !lines[1].hasPrefix("• "))
+        #expect(lines.allSatisfy { $0.count <= 64 })
+        #expect(FirmwareChangelog.bulletLines("short") == ["• short"])
+    }
+
     @Test func releasesAreSeparatedByABlankLine() {
         let t = FirmwareChangelog.tooltip([.init(version: "20261107", changes: ["a"]), .init(version: "20260326", changes: ["b"])])
         #expect(t == "Firmware 20261107 · Nov 7, 2026\n• a\n\nFirmware 20260326 · Mar 26, 2026\n• b")
