@@ -127,7 +127,7 @@ struct MenuContent: View {
     /// The top line of the menu: one row per tuner offering newer firmware (opens its own web page, where the update is done), then a divider.
     @ViewBuilder
     private var firmwareUpdateRows: some View {
-        let outdated = state.recordableDevices.filter { $0.firmwareUpdate != nil }
+        let outdated = state.recordableDevices.filter { $0.isAvailable && $0.firmwareUpdate != nil }
         if !outdated.isEmpty {
             ForEach(outdated) { device in
                 if let version = device.firmwareUpdate, let page = device.firmwarePageURL {
@@ -140,7 +140,7 @@ struct MenuContent: View {
                             menuInfo(row, font: .footnote, secondary: !row.hasPrefix("•"), maxWidth: 320, lines: 6)
                         }
                     } label: {
-                        Label("Firmware update \(version): \(String((device.FriendlyName ?? device.DeviceID).prefix(24)))", systemImage: "cpu")
+                        Label("Firmware update \(version): \(String((device.FriendlyName ?? device.DeviceID).prefix(24)))" + (outdated.count > 1 ? " · \(device.DeviceID)" : ""), systemImage: "cpu")
                     }
                 }
             }
