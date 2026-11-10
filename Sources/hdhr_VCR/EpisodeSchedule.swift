@@ -57,7 +57,7 @@ enum EpisodeSchedule {
                 e.EpisodeTitle = a.episodeTitle; e.EpisodeNumber = a.episodeNumber; e.Synopsis = a.synopsis
                 e.SeriesID = seriesID; e.ImageURL = a.imageURL; e.OriginalAirdate = a.originalAirdate
                 e.deviceId = device.id; e.channelNum = a.channelNumber
-                e.cachedSeriesTitle = Show.seriesTitle(from: a.title)
+                e.cachedSeriesTitle = Show.seriesTitle(from: a.title); e.fromEpisodes = true
                 out.append(GuideStore.SeriesMatch(deviceId: device.id, channelNum: a.channelNumber, entry: e))
             }
         }

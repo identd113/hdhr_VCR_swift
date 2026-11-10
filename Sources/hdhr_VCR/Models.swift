@@ -1241,6 +1241,8 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     // guide index is built — the title-fallback scans in GuideStore compare it against every
     // future entry on a device, and the regex behind seriesTitle(from:) made that tens of ms per call.
     var cachedSeriesTitle: String? = nil
+    /// Built from an `api/episodes` airing, which carries no genre tags (not in JSON).
+    var fromEpisodes: Bool = false
     var StartTime: Int
     var EndTime: Int
     var Title: String

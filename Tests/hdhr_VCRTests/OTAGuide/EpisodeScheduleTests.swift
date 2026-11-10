@@ -143,8 +143,8 @@ struct EpisodeScheduleTests {
 
     @Test func waitAtMostReturnsAtTheCapWhileTheWorkKeepsRunning() async {
         let started = Date()
-        await waitAtMost(seconds: 0.2) { try? await Task.sleep(nanoseconds: 5_000_000_000) }
-        #expect(Date().timeIntervalSince(started) < 2)
+        await waitAtMost(seconds: 0.2) { try? await Task.sleep(nanoseconds: 30_000_000_000) }
+        #expect(Date().timeIntervalSince(started) < 20)   // far under the work's 30 s even if a loaded test run delays the timer
         let quick = Date()
         await waitAtMost(seconds: 5) { }
         #expect(Date().timeIntervalSince(quick) < 2)

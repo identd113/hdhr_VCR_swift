@@ -2742,11 +2742,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
-    // devFilter is always the device being added from — SeriesID(All) differs from SeriesID(Channel)
-    // only in channel scope (any channel on that device vs. one fixed channel), not device scope;
-    // both are confined to a single assigned tuner (see CLAUDE.md's "Web guide managed markers"
-    // invariant and the seriesAll-scoping fix this is part of).
     /// How `findSeriesAiring` found its airing (the caller words its log line from this).
     enum SeriesFind { case onAir, next, onAirByTitle, nextByTitle }
 
@@ -2779,6 +2774,10 @@ final class AppState: ObservableObject {
         return nil
     }
 
+    // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
+    // devFilter is always the device being added from — SeriesID(All) differs from SeriesID(Channel)
+    // only in channel scope (any channel on that device vs. one fixed channel), not device scope;
+    // both are confined to a single assigned tuner (see docs/Invariants.md, "Web guide managed markers").
     func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
         let devFilter = device.DeviceID
@@ -4159,7 +4158,7 @@ final class AppState: ObservableObject {
                     shows[idx].show_next    = match.entry.startDate
                     shows[idx].show_end     = match.entry.endDate
                     shows[idx].show_channel = match.channelNum
-                    shows[idx].show_genre   = match.entry.firstGenre ?? shows[idx].show_genre   // an api/episodes airing has no genre tags: keep what is known
+                    shows[idx].show_genre   = match.entry.firstGenre ?? (match.entry.fromEpisodes ? shows[idx].show_genre : "")   // an api/episodes airing has no genre tags: keep what is known
                     shows[idx].hdhr_record  = match.deviceId
                     if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[match.deviceId] ?? []) {
                         shows[idx].show_url = url
@@ -6641,12 +6640,12 @@ final class AppState: ObservableObject {
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
 
-        // Write only when the active-tuner *count* changed (per-tuner fields like SNQ change every poll, so a full comparison
-        // would always differ). While the menu is open, at most once per menuOpenTunerWriteCooldown, so an external client
+        // Write only when which tuners are in use, or the channel each holds, changed (per-tuner fields like SNQ change every poll, so a
+        // full comparison would always differ; the count alone missed a tuner moving to another channel, leaving the stored channel and
+        // resource stale). While the menu is open, at most once per menuOpenTunerWriteCooldown, so an external client
         // channel-surfing can't keep re-glitching the open menu (CLAUDE.md "Menu rebuild churn"). Signal alerting below always runs.
-        let newActiveCount = tuners.filter { $0.isInUse }.count
-        let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.isInUse }.count
-        let countChanged = newActiveCount != oldActiveCount
+        func inUseSignature(_ t: [DeviceTunerInfo]) -> [String] { t.filter { $0.isInUse }.map { "\($0.Resource)|\($0.VctNumber ?? "")" }.sorted() }
+        let countChanged = deviceTunerOccupancy[device.DeviceID].map { inUseSignature($0) != inUseSignature(tuners) } ?? true
         let cooldownElapsed = lastMenuOpenTunerWrite[device.DeviceID].map {
             Date().timeIntervalSince($0) >= Self.menuOpenTunerWriteCooldown
         } ?? true
@@ -6916,8 +6915,10 @@ final class AppState: ObservableObject {
                         ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
                     if !refusedTune.isEmpty { continue outer }   // device is busy: stop scanning it for now
-                    // The channels sharing this frequency get the same samples (or the same "never locked" 0).
-                    for sib in siblings {
+                    // The channels sharing this frequency get the same samples (or the same "never locked" 0), but only when the
+                    // representative was really tuned: with no usable stream URL nothing was tried, so there is no verdict to copy.
+                    let repTuned = batch[0].URL.flatMap { URL(string: $0) } != nil
+                    for sib in siblings where repTuned {
                         for snq in (repSamples.isEmpty ? [0] : repSamples) { ChannelSignalStore.shared.record(guideName: sib.GuideName, snq: snq) }
                     }
 
