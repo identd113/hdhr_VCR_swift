@@ -134,7 +134,7 @@ struct MenuContent: View {
                     Button {
                         NSWorkspace.shared.open(page)
                     } label: {
-                        Label("Tuner Firmware Update: \(device.FriendlyName ?? device.DeviceID) (\(version))", systemImage: "cpu")
+                        Label("Firmware update \(version): \(String((device.FriendlyName ?? device.DeviceID).prefix(24)))", systemImage: "cpu")
                     }
                     .help(state.firmwareChangesTooltip(for: device) ?? "Opens the tuner's page, where the update is done.")
                 }

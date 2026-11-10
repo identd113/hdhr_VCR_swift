@@ -68,7 +68,7 @@ struct FirmwareChangelogTests {
         let long = Array(repeating: "word", count: 40).joined(separator: " ")
         let lines = FirmwareChangelog.bulletLines(long)
         #expect(lines.count > 1 && lines[0].hasPrefix("• ") && lines[1].hasPrefix("   ") && !lines[1].hasPrefix("• "))
-        #expect(lines.allSatisfy { $0.count <= 64 })
+        #expect(lines.allSatisfy { $0.count <= 60 })
         #expect(FirmwareChangelog.bulletLines("short") == ["• short"])
     }
 

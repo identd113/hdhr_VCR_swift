@@ -77,7 +77,7 @@ enum FirmwareChangelog {
     }
 
     /// `text` as a bullet wrapped at `width` characters (continuation lines indented under the text), so a tooltip never runs wider than the screen.
-    static func bulletLines(_ text: String, width: Int = 60, bold makeBold: Bool = false) -> [String] {
+    static func bulletLines(_ text: String, width: Int = 56, bold makeBold: Bool = false) -> [String] {
         var lines: [String] = [], current = ""
         for word in text.split(separator: " ") {
             if !current.isEmpty, current.count + 1 + word.count > width { lines.append(current); current = String(word) }
@@ -89,7 +89,7 @@ enum FirmwareChangelog {
 
     /// Tooltip text, one block per release: the date, the changes for every tuner, then (when `model` is given) those that name this tuner's model in
     /// bold, then those for other models, with blank lines between blocks.
-    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 20) -> String? {
+    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 14) -> String? {
         guard !releases.isEmpty else { return nil }
         var blocks: [[String]] = []
         for r in releases {
