@@ -1764,7 +1764,7 @@ final class AppState: ObservableObject {
                 // session, and computeDevTuners renders no tuner badge at all when total == 0 —
                 // so the app shows "no active tuner" even while both tuners are recording.
                 if fresh.TunerCount != nil { devices[i].TunerCount = fresh.TunerCount }
-                if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion }
+                if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion; devices[i].UpgradeAvailable = fresh.UpgradeAvailable }
                 // Same "UDP-only startup" gap as TunerCount above — a device whose HTTP server was
                 // briefly down at launch caches with ModelNumber == nil (supportsTranscode == false,
                 // per Models.swift), and without re-applying it here it stays nil for the whole

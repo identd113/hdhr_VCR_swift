@@ -557,7 +557,7 @@ Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_
 
 **HTTP (port 80)**
 - Every response: `Server: HDHomeRun/1.0`, `Connection: close` (no keep-alive). JSON: `Content-Type: application/json; charset="utf-8"`, `Cache-Control: no-cache`, `Access-Control-Allow-Origin: *`.
-- `/discover.json` key order: `FriendlyName, ModelNumber, FirmwareName, FirmwareVersion, DeviceID, DeviceAuth, BaseURL, LineupURL, TunerCount`. **No `LocalIP`.** `BaseURL` has no port (`http://192.0.2.10`). Slashes are *not* escaped.
+- `/discover.json` key order: `FriendlyName, ModelNumber, FirmwareName, FirmwareVersion, DeviceID, DeviceAuth, BaseURL, LineupURL, TunerCount`. **No `LocalIP`.** `BaseURL` has no port (`http://192.0.2.10`). Slashes are *not* escaped. A tuner with newer firmware available adds `"UpgradeAvailable":"<version>"` (seen live 2026-11-09: running 20260313, offered 20261107); the app shows it in the menu bar (`HDHRDevice.firmwareUpdate`, docs/MenuContent.md).
 - `/lineup.json` entry order: `GuideNumber, GuideName, VideoCodec, AudioCodec, HD, Favorite, URL`. `HD` and `Favorite` appear only when 1. `URL` is `http://<ip>:5004/auto/v<ch>`, no query. `?show=found` returns the same list (it would include disabled channels with `"Enabled":0`).
 - `/lineup.xml` (`text/xml; charset="utf-8"`): `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`, then `<Lineup>`, one `<Program>` per line with the same fields, then `</Lineup>`.
 - `/lineup.m3u` (`text/plain`): `#EXTM3U`, then per channel `#EXTINF:-1 channel-id="2.1" channel-number="2.1" tvg-name="TPT 2",2.1 TPT 2` followed by the URL.

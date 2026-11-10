@@ -155,6 +155,16 @@ struct MenuContent: View {
                 Label("Update Available: v\(update.latestVersion)", systemImage: "arrow.down.circle.fill")
             }
         }
+        // A tuner offering newer firmware: opens its own web page, where the update is done.
+        ForEach(state.recordableDevices.filter { $0.firmwareUpdate != nil }) { device in
+            if let version = device.firmwareUpdate, let page = device.firmwarePageURL {
+                Button {
+                    NSWorkspace.shared.open(page)
+                } label: {
+                    Label("Tuner Firmware Update: \(device.FriendlyName ?? device.DeviceID) (\(version))", systemImage: "cpu")
+                }
+            }
+        }
         Divider()
 
         // ── Now Watching ──────────────────────────────────────────────────

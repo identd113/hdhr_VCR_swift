@@ -160,6 +160,7 @@ final class HDHRManager {
         found[idx].BaseURL         = found[idx].BaseURL         ?? dev.BaseURL
         found[idx].TunerCount      = found[idx].TunerCount      ?? dev.TunerCount
         found[idx].FirmwareVersion = found[idx].FirmwareVersion ?? dev.FirmwareVersion
+        found[idx].UpgradeAvailable = found[idx].UpgradeAvailable ?? dev.UpgradeAvailable
         found[idx].DeviceAuth      = found[idx].DeviceAuth      ?? dev.DeviceAuth
         found[idx].ModelNumber     = found[idx].ModelNumber     ?? dev.ModelNumber
         found[idx].FriendlyName    = found[idx].FriendlyName    ?? dev.FriendlyName

@@ -878,6 +878,9 @@ struct HDHRDevice: Identifiable, Equatable {
     var BaseURL: String?
     var TunerCount: Int?
     var FirmwareVersion: String?
+    /// Newer firmware the tuner offers (`UpgradeAvailable` in its own /discover.json, e.g. "20261107"); nil when it is up to date or the
+    /// device was found by UDP only (no HTTP answer to read it from).
+    var UpgradeAvailable: String?
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
     var ModelNumber: String?  // e.g. "HDTC-2US" — absent on a UDP-discovered device (no ModelNumber TLV read)
     // The device's own network name, e.g. "HDHomeRun EXTEND" — confirmed live against a real
@@ -946,8 +949,19 @@ extension HDHRDevice {
         return true
     }
 
+    /// The offered firmware version when it is newer than the one running, else nil.
+    var firmwareUpdate: String? {
+        guard let up = UpgradeAvailable, !up.isEmpty, up != FirmwareVersion else { return nil }
+        return up
+    }
+
+    /// The tuner's own web page (its `hdhr-<id>.local` name), where the firmware update is done.
+    var firmwarePageURL: URL? { URL(string: "http://hdhr-\(DeviceID.lowercased()).local/") }
+
     func mergingFresh(_ fresh: HDHRDevice) -> HDHRDevice {
         var merged = fresh
+        // Only a full /discover.json answer (it carries FirmwareVersion) speaks for the upgrade offer; a UDP-only reply must not clear it.
+        if fresh.FirmwareVersion == nil { merged.UpgradeAvailable = UpgradeAvailable }
         merged.TunerCount      = fresh.TunerCount      ?? TunerCount
         merged.FirmwareVersion = fresh.FirmwareVersion ?? FirmwareVersion
         merged.DeviceAuth      = fresh.DeviceAuth      ?? DeviceAuth
@@ -965,7 +979,7 @@ extension HDHRDevice {
 
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
-        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber, FriendlyName
+        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, UpgradeAvailable, DeviceAuth, ModelNumber, FriendlyName
         case isVirtualRelay = "HdhrVCRplusVirtualRelay"
         case recordingStartedAt = "HdhrVCRplusRecordingStartedAt"
     }
@@ -975,6 +989,7 @@ extension HDHRDevice: Codable {
         BaseURL         = try? c.decode(String.self, forKey: .BaseURL)
         TunerCount      = try? c.decode(Int.self,    forKey: .TunerCount)
         FirmwareVersion = try? c.decode(String.self, forKey: .FirmwareVersion)
+        UpgradeAvailable = try? c.decode(String.self, forKey: .UpgradeAvailable)
         DeviceAuth      = try? c.decode(String.self, forKey: .DeviceAuth)
         ModelNumber     = try? c.decode(String.self, forKey: .ModelNumber)
         FriendlyName    = try? c.decode(String.self, forKey: .FriendlyName)
