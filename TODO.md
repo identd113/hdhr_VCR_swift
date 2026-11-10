@@ -19,8 +19,7 @@ An empty (`null`) answer now counts as a use and logs `[INFO]` (no fall-back); t
 ## Series scheduling: open items from the 2026-11-07 code review of `api/episodes` / `FeatureTracker`
 
 The review of `61b6198~1..HEAD` found ten things. Six are fixed, and on 2026-11-09 so were a stale episodes airing outvoting the guide at record time, the broken 3 s cap on `/api/airings/` (`waitAtMost`, which the shutdown Discord drain now shares), the open LAN endpoint (20 on-demand lookups an hour for series no show uses), and the eager web page rebuild with no browser connected (`pageCacheDirty`); the cancelled-fetch branch was dead code and is gone. Earlier: (cancelled fetch counted as a failure, the guide refresh waiting on one fetch per series, the 3 h timers surviving `invalidateAll()`, the LAN endpoint passing any SeriesID to the cloud, concurrent callers getting nothing, stale airings never expiring). Still open:
-Fixed 2026-11-09: genre carried over only for `api/episodes` matches (`GuideEntry.fromEpisodes`); signal-scan siblings recorded only when the representative was really tuned; the misplaced comment; `docs/EpisodeSchedule.md` and `docs/FeatureTracker.md` added. Still open:
-1. **No tests for the earlier fixes.** Cancellation not counted, concurrent fetch / in-flight sharing, epoch reset, stale-airing expiry and the unknown-SeriesID gate need AppState-level tests (only the pure helpers are tested).
+Fixed 2026-11-09: genre carried over only for `api/episodes` matches (`GuideEntry.fromEpisodes`); signal-scan siblings recorded only when the representative was really tuned; the misplaced comment; `docs/EpisodeSchedule.md` and `docs/FeatureTracker.md` added; the guide refresh no longer waits on `api/episodes` and the first load pushes to the web; stored answers are re-mapped when a lineup changes and as the 72 h horizon moves; AppState-level tests (`EpisodeAppStateTests`). Nothing from that review is open.
 
 ---
 
