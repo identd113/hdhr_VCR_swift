@@ -17,7 +17,7 @@ Typical day:
   2. tools/release_checklist.py stamp 2.6.5 && git commit …    # changelog now says v2.6.5
   3. ./deploy_release.sh 2.6.5                       # build, sign, notarize, DMG  (not run by this script)
   4. tools/release_checklist.py notes 2.6.5
-  5. git push (commit Version.swift first), then
+  5. git push, then
      tools/release_checklist.py publish 2.6.5 --yes            # draft Release with the DMG; review it on GitHub
      tools/release_checklist.py publish 2.6.5 --yes --live     # publish it and update README's Latest heading + link
 
@@ -143,10 +143,8 @@ def preflight(args):
         say(BAD, f"tag v{v} already exists")
     branch = sh(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     say(OK if branch == "main" else WARN, f"on branch {branch}")
-    dirty = [l for l in sh(["git", "status", "--short"]).stdout.splitlines() if "Version.swift" not in l]
+    dirty = sh(["git", "status", "--short"]).stdout.splitlines()
     say(OK if not dirty else BAD, "working tree clean" if not dirty else f"uncommitted changes: {', '.join(l[3:] for l in dirty[:4])}")
-    if "Version.swift" in sh(["git", "status", "--short"]).stdout:
-        say(WARN, "Version.swift (build stamp) is modified — commit it before pushing")
     since = sh(["git", "rev-list", "--count", f"v{tag}..HEAD"]).stdout.strip() if tag else "?"
     say(OK, f"{since} commits since v{tag}")
     ahead = sh(["git", "rev-list", "--count", "origin/main..HEAD"]).stdout.strip()
@@ -351,7 +349,7 @@ def publish(args):
     if sh(["git", "tag", "-l", f"v{v}"]).stdout.strip():
         sys.exit(f"tag v{v} already exists locally")
     if sh(["git", "rev-list", "--count", "origin/main..HEAD"]).stdout.strip() != "0":
-        sys.exit("HEAD is not pushed — the Release must point at a pushed commit (commit Version.swift, push, retry)")
+        sys.exit("HEAD is not pushed — the Release must point at a pushed commit (push, retry)")
     gh_create = ["gh", "release", "create", f"v{v}", "--title", f"v{v}", "--notes-file", notes_path,
                  "--target", sh(["git", "rev-parse", "HEAD"]).stdout.strip()]
     if not args.live:

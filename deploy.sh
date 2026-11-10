@@ -67,7 +67,9 @@ fi
 echo "==> Generating version…"
 # Stamp the build time as YYMMDD-HHMM (e.g. "260521-2011") so About tab always shows when this build was made
 APP_VERSION="$(date +%y%m%d-%H%M)"
-printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift
+# The stamp goes into the bundle's Info.plist (read at runtime by Version.swift), not into a source file, so a deploy leaves the tree clean.
+/usr/libexec/PlistBuddy -c "Set :HDHRBuildStamp $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :HDHRBuildStamp string $APP_VERSION" "$APP/Contents/Info.plist"
 echo "    Version: $APP_VERSION"
 
 echo "==> Release notes…"

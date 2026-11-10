@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md and
-    # Sources/hdhr_VCR/CHANGELOG.md are deliberately NOT listed: a unit test requires them to be byte-identical and
-    # the second one is bundled into the app as a resource (Package.swift).
+    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md is
+    # deliberately NOT listed (a unit test reads it), and neither is Sources/hdhr_VCR/RELEASES.md: it is the copy of
+    # RELEASES.md that is bundled into the app as a resource (Package.swift), and a test requires it to be byte-identical.
     paths-ignore:
       - README.md
       - RELEASES.md
@@ -19,9 +19,9 @@ on:
       - .github/ISSUE_TEMPLATE/**
   pull_request:
     branches: [main]
-    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md and
-    # Sources/hdhr_VCR/CHANGELOG.md are deliberately NOT listed: a unit test requires them to be byte-identical and
-    # the second one is bundled into the app as a resource (Package.swift).
+    # Docs-only changes skip CI. A run still happens if ANY changed file is outside this list. CHANGELOG.md is
+    # deliberately NOT listed (a unit test reads it), and neither is Sources/hdhr_VCR/RELEASES.md: it is the copy of
+    # RELEASES.md that is bundled into the app as a resource (Package.swift), and a test requires it to be byte-identical.
     paths-ignore:
       - README.md
       - RELEASES.md
@@ -38,14 +38,26 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch or PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     # macos-latest for now; pin to a specific runner image (e.g. macos-15) if it stops
     # shipping an Xcode with the macOS 15 SDK this package's Package.swift requires.
     runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Script checks
+        # The same cheap checks .githooks/pre-push runs: every Python tool compiles, every shell script parses.
+        run: |
+          for f in tools/*.py; do python3 -m py_compile "$f"; done
+          for f in *.sh tools/*.sh .githooks/*; do bash -n "$f"; done
 
       - name: Show Swift/Xcode versions
         run: |

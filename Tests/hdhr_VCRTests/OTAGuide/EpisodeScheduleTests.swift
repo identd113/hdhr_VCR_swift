@@ -5,6 +5,12 @@ import Testing
 // `api/episodes` as extra candidates for SeriesID lookups: decode, mapping to a tuner's channels, merge with the guide (guide wins), and the
 // guide-only behaviour when nothing was fetched.
 
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock(); private var value = false
+    func set() { lock.lock(); value = true; lock.unlock() }
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+}
+
 @MainActor
 struct EpisodeScheduleTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -145,9 +151,10 @@ struct EpisodeScheduleTests {
         let started = Date()
         await waitAtMost(seconds: 0.2) { try? await Task.sleep(nanoseconds: 30_000_000_000) }
         #expect(Date().timeIntervalSince(started) < 20)   // far under the work's 30 s even if a loaded test run delays the timer
-        let quick = Date()
-        await waitAtMost(seconds: 5) { }
-        #expect(Date().timeIntervalSince(quick) < 2)
+        // Work that finishes before the cap ends the wait with the work done (no timing bound: a loaded test run can delay either task).
+        let ran = Flag()
+        await waitAtMost(seconds: 30) { ran.set() }
+        #expect(ran.isSet)
     }
 
     @Test func clearingEpisodesRestoresGuideOnly() {

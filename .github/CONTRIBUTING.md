@@ -42,5 +42,5 @@ CI runs the build and unit tests on every push. To catch a red run before it rea
 git config core.hooksPath .githooks
 ```
 
-`.githooks/pre-push` runs the same build and `swift test --skip SnapshotTests` as CI (about a minute), compiles the Python tools, syntax-checks the shell scripts, and refuses a push while `Sources/hdhr_VCR/Version.swift` (the deploy build stamp) has uncommitted changes. Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
+`.githooks/pre-push` runs the same build and `swift test --skip SnapshotTests` as CI (about a minute), compiles the Python tools, syntax-checks the shell scripts. Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
 

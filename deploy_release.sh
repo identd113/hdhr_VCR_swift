@@ -84,7 +84,9 @@ fi
 
 echo "==> Generating version…"
 APP_VERSION="$(date +%y%m%d-%H%M)"
-printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift
+# The stamp goes into the bundle's Info.plist (read at runtime by Version.swift), not into a source file, so a deploy leaves the tree clean.
+/usr/libexec/PlistBuddy -c "Set :HDHRBuildStamp $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :HDHRBuildStamp string $APP_VERSION" "$APP/Contents/Info.plist"
 # Derive a monotonic CFBundleVersion from the semver (e.g. 1.3.0 → 10300)
 IFS='.' read -r _VER_MAJOR _VER_MINOR _VER_PATCH <<< "$RELEASE_VERSION"
 _BUILD_NUM=$(( _VER_MAJOR * 10000 + _VER_MINOR * 100 + _VER_PATCH ))
