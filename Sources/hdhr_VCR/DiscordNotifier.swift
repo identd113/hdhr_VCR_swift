@@ -101,34 +101,43 @@ private func discordPerform(_ req: URLRequest, session: URLSession, label: Strin
     }
 }
 
+/// Performs one Discord request and logs a failure the same way for every operation (`op` = SEND / CREATE / EDIT). The response body and status on a
+/// 2xx; nil otherwise. Each caller words its own success line.
+private func discordSendRequest(_ req: URLRequest, title: String, op: String, detail: String = "",
+                                session: URLSession) async -> (data: Data, status: Int)? {
+    let tag = "\(op) title=\"\(title)\"\(detail)"
+    do {
+        let (data, resp) = try await discordPerform(req, session: session, label: op)
+        guard let http = resp as? HTTPURLResponse else {
+            glog("[Discord] \(op): unexpected response type", level: .warning)
+            discordLog("\(tag) — unexpected response type", level: .warning)
+            return nil
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            glog("[Discord] \(op) HTTP \(http.statusCode)\(op == "SEND" ? " — check webhook URL or rate limit" : "")", level: .error)
+            discordLog("\(tag) FAILED http=\(http.statusCode)", level: .error)
+            return nil
+        }
+        return (data, http.statusCode)
+    } catch {
+        glog("[Discord] \(op) failed: \(error)", level: .error)
+        discordLog("\(tag) FAILED error=\(error)", level: .error)
+        return nil
+    }
+}
+
 // Sends a single Discord embed to the given webhook URL.
 // Silently no-ops if the URL is blank or not a discord.com/discordapp.com host.
 func sendDiscordEmbed(to webhookURL: String, embed: [String: Any], session: URLSession = .shared) {
     guard let url = discordWebhookComponents(webhookURL)?.url else { return }
-
     guard let (req, title) = discordJSONRequest(url: url, method: "POST", embed: embed, op: "SEND") else { return }
 
     glog("[Discord] sending embed to \(url.host ?? webhookURL)")
     discordLog("SEND title=\"\(title)\" (no id captured — fire-and-forget)")
     Task {
-        do {
-            let (_, resp) = try await discordPerform(req, session: session, label: "SEND")
-            guard let http = resp as? HTTPURLResponse else {
-                glog("[Discord] unexpected response type", level: .warning)
-                discordLog("SEND title=\"\(title)\" — unexpected response type", level: .warning)
-                return
-            }
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                glog("[Discord] HTTP \(http.statusCode) — check webhook URL or rate limit", level: .error)
-                discordLog("SEND title=\"\(title)\" FAILED http=\(http.statusCode)", level: .error)
-            } else {
-                glog("[Discord] sent OK (\(http.statusCode))")
-                discordLog("SEND title=\"\(title)\" OK http=\(http.statusCode)")
-            }
-        } catch {
-            glog("[Discord] send failed: \(error)", level: .error)
-            discordLog("SEND title=\"\(title)\" FAILED error=\(error)", level: .error)
-        }
+        guard let r = await discordSendRequest(req, title: title, op: "SEND", session: session) else { return }
+        glog("[Discord] sent OK (\(r.status))")
+        discordLog("SEND title=\"\(title)\" OK http=\(r.status)")
     }
 }
 
@@ -137,66 +146,31 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any], sess
     guard var components = discordWebhookComponents(webhookURL) else { return nil }
     components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "wait", value: "true")]
     guard let url = components.url else { return nil }
-
     guard let (req, title) = discordJSONRequest(url: url, method: "POST", embed: embed, op: "CREATE") else { return nil }
 
     glog("[Discord] sending embed (capturing ID) to \(url.host ?? webhookURL)")
     discordLog("CREATE title=\"\(title)\"")
-    do {
-        let (respData, resp) = try await discordPerform(req, session: session, label: "CREATE")
-        guard let http = resp as? HTTPURLResponse else {
-            glog("[Discord] unexpected response type", level: .warning)
-            discordLog("CREATE title=\"\(title)\" — unexpected response type", level: .warning)
-            return nil
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            glog("[Discord] HTTP \(http.statusCode) on capture send", level: .error)
-            discordLog("CREATE title=\"\(title)\" FAILED http=\(http.statusCode)", level: .error)
-            return nil
-        }
-        if let json = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
-           let msgId = json["id"] as? String {
-            glog("[Discord] sent OK — message ID \(msgId)")
-            discordLog("CREATE title=\"\(title)\" OK msgId=\(msgId) — future edits to this card will use this ID")
-            return msgId
-        } else {
-            glog("[Discord] message-ID parse failed — HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1), body prefix: \(String(data: respData.prefix(120), encoding: .utf8) ?? "<binary>")", level: .warning)
-            discordLog("CREATE title=\"\(title)\" — message-ID parse failed, http=\(http.statusCode)", level: .warning)
-            return nil
-        }
-    } catch {
-        glog("[Discord] capture send failed: \(error)", level: .error)
-        discordLog("CREATE title=\"\(title)\" FAILED error=\(error)", level: .error)
+    guard let r = await discordSendRequest(req, title: title, op: "CREATE", session: session) else { return nil }
+    guard let json = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any], let msgId = json["id"] as? String else {
+        glog("[Discord] message-ID parse failed — HTTP \(r.status), body prefix: \(String(data: r.data.prefix(120), encoding: .utf8) ?? "<binary>")", level: .warning)
+        discordLog("CREATE title=\"\(title)\" — message-ID parse failed, http=\(r.status)", level: .warning)
         return nil
     }
+    glog("[Discord] sent OK — message ID \(msgId)")
+    discordLog("CREATE title=\"\(title)\" OK msgId=\(msgId) — future edits to this card will use this ID")
+    return msgId
 }
 
 // PATCHes an existing webhook message in-place. Fire-and-forget.
 func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any], session: URLSession = .shared) {
     guard let url = discordEditURL(webhookURL: webhookURL, messageId: messageId) else { return }
-
     guard let (req, title) = discordJSONRequest(url: url, method: "PATCH", embed: embed, op: "EDIT", detail: " msgId=\(messageId)") else { return }
 
     glog("[Discord] editing message \(messageId)")
     discordLog("EDIT title=\"\(title)\" msgId=\(messageId)")
     Task {
-        do {
-            let (_, resp) = try await discordPerform(req, session: session, label: "EDIT")
-            guard let http = resp as? HTTPURLResponse else {
-                glog("[Discord] edit: unexpected response type", level: .warning)
-                discordLog("EDIT title=\"\(title)\" msgId=\(messageId) — unexpected response type", level: .warning)
-                return
-            }
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                glog("[Discord] edit HTTP \(http.statusCode)", level: .error)
-                discordLog("EDIT title=\"\(title)\" msgId=\(messageId) FAILED http=\(http.statusCode)", level: .error)
-            } else {
-                glog("[Discord] edit OK (\(http.statusCode))")
-                discordLog("EDIT title=\"\(title)\" msgId=\(messageId) OK http=\(http.statusCode)")
-            }
-        } catch {
-            glog("[Discord] edit failed: \(error)", level: .error)
-            discordLog("EDIT title=\"\(title)\" msgId=\(messageId) FAILED error=\(error)", level: .error)
-        }
+        guard let r = await discordSendRequest(req, title: title, op: "EDIT", detail: " msgId=\(messageId)", session: session) else { return }
+        glog("[Discord] edit OK (\(r.status))")
+        discordLog("EDIT title=\"\(title)\" msgId=\(messageId) OK http=\(r.status)")
     }
 }
