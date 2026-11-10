@@ -56,4 +56,17 @@ struct FirmwareChangelogTests {
         #expect(t?.hasSuffix("…") == true && t?.split(separator: "\n").count == 6)
         #expect(FirmwareChangelog.tooltip([]) == nil)
     }
+
+    @Test func tooltipIsDatedAndGroupsChangesForEveryTunerBeforeModelSpecificOnes() {
+        let r = FirmwareChangelog.Release(version: "20261107", changes: [
+            "ATSC3 models: Fix scan.", "Improvements to TLS.", "HDHR5-2DT/4DT: Ham radio.", "Detect UHD channels as UHD rather than HD."])
+        let lines = FirmwareChangelog.tooltip([r])?.split(separator: "\n").map(String.init)
+        #expect(lines == ["Firmware 20261107 · Nov 7, 2026", "• Improvements to TLS.", "• Detect UHD channels as UHD rather than HD.",
+                          "Only some models:", "• ATSC3 models: Fix scan.", "• HDHR5-2DT/4DT: Ham radio."])
+    }
+
+    @Test func releasesAreSeparatedByABlankLine() {
+        let t = FirmwareChangelog.tooltip([.init(version: "20261107", changes: ["a"]), .init(version: "20260326", changes: ["b"])])
+        #expect(t == "Firmware 20261107 · Nov 7, 2026\n• a\n\nFirmware 20260326 · Mar 26, 2026\n• b")
+    }
 }

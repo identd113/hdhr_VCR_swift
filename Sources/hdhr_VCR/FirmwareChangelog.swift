@@ -42,16 +42,41 @@ enum FirmwareChangelog {
         }
     }
 
-    /// Tooltip text: a heading per release, then its changes.
-    static func tooltip(_ releases: [Release], maxLines: Int = 14) -> String? {
+    /// A line that starts with the models it is about ("ATSC3 models: …", "HDHR5-2DT/4DT: …") rather than applying to every tuner.
+    static func isModelSpecific(_ line: String) -> Bool {
+        guard let colon = line.firstIndex(of: ":") else { return false }
+        return line.distance(from: line.startIndex, to: colon) <= 45
+    }
+
+    /// "20261107" as "Nov 7, 2026" (the version is the release date); the bare version when it is not a date.
+    static func dateLabel(_ version: String) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd"
+        guard let d = f.date(from: version) else { return version }
+        f.dateFormat = "MMM d, yyyy"
+        return f.string(from: d)
+    }
+
+    /// Tooltip text, one block per release: the date, then the changes for every tuner, then those for particular models, with blank lines between blocks.
+    static func tooltip(_ releases: [Release], maxLines: Int = 24) -> String? {
         guard !releases.isEmpty else { return nil }
-        var lines: [String] = []
+        var blocks: [[String]] = []
         for r in releases {
-            lines.append("Release \(r.version)")
-            lines += r.changes.map { "• " + $0 }
+            var lines = ["Firmware \(r.version) · \(dateLabel(r.version))"]
+            let all = r.changes.filter { !isModelSpecific($0) }, some = r.changes.filter(isModelSpecific)
+            lines += all.map { "• " + $0 }
+            if !some.isEmpty {
+                if !all.isEmpty { lines.append("Only some models:") }
+                lines += some.map { "• " + $0 }
+            }
+            blocks.append(lines)
         }
-        if lines.count > maxLines { lines = Array(lines.prefix(maxLines)) + ["…"] }
-        return lines.joined(separator: "\n")
+        var out: [String] = []
+        for (i, b) in blocks.enumerated() {
+            if i > 0 { out.append("") }
+            out += b
+        }
+        if out.count > maxLines { out = Array(out.prefix(maxLines)) + ["…"] }
+        return out.joined(separator: "\n")
     }
 
     /// nil when the page cannot be read or has no releases.

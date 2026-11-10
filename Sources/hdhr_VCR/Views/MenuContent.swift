@@ -124,6 +124,25 @@ struct MenuContent: View {
         return info.channel.virtualRelaySourceHostname ?? info.device.DeviceID
     }
 
+    /// The top line of the menu: one row per tuner offering newer firmware (opens its own web page, where the update is done), then a divider.
+    @ViewBuilder
+    private var firmwareUpdateRows: some View {
+        let outdated = state.recordableDevices.filter { $0.firmwareUpdate != nil }
+        if !outdated.isEmpty {
+            ForEach(outdated) { device in
+                if let version = device.firmwareUpdate, let page = device.firmwarePageURL {
+                    Button {
+                        NSWorkspace.shared.open(page)
+                    } label: {
+                        Label("Tuner Firmware Update: \(device.FriendlyName ?? device.DeviceID) (\(version))", systemImage: "cpu")
+                    }
+                    .help(state.firmwareChangesTooltip(for: device) ?? "Opens the tuner's page, where the update is done.")
+                }
+            }
+            Divider()
+        }
+    }
+
     var body: some View {
 
         // Compute derived show lists once — each is a filter/sort over shows[];
@@ -136,6 +155,7 @@ struct MenuContent: View {
         let availableDevices     = state.recordableDevices.filter { $0.isAvailable }
         let watchingInfo         = nowWatchingInfo
 
+        firmwareUpdateRows
         deviceHeaderRows(recordingShows: recordingShows, watchingInfo: watchingInfo)
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
@@ -153,17 +173,6 @@ struct MenuContent: View {
                 NSWorkspace.shared.open(update.releaseURL)
             } label: {
                 Label("Update Available: v\(update.latestVersion)", systemImage: "arrow.down.circle.fill")
-            }
-        }
-        // A tuner offering newer firmware: opens its own web page, where the update is done.
-        ForEach(state.recordableDevices.filter { $0.firmwareUpdate != nil }) { device in
-            if let version = device.firmwareUpdate, let page = device.firmwarePageURL {
-                Button {
-                    NSWorkspace.shared.open(page)
-                } label: {
-                    Label("Tuner Firmware Update: \(device.FriendlyName ?? device.DeviceID) (\(version))", systemImage: "cpu")
-                }
-                .help(state.firmwareChangesTooltip(for: device) ?? "Opens the tuner's page, where the update is done.")
             }
         }
         Divider()
