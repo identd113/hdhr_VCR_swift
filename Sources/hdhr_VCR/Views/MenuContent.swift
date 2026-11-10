@@ -163,6 +163,7 @@ struct MenuContent: View {
                 } label: {
                     Label("Tuner Firmware Update: \(device.FriendlyName ?? device.DeviceID) (\(version))", systemImage: "cpu")
                 }
+                .help(state.firmwareChangesTooltip(for: device) ?? "Opens the tuner's page, where the update is done.")
             }
         }
         Divider()

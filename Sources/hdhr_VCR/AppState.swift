@@ -140,6 +140,10 @@ final class AppState: ObservableObject {
     // First-run hand-off (docs/LaunchSplash.md): on a brand-new install the launch splash hosts the setup wizard as a card
     // in its own window. Set once, right before the splash opens; cleared the moment the splash starts showing the wizard.
     var launchSplashHandsOffToWizard = false
+    /// SiliconDust's firmware release notes, read once a tuner offers newer firmware (the menu item's tooltip). Empty until then.
+    @Published private(set) var firmwareReleases: [FirmwareChangelog.Release] = []
+    private var firmwareNotesAttempt: Date?
+    private var firmwareNotesInFlight = false
     @Published var updateCheckResult: UpdateCheckResult?   // non-nil only when a newer GitHub release exists
     @Published var lastUpdateCheckDate: Date?               // nil = never checked this launch
     // Set to true in tests: startup() returns immediately, preventing idleLoop from running.
@@ -1267,6 +1271,24 @@ final class AppState: ObservableObject {
 
     // Always runs when called directly (e.g. a manual "Check Now" button) — Check_for_updates
     // only gates the automatic periodic loop below, not an explicit user request.
+    /// Reads the firmware changelog when some tuner offers a version the notes held do not cover; at most once every 6 h (a failed read is not retried sooner).
+    func refreshFirmwareNotes() async {
+        let offered = devices.compactMap(\.firmwareUpdate)
+        guard !offered.isEmpty, !firmwareNotesInFlight,
+              offered.contains(where: { v in !firmwareReleases.contains { $0.version == v } }),
+              firmwareNotesAttempt.map({ Date().timeIntervalSince($0) >= 6 * 3600 }) ?? true else { return }
+        firmwareNotesInFlight = true
+        firmwareNotesAttempt = Date()
+        defer { firmwareNotesInFlight = false }
+        if let all = await FirmwareChangelog.fetch() { firmwareReleases = all }
+    }
+
+    /// What updating `device` brings, for the menu item's tooltip (nil until the notes are read, or when they do not list the offered release).
+    func firmwareChangesTooltip(for device: HDHRDevice) -> String? {
+        guard let offered = device.firmwareUpdate else { return nil }
+        return FirmwareChangelog.tooltip(FirmwareChangelog.releases(firmwareReleases, after: device.FirmwareVersion, upTo: offered))
+    }
+
     func checkForUpdateOnce() async {
         guard !updateCheckInFlight else { return }
         updateCheckInFlight = true
@@ -1716,6 +1738,7 @@ final class AppState: ObservableObject {
                 let existingIDs = Set(devices.map { $0.DeviceID })
                 merged.append(contentsOf: found.filter { !existingIDs.contains($0.DeviceID) })
                 devices = merged
+                Task { [weak self] in await self?.refreshFirmwareNotes() }
                 await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) \(plural(devices.count, "tuner")) found"
                 glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
@@ -1764,7 +1787,8 @@ final class AppState: ObservableObject {
                 // session, and computeDevTuners renders no tuner badge at all when total == 0 —
                 // so the app shows "no active tuner" even while both tuners are recording.
                 if fresh.TunerCount != nil { devices[i].TunerCount = fresh.TunerCount }
-                if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion; devices[i].UpgradeAvailable = fresh.UpgradeAvailable }
+                if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion; devices[i].UpgradeAvailable = fresh.UpgradeAvailable
+                    if fresh.UpgradeAvailable != nil { Task { [weak self] in await self?.refreshFirmwareNotes() } } }
                 // Same "UDP-only startup" gap as TunerCount above — a device whose HTTP server was
                 // briefly down at launch caches with ModelNumber == nil (supportsTranscode == false,
                 // per Models.swift), and without re-applying it here it stays nil for the whole
