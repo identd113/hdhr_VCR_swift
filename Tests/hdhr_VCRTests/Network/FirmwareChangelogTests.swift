@@ -69,4 +69,22 @@ struct FirmwareChangelogTests {
         let t = FirmwareChangelog.tooltip([.init(version: "20261107", changes: ["a"]), .init(version: "20260326", changes: ["b"])])
         #expect(t == "Firmware 20261107 · Nov 7, 2026\n• a\n\nFirmware 20260326 · Mar 26, 2026\n• b")
     }
+
+    @Test func modelsNamedInALineAreRecognised() {
+        #expect(FirmwareChangelog.namesModel("HDHR5-2DT/4DT: Ham radio.", model: "HDHR5-4DT"))
+        #expect(FirmwareChangelog.namesModel("HDHR5-2DT/4DT: Ham radio.", model: "HDHR5-2DT"))
+        #expect(!FirmwareChangelog.namesModel("HDHR5-2DT/4DT: Ham radio.", model: "HDTC-2US"))
+        #expect(FirmwareChangelog.namesModel("HDTC, HDHR4 models: Fix.", model: "HDTC-2US"))
+        #expect(!FirmwareChangelog.namesModel("ATSC3 models: Fix.", model: "HDTC-2US"))
+        #expect(!FirmwareChangelog.namesModel("Improvements to TLS.", model: "HDTC-2US"))
+        #expect(!FirmwareChangelog.namesModel("HDTC: x", model: nil))
+    }
+
+    @Test func linesNamingThisTunersModelGetTheirOwnBoldGroup() {
+        let r = FirmwareChangelog.Release(version: "20261107", changes: ["HDTC models: Fix X.", "ATSC3 models: Fix Y.", "Z."])
+        let lines = FirmwareChangelog.tooltip([r], model: "HDTC-2US")?.split(separator: "\n").map(String.init)
+        #expect(lines == ["Firmware 20261107 · Nov 7, 2026", "• Z.", "For your HDTC-2US:", "• " + FirmwareChangelog.bold("HDTC models: Fix X."),
+                          "Only some models:", "• ATSC3 models: Fix Y."])
+        #expect(FirmwareChangelog.bold("Ab1 ") == "𝗔𝗯𝟭 ")
+    }
 }

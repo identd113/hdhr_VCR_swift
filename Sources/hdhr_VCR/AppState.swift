@@ -1286,7 +1286,7 @@ final class AppState: ObservableObject {
     /// What updating `device` brings, for the menu item's tooltip (nil until the notes are read, or when they do not list the offered release).
     func firmwareChangesTooltip(for device: HDHRDevice) -> String? {
         guard let offered = device.firmwareUpdate else { return nil }
-        return FirmwareChangelog.tooltip(FirmwareChangelog.releases(firmwareReleases, after: device.FirmwareVersion, upTo: offered))
+        return FirmwareChangelog.tooltip(FirmwareChangelog.releases(firmwareReleases, after: device.FirmwareVersion, upTo: offered), model: device.ModelNumber)
     }
 
     func checkForUpdateOnce() async {

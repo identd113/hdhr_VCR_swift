@@ -56,17 +56,51 @@ enum FirmwareChangelog {
         return f.string(from: d)
     }
 
-    /// Tooltip text, one block per release: the date, then the changes for every tuner, then those for particular models, with blank lines between blocks.
-    static func tooltip(_ releases: [Release], maxLines: Int = 24) -> String? {
+    /// True when the models a line names include `model` ("HDTC-2US"): the part before the colon is split on "/", "," and spaces; a token matches
+    /// the model exactly or as its family prefix ("HDTC" for "HDTC-2US", at least 4 characters), and a bare suffix ("4DT" in "HDHR5-2DT/4DT")
+    /// inherits the family prefix of the token before it ("HDHR5-4DT").
+    static func namesModel(_ line: String, model: String?) -> Bool {
+        guard let model = model?.uppercased(), !model.isEmpty, isModelSpecific(line), let colon = line.firstIndex(of: ":") else { return false }
+        let tokens = line[..<colon].uppercased().split(whereSeparator: { "/, ".contains($0) }).map(String.init)
+        var family = ""   // "HDHR5-" once a token like "HDHR5-2DT" has been seen
+        for t in tokens {
+            if t == model || (t.count >= 4 && model.hasPrefix(t)) { return true }
+            if !family.isEmpty, !t.contains("-"), family + t == model { return true }
+            if let dash = t.firstIndex(of: "-") { family = String(t[...dash]) }
+        }
+        return false
+    }
+
+    /// Plain-text bold (mathematical sans-serif bold letters and digits): a tooltip has no rich text.
+    static func bold(_ s: String) -> String {
+        String(s.unicodeScalars.map { u -> Character in
+            switch u.value {
+            case 0x41...0x5A: return Character(Unicode.Scalar(0x1D5D4 + u.value - 0x41)!)
+            case 0x61...0x7A: return Character(Unicode.Scalar(0x1D5EE + u.value - 0x61)!)
+            case 0x30...0x39: return Character(Unicode.Scalar(0x1D7EC + u.value - 0x30)!)
+            default: return Character(u)
+            }
+        })
+    }
+
+    /// Tooltip text, one block per release: the date, the changes for every tuner, then (when `model` is given) those that name this tuner's model in
+    /// bold, then those for other models, with blank lines between blocks.
+    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 24) -> String? {
         guard !releases.isEmpty else { return nil }
         var blocks: [[String]] = []
         for r in releases {
             var lines = ["Firmware \(r.version) · \(dateLabel(r.version))"]
-            let all = r.changes.filter { !isModelSpecific($0) }, some = r.changes.filter(isModelSpecific)
+            let all = r.changes.filter { !isModelSpecific($0) }
+            let mine = r.changes.filter { namesModel($0, model: model) }
+            let others = r.changes.filter { isModelSpecific($0) && !namesModel($0, model: model) }
             lines += all.map { "• " + $0 }
-            if !some.isEmpty {
-                if !all.isEmpty { lines.append("Only some models:") }
-                lines += some.map { "• " + $0 }
+            if !mine.isEmpty {
+                lines.append("For your \(model ?? "tuner"):")
+                lines += mine.map { "• " + bold($0) }
+            }
+            if !others.isEmpty {
+                if !all.isEmpty || !mine.isEmpty { lines.append("Only some models:") }
+                lines += others.map { "• " + $0 }
             }
             blocks.append(lines)
         }
