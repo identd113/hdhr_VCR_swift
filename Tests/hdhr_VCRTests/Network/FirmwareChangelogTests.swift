@@ -41,11 +41,10 @@ struct FirmwareChangelogTests {
         #expect(!r.flatMap(\.changes).contains("Privacy") && !r.flatMap(\.changes).contains("Support"))
     }
 
-    @Test func releasesBetweenInstalledAndOffered() {
+    @Test func onlyTheOfferedReleaseIsUsed() {
         let all = FirmwareChangelog.parse(page)
-        #expect(FirmwareChangelog.releases(all, after: "20260313", upTo: "20261107").map(\.version) == ["20261107", "20260326"])
-        #expect(FirmwareChangelog.releases(all, after: nil, upTo: "20261107").map(\.version) == ["20261107"])
-        #expect(FirmwareChangelog.releases(all, after: "20261107", upTo: "20261107").isEmpty)
+        #expect(FirmwareChangelog.releases(all, offered: "20261107").map(\.version) == ["20261107"])
+        #expect(FirmwareChangelog.releases(all, offered: "20990101").isEmpty)
     }
 
     @Test func entitiesAreDecodedAndTheTooltipIsCapped() {

@@ -30,16 +30,9 @@ enum FirmwareChangelog {
         return out
     }
 
-    /// The releases an update from `installed` (nil = unknown: just the offered one) up to `offered` brings, newest first.
-    static func releases(_ all: [Release], after installed: String?, upTo offered: String) -> [Release] {
-        guard let top = Int(offered) else { return [] }
-        let low = installed.flatMap { Int($0) }
-        return all.filter { r in
-            guard let v = Int(r.version) else { return false }
-            guard v <= top else { return false }
-            if let low { return v > low }
-            return v == top
-        }
+    /// The offered release only (the update the tuner is being offered, not the older ones it skips past), as a list for `tooltip`.
+    static func releases(_ all: [Release], offered: String) -> [Release] {
+        all.filter { $0.version == offered }
     }
 
     /// A line that starts with the models it is about ("ATSC3 models: …", "HDHR5-2DT/4DT: …") rather than applying to every tuner.
