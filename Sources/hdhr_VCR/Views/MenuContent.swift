@@ -131,12 +131,17 @@ struct MenuContent: View {
         if !outdated.isEmpty {
             ForEach(outdated) { device in
                 if let version = device.firmwareUpdate, let page = device.firmwarePageURL {
-                    Button {
-                        NSWorkspace.shared.open(page)
+                    // A submenu, not a tooltip: it opens beside the row and runs downward, so it can never spill above the top of the screen.
+                    Menu {
+                        Button("Open the tuner's page to update…") { NSWorkspace.shared.open(page) }
+                        let rows = state.firmwareChangeRows(for: device)
+                        if !rows.isEmpty { Divider() }
+                        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                            menuInfo(row, font: .footnote, secondary: !row.hasPrefix("•"), maxWidth: 320, lines: 6)
+                        }
                     } label: {
                         Label("Firmware update \(version): \(String((device.FriendlyName ?? device.DeviceID).prefix(24)))", systemImage: "cpu")
                     }
-                    .help(state.firmwareChangesTooltip(for: device) ?? "Opens the tuner's page, where the update is done.")
                 }
             }
             Divider()

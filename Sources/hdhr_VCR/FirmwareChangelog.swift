@@ -89,7 +89,7 @@ enum FirmwareChangelog {
 
     /// Tooltip text, one block per release: the date, the changes for every tuner, then (when `model` is given) those that name this tuner's model in
     /// bold, then those for other models, with blank lines between blocks.
-    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 14) -> String? {
+    static func tooltip(_ releases: [Release], model: String? = nil, maxLines: Int = 14, width: Int = 56) -> String? {
         guard !releases.isEmpty else { return nil }
         var blocks: [[String]] = []
         for r in releases {
@@ -97,14 +97,14 @@ enum FirmwareChangelog {
             let all = r.changes.filter { !isModelSpecific($0) }
             let mine = r.changes.filter { namesModel($0, model: model) }
             let others = r.changes.filter { isModelSpecific($0) && !namesModel($0, model: model) }
-            lines += all.flatMap { bulletLines($0) }
+            lines += all.flatMap { bulletLines($0, width: width) }
             if !mine.isEmpty {
                 lines.append("For your \(model ?? "tuner"):")
-                lines += mine.flatMap { bulletLines($0, bold: true) }
+                lines += mine.flatMap { bulletLines($0, width: width, bold: true) }
             }
             if !others.isEmpty {
                 if !all.isEmpty || !mine.isEmpty { lines.append("Only some models:") }
-                lines += others.flatMap { bulletLines($0) }
+                lines += others.flatMap { bulletLines($0, width: width) }
             }
             blocks.append(lines)
         }

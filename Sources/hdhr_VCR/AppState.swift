@@ -1283,10 +1283,12 @@ final class AppState: ObservableObject {
         if let all = await FirmwareChangelog.fetch() { firmwareReleases = all }
     }
 
-    /// What updating `device` brings, for the menu item's tooltip (nil until the notes are read, or when they do not list the offered release).
-    func firmwareChangesTooltip(for device: HDHRDevice) -> String? {
-        guard let offered = device.firmwareUpdate else { return nil }
-        return FirmwareChangelog.tooltip(FirmwareChangelog.releases(firmwareReleases, offered: offered), model: device.ModelNumber)
+    /// What updating `device` brings, one entry per line for the menu item's submenu (a heading, then one unwrapped bullet per change; the menu wraps them).
+    /// Empty until the notes are read, or when they do not list the offered release.
+    func firmwareChangeRows(for device: HDHRDevice) -> [String] {
+        guard let offered = device.firmwareUpdate else { return [] }
+        let text = FirmwareChangelog.tooltip(FirmwareChangelog.releases(firmwareReleases, offered: offered), model: device.ModelNumber, maxLines: .max, width: .max)
+        return text?.split(separator: "\n", omittingEmptySubsequences: true).map(String.init) ?? []
     }
 
     func checkForUpdateOnce() async {
