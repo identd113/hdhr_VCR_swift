@@ -1249,8 +1249,7 @@ struct SettingsView: View {
             Section("Shows") {
                 maintenanceRow("Reactivate Paused Shows",
                                "Run after fixing what caused failures — restores all shows paused by repeated errors") {
-                    let count = state.inactiveShows.count
-                    state.reactivatePausedShows()
+                    let count = state.reactivatePausedShows()
                     return count > 0 ? "\(count) show(s) reactivated" : "No paused shows"
                 }
             }

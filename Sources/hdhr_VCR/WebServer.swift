@@ -89,11 +89,19 @@ final class WebServer: @unchecked Sendable {
     // today) — every actual call site below is a synchronous, non-async function instead, even
     // though some are themselves called from async code, so the lock/unlock invocation itself
     // never sits directly in an async context.
+    // The task can finish before its creator gets to track it (a fast route on another thread);
+    // an untrack that finds nothing leaves its id in finishedBeforeTracked so the late track is
+    // skipped instead of storing a completed task forever.
+    private var finishedBeforeTracked: Set<UUID> = []
     private func trackInFlightRequest(_ id: UUID, task: Task<Void, Never>) {
-        inFlightLock.lock(); inFlightRequestTasks[id] = task; inFlightLock.unlock()
+        inFlightLock.lock()
+        if finishedBeforeTracked.remove(id) == nil { inFlightRequestTasks[id] = task }
+        inFlightLock.unlock()
     }
     private func untrackInFlightRequest(_ id: UUID) {
-        inFlightLock.lock(); inFlightRequestTasks.removeValue(forKey: id); inFlightLock.unlock()
+        inFlightLock.lock()
+        if inFlightRequestTasks.removeValue(forKey: id) == nil { finishedBeforeTracked.insert(id) }
+        inFlightLock.unlock()
     }
     private func snapshotInFlightRequestTasks() -> [Task<Void, Never>] {
         inFlightLock.lock()

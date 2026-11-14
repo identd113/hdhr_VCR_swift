@@ -4771,7 +4771,10 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
-    func reactivatePausedShows() {
+    /// Returns how many shows were un-paused or re-activated (tuner-missing auto-pauses are skipped).
+    @discardableResult
+    func reactivatePausedShows() -> Int {
+        var reactivated = 0
         for i in shows.indices {
             // Skip a show auto-paused for a still-missing tuner entirely — same exclusion the
             // window-expiry auto-resume pass in idleLoop already applies. Without
@@ -4794,12 +4797,16 @@ final class AppState: ObservableObject {
                 // that could mean many broadcasts in one tight loop for a large paused-show list).
                 shows[i].notify_upnext_time = nil
                 shows[i].notify_recording_time = nil
+                reactivated += 1
             }
-            else if !shows[i].show_active { shows[i].show_active = true }
+            else if !shows[i].show_active { shows[i].show_active = true; reactivated += 1 }
             shows[i].clearFailures()
         }
         clearAllRetryAfters()
         saveConfig()
+        // One broadcast for the whole batch (not per show), so the web guide drops its paused markers.
+        if reactivated > 0 { pushShowUpdate(type: "show_updated", channel: "", device: "") }
+        return reactivated
     }
 
     // "_S02E04_" or " S22E125 " → "S02E04"/"S22E125". Shared by organizeSeriesRecordings (season
