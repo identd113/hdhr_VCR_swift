@@ -44,7 +44,7 @@ No ticking clock while a scan runs (the time left is rounded to whole minutes; "
    **Hidden and unusual services** get a tag: *hidden* (left out of the channel list on purpose, e.g. 11.7 OPEN), *encrypted*, *data service*, *not in the channel list* (a program the Program Map Table
    carries that the channel table never names; listed as "Program N") and *not transmitting* (announced, but no packet arrived for it over the read — on the Twin Cities test RF 31's hidden 11.7 OPEN is exactly that).
    With nothing found yet it says "Listening for stations…".
-5. **Footer.** Count of RF channels with no signal ("1 RF channel" / "N RF channels"); Cancel Scan while running, Close (Esc) when done.
+5. **Footer.** Count of RF channels with no signal ("1 RF channel" / "N RF channels"); **Hide** (Esc, `ota-scan-hide`) and Cancel Scan while running, Close (Esc) when done. Hide only closes the window; the scan keeps running, and the menu bar shows **Over-the-Air Scan…** (`menu.otaScan`, only while a scan runs, at the top under the firmware rows) to bring the window back.
 
 Channels of one station are read together from one stream, so they finish together. (Removed in this rework: the per-tuner station cards, the station tabs strip, the three
 summary tiles, the technical footnote and the coloured channel blocks — the clock comparison is gone.)

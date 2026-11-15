@@ -344,7 +344,11 @@ struct OTAScanView: View {
                 Text("\(progress.withoutSignal) RF channel\(progress.withoutSignal == 1 ? "" : "s") with no signal").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if progress.running { Button("Cancel Scan") { state.cancelOTAScan() }.accessibilityIdentifier("ota-scan-cancel") }
+            if progress.running {
+                // Hide only closes the window; the scan keeps going and the menu bar's "Over-the-Air Scan…" brings it back.
+                Button("Hide") { dismissWindow(id: "ota-scan") }.keyboardShortcut(.cancelAction).accessibilityIdentifier("ota-scan-hide")
+                Button("Cancel Scan") { state.cancelOTAScan() }.accessibilityIdentifier("ota-scan-cancel")
+            }
             else { Button("Close") { dismissWindow(id: "ota-scan") }.keyboardShortcut(.cancelAction).accessibilityIdentifier("ota-scan-close") }
         }
     }

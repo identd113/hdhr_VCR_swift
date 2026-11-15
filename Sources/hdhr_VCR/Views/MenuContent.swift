@@ -28,6 +28,7 @@ struct MenuContent: View {
             case "edit-show":  title = "Edit Show"
             case "settings":   title = "Settings"
             case "watch-now":  title = "Watch Now"
+            case "ota-scan":   title = "Over-the-Air Scan"
             default:          title = id
             }
             if let w = NSApp.windows.first(where: { $0.title == title }) {
@@ -161,6 +162,8 @@ struct MenuContent: View {
         let watchingInfo         = nowWatchingInfo
 
         firmwareUpdateRows
+        // A running scan whose window was hidden: bring it back (observes the scan itself, not AppState).
+        OTAScanMenuItem(progress: state.otaProgress) { open("ota-scan") }
         deviceHeaderRows(recordingShows: recordingShows, watchingInfo: watchingInfo)
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
@@ -863,6 +866,19 @@ private struct MenuPosterImage: View {
         .cornerRadius(6)
         .task(id: urlString) {
             img = urlString.isEmpty ? nil : await ChannelIconCache.shared.image(for: urlString)
+        }
+    }
+}
+
+
+/// "Over-the-Air Scan…" while a scan runs, so a window that was hidden can be looked at again.
+private struct OTAScanMenuItem: View {
+    @ObservedObject var progress: OTAScanProgress
+    let show: () -> Void
+    var body: some View {
+        if progress.running {
+            Button(action: show) { Label("Over-the-Air Scan…", systemImage: "antenna.radiowaves.left.and.right") }
+                .accessibilityIdentifier("menu.otaScan")
         }
     }
 }
