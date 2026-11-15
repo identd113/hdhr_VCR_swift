@@ -667,6 +667,8 @@ html.lm #g-toast{background:#fce8e8;color:#8b0000;border-color:#cc3030}
 .wn-state .wn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0;background:var(--t5)}
 .wn-state.wn-live .wn-dot{background:#d33}
 .wn-keys{font-size:.6875rem;color:var(--t4)}
+/* Minimal by default: just the video, the title and Fullscreen / ⓘ / close. I brings back the state, Live Edge, PiP, time bar, details strip and key hints. */
+.wn-sheet.wn-min .wn-state,.wn-sheet.wn-min #wn-live,.wn-sheet.wn-min #wn-pip,.wn-sheet.wn-min .wn-time,.wn-sheet.wn-min .wn-keys{display:none!important}
 @media (max-width:600px){.wn-keys{display:none}}
 
 /* Clock timeline under the picture: the show's start time, a marker for the time being watched, its scheduled end */

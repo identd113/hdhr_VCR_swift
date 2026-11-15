@@ -1787,8 +1787,7 @@ function wnBarInit(i,startEpoch,endEpoch){
   var el=document.getElementById('wn-s-ep');el.textContent=ep;el.title=ep;
   var sy=document.getElementById('wn-s-syn');sy.textContent=i.synopsis||'';sy.title=i.synopsis||'';sy.style.display=i.synopsis?'':'none';
   wnNextCards(i);
-  var saved=false;try{saved=localStorage.getItem('wnStatusBar')==='1';}catch(x){}
-  wnSetBar(saved,false);
+  wnSetBar(false,false);   // every stream starts minimal; I shows the details
   wnProgress();
   try{
     if(window.PerformanceObserver){
@@ -1825,23 +1824,17 @@ function wnNextCards(i){
 function wnSetBar(open,persist){
   _wn.barOpen=open;
   document.getElementById('wn-sbar-wrap').classList.toggle('wn-open',open);
+  document.querySelector('.wn-sheet').classList.toggle('wn-min',!open);
   var b=document.getElementById('wn-info-btn');b.classList.toggle('wn-on',open);b.setAttribute('aria-expanded',open?'true':'false');
-  if(persist){try{localStorage.setItem('wnStatusBar',open?'1':'0');}catch(x){}}
 }
 function wnPulse(){var b=document.getElementById('wn-info-btn');b.classList.remove('wn-pulse');void b.offsetWidth;b.classList.add('wn-pulse');b.onanimationend=function(){b.classList.remove('wn-pulse');};}
 function wnToggleBar(){
   clearTimeout(_wn.peekTimer);
-  if(_wn.peeking){_wn.peeking=false;wnSetBar(true,true);return;}   // a click during the brief peek keeps the bar open
   var open=!_wn.barOpen;wnSetBar(open,true);
   if(!open){wnPopClose();wnPulse();}
 }
-// The first picture opens the bar for 5 s when it is off, then it closes and the (i) pulses, as in the app.
-function wnPeek(){
-  if(_wn.peeked)return;_wn.peeked=true;
-  if(_wn.barOpen)return;
-  _wn.peeking=true;wnSetBar(true,false);
-  _wn.peekTimer=setTimeout(function(){if(!_wn.peeking)return;_wn.peeking=false;wnSetBar(false,false);wnPulse();},5000);
-}
+// Marks that the stream has played once (the stall check and the seek guard read it). The details stay hidden until I.
+function wnPeek(){_wn.peeked=true;}
 function wnProgress(){
   var i=_wn.info,bar=document.getElementById('wn-sbar');
   var on=!!(i&&wnIsLiveTv()&&i.start&&i.end>i.start);   // like the app: wall-clock progress means something for live TV only
