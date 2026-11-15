@@ -170,6 +170,9 @@ A purpose-built animated diagram (`WebLANDiagram`, `Views/WebLANDiagram.swift` �
 section below) — this Mac fanning out to three different device icons — above a short explanation
 and one `Toggle`, **Enable Web LAN**. See "Steps" below for the config-commit details.
 
+### Other Apps step (after Terminal Guide)
+One toggle, `Other_apps_feed_enabled`, gated on Web LAN like the terminal guide (saved on only when Web LAN is on). Serves `/feed.m3u` + `/feed.xml` — `docs/FeedPlaylist.md`.
+
 ### Step 5 — Terminal Guide
 A second, genuinely different animated diagram (`TerminalTypingDiagram`,
 `Views/TerminalTypingDiagram.swift` — see its own section below): a mock terminal window typing a

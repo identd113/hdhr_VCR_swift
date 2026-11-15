@@ -1336,7 +1336,7 @@ final class WebServer: @unchecked Sendable {
     // IP), separate from routeOnMain's own per-case outcome logging just below each case.
     static func isVirtualTunerHTTPPath(_ cleanPath: String) -> Bool {
         switch cleanPath {
-        case "/discover.json", "/lineup.json", "/status.json":
+        case "/discover.json", "/lineup.json", "/status.json", "/feed.m3u", "/feed.xml":
             return true
         default:
             return cleanPath.hasPrefix("/auto/v")
@@ -2855,6 +2855,9 @@ final class WebServer: @unchecked Sendable {
         case "/api/guide.json":
             return .ok(contentType: "application/json", body: buildGuideJSON(state: state, deviceId: nil))
 
+        case "/feed.m3u", "/feed.xml":
+            return feedPlaylistResponse(path: path, state: state)
+
         // Virtual tuner HTTP surface — see VirtualTunerService.swift's doc comment. All four 404
         // whenever nothing is recording (activeVirtualTunerDeviceID nil), so this never affects
         // normal operation and never advertises a device with an empty lineup.
@@ -4348,6 +4351,33 @@ final class WebServer: @unchecked Sendable {
     // as JSON instead of HTML, for external consumers (e.g. a Home Assistant REST sensor) that
     // want tuner status without scraping the guide page. Reuses computeDevTuners so this can never
     // disagree with the dev-bar's own occupancy badge.
+    /// /feed.m3u and /feed.xml: the channels being recorded now as a playlist + XMLTV guide, for apps
+    /// that take those instead of an HDHomeRun. 404 while Other_apps_feed_enabled is off. Internal for tests.
+    @MainActor
+    func feedPlaylistResponse(path: String, state: AppState, now: Date = Date()) -> WebResponse {
+        guard state.config.Other_apps_feed_enabled else {
+            return .notFound("The playlist feed is disabled — enable it in Settings → Sharing")
+        }
+        guard let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface) else {
+            return .notFound("no LAN interface available")
+        }
+        var seen = Set<String>()
+        let channels: [FeedPlaylist.Channel] = state.recordingShows.compactMap { show in
+            let id = FeedPlaylist.channelID(number: show.show_channel, deviceID: show.hdhr_record)
+            guard seen.insert(id).inserted else { return nil }
+            let source = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel })
+            let guide = state.guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel, after: now)
+            return FeedPlaylist.Channel(id: id, number: show.show_channel, name: source?.GuideName ?? show.show_channel,
+                                        streamURL: "\(base)/auto/v\(show.show_channel)?dev=\(show.hdhr_record)",
+                                        logoURL: guide.first?.ImageURL, programmes: guide)
+        }
+        if path == "/feed.m3u" {
+            return .okNoStore(contentType: "audio/x-mpegurl; charset=utf-8",
+                              body: Data(FeedPlaylist.m3u(channels, guideURL: "\(base)/feed.xml").utf8))
+        }
+        return .okNoStore(contentType: "application/xml; charset=utf-8", body: Data(FeedPlaylist.xmltv(channels).utf8))
+    }
+
     // The route body for /api/tuner-status.json, split out so the gate is testable without a live
     // listener. Internal, not private, for that reason.
     @MainActor

@@ -20,7 +20,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
+    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming }
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
@@ -41,6 +41,7 @@ struct FirstRunWizardView: View {
     @State private var sharingEnabled: Bool = false
     @State private var terminalGuideEnabled: Bool = false
     @State private var relayEnabled: Bool = false
+    @State private var otherAppsEnabled: Bool = false
     @State private var airScanHour: Int = 3   // hour of the daily air rescan, -1 = never (saved on Finish)
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
@@ -152,6 +153,9 @@ struct FirstRunWizardView: View {
                     terminalGuideScreen
                         .transition(slideTransition)
                         .id(Step.terminalGuide)
+                case .otherApps:
+                    otherAppsScreen
+                        .id(Step.otherApps)
                 case .recordingRelay:
                     recordingRelayScreen
                         .transition(slideTransition)
@@ -583,6 +587,37 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private var otherAppsScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Other Apps").font(.headline)
+                    Text("Let apps such as Channels DVR, Jellyfin, TiviMate or VLC watch what this Mac is recording. Off by default. You can change this later in Settings → Sharing.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(sharingEnabled
+                         ? "Serves a playlist and guide of the channels being recorded right now from the same local server Web LAN just turned on."
+                         : "Uses the same server as Web LAN — turn that on first (an earlier step) for this to do anything.")
+                        .font(.callout)
+                        .foregroundStyle(sharingEnabled ? Color.primary : .secondary)
+                    Toggle(isOn: $otherAppsEnabled) {
+                        HStack { Text(gatedLabel("Share as a playlist + guide", met: sharingEnabled, requirement: "Web LAN")); InfoButton("Adds /feed.m3u and /feed.xml (XMLTV) to the local web server. Only channels being recorded are listed. Local network only, no authentication.") }
+                    }
+                    .disabled(!sharingEnabled)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     // Was the tallest wizard step — an extra Label plus a third, separate Section just for the
     // toggle pushed it past what the other steps need, and on at least one real machine that extra
     // height crashed the app outright (see issues_resolved.md's "First-Run Wizard's Recording FEED
@@ -724,6 +759,7 @@ struct FirstRunWizardView: View {
         case .vlcRequired:        return "VLC"
         case .webLAN:             return "Web LAN"
         case .terminalGuide:      return "Terminal Guide"
+        case .otherApps:          return "Other Apps"
         case .recordingRelay:     return "Recording FEED (Beta)"
         case .notificationTiming: return "Notification Timing"
         }
@@ -793,6 +829,7 @@ struct FirstRunWizardView: View {
         sharingEnabled        = state.config.Web_server_enabled
         terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
+        otherAppsEnabled     = state.config.Other_apps_feed_enabled
         airScanHour          = state.config.OTA_lineup_hour
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
@@ -818,6 +855,8 @@ struct FirstRunWizardView: View {
         state.config.Web_server_enabled     = sharingEnabled
         // The terminal client rides on the Web LAN server, so it is only saved on when Web LAN is on too.
         state.config.Terminal_guide_enabled = terminalGuideEnabled && sharingEnabled
+        // Rides on the Web LAN server, like the terminal client.
+        state.config.Other_apps_feed_enabled = otherAppsEnabled && sharingEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
         state.config.OTA_lineup_hour         = airScanHour

@@ -265,7 +265,7 @@ struct SettingsView: View {
                                      "Discord_on_failed", "Discord_on_paused", "Discord_on_skipped", "Discord_on_duplicate", "Discord_on_conflict",
                                      "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_soon", "Discord_on_show_added"]
         case .advanced:      return ["Notify_recording", "Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled"]
-        case .sharing:       return ["Home_assistant_status_enabled", "Terminal_guide_enabled", "Virtual_tuner_relay_default_transcode", "Virtual_tuner_relay_enabled",
+        case .sharing:       return ["Home_assistant_status_enabled", "Other_apps_feed_enabled", "Terminal_guide_enabled", "Virtual_tuner_relay_default_transcode", "Virtual_tuner_relay_enabled",
                                      "Web_server_enabled", "Web_server_port", "Web_streaming_enabled"]
         default:             return nil
         }
@@ -1132,6 +1132,26 @@ struct SettingsView: View {
                         urlRow(urlStr)
                     } else {
                         Text("Save to activate — the endpoint responds once Web LAN is running.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Other apps") {
+                Toggle(isOn: $draft.Other_apps_feed_enabled) {
+                    HStack {
+                        Text(gatedLabel("Share recordings as a playlist + guide", met: lanEnabled, requirement: "Web LAN"))
+                        InfoButton("Serves /feed.m3u and /feed.xml (XMLTV) listing the channels being recorded right now, so apps such as Channels DVR (custom channels), Jellyfin, TiviMate or VLC can watch them. Only recording channels are listed. Off by default; local network only, no authentication.")
+                    }
+                }
+                .disabled(!lanEnabled)
+                if draft.Other_apps_feed_enabled && lanEnabled {
+                    if state.config.Web_server_enabled && state.webServerRunning {
+                        urlRow("http://\(lanIP()):\(state.config.Web_server_port)/feed.m3u")
+                        urlRow("http://\(lanIP()):\(state.config.Web_server_port)/feed.xml")
+                    } else {
+                        Text("Save to activate — the feed responds once Web LAN is running.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
