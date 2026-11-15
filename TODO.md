@@ -4,6 +4,13 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## Backlog: advertise on the network with our own Bonjour label instead of a fake HDHomeRun (2026-11-15)
+Idea only; not scheduled, release first. Today the recording relay presents as an HDHomeRun (UDP discovery on 65001 + `/discover.json`) so another copy of this app finds it. No real Bonjour is used anywhere (the "mDNS" in the code fetches `hdhomerun.local`). The fake tuner shows up in other HDHomeRun clients (SiliconDust's app, Plex) as a tuner they cannot use ("No guide access"), and `isVirtualRelay` guards sit in about 50 places.
+- Advertise `_hdhrvcrplus._tcp` (TXT: host, port, version); browse with `NWBrowser`; stream from `/auto/v<ch>` as now. Needs `NSBonjourServices` in `Info.plist`; same Local Network permission.
+- Keep the old UDP announce for one release so copies on other versions still find us; then stop it by default.
+- HDHomeRun emulation survives only as the opt-in "Other apps" option for Plex/Jellyfin (own DeviceID, no borrowed `DeviceAuth`, configurable port). See `docs/FeedPlaylist.md`, `docs/VirtualTunerService.md` ("Third-party HDHomeRun clients").
+- Risk: the cross-version window.
+
 ## DVB (European) tuners: gate the air features and say so
 
 Only ATSC tuners (US/Canada) have been tested; the README now says European/DVB tuners may not work. Still to do: (1) offer the Over the Air tab only on ATSC tuners (the EXTEND reports firmware `hdhomeruntc_atsc`; find out what DVB models report) so a DVB user is not given a scan that finds nothing; (2) find out whether the guide works for them and what a no-guide setup should look like (XMLTV?); (3) a DVB scanner is a separate piece of work — the NIT lists the other multiplexes, so it would need far fewer tries than the ATSC sweep.
