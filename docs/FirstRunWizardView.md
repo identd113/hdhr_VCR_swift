@@ -237,8 +237,10 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
+enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming, airScanning }
 ```
+
+**Last step, `.airScanning` (added 2026-11-15):** "Scan the air for channels?" with a radio group (`wizard-air-scan-enabled`): "No, do not scan by itself" (default on a new install) or "Yes, scan once a day". It is the wizard's final step, so **Finish** (`wizard-finish`) now sits here and Next is on Notification Timing. Saved on Finish as `OTA_scan_enabled` (a Yes with Never picked on the Channels from the Air step saves the default hour 3). Nothing scans by itself until this is answered Yes; the scan button on the Channels from the Air step is still a manual scan. Changeable later in Settings → Over the Air.
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
 property (not a static array), so it can conditionally drop `.recordingRelay` when
@@ -475,6 +477,6 @@ once a day at the picked time) and `AirChannelsCard` (`Views/AirChannelsCard.swi
 OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindow: false)`: the wizard shows the progress itself); while it runs, a bar with
 "N of 49 RF channels · M stations · K channels" and Cancel (`wizard-air-progress`, `wizard-air-cancel`, plus the "stepped aside" note if the scan yields); afterwards
 "Found 18 stations with 118 channels." (`wizard-air-found`) or "No stations found" with an antenna hint (`wizard-air-none`), and "Scan again". With no tuner found yet the
-card says so (`wizard-air-no-tuner`). Below the button (and under the found/none result) a caption line `AirLastScanLines` says "Channel list: last scanned Oct 21, 7:42 PM", "never scanned" or "scanning now…" (`ota-last-lineup`). Below the card, one **Rescan the channel list** picker (`wizard-air-schedule`: Never / Daily at HH:00, default 03:00) sets `OTA_lineup_hour` on Finish. Only the channel list is scheduled; the guide from the air is scanned only after a guide failure (prompt, Discord message, automatic start after an hour — docs/OTAGuide.md), and a full scan always reads the channel list first, then the guide. Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
-Skipping it still ends up with a list: `AppState.startScheduledOTALineupRefreshIfDue` runs the same scan daily at the chosen hour.
+card says so (`wizard-air-no-tuner`). Below the button (and under the found/none result) a caption line `AirLastScanLines` says "Channel list: last scanned Oct 21, 7:42 PM", "never scanned" or "scanning now…" (`ota-last-lineup`). Below the card, one **Rescan the channel list** picker (`wizard-air-schedule`: Never / Daily at HH:00, default 03:00) sets `OTA_lineup_hour` on Finish; whether the scan runs by itself at all is asked on the last step (`OTA_scan_enabled`). Only the channel list is scheduled; the guide from the air is scanned only after a guide failure (prompt, Discord message, automatic start after an hour — docs/OTAGuide.md), and a full scan always reads the channel list first, then the guide. Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
+`AppState.startScheduledOTALineupRefreshIfDue` runs the same scan daily at the chosen hour, but only when `OTA_scan_enabled` is on (answered on the last step); it no longer starts on a fresh launch.
 (The step dots and "Step N of M" labels derive from `orderedSteps`. Step order: 1 Recording Defaults, 2 Channels from the Air, 3 VLC, 4 Web LAN, 5 Terminal Guide, 6 Recording FEED (only while `FEED_feature_enabled`), 7 Notification Timing; the numbered sections above were renumbered to match.)

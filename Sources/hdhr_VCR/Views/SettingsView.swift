@@ -260,7 +260,7 @@ struct SettingsView: View {
         case .recording:     return ["Default_transcode", "Fail_count_setting", "Min_disk_free_gb", "Post_recording_script", "Series_subfolder_enabled",
                                      "Skip_recorded_episodes", "Sports_padding_minutes", "TimeMachine_exclude_mode", "Write_metadata_sidecar", "Hdhr_setup_folder"]
         case .guide:         return ["Guide_refresh_interval_divisor", "Guide_use_xml", "OTA_always_use"]
-        case .overTheAir:    return ["OTA_enabled", "OTA_lineup_hour"]
+        case .overTheAir:    return ["OTA_enabled", "OTA_scan_enabled", "OTA_lineup_hour"]
         case .notifications: return ["Discord_enabled", "Discord_webhook_url", "Notify_upnext", "Discord_on_start", "Discord_on_complete",
                                      "Discord_on_failed", "Discord_on_paused", "Discord_on_skipped", "Discord_on_duplicate", "Discord_on_conflict",
                                      "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_soon", "Discord_on_show_added"]
@@ -337,6 +337,7 @@ struct SettingsView: View {
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
         if draft.OTA_enabled         != old.OTA_enabled         { glog("[Settings] OTAEnabled: \(old.OTA_enabled) → \(draft.OTA_enabled)") }
         if draft.OTA_always_use      != old.OTA_always_use      { glog("[Settings] OTAAlwaysUse: \(old.OTA_always_use) → \(draft.OTA_always_use)") }
+        if draft.OTA_scan_enabled    != old.OTA_scan_enabled    { glog("[Settings] OTAScanEnabled: \(old.OTA_scan_enabled) → \(draft.OTA_scan_enabled)") }
         if draft.OTA_lineup_hour     != old.OTA_lineup_hour     { glog("[Settings] OTALineupHour: \(old.OTA_lineup_hour) → \(draft.OTA_lineup_hour)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
@@ -591,12 +592,17 @@ struct SettingsView: View {
             // The channel scan is the core of this tab and needs no permission: it reads only the channel names and numbers, on idle tuners,
             // early in the morning. It is how the app learns which stations SiliconDust's lineup lacks.
             Section("Channel scan") {
+                Toggle(isOn: $draft.OTA_scan_enabled) {
+                    HStack { Text("Scan for channels automatically"); InfoButton("Off, the app never scans the air by itself; the Scan Channel List Now button below still works. On, it reads the channel list once a day at the hour you pick.", about: "Scan for channels automatically") }
+                }
+                .accessibilityIdentifier("settings-ota-scan-enabled")
                 Picker(selection: $draft.OTA_lineup_hour) {
                     Text("Never").tag(-1)
                     ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                 } label: {
                     HStack { Text("Scan for channels"); InfoButton("Reads just the channel names and numbers from the stations your tuner receives (a few minutes, no guide) once a day from this hour on, on idle tuners only. The scan steps aside whenever a recording or a viewer needs a tuner. It is how the app finds stations SiliconDust's lineup is missing; they are listed in the web guide under AIR ONLY · WATCH.", about: "Scan for channels") }
                 }
+                .disabled(!draft.OTA_scan_enabled)
                 .accessibilityIdentifier("settings-ota-lineup-hour")
                 Text("Every TV channel is tuned in turn; the channel list takes a few minutes. It uses idle tuners only and steps aside for a recording or a viewer.")
                     .font(.caption)

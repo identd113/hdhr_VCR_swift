@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Updated* — **The over-the-air scan no longer starts by itself on a new install.** It used to open its window on the first launch and run behind the welcome wizard. The wizard now ends with a question, "Scan the air for channels?" (No is the default). Only a Yes turns on the daily channel-list scan; the choice is saved and can be changed in Settings → Over the Air → "Scan for channels automatically". The Scan buttons still work by hand. Installs that already have a saved setup keep their daily scan.
+
 - **Guide tab:** the JSON | XMLTV | OTA picker and cards are one comparison table; click a column to choose it. Rows: load time, timeline, window, genres, network name, series IDs, needs.
 - **About:** the release notes list no longer repeats the big-feature headline and blurb; the rest of that version's notes still show.
 

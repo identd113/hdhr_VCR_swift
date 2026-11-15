@@ -1,8 +1,8 @@
 import SwiftUI
 
 // The first-run wizard's "Channels from the Air" card (docs/FirstRunWizardView.md): starts a quick channel-list scan (no guide) and shows its
-// progress inline, instead of opening the scan window on top of the wizard. Optional: the same scan also runs by itself in the early
-// hours when no list exists yet (AppState.startScheduledOTALineupRefreshIfDue), so skipping this step still ends up with one.
+// progress inline, instead of opening the scan window on top of the wizard. Optional: the same scan runs by itself in the early hours
+// (AppState.startScheduledOTALineupRefreshIfDue) only if the last wizard step (or Settings → Over the Air) turned OTA_scan_enabled on.
 /// "Channel list: scanned Oct 21, 7:42 PM" / "Guide: never scanned" — when each saved over-the-air result was last completed. Shared by the wizard
 /// card and Settings → Advanced; re-reads the saved files only when a scan starts or ends, never on every redraw.
 struct AirLastScanLines: View {

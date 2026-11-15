@@ -572,6 +572,7 @@ struct AppConfig: Equatable {
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
     var OTA_enabled: Bool        = false    // "Scan OTA for Lineup and Guide" (Settings → Over the Air): off = nothing over the air is done at all (OTAGuide/)
     var OTA_always_use: Bool     = false    // with OTA_enabled: true = the air is the lineup and guide (SiliconDust's are not used); false (default) = SiliconDust stays the source
+    var OTA_scan_enabled: Bool   = false    // master switch for the SCHEDULED channel-list scan (asked on the last first-run wizard step; Settings → Over the Air → "Scan for channels automatically"). Off = no scan starts by itself, ever; the manual Scan buttons still work. A config saved before this key existed decodes as true (see init(from:)) so existing installs keep their daily scan
     var OTA_lineup_hour: Int     = 3        // hour of day (0-23) the over-the-air channel list is rescanned in the background (a quick scan, no guide) on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
     var OTA_lineup_auto: Bool    = true    // LEGACY (replaced by OTA_lineup_hour, only read to migrate an old config): keep the over-the-air channel list (a quick scan, no guide) up to date, only in the early hours (OTAGuide/AppState+OTA.swift)
     var OTA_scan_hour: Int       = -1       // LEGACY, unused since the guide is scanned only after a guide failure (AppState.offerAirGuideFallback): hour of day (0-23) the over-the-air guide is rescanned in the background on idle tuners; -1 = never (OTAGuide/AppState+OTA.swift)
@@ -820,6 +821,8 @@ extension AppConfig: Codable {
         Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"
         Local_network_confirmed     = (try? c.decode(Bool.self,   forKey: .Local_network_confirmed))       ?? false
         First_run_wizard_shown      = (try? c.decode(Bool.self,   forKey: .First_run_wizard_shown))        ?? false
+        // A saved config from before this key existed keeps its daily scan; a brand-new install (wizard not yet shown) starts with it off until the wizard asks.
+        OTA_scan_enabled      = (try? c.decode(Bool.self,   forKey: .OTA_scan_enabled))      ?? First_run_wizard_shown
         Appearance_mode             = (try? c.decode(String.self, forKey: .Appearance_mode))               ?? "auto"
     }
 }

@@ -20,7 +20,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming }
+    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming, airScanning }
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
@@ -42,6 +42,7 @@ struct FirstRunWizardView: View {
     @State private var terminalGuideEnabled: Bool = false
     @State private var relayEnabled: Bool = false
     @State private var otherAppsEnabled: Bool = false
+    @State private var airScanEnabled: Bool = false   // asked on the last step; saved on Finish
     @State private var airScanHour: Int = 3   // hour of the daily air rescan, -1 = never (saved on Finish)
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
@@ -160,6 +161,10 @@ struct FirstRunWizardView: View {
                     recordingRelayScreen
                         .transition(slideTransition)
                         .id(Step.recordingRelay)
+                case .airScanning:
+                    airScanningScreen
+                        .transition(slideTransition)
+                        .id(Step.airScanning)
                 case .notificationTiming:
                     notificationTimingScreen
                         .transition(slideTransition)
@@ -177,7 +182,7 @@ struct FirstRunWizardView: View {
                         .accessibilityIdentifier("wizard-back")
                 }
                 Spacer()
-                if step != .notificationTiming {
+                if step != .airScanning {
                     Button("Next") { goNext() }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
@@ -384,7 +389,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Channels from the Air").font(.headline)
-                    Text("Besides the SiliconDust guide, your tuner can read the channel names and numbers that stations broadcast with their signal. It takes about three minutes, uses only idle tuners and steps aside whenever a recording or a viewer needs one. It is how the app finds stations the SiliconDust lineup is missing; they show up in the web guide as watch-only. Once it exists, it is read again once a day at the time you pick below.")
+                    Text("Besides the SiliconDust guide, your tuner can read the channel names and numbers that stations broadcast with their signal. It takes about three minutes, uses only idle tuners and steps aside whenever a recording or a viewer needs one. It is how the app finds stations the SiliconDust lineup is missing; they show up in the web guide as watch-only. Whether it also runs by itself once a day is your choice on the last step.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -702,6 +707,34 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// Last step: whether the app may scan the air by itself at all. Nothing scans until this is answered; "Yes" turns on the
+    /// daily channel-list scan (at the hour picked on the Channels from the Air step), "No" leaves it off. Saved on Finish.
+    private var airScanningScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Scan the air for channels?").font(.headline)
+                    Text("Once a day, on idle tuners only, the app can tune every TV channel in turn for a few minutes to read the channel list the stations broadcast. It steps aside whenever a recording or a viewer needs a tuner. The scan window opens while it runs. If you say no, nothing scans by itself; you can still scan by hand, or turn it on later in Settings → Over the Air.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                Picker(selection: $airScanEnabled) {
+                    Text("No, do not scan by itself").tag(false)
+                    Text("Yes, scan once a day").tag(true)
+                } label: {
+                    Text("Scan the air automatically")
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("wizard-air-scan-enabled")
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     // Label morphs Finish → checkmark during the flourish delay (finish()'s finishTask) instead
     // of just disappearing with the window — a small, cheap "yes, that worked" confirmation.
     private var finishButton: some View {
@@ -764,6 +797,7 @@ struct FirstRunWizardView: View {
         case .otherApps:          return "Other Apps"
         case .recordingRelay:     return "Recording FEED (Beta)"
         case .notificationTiming: return "Notification Timing"
+        case .airScanning:        return "Scanning the Air"
         }
     }
 
@@ -832,6 +866,7 @@ struct FirstRunWizardView: View {
         terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
         otherAppsEnabled     = state.config.Other_apps_feed_enabled
+        airScanEnabled       = state.config.OTA_scan_enabled
         airScanHour          = state.config.OTA_lineup_hour
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
@@ -861,7 +896,8 @@ struct FirstRunWizardView: View {
         state.config.Other_apps_feed_enabled = otherAppsEnabled && sharingEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
-        state.config.OTA_lineup_hour         = airScanHour
+        state.config.OTA_scan_enabled        = airScanEnabled
+        state.config.OTA_lineup_hour         = (airScanEnabled && airScanHour < 0) ? 3 : airScanHour   // "Yes" with "Never" picked earlier means the default hour
         state.config.First_run_wizard_shown = true
         state.saveConfig()
         // Same commit pattern as SettingsView.save(): only (re)start the listener if the toggle

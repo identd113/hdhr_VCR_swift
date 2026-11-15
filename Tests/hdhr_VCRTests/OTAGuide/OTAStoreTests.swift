@@ -315,6 +315,15 @@ struct OTAStoreTests {
         #expect(OTAScanView.clock(3750) == "1:02:30")
     }
 
+    @Test func scheduledScanIsOffUntilTheWizardAsksButKeptForExistingInstalls() throws {
+        #expect(AppConfig().OTA_scan_enabled == false)                                                       // brand-new install
+        #expect(try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8)).OTA_scan_enabled == false)   // wizard not shown yet
+        let old = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"First_run_wizard_shown":true}"#.utf8))
+        #expect(old.OTA_scan_enabled)                                                                        // saved before the key existed: keeps its daily scan
+        let no = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"First_run_wizard_shown":true,"OTA_scan_enabled":false}"#.utf8))
+        #expect(no.OTA_scan_enabled == false)                                                                // an explicit no stays no
+    }
+
     @Test func theChannelListIsScannedOnceADayFromTheChosenHour() {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
         func at(_ day: Int, _ hour: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: 30))! }
