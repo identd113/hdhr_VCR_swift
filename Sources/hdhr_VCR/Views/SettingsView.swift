@@ -1043,6 +1043,7 @@ struct SettingsView: View {
             // guide with the household without also advertising/allowing the terminal client.
             let lanEnabled = draft.Web_server_enabled
             Section("Web Streaming (Beta)") {
+                Group {
                 Toggle(isOn: $draft.Web_streaming_enabled) {
                     HStack {
                         Text(gatedLabel("Watch recordings in a browser", met: lanEnabled, requirement: "Web LAN"))
@@ -1050,8 +1051,11 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(!lanEnabled)
+                }
+                .dependentSetting(met: lanEnabled)
             }
             Section("Terminal Guide") {
+                Group {
                 Toggle(isOn: $draft.Terminal_guide_enabled) {
                     HStack {
                         Text(gatedLabel("Enable Terminal Guide", met: lanEnabled, requirement: "Web LAN"))
@@ -1112,6 +1116,8 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                }
+                .dependentSetting(met: lanEnabled)
             }
 
             // Same shape/gating as Terminal Guide above — a sub-switch under Web LAN that's
@@ -1120,6 +1126,7 @@ struct SettingsView: View {
             // real security-relevant gate, not just a courtesy one — see
             // Home_assistant_status_enabled's doc comment (Models.swift) for why.
             Section("Home Assistant") {
+                Group {
                 Toggle(isOn: $draft.Home_assistant_status_enabled) {
                     HStack {
                         Text(gatedLabel("Enable status endpoint", met: lanEnabled, requirement: "Web LAN"))
@@ -1136,9 +1143,12 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                }
+                .dependentSetting(met: lanEnabled)
             }
 
             Section("Other apps") {
+                Group {
                 Toggle(isOn: $draft.Other_apps_feed_enabled) {
                     HStack {
                         Text(gatedLabel("Share recordings as a playlist + guide", met: lanEnabled, requirement: "Web LAN"))
@@ -1156,6 +1166,8 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                }
+                .dependentSetting(met: lanEnabled)
             }
 
             // Visible by default as of v2.5.0 (AppConfig.FEED_feature_enabled's own doc comment) —

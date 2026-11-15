@@ -578,6 +578,7 @@ struct FirstRunWizardView: View {
                         HStack { Text(gatedLabel("Enable Terminal Guide", met: sharingEnabled, requirement: "Web LAN")); InfoButton("Requires Web LAN (previous step) to be on — the terminal client connects to that same local server, not a separate one.") }
                     }
                     .disabled(!sharingEnabled)
+                    .dependentSetting(met: sharingEnabled)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -609,6 +610,7 @@ struct FirstRunWizardView: View {
                         HStack { Text(gatedLabel("Share as a playlist + guide", met: sharingEnabled, requirement: "Web LAN")); InfoButton("Adds /feed.m3u and /feed.xml (XMLTV) to the local web server. Only channels being recorded are listed. Local network only, no authentication.") }
                     }
                     .disabled(!sharingEnabled)
+                    .dependentSetting(met: sharingEnabled)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }

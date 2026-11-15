@@ -273,6 +273,13 @@ func gatedLabel(_ base: String, met: Bool, requirement: String) -> String {
     met ? base : "\(base) (Requires \(requirement))"
 }
 
+extension View {
+    /// A setting that only works while another one is on: always indented under it, and dimmed while that one is off.
+    func dependentSetting(met: Bool) -> some View {
+        padding(.leading, 18).opacity(met ? 1 : 0.5)
+    }
+}
+
 // Accessibility label for WatchNowView's Watch button.
 func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
 // Accessibility labels for the two choices offered when watching a currently-recording show.
