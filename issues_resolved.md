@@ -6,6 +6,16 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Pre-release review — 2026-11-22 (`8f33298`)
+
+Invariants review (`invariants-reviewer`, v2.6.5..HEAD) found no violations of the 14 invariants; one low-severity item, fixed:
+
+- **Menu tuner count left out browser live TV** (`MenuContent.deviceRow`, invariant "Tuner occupancy"). Its own `appCount` summed recordings + the two VLC slots but not `webLiveSessions`, which `AppState.activeTunerCount(for:)` adds, so the "n/slots" headline could under-report until the next `status.json` poll. It now adds the web term.
+
+Other fixes from the same pass: the splash cards ignored clicks when the view never captured its window (`1b1a66b`); tests no longer put the "guide is unavailable" prompt (fixture tuner `FFFFFFFF`) on the real screen (`da0d2c9`); the "Recording Soon" pre-notice was removed (`ec2021e`); docs for it and for the "Last Over-the-Air Scan…" menu item brought in line (`8f33298`).
+
+---
+
 # Review of everything since v2.6.5 — 2026-10-20 (`e57a2cc`)
 
 - **PSIP decoder: non-transport-stream data piled up and was rescanned on every chunk** (`PSIPDecoder.ingest`). When no sync byte repeated 188 bytes apart in the buffered bytes it broke out without discarding anything, so junk accumulated and each chunk rescanned all of it: 13 MB took 23 s (quadratic). It now keeps only a packet's worth to resync on (13 MB: 0.5 s); regression test `garbageIsDroppedQuicklyAndTheDecoderResyncs`.

@@ -47,6 +47,12 @@ Historical record of bugs encountered during development. Used as a "don't repea
 - `lastOTALineupAttempt` is not persisted, so a launch after the chosen hour retries a failed scan. (Check against the new `OTA_scan_enabled` work in the working tree.)
 - Scan events are applied through one unstructured `Task` each (ordering not guaranteed); `otaScanStatus` is `@Published` and written per RF channel (menu churn while a menu is open).
 
+### Docs left from the 2026-11-22 pre-release audit
+
+- `docs/FirstRunWizardView.md` points to a "Local Network permission" section that does not exist (known `DOC-DRIFT` note in the file); the code is `FirstRunWizardView.swift` "MARK: Local Network permission".
+- `docs/AppState.md:78,87` and `docs/Models.md:103,174` still call `notify_recording_time` the marker for "both reminders"; only Up Next uses it now (field kept for decoding). `Models.md` does not say `Notify_recording` and `Discord_on_soon` are unused.
+- `docs/WebStreaming.md`, the other changed view docs and the Invariants text were not part of that audit.
+
 ### To verify on real hardware (not code fixes)
 
 - **Air guide + existing SeriesID shows:** the docs say series recording "matches by title" under the air guide; nothing shows an existing SeriesID show still scheduling against an air-only guide.
