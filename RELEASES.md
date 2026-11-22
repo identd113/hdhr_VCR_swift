@@ -22,6 +22,11 @@ Every morning, hdhrVCRplus quietly listens to the airwaves and finds the station
 - **The web guide fits phones again,** in portrait and landscape.
 - **The browser player looks like the app's,** with a show strip, a clock timeline, and it reconnects itself. Streams start in about 10 seconds.
 - **The terminal guide starts on what is on now,** can no longer wander into the past, and is quicker over slow connections (press **r** to redraw).
+- **Quieter, clearer alerts.** "Up Next" tells you a show is coming; "Recording Started" tells you it began. The "Recording Soon" alert that used to land on top of Up Next is gone.
+- **A friendlier first launch.** The setup screens take clicks reliably, the air scan only runs on a new install if you say yes, and if the app finds your tuner but cannot reach it, the startup screen tells you to allow Local Network access.
+- **Look at a scan again.** Every scan opens its window, and "Last Over-the-Air Scan…" in the menu bar brings it back to see what was found.
+- **Tuner firmware at a glance.** A menu row appears when a tuner has an update waiting, with SiliconDust's release notes.
+- **A playlist for other apps.** Switch on the feed in Settings → Sharing to hand what is recording right now to other players.
 - **Pictures fall back neatly:** the show's image, then its network logo, then the app's icon, everywhere.
 
 ---

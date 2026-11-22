@@ -4,6 +4,15 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+- *Removed* — **The "Recording Soon" notification.** It fired 15 minutes before a recording and clashed with "Up Next". "Recording Started" (and its Discord post) now tells you when it begins. The recording-alert stepper is gone from Settings and the setup wizard; old config files still load.
+- *Updated* — **The setup and launch screens take clicks reliably.** The wizard or donation card could appear without accepting any clicks when the splash had not captured its own window; it now falls back to the window it created (`[Splash] view had no window` in the log).
+- *Added* — **The splash says why when the tuner is found but its lineup is not.** If a tuner is listed but no lineup arrives (5 s, or at once when it was found only through SiliconDust's cloud lookup), the checklist asks you to allow Local Network access in System Settings. The log now records the cloud fallback, `localNetworkConfirmed` and the address of a failed lineup fetch.
+- *Added* — **"Last Over-the-Air Scan…" in the menu bar.** The scan window opens for every scan; after it closes itself, the menu keeps an entry that reopens it with what the scan found (until the app quits).
+- *Added* — **Playlist feed for other apps:** opt-in `/feed.m3u` and `/feed.xml` (XMLTV) of the channels recording now (Settings → Sharing, and a setup step).
+- *Added* — **Tuner firmware updates in the menu:** a row for tuners that have one waiting, opening the tuner's page, with SiliconDust's release notes (this tuner's model in bold) in a submenu.
+- *Updated* — **Series scheduling uses SiliconDust's `api/episodes` and `?tuning`** for upcoming airings and for tuning without a scan; a guide refresh no longer waits on them, and any failure falls back to the guide.
+- *Updated* — **Tests no longer put a real "guide is unavailable" prompt on screen.**
+
 - *Updated* — **The over-the-air scan no longer starts by itself on a new install.** It used to open its window on the first launch and run behind the welcome wizard. The wizard now ends with a question, "Scan the air for channels?" (No is the default). Only a Yes turns on the daily channel-list scan; the choice is saved and can be changed in Settings → Over the Air → "Scan for channels automatically". The Scan buttons still work by hand. Installs that already have a saved setup keep their daily scan.
 
 - **Guide tab:** the JSON | XMLTV | OTA picker and cards are one comparison table; click a column to choose it. Rows: load time, timeline, window, genres, network name, series IDs, needs.
