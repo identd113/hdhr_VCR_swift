@@ -135,7 +135,7 @@ pull program data all live here.
 
 ### Notifications
 
-- **macOS alerts** — "Up Next" and "Recording Soon" before each show
+- **macOS alerts** — "Up Next" before each show, and "Recording Started" when it begins
 - **Discord webhooks** — rich embeds for recording started, completed (with file size), failed, paused, conflict, and more. Per-event toggles, with a live Test button for the webhook in Settings — no waiting for a real recording
 
 ### Remote access
@@ -295,7 +295,7 @@ The lit states blink on a 6-second cycle if "Blink menu bar icon" is enabled in 
 | **General** | Launch at Login |
 | **Recording** | Save folder; transcode profile; min free disk; failure threshold |
 | **Guide** | Guide format (JSON, XMLTV, or the air), auto-refresh interval |
-| **Notifications** | Up Next / Recording Soon timing; Discord webhook + per-event toggles |
+| **Notifications** | Up Next timing; Discord webhook + per-event toggles |
 | **Advanced** | Idle interval; verbose curl logging |
 | **Web Server** | Enable/disable; port; live status and access URL |
 | **Maintenance** | Rescan Series; Reset Fail Counts; Reactivate Paused; Refresh Guide; Rediscover Devices |

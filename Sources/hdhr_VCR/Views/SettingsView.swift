@@ -263,8 +263,8 @@ struct SettingsView: View {
         case .overTheAir:    return ["OTA_enabled", "OTA_scan_enabled", "OTA_lineup_hour"]
         case .notifications: return ["Discord_enabled", "Discord_webhook_url", "Notify_upnext", "Discord_on_start", "Discord_on_complete",
                                      "Discord_on_failed", "Discord_on_paused", "Discord_on_skipped", "Discord_on_duplicate", "Discord_on_conflict",
-                                     "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_soon", "Discord_on_show_added"]
-        case .advanced:      return ["Notify_recording", "Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled"]
+                                     "Discord_on_guide_error", "Discord_on_upnext", "Discord_on_show_added"]
+        case .advanced:      return ["Check_for_updates", "Dock_icon_mode", "Network_interface", "Signal_quality_alert_notify", "Signal_quality_enabled"]
         case .sharing:       return ["Home_assistant_status_enabled", "Other_apps_feed_enabled", "Terminal_guide_enabled", "Virtual_tuner_relay_default_transcode", "Virtual_tuner_relay_enabled",
                                      "Web_server_enabled", "Web_server_port", "Web_streaming_enabled"]
         default:             return nil
@@ -858,8 +858,8 @@ struct SettingsView: View {
                                 "Recording started, completed, failed, or paused.",
                                 fields: [\.Discord_on_start, \.Discord_on_complete, \.Discord_on_failed, \.Discord_on_paused])
                     groupToggle("Reminders",
-                                "Up Next and Recording Soon heads-up notifications.",
-                                fields: [\.Discord_on_upnext, \.Discord_on_soon])
+                                "The Up Next heads-up notification.",
+                                fields: [\.Discord_on_upnext])
                     groupToggle("Problems",
                                 "Skipped (disk full), skipped (already recorded or not a new episode), tuner conflict, and guide load failures.",
                                 fields: [\.Discord_on_skipped, \.Discord_on_duplicate, \.Discord_on_conflict, \.Discord_on_guide_error])
@@ -888,16 +888,6 @@ struct SettingsView: View {
 
     private var advancedView: some View {
         Form {
-            Section("Reminder timing") {
-                Stepper(value: Binding(get: { Int(draft.Notify_recording) }, set: { draft.Notify_recording = Double($0) }), in: 1...60) {
-                    HStack { Text("Recording alert: \(Int(draft.Notify_recording)) min before"); InfoButton("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.") }
-                }
-                if draft.Notify_recording >= draft.Notify_upnext {
-                    Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
                     Text("Auto").tag("")

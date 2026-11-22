@@ -563,7 +563,7 @@ extension Show: Codable {
 
 struct AppConfig: Equatable {
     // Notifications
-    var Notify_recording: Double = 15.5     // minutes before recording alert
+    var Notify_recording: Double = 15.5     // unused since 2026-11-22 (the "Recording Soon" notice is gone; "Recording Started" fires when it begins); kept so old configs decode
     var Notify_upnext: Double    = 35.0     // minutes before show airs
 
     // Guide
@@ -631,7 +631,7 @@ struct AppConfig: Equatable {
     var Discord_on_conflict: Bool    = true    // Tuner Conflict
     var Discord_on_guide_error: Bool = true    // Guide Load Failed
     var Discord_on_upnext:    Bool   = false   // Up Next reminder
-    var Discord_on_soon:      Bool   = false   // Recording Soon reminder
+    var Discord_on_soon:      Bool   = false   // unused (Recording Soon notice removed 2026-11-22); kept so old configs decode
     var Discord_on_show_added: Bool  = false   // Show Added
     var Discord_enabled:      Bool   = false   // Master enable/disable toggle
 

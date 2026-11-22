@@ -43,7 +43,7 @@
 
 ```
 Notify_upnext           Double  35.0    minutes before show to send "Up Next" notification
-Notify_recording        Double  15.5    minutes before recording to send "Recording Soon" notification
+Notify_recording        Double  15.5    unused since 2026-11-22 (Recording Soon notice removed; Recording Started fires at the start)
 GuideHours              (constant 28, not stored since 2026-10-24; an old config's value is ignored) hours of guide to fetch ahead — window size, and also the base that Guide_refresh_interval_divisor divides to derive refresh cadence (see below); clamped to 1...28 (Settings Stepper range, and min(28,...) on decode of an old saved value) — GuideStore.load() makes a single API call and the cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless of what's requested (docs/HDHRFindings.md)
 Guide_use_xml           Bool    false   use XMLTV endpoint instead of JSON; triggers guide refresh on toggle; devices without DeviceAuth fall back to JSON
 OTA_scan_enabled       Bool    false   (added 2026-11-15) master switch for the scheduled daily channel-list scan; asked on the last first-run wizard step, Settings → Over the Air. A config saved before the key existed decodes as true when First_run_wizard_shown is true (existing installs keep the scan), false otherwise. Manual scans ignore it
@@ -78,7 +78,7 @@ Discord_on_duplicate    Bool    true    embed when recording skipped (episode al
 Discord_on_conflict     Bool    true    embed on tuner conflict
 Discord_on_guide_error  Bool    true    embed on guide load failure
 Discord_on_upnext       Bool    false   embed for Up Next reminder
-Discord_on_soon         Bool    false   embed for Recording Soon reminder
+Discord_on_soon         Bool    false   unused since 2026-11-22
 Discord_on_show_added   Bool    false   embed when show is added
 Web_server_enabled      Bool    false   enable NWListener LAN web server (Settings → Sharing → Enable Web LAN)
 Web_server_port         Int     1980    TCP port for the web server (1025–65534; macOS requires root for <1024)

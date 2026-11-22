@@ -202,8 +202,7 @@ resolved (CC confirmed working 2026-09-13), but audio track switching on the wat
 an open, unconfirmed question — see `ISSUES.md`. See "Steps" below for the config-commit details.
 
 ### Step 7 — Notification Timing
-Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
-the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
+Up Next lead-time minutes, the same `Stepper` as `SettingsView`'s Notifications tab (the "Recording Soon" stepper and its warning were removed 2026-11-22).
 
 **Return key**: Next and Finish carry `.keyboardShortcut(.defaultAction)`, so Return advances (Escape still closes the wizard without a confirmation).
 
@@ -369,8 +368,8 @@ the surrounding prose doesn't already say in words — a screen reader user isn'
 skipping it.
 
 ### Step 7 — Notification Timing
-Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
-`state.config.Notify_upnext` / `.Notify_recording` on Finish.
+Binds to local `@State` (`upNextMinutes`). Committed to
+`state.config.Notify_upnext` on Finish.
 
 ## Slide transition mechanism
 

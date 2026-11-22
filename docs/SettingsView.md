@@ -216,8 +216,7 @@ The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General
 ### Notifications
 
 - **Up Next** — `Stepper` (5–120 min, step 5). Minutes before air to send the "Up Next" notification. Stored as `Double` (`Notify_upnext`) but displayed as `Int`.
-- **Recording alert** — `Stepper` (1–60 min). Minutes before recording starts to send the "Recording Soon" notification. Stored as `Double` (`Notify_recording`).
-- **Timing overlap warning** — orange `Label` shown when `Notify_recording >= Notify_upnext`; the Up Next notification won't fire before the Recording Soon one at those settings.
+- **Recording alert** — removed 2026-11-22: there is no pre-recording "Recording Soon" notice any more; "Recording Started" fires when the recording begins (`Notify_recording` stays in the config only so old files decode).
 
 #### Discord Webhook
 
@@ -225,7 +224,7 @@ The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General
 - **Test button** — a single `.bordered` `"Test"` button next to the URL field; replaced by `ProgressView(.small)` while testing. Calls `state.checkWebhookURL(draft.Discord_webhook_url)` (sends a real ping to Discord). Disabled when the URL is blank.
 - **`Section("Notify when…")`** — shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. Condensed (2026-07-23) from 12 flat per-event toggles into 4 grouped ones via a `groupToggle(_:_:fields:)` helper — each Toggle's `isOn` reflects whether *every* field in its group is on, and flipping it sets every field in the group to that new value together. The underlying `Discord_on_*` fields are unchanged and still checked independently by `fireDiscordCard`/`discordShow` call sites — this only reduces how many controls Settings shows, not the granularity of what's stored. Groups:
   - **Lifecycle events** — `Discord_on_start`, `Discord_on_complete`, `Discord_on_failed`, `Discord_on_paused`
-  - **Reminders** — `Discord_on_upnext`, `Discord_on_soon`
+  - **Reminders** — `Discord_on_upnext`
   - **Problems** — `Discord_on_skipped` (disk full), `Discord_on_duplicate` (already recorded), `Discord_on_conflict`, `Discord_on_guide_error`
   - **Other** — `Discord_on_show_added`
 

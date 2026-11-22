@@ -3209,17 +3209,6 @@ final class AppState: ObservableObject {
                 dirty = true
             }
 
-            // "Recording About to Start" notification — fires once at Notify_recording minutes before
-            let recNotifyDue = (show.notify_recording_time ?? .distantPast) <= now
-            if !show.show_recording, recNotifyDue, minutesAway > 0, minutesAway <= config.Notify_recording {
-                notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)",
-                       categoryIdentifier: "recording.soon", userInfo: ["show_id": show.show_id])
-                discordShow("⏱ Recording Soon", show: show, color: 0x9B59B6, enabled: config.Discord_on_soon,
-                            extra: [("Starts In", "\(Int(minutesAway)) min", true)])
-                shows[i].notify_recording_time = now.addingTimeInterval(config.Notify_recording * 60)
-                dirty = true
-            }
-
             // Show window is open and we're not recording — warn once per window if we're past
             // the start time with no obvious reason (not tuner-full, not paused, not handled above).
             // Fires once per "showId-epoch" key so retrying shows don't spam the log every tick.
@@ -3751,8 +3740,6 @@ final class AppState: ObservableObject {
         webServer.broadcastRecordingEvent(type: "recording_started", channel: shows[index].show_channel, device: shows[index].hdhr_record, state: self)
         updateVirtualTunerPresence()
         refreshTunerOccupancy()
-        // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
-        shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
         // Save immediately so show_recording_path is on disk before any signal can kill the app.
         // The idle loop also saves at the end of the tick, but this closes the SIGKILL window.
         saveConfig()

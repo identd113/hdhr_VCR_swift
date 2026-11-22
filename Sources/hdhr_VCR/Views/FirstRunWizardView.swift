@@ -49,7 +49,6 @@ struct FirstRunWizardView: View {
     @State private var failThreshold: Int = 3
     @State private var timeMachineExcludeMode: String = "off"
     @State private var upNextMinutes: Double = 35.0
-    @State private var recordingSoonMinutes: Double = 15.5
 
     // VLC-requirement step (added 2026-09-12, alongside removing the external "Open in VLC"
     // feature) — no config to persist here, purely a live install-status check + install helper,
@@ -686,7 +685,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Notification Timing").font(.headline)
-                    Text("How much of a heads-up you get before a show is about to record. You can change this later in Settings → Notifications.")
+                    Text("How early you hear that a show is coming up. You are told again when it starts recording. You can change this later in Settings → Notifications.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -695,14 +694,6 @@ struct FirstRunWizardView: View {
             Section {
                 Stepper(value: Binding(get: { Int(upNextMinutes) }, set: { upNextMinutes = Double($0) }), in: 5...120, step: 5) {
                     HStack { Text("Up Next: \(Int(upNextMinutes)) min before"); InfoButton("Early heads-up notification sent this many minutes before a show's scheduled start time.") }
-                }
-                Stepper(value: Binding(get: { Int(recordingSoonMinutes) }, set: { recordingSoonMinutes = Double($0) }), in: 1...60) {
-                    HStack { Text("Recording alert: \(Int(recordingSoonMinutes)) min before"); InfoButton("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.") }
-                }
-                if recordingSoonMinutes >= upNextMinutes {
-                    Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
             }
         }
@@ -856,7 +847,6 @@ struct FirstRunWizardView: View {
         failThreshold         = state.config.Fail_count_setting
         timeMachineExcludeMode = state.config.TimeMachine_exclude_mode
         upNextMinutes         = state.config.Notify_upnext
-        recordingSoonMinutes  = state.config.Notify_recording
         saveFolder            = UserDefaults.standard.string(forKey: "defaultSaveDirectory")
             ?? (state.config.Hdhr_setup_folder.isEmpty ? "" : state.config.Hdhr_setup_folder)
     }
@@ -870,7 +860,6 @@ struct FirstRunWizardView: View {
         state.config.Fail_count_setting     = failThreshold
         state.config.TimeMachine_exclude_mode = timeMachineExcludeMode
         state.config.Notify_upnext          = upNextMinutes
-        state.config.Notify_recording       = recordingSoonMinutes
         let webServerChanged = sharingEnabled != state.config.Web_server_enabled
         state.config.Web_server_enabled     = sharingEnabled
         // The terminal client rides on the Web LAN server, so it is only saved on when Web LAN is on too.
