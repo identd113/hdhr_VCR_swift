@@ -457,6 +457,12 @@ extension LaunchSplashView {
     /// card): the wall fades and a ring pulses at the menu-bar icon — "set up, and living up here".
     @MainActor fileprivate func runCards(wizardDue: Bool, in size: CGSize) async {
         state.launchSplashHandsOffToWizard = false     // decided — the app's fallback timer (openLaunchSplashIfNeeded) stands down
+        // The window-capture callback (`WindowAction`) can miss; without the window the card is drawn but never takes input
+        // (clicks do nothing), so fall back to the one the controller created.
+        if window == nil, let w = LaunchSplashController.shared.window {
+            window = w
+            glog("[Splash] view had no window; using the controller's", level: .warning)
+        }
         glog("[Splash] runCards wizardDue=\(wizardDue) window=\(window == nil ? "nil" : "set")")
         cardsActive = true
         frozen = true                                   // the wall stops animating while a card is open
@@ -628,7 +634,7 @@ private final class SplashWindow: NSWindow {
 @MainActor
 final class LaunchSplashController {
     static let shared = LaunchSplashController()
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     var isPlaying: Bool { window != nil }
     private var awaitingRelocationDecision = false
     /// True once the splash's busy animation is over (a card is up and the wall is frozen) or the splash is gone — the point
