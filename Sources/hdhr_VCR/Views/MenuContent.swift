@@ -872,14 +872,14 @@ private struct MenuPosterImage: View {
 }
 
 
-/// "Over-the-Air Scan…" while a scan runs, so a window that was hidden can be looked at again; after it, "Last Over-the-Air Scan…"
-/// (while this run still holds its results) so what it found can be read once the window has closed itself.
+/// "Over-the-Air Scan…" only while a scan runs, so a window that was hidden can be looked at again. The last result is reached from
+/// Settings → Over the Air → "Show Last Scan Result…".
 private struct OTAScanMenuItem: View {
     @ObservedObject var progress: OTAScanProgress
     let show: () -> Void
     var body: some View {
-        if progress.running || !progress.rows.isEmpty {
-            Button(action: show) { Label(progress.running ? "Over-the-Air Scan…" : "Last Over-the-Air Scan…", systemImage: "antenna.radiowaves.left.and.right") }
+        if progress.running {
+            Button(action: show) { Label("Over-the-Air Scan…", systemImage: "antenna.radiowaves.left.and.right") }
                 .accessibilityIdentifier("menu.otaScan")
         }
     }

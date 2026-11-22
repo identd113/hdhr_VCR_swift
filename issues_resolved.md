@@ -12,7 +12,7 @@ Invariants review (`invariants-reviewer`, v2.6.5..HEAD) found no violations of t
 
 - **Menu tuner count left out browser live TV** (`MenuContent.deviceRow`, invariant "Tuner occupancy"). Its own `appCount` summed recordings + the two VLC slots but not `webLiveSessions`, which `AppState.activeTunerCount(for:)` adds, so the "n/slots" headline could under-report until the next `status.json` poll. It now adds the web term.
 
-Other fixes from the same pass: the splash cards ignored clicks when the view never captured its window (`1b1a66b`); tests no longer put the "guide is unavailable" prompt (fixture tuner `FFFFFFFF`) on the real screen (`da0d2c9`); the "Recording Soon" pre-notice was removed (`ec2021e`); docs for it and for the "Last Over-the-Air Scan…" menu item brought in line (`8f33298`).
+Other fixes from the same pass: the splash cards ignored clicks when the view never captured its window (`1b1a66b`); tests no longer put the "guide is unavailable" prompt (fixture tuner `FFFFFFFF`) on the real screen (`da0d2c9`); the "Recording Soon" pre-notice was removed (`ec2021e`); docs for it brought in line (the scan menu item is now running-only; the last result is in Settings → Over the Air) (`8f33298`).
 
 ---
 

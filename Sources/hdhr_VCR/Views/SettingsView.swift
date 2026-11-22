@@ -612,7 +612,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                AirLastScanLines(progress: state.otaProgress, showGuide: draft.OTA_enabled)
+                AirLastScanLines(progress: state.otaProgress, showGuide: draft.OTA_enabled, showOpenButton: true)
                 if state.otaScanTask != nil {
                     Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
                         .font(.caption)

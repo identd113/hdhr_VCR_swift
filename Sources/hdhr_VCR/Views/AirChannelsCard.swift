@@ -8,12 +8,23 @@ struct AirLastScanLines: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var progress: OTAScanProgress
     var showGuide = true
+    /// Settings → Over the Air: a button that reopens the scan window on the saved result (the menu bar only offers the window while a scan runs).
+    var showOpenButton = false
+    @Environment(\.openWindow) private var openWindow
     @State private var dates: (lineup: Date?, guide: Date?) = (nil, nil)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             line("Channel list", dates.lineup, id: "ota-last-lineup")
             if showGuide { line("Guide", dates.guide, id: "ota-last-guide") }
+            if showOpenButton, !progress.running, dates.lineup != nil || dates.guide != nil {
+                Button("Show Last Scan Result…") {
+                    state.otaWindowActivates = true
+                    openWindow(id: "ota-scan")
+                }
+                .accessibilityIdentifier("settings-ota-show-last")
+                .padding(.top, 4)
+            }
         }
         .font(.caption).foregroundStyle(.secondary)
         .onAppear(perform: reload)

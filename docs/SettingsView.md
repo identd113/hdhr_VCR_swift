@@ -282,7 +282,7 @@ Native Settings only. The web guide can read the air data but has no way to star
 
 The controls in this tab:
 
-`AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count); then:
+`AirLastScanLines` — "Channel list: …" (`ota-last-lineup`) and "Guide: …" (`ota-last-guide`), each "last scanned <date>", "never scanned" or "scanning now…" (a cancelled scan does not count), and below them **Show Last Scan Result…** (`settings-ota-show-last`; shown when a scan has finished and none is running; reopens the Over-the-Air Scan window on the saved result); then:
 - Caption text, then: while scanning, a `Label` (`dot.radiowaves.left.and.right`) with `state.otaScanStatus` and a red **Cancel Scan** button (`settings-ota-cancel`); at rest the last status line (if any) and **Scan the Air Now** (`settings-ota-scan`, disabled with no recordable device). Calls `state.startOTAScan()` / `cancelOTAScan()`.
 
 ---
