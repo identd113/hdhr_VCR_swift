@@ -8,7 +8,7 @@ frame with no material/corner treatment at all: it looked like an undressed Sett
 floating with hard square corners, not a "floating panel" despite the doc's original claim. It now
 actually shares `DonationNagView`'s exact chrome, not just the same *intent*: `.background(.thickMaterial)`,
 `.clipShape(RoundedRectangle(cornerRadius: 20))`, a faint white `.strokeBorder` overlay, and the
-same drop shadow (`.shadow(color: .black.opacity(0.4), radius: 28, y: 14)`) — hidden title bar
+and no drop shadow (removed 2026-11-15) — hidden title bar
 (traffic lights only, no title text), same as before.
 
 **Redesigned again 2026-08-28** (same day, second pass) — replaced the plain network-status row
@@ -237,10 +237,10 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming, airScanning }
+enum Step: Int, CaseIterable { case recordingDefaults, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming, airChannels }
 ```
 
-**Last step, `.airScanning` (added 2026-11-15):** "Scan the air for channels?" with a radio group (`wizard-air-scan-enabled`): "No, do not scan by itself" (default on a new install) or "Yes, scan once a day". It is the wizard's final step, so **Finish** (`wizard-finish`) now sits here and Next is on Notification Timing. Saved on Finish as `OTA_scan_enabled` (a Yes with Never picked on the Channels from the Air step saves the default hour 3). Nothing scans by itself until this is answered Yes; the scan button on the Channels from the Air step is still a manual scan. Changeable later in Settings → Over the Air.
+**Last step, `.airChannels` (moved to the end and merged with the old `.airScanning` question 2026-11-15):** the "Channels from the Air" screen now carries the scan-now card, the radio group "Scan the air automatically" (`wizard-air-scan-enabled`: No / Yes, once a day) and, indented and dimmed while No, the hour picker (`wizard-air-schedule`). Yes mixes stations SiliconDust lacks into the lineup; the air guide is read only if SiliconDust's cannot be loaded. The separate `.airScanning` step is gone. Saved on Finish; nothing scans until answered. (Earlier text: **Last step, `.airScanning` (added 2026-11-15):** "Scan the air for channels?" with a radio group (`wizard-air-scan-enabled`): "No, do not scan by itself" (default on a new install) or "Yes, scan once a day". It is the wizard's final step, so **Finish** (`wizard-finish`) now sits here and Next is on Notification Timing. Saved on Finish as `OTA_scan_enabled` (a Yes with Never picked on the Channels from the Air step saves the default hour 3). Nothing scans by itself until this is answered Yes; the scan button on the Channels from the Air step is still a manual scan. Changeable later in Settings → Over the Air.
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
 property (not a static array), so it can conditionally drop `.recordingRelay` when
@@ -469,7 +469,7 @@ fresh values, not stale ones.
       live (would need a second physical/virtual HDHomeRun on the test network).
 
 
-## Step "Channels from the Air" (added 2026-10-21, right after Recording Defaults)
+## Step "Channels from the Air" (added 2026-10-21; since 2026-11-15 the last step)
 `Step.airChannels` (`airChannelsScreen`, title "Channels from the Air"): a short explanation (a cheap backup channel list read from what stations broadcast; about
 **2026-10-24:** the step needs no permission switch: it is only the channel scan. A caption points to Settings → Over the Air for using the air for guide data (a separate choice).
 three minutes; idle tuners only and it steps aside for a recording or a viewer; the air guide is only ever used if no other guide is available; it refreshes itself
@@ -480,3 +480,6 @@ OTA scan *without opening the scan window* (`startOTAScan(lineupOnly:, showWindo
 card says so (`wizard-air-no-tuner`). Below the button (and under the found/none result) a caption line `AirLastScanLines` says "Channel list: last scanned Oct 21, 7:42 PM", "never scanned" or "scanning now…" (`ota-last-lineup`). Below the card, one **Rescan the channel list** picker (`wizard-air-schedule`: Never / Daily at HH:00, default 03:00) sets `OTA_lineup_hour` on Finish; whether the scan runs by itself at all is asked on the last step (`OTA_scan_enabled`). Only the channel list is scheduled; the guide from the air is scanned only after a guide failure (prompt, Discord message, automatic start after an hour — docs/OTAGuide.md), and a full scan always reads the channel list first, then the guide. Entirely optional and non-blocking: Next works at any time, the scan keeps running in the background, and nothing is saved by Finish.
 `AppState.startScheduledOTALineupRefreshIfDue` runs the same scan daily at the chosen hour, but only when `OTA_scan_enabled` is on (answered on the last step); it no longer starts on a fresh launch.
 (The step dots and "Step N of M" labels derive from `orderedSteps`. Step order: 1 Recording Defaults, 2 Channels from the Air, 3 VLC, 4 Web LAN, 5 Terminal Guide, 6 Recording FEED (only while `FEED_feature_enabled`), 7 Notification Timing; the numbered sections above were renumbered to match.)
+
+## Finish: offer a first scan (2026-11-15)
+The inline scan card (`AirChannelsCard`) is gone from the last step. When "Yes, scan once a day" is chosen and a tuner is known, Finish saves, then shows a non-blocking `Dialogs.show` sheet: "Scan for channels now?" (about three minutes, background, idle tuners only, steps aside for recordings and viewers; otherwise the first scan runs at the picked hour). Scan Now calls `startOTAScan(lineupOnly: true, userInitiated: false, showWindow: false)`; either button then runs the finish flourish and closes the wizard. No sheet when the answer is No or no tuner is present.

@@ -607,6 +607,11 @@ struct SettingsView: View {
                 Text("Every TV channel is tuned in turn; the channel list takes a few minutes. It uses idle tuners only and steps aside for a recording or a viewer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if draft.OTA_scan_enabled && !draft.OTA_enabled {
+                    Text("Stations SiliconDust lacks are mixed into your channels. If SiliconDust's guide cannot be loaded at all, the guide is read from the air until it is back.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 AirLastScanLines(progress: state.otaProgress, showGuide: draft.OTA_enabled)
                 if state.otaScanTask != nil {
                     Label(state.otaScanStatus, systemImage: "dot.radiowaves.left.and.right")
@@ -628,8 +633,10 @@ struct SettingsView: View {
                 }
             }
             if !draft.OTA_always_use || !draft.OTA_enabled { missingFromSiliconDustSection }
-            // Everything below needs the person's permission: it uses the tuners for much longer and can change which guide is used.
-            Section("Guide data from the air") {
+            // The air's guide is a fallback, not a setting: with the scan switch on, it is read only while SiliconDust's guide cannot be loaded
+            // (AppState.offerAirGuideFallback). The permission below stays only for a config that already turned it on (it still has a source mode and
+            // a gap-fill running); nobody else is shown it.
+            if draft.OTA_enabled { Section("Guide data from the air") {
                 Toggle(isOn: Binding(get: { draft.OTA_enabled }, set: { draft.OTA_enabled = $0; if !$0 { draft.OTA_always_use = false } })) {
                     HStack {
                         Text("Use the air for guide data")
@@ -656,7 +663,7 @@ struct SettingsView: View {
                     Text("Off. Only the channel scan above runs; if SiliconDust's guide cannot be loaded at all, the app still asks first.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }
+            } }
         }
         .formStyle(.grouped)
         .navigationTitle("Over the Air")

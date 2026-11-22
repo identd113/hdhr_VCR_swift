@@ -4,6 +4,21 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## Where things stand (rescoped 2026-11-21)
+
+Finished items (struck-through headings, "resolved", "done") were removed in this pass; they are in git history (`git log -- TODO.md`) and `issues_resolved.md`. The sections below are grouped by what they need next.
+
+| Needs | Sections |
+|---|---|
+| **A decision from you first** | Dock icon flash workaround (remove?) · No "Record Now" shortcut · No reminder-only shows · No watched/resume tracking · LCARS theme (~2–2.5 days) |
+| **Verify on real hardware** | Chromecast casting + AirPlay (built 2026-09-20, never live-tested) · yield-to-record tuner release · OTA recording through `RecordingManager` (see `ISSUES.md`) |
+| **Ready to build (small–medium)** | DVB tuners: gate the air features · Series scheduling open items (11-07 review) · Test: launch with no cached show icons · Keyboard-shortcuts help for the other windows · Terminal Guide · Web streaming: audio-only sources · OTA: refresh a multiplex from a held tuner · stop()-not-releasePlayer() generalisation |
+| **Big / future** | Mac App Store sandbox rewrite + first-run flow (MAS track) · Swift 6 strict-concurrency migration · Own Bonjour label instead of a fake HDHomeRun · Whole-multiplex capture (future milestone) · FEED as M3U+XMLTV · FEED scrub for the PiP secondary · FEED minimal local lineup · Raw FEED `/auto/v<ch>` stream sharing · Virtual tuner transcode polish |
+| **Code quality / tests** | `broadcastGuideChangeEvent` structural option · RecordingManager / HDHRManager test coverage (HDHRManager still has a gap) · AppState scheduling-engine coverage |
+| **Accepted (not our bug)** | Local Network permission block · FEED transcode drops closed captions |
+
+---
+
 ## Backlog: advertise on the network with our own Bonjour label instead of a fake HDHomeRun (2026-11-15)
 Idea only; not scheduled, release first. Today the recording relay presents as an HDHomeRun (UDP discovery on 65001 + `/discover.json`) so another copy of this app finds it. No real Bonjour is used anywhere (the "mDNS" in the code fetches `hdhomerun.local`). The fake tuner shows up in other HDHomeRun clients (SiliconDust's app, Plex) as a tuner they cannot use ("No guide access"), and `isVirtualRelay` guards sit in about 50 places.
 - Advertise `_hdhrvcrplus._tcp` (TXT: host, port, version); browse with `NWBrowser`; stream from `/auto/v<ch>` as now. Needs `NSBonjourServices` in `Info.plist`; same Local Network permission.
@@ -14,12 +29,6 @@ Idea only; not scheduled, release first. Today the recording relay presents as a
 ## DVB (European) tuners: gate the air features and say so
 
 Only ATSC tuners (US/Canada) have been tested; the README now says European/DVB tuners may not work. Still to do: (1) offer the Over the Air tab only on ATSC tuners (the EXTEND reports firmware `hdhomeruntc_atsc`; find out what DVB models report) so a DVB user is not given a scan that finds nothing; (2) find out whether the guide works for them and what a no-guide setup should look like (XMLTV?); (3) a DVB scanner is a separate piece of work — the NIT lists the other multiplexes, so it would need far fewer tries than the ATSC sweep.
-
----
-
-## ~~Series scheduling: an empty `api/episodes` answer is normal, not a fall-back~~ — done 2026-11-07
-
-An empty (`null`) answer now counts as a use and logs `[INFO]` (no fall-back); the series is remembered in `AppState.episodeNothingUpcoming` and parked 24 h past the guide data (`EpisodeSchedule.parkPad`, `seriesParkedTime(deviceId:seriesID:)`) instead of 1 h, logged `[INFO]`. The 3 h refresh is unchanged. Tests in `EpisodeScheduleTests`; docs in `AppState.md` and `HDHRFindings.md`. The 24 h pad is the proposed value and not yet confirmed by the owner.
 
 ---
 
@@ -69,18 +78,6 @@ If ever picked up, two directions were floated, neither started, no clear winner
 
 ## Menu Bar
 
-### ~~FEED-available status light shows even when no one is actually watching~~ — done 2026-09-29
-
-Added 2026-09-06: the menu bar blue light (`AppState.hasAvailableRemoteFeed`/`.feedAvailable` in `statusLightCandidates`) lit up whenever *any* remote hdhrVCRplus instance's Recording FEED relay was discovered with a show attached — regardless of whether anyone was actually watching it from this Mac or anywhere else. Flagged live 2026-09-06, deferred: arguably this status should only matter (and only light up) once a real viewer is connected to that relay, not just because it exists and *could* be watched — otherwise it's less "something needs your attention" and more "a relay happens to be up," which is a much weaker signal.
-
-**Unblocked 2026-09-13** by publishing a per-show raw-passthrough viewer count (`AppState.relayRawViewerCounts` → `HdhrVCRplusRawViewers` in `/lineup.json`, sibling of the existing `HdhrVCRplusTranscodeViewers`) alongside viewer-count-triggered UDP announces — see `docs/VirtualTunerService.md`'s "Viewer-count-triggered announces" section.
-
-**Resolved 2026-09-29**: `hasAvailableRemoteFeed` now requires a real viewer — `(virtualRelayTranscodeViewers ?? 0) + (virtualRelayRawViewers ?? 0) > 0` — on top of the existing `virtualRelayShowTitle != nil`/`isAvailable` checks, going with the "someone is actually watching" framing over the "am I currently watching this" alternative the original entry also floated. `remoteRelayEntries` (`MenuContent`'s "Recording on Another Mac" list) deliberately keeps its looser "relay exists" check — that section answers "what could I watch," a different question from the status light's "does this need my attention." The `.feedAvailable` accessibility label was updated to match ("...is being watched" instead of "...is available to watch"). Two new regression tests in `AppStateStatusLightTests.swift` cover the gate directly (a relay with zero viewers doesn't light up; a transcode-only viewer counts same as a raw one) — `LineupEntry.test(...)` gained `rawViewers`/`transcodeViewers` params to support them.
-
-**Key files**: `AppState.swift` (`hasAvailableRemoteFeed`), `hdhr_VCRApp.swift` (`.feedAvailable` case in `statusLabel`), `Tests/hdhr_VCRTests/AppState/AppStateStatusLightTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
-
----
-
 ### Dock icon flash workaround — user doesn't recall why it's needed, considering removal
 
 Raised 2026-09-09: the user no longer remembers the specific reason this was added and wants to consider removing it. Context for when this comes back up — see "Accepted — not our bug / not scheduled" section above ("macOS Local Network permission block") for the full original writeup: `hdhr_VCRApp.swift`'s `init()` briefly sets `NSApplication.shared.setActivationPolicy(.regular)` (showing a Dock icon) at launch in `"auto"` Dock-icon mode, until `AppState.confirmLocalNetworkAccessIfNeeded()` flips it back to `.accessory` once a real guide/lineup fetch succeeds — a mitigation for a confirmed, Apple-acknowledged macOS bug where a fully backgrounded (`LSUIElement`) menu-bar app can silently never receive the system's Local Network permission prompt at all, with no self-recovery path.
@@ -116,22 +113,6 @@ Two explicitly deferred follow-ons from that same discussion:
   `libvlc_media_player_pause`), and "pause" doesn't map cleanly onto a wall-clock-
   estimated relay position (`recordingPlaybackSeconds`) the way it would onto a real
   local-file seek. Would need a real design pass, not a one-line key binding.
-
-### ~~Watch two live streams at once (Watch Now and/or FEED), picture-in-picture~~ — done 2026-09-17
-
-Live user request, 2026-09-14, scoped down through discussion to: keep the single
-reusable player window/`VLCBridge` singleton, but let it drive a second, deliberately
-minimal concurrent stream as a small muted picture-in-picture corner thumbnail, with
-tap-to-swap for which stream is "front" (full controls + audio). Implemented per the
-design/key-files plan this entry used to hold — see `docs/VLCPlayerView.md`'s
-"Picture-in-picture" and "AppState.watchAsSecondary" sections for the shipped design,
-and `CHANGELOG.md`'s Unreleased section for the user-facing summary. Not yet live-tested
-against real hardware (built and manually verified only via `swift build` in this
-session) — worth a real two-tuner-device pass (live+live, live+FEED, live+WatchNow,
-swap in both directions, tuner-occupancy accounting) before considering this fully
-closed out.
-
----
 
 ### Chromecast casting + AirPlay discoverability — built 2026-09-20, not yet live-tested against real hardware
 
@@ -194,18 +175,6 @@ That fix is currently scoped to just this one flow. Any *other* place in the app
 
 ---
 
-### ~~Watch Now should show whether the video is currently reading from the network or from disk~~ — done 2026-09-11
-
-Requested and shipped same day: the Native-resolution toolbar button's icon color and its hover popover's top row both now show live-network-vs-disk-relay source (`VLCPlayerView.swift`'s `nativeIconSourceColor`, keyed off `bridge.recordingShowId`). See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
-
----
-
-### ~~Show buffer information next to Local Recording / network device listings~~ — done 2026-09-12
-
-Requested and shipped same day: turned out to mean the existing "Local recording (disk)" / "Live network stream" indicator in the native-resolution button's hover popover (`VLCPlayerView.swift`'s `nativeResPopover`, see the item right above this one) — not the menu bar or web guide device lists. Added an "On disk" row showing the recording file's current size (`VLCPlayerView.recordingSizeText`, a plain `FileManager.attributesOfItem` stat), shown only for the disk-relay case. Deliberately a one-shot snapshot recomputed each time the popover reopens, not tracked on a timer like the separate "Live Buffer" pill's `lagSec` — matching the explicit request that this not need continuous updates. See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
-
----
-
 ## Recording
 
 ### No reminder-only shows (notify without recording)
@@ -233,14 +202,6 @@ Flagged 2026-09-08, originally framed around the live-edge cushion added the sam
 
 ---
 
-### ~~Other instances' "Recording on Another Mac" menu should update promptly once a FEED session naturally winds down~~ — done 2026-09-12
-
-Flagged 2026-09-08. A partial mechanism already existed (`VirtualTunerService.stop()`, added 2026-09-06, `3e45b82`) — one last `broadcastAnnounce()` before clearing state, nudging a listening instance's `onFeedAnnounce` into an immediate `probeForNewDevices()` call instead of waiting for the next ~10s idle-loop tick. Missed on first pass writing this entry (corrected same day after checking for prior art properly): that alone only sped up *when* the next probe ran, not the **3 consecutive missed probes** (`AppState.swift`'s `missedProbes`/`missed == 3`) `probeForNewDevices()` still required before actually marking the device unavailable — so the real-world result was "menu updates ~2 idle-loop cycles sooner," not instant removal.
-
-**Actual fix, 2026-09-12**: `broadcastAnnounce(goodbye:)` — `stop()`'s final call passes `goodbye: true`, which sends `tunerCount: 0`. `AppState`'s `onFeedAnnounce` closure pre-sets that device's `missedProbes` to `max(current, 2)` when this fires, *before* calling `probeForNewDevices()` — so that very probe (which legitimately won't find a relay that just announced its own stop) hits the existing `missed == 3` branch and marks it unavailable on the same cycle, not ~2 ticks later. `max(...)` rather than a flat assignment so this can never lower an already-higher count from real prior misses. (Originally implemented via a non-standard `0xF0` TLV and a `Bool` on `onFeedAnnounce` — simplified 2026-09-13 to just checking the announced `TunerCount == 0` directly, since a live relay never legitimately advertises a zero count otherwise; see `issues_resolved.md`.) See `docs/VirtualTunerService.md`'s "Unsolicited FEED announces"/"Wire protocol" sections for the full writeup; unit tests in `VirtualTunerServiceTests.swift` cover the `TunerCount` round-trip. **Not yet live-tested** against a real cross-machine relay stop — build/tests pass, not deployed yet.
-
----
-
 ### FEED consumers should get a minimal, locally-sourced "now playing" guide/lineup — never a real SiliconDust API call
 
 Explicit user request, 2026-09-06: a discovering instance's guide/lineup for a FEED (virtual relay) device should be a small, filtered view — just what's currently airing on the relay's one advertised channel — built from data the FEED server itself already has and serves, not fetched the way a real device's guide is. **A FEED consumer must never send a real API request to SiliconDust's servers (or attempt any cloud/device guide fetch at all) for a relay device.**
@@ -250,17 +211,6 @@ The concrete bug this request also surfaced — `probeForNewDevices()` sending a
 **The fuller feature** this TODO is really about: have `VirtualTunerService`/`WebServer` serve a deliberately minimal guide (one entry: the currently-relayed show, on its one channel — everything already known and already carried in `/lineup.json`'s `HdhrVCRplusShowTitle`/`HdhrVCRplusShowTitle`-adjacent fields, `docs/VirtualTunerService.md`'s wire-protocol notes) from a new endpoint (or reuse `/lineup.json`'s existing per-channel data directly, no new endpoint at all, if that's already sufficient for whatever UI would consume it), and have the discovering side populate a minimal `guideByDevice[relayId]` entry *from that*, never from `GuideStore.load()`'s normal cloud-guide-API/device-`/guide.json` machinery. Not yet scoped: what UI (if any) actually wants to read `guideByDevice[relayId]` once it exists — today nothing does, by `docs/VirtualTunerService.md`'s "Known limitation" note, since the relay is never listed as a pickable tuner anywhere a guide would render. Needs a concrete consumer in mind before designing the data shape, not just filling in the dictionary for its own sake.
 
 **A first concrete consumer landed 2026-09-12, via a narrower route than the fuller feature above**: `VLCPlayerView`'s poster overlay needed real show identity during a FEED session's buffering wait (`feedAutoPlayMinDelay`) and had nothing — `currentGuideEntry` is exactly the `guideByDevice[relayId]`-backed lookup this TODO's fuller feature would eventually populate, so it's still always `nil` for a relay device. Rather than building the full `guideByDevice[relayId]` population machinery for this one consumer, added four more `/lineup.json` extras (`HdhrVCRplusEpisodeTitle`/`EpisodeNumber`/`Synopsis`/`ImageURL`, mirroring `AppState.DiscordEpisodeSnapshot`) and read them directly via `currentFeedEntry`, bypassing `GuideEntry`/`guideByDevice` entirely — see `docs/VirtualTunerService.md`'s `/lineup.json` section and `docs/VLCPlayerView.md`'s matching note. The fuller feature above is still not done and still has no other consumer; this only solves the one concrete UI need that existed.
-
----
-
-### ~~Simplification ideas for the FEED client-side local relay~~ — idea 1 done 2026-09-12, ideas 2-4 resolved/superseded
-
-Raised 2026-09-12 once the disk-backed pacing fix (`issues_resolved.md`'s "VLC-side FEED playback stalls" entry) was confirmed live; idea 1 was then done the same day.
-
-1. **Done.** Replaced the puller-curl-to-temp-file design with an in-memory proxy (`WebServer.FeedRelayProxyDelegate`, mirroring `pumpTranscodeProxy`/`TranscodeProxyDelegate`'s existing shape) — see `docs/VirtualTunerService.md`'s "Client-side local relay" section for the full mechanics. Removed wholesale: `RecordingManager.startFeedPull`/`stopFeedPull`/`isFeedPullRunning`/`stopAllFeedPulls`/`feedPullPids`, the temp-file naming scheme and its startup orphan sweep, and the disk I/O itself.
-2. **Resolved as a side effect of idea 1**, not separately fixed: with no local temp file accumulating history, there's no backlog left to replay — every new proxy connection (including a `catchUpToLive` reconnect) starts fresh at the remote's own live edge. The byte-zero-replay quirk this idea described no longer applies.
-3. **Superseded** — `handleVirtualTunerStream`'s client is no longer a puller curl either; it's `WebServer`'s own in-process `URLSession`-based proxy. Re-evaluating a live-edge cushion against that client (`feedLiveEdgeCushionBytes` itself was later removed; the current 8 s join backoff is `WebServer.feedJoinBackoffSeconds`), if ever wanted, starts from a clean slate rather than the puller-curl framing this idea was written against.
-4. **Moot** — the FEED-local-relay path no longer calls `streamGrowingFile` at all (idea 1's in-memory replacement bypasses it entirely), so `stillActiveCheck`'s generalization on that function has nothing left to justify it either way; left in place since both remaining callers (`handleWatchRecording`/`handleVirtualTunerStream`) already pass one trivially and reverting it would be pure churn for no behavior change.
 
 ---
 
@@ -362,28 +312,6 @@ Three of four items shipped directly into `FirstRunWizardView` (folder picker an
 ---
 
 ## Code Quality
-
-### `ConfigManager.save`'s disk write runs synchronously on the MainActor — resolved 2026-09-11
-
-Scoped 2026-08-24, following up on the "web guide feels laggy" report in `ISSUES.md`. **Demoted from prime suspect to independently-worth-doing** the same day: further investigation (see `ISSUES.md`'s entry, and the `broadcastGuideChangeEvent` entry above) found and confirmed the actual root cause is the SSE broadcast payload size, not this — real synthetic disk pressure alone measurably did *not* reproduce the reported lag. Still a legitimate finding on its own merits, just not the fix for that report.
-
-`AppState.saveConfig()` → `ConfigManager.save(_:)` did three blocking filesystem calls (remove old `.bak`, copy current config to it, atomic-write the new one) directly on `@MainActor`, called from 26 sites in `AppState.swift` covering essentially every show mutation. `WebServer` hops onto that same actor for nearly every request touching `AppState`, so a slow disk write there stalled every web request queued behind it. Same bug shape as two already-fixed call sites — `writeMetadataSidecar`/`recordedEpisodeTags` (`AppState.swift`, ~line 2826) are deliberately `nonisolated` so a slow-to-wake NAS/external drive can't block the whole app.
-
-**Resolved**: `ConfigManager` gained a private serial `saveQueue` and a new `saveAsync(_:onFailure:)` that runs `save(_:)`'s remove/copy/atomic-write on it instead of the caller's thread — serial so writes stay in call order (no out-of-order concurrent writes leaving a stale snapshot as the final on-disk content). `AppState.saveConfig()` now snapshots `config`/`shows` synchronously (cheap struct copies) and calls `saveAsync`, reacting to a failure by hopping back to `@MainActor` to set `statusMessage`, same user-visible behavior as before. The one open question this entry flagged — whether any of the 26 call sites relies on the save completing before something else happens — turned out to matter for exactly two: the SIGTERM handler in `AppState.startup()` and `teardownForExit()` (behind `quit()`/`relaunchForVLC()`) both call `saveConfig()` immediately before the process exits. Both now call a new `configManager.flushPendingSaves()` (blocks until the serial queue drains) right after, so the final save can't be lost to the process dying before its now-async write lands. `saveConfig()`'s 24 other call sites needed no changes — none of them inspect a save's success/failure to build a response (`WebServer`'s `handleRecord`/`handleEdit`/`handleDelete` all return based on in-memory state only), so fire-and-forget is behaviorally identical to before from their point of view.
-
-**Key files**: `ConfigManager.swift` (`saveAsync(_:onFailure:)`, `flushPendingSaves()`), `AppState.swift` (`saveConfig()`, the SIGTERM handler, `teardownForExit()`), `docs/Config.md` ("Async save"), `Tests/hdhr_VCRTests/AppState/AppStateDiskIOLatencyTests.swift` (still passes — `saveConfig()`'s own wall-clock latency is now lower, not higher, since it no longer waits on disk I/O itself).
-
----
-
-### `deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim — resolved 2026-09-11
-
-Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13-line inline `python3` heredoc that builds `favicon.ico` from the iconset's 16×16/32×32 PNGs, rather than factoring it into one shared script. Matches this codebase's existing pattern of keeping the two deploy scripts independently self-contained (the "Deploying resources" `cp` block is duplicated the same way), so not urgent — but a future fix to the ICO-writing logic (wrong byte order, a malformed header, adding more sizes) has to be found and applied in both places, and it's easy to fix one and forget the other.
-
-**Resolved**: extracted to `tools/generate_favicon.py` (`python3 tools/generate_favicon.py <16px.png> <32px.png> <out.ico>`); both deploy scripts now call the one shared script instead of carrying their own copy of the heredoc.
-
-**Key file**: `tools/generate_favicon.py`.
-
----
 
 ### `broadcastGuideChangeEvent`'s SSE payload — gzip shipped 2026-08-31, accept-queue split shipped 2026-09-11, one structural option still open
 

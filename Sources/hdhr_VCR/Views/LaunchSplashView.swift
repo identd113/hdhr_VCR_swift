@@ -81,6 +81,7 @@ struct LaunchSplashView: View {
     @State private var tilesReady = false   // the wall isn't drawn until posters are loaded — no placeholder flash
     @State private var tiles: [NSImage] = []
     @State private var window: NSWindow?
+    @State private var pointerMonitors: [Any] = []   // while a card is up: the window takes mouse events only over the card
     @State private var target = CGPoint.zero        // menu-bar icon centre, in this window's top-left coordinates
     @State private var pulse = false
     @State private var frozen = false               // a card is up: the wall stops animating (no idle CPU/GPU)
@@ -132,7 +133,7 @@ struct LaunchSplashView: View {
                         .accessibilityHidden(true)   // decorative wall of posters
                     // Dimmed a little more while the wizard or donation card sits on the wall, so it reads — over the wall's own
                     // area only, so the rest of the screen (the desktop and your other windows) is not darkened.
-                    Rectangle().fill(Color.black.opacity((card == .wizard || card == .donation) && phase == .showing ? 0.4 : 0))
+                    Rectangle().fill(Color.black.opacity((card == .wizard || card == .donation) && phase == .showing && !settledFull ? 0.4 : 0))
                         .frame(width: MosaicTiles.designWall.width * scale, height: MosaicTiles.designWall.height * scale)
                         .allowsHitTesting(false)
                 }
@@ -188,7 +189,7 @@ struct LaunchSplashView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             window?.alphaValue = 1
-            window?.ignoresMouseEvents = !cardsActive
+            if !cardsActive { window?.ignoresMouseEvents = true } else { trackPointer() }
         }
     }
 
@@ -254,6 +255,7 @@ struct LaunchSplashView: View {
     /// Borderless, clear, click-through (until a card needs input — see `runCards`), covering the menu-bar screen — a
     /// full-screen canvas the tiles and logo can fly across — and above the menu bar itself so the logo can land on the icon.
     fileprivate static func configure(_ w: NSWindow) {
+        glog("[Splash] configure level=\(w.level.rawValue) ignoresMouse=\(w.ignoresMouseEvents)")
         w.styleMask = [.borderless, .fullSizeContentView]
         w.isOpaque = false
         w.backgroundColor = .clear
@@ -359,6 +361,7 @@ struct LaunchSplashView: View {
     /// view, its `@State` and the poster images. First run: only called after the setup wizard is dismissed, so the wall stays
     /// as its backdrop until then.
     @MainActor private func finish() {
+        stopPointerTracking()
         frozen = true
         tilesReady = false
         onFinish()
@@ -400,19 +403,57 @@ struct LaunchSplashView: View {
 }
 
 extension LaunchSplashView {
+    /// The card's rectangle in screen coordinates (the panel is centred in the screen-sized window, at the wizard's settled scale
+    /// or the wall-relative one before that).
+    fileprivate func cardScreenRect() -> NSRect? {
+        guard let w = window else { return nil }
+        let full = w.frame.size
+        let scale = settledFull ? settledScale(full) : displayScale(full)
+        let size = CGSize(width: cardSize.width * scale, height: cardSize.height * scale)
+        return NSRect(x: w.frame.midX - size.width / 2, y: w.frame.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    /// While a card is up the screen-sized window must not swallow clicks meant for anything else: it takes mouse events only while
+    /// the pointer is over the card, and is click-through everywhere else (other windows and apps stay usable).
+    @MainActor fileprivate func trackPointer() {
+        guard cardsActive, let w = window, let rect = cardScreenRect() else { return }
+        let inside = rect.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+        if w.ignoresMouseEvents == inside { w.ignoresMouseEvents = !inside }
+    }
+
+    @MainActor fileprivate func startPointerTracking() {
+        guard pointerMonitors.isEmpty else { return }
+        let move: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseDown, .rightMouseDown, .scrollWheel]
+        let handler: (NSEvent) -> Void = { _ in Task { @MainActor in self.trackPointer() } }
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: move, handler: handler) { pointerMonitors.append(g) }
+        if let l = NSEvent.addLocalMonitorForEvents(matching: move, handler: { e in handler(e); return e }) { pointerMonitors.append(l) }
+        trackPointer()
+    }
+
+    @MainActor fileprivate func stopPointerTracking() {
+        pointerMonitors.forEach { NSEvent.removeMonitor($0) }
+        pointerMonitors = []
+    }
+}
+
+extension LaunchSplashView {
     /// Shows the wizard (when due) and then the donation card (when due) as cards in this window, each sliding in over
     /// the one before, with the wall as the backdrop. Ends like a normal launch, minus the logo (it left with the splash
     /// card): the wall fades and a ring pulses at the menu-bar icon — "set up, and living up here".
     @MainActor fileprivate func runCards(wizardDue: Bool, in size: CGSize) async {
         state.launchSplashHandsOffToWizard = false     // decided — the app's fallback timer (openLaunchSplashIfNeeded) stands down
+        glog("[Splash] runCards wizardDue=\(wizardDue) window=\(window == nil ? "nil" : "set")")
         cardsActive = true
         frozen = true                                   // the wall stops animating while a card is open
         LaunchSplashController.shared.settled = true
-        if let w = window {                             // the cards take input: key window, above other apps' windows
-            w.ignoresMouseEvents = false
-            w.level = .modalPanel
-            NSApp.activate(ignoringOtherApps: true)
+        if let w = window {                             // the cards take input: key window, but an ordinary level — other apps' windows can sit over it
+            w.level = .normal
+            NSApp.activate(ignoringOtherApps: true)      // honoured only up to macOS 13; later systems may decline when launched in the background
+            startPointerTracking()
+            w.orderFrontRegardless()                     // once: bring the card forward even if the app is not active; an ordinary level, so it can be covered afterwards
             w.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(for: .milliseconds(500))
+            glog("[Splash] cards up: level=\(w.level.rawValue) ignoresMouse=\(w.ignoresMouseEvents) key=\(w.isKeyWindow) active=\(NSApp.isActive)")
         }
         if wizardDue {
             let before = closedCards                    // taken before the slide, so a close during it still counts
@@ -440,6 +481,7 @@ extension LaunchSplashView {
     /// the icon's size, while the wall fades away behind it; then a ring pulses on the icon — "I live up here, that's next".
     @MainActor fileprivate func flyPanelToMenuBar(in size: CGSize) async {
         cardsActive = false
+        stopPointerTracking()
         if let w = window {
             w.ignoresMouseEvents = true
             w.level = .popUpMenu                        // above the menu bar, so the panel can land on the icon

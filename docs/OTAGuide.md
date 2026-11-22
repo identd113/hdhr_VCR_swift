@@ -64,6 +64,7 @@ No series IDs (the SeriesID types are unavailable for these airings; Once and We
   lineup-only scan (a few minutes; the scan window opens without taking focus) once the hour has passed and the saved list is older than today's mark, at most one try a day
   (`AppState.lineupScanDue`, unit-tested). Like every scan it uses idle tuners only and steps aside for a recording or a viewer. The first-run wizard has a step that does the same scan on request.
 - **Guide failure** (`AppState.offerAirGuideFallback`, called once per outage from `handleGuideLoadFailure`, only when no saved air guide under 36 h exists and no scan is running): an in-app alert (Scan Now / Not Now) and a Discord message (honors the Guide-error Discord toggle). Scan Now starts a full scan (list, then guide); Not Now ends the offer for this outage; with no answer for an hour the full scan starts by itself. The guide loading again cancels the offer (`endAirGuideFallbackOffer`). The Discord message is one-way: the answer is given in the app.
+  **Since 2026-11-15:** with `OTA_scan_enabled` on (the one Over-the-Air gate) there is no prompt: the air guide scan starts at once and Discord is told. With it off, the prompt and one-hour timer above apply unchanged.
 
 ## Adaptive guide reads (2026-10-22)
 A guide read (`OTAScanner.capture`, not the quick channel-list read) ends before its time cap once the picture has stopped growing: at least `OTAReadQuiet.minimum` (20 s) have passed

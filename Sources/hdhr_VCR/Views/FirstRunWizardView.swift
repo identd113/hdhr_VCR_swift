@@ -20,7 +20,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case recordingDefaults, airChannels, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming, airScanning }
+    enum Step: Int, CaseIterable { case recordingDefaults, vlcRequired, webLAN, terminalGuide, otherApps, recordingRelay, notificationTiming, airChannels }
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
@@ -138,10 +138,6 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
-                case .airChannels:
-                    airChannelsScreen
-                        .transition(slideTransition)
-                        .id(Step.airChannels)
                 case .vlcRequired:
                     vlcRequiredScreen
                         .transition(slideTransition)
@@ -161,14 +157,14 @@ struct FirstRunWizardView: View {
                     recordingRelayScreen
                         .transition(slideTransition)
                         .id(Step.recordingRelay)
-                case .airScanning:
-                    airScanningScreen
-                        .transition(slideTransition)
-                        .id(Step.airScanning)
                 case .notificationTiming:
                     notificationTimingScreen
                         .transition(slideTransition)
                         .id(Step.notificationTiming)
+                case .airChannels:
+                    airChannelsScreen
+                        .transition(slideTransition)
+                        .id(Step.airChannels)
                 }
             }
             }
@@ -182,7 +178,7 @@ struct FirstRunWizardView: View {
                         .accessibilityIdentifier("wizard-back")
                 }
                 Spacer()
-                if step != .airScanning {
+                if step != .airChannels {
                     Button("Next") { goNext() }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
@@ -211,11 +207,11 @@ struct FirstRunWizardView: View {
             w.setContentSize(NSSize(width: Self.panelWidth, height: stepHeight))
             w.isOpaque = false
             w.backgroundColor = .clear
-            w.hasShadow = true
+            w.hasShadow = false
             w.center()
         })
         // The launch splash's look: always dark, a soft warm glow from the logo corner and a vignette, white type —
-        // rounded 20pt panel with a faint border and the same drop shadow DonationNagView uses.
+        // rounded 20pt panel with a faint border (no drop shadow).
         // In its own window the wizard draws the dark panel; as a launch card the splash's persistent panel is already there.
         .launchCardChrome(applied: embeddedClose == nil)
         .onAppear {
@@ -312,6 +308,15 @@ struct FirstRunWizardView: View {
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 0)
+                // The launch card has no title bar, so no red close button: give it one (Escape still works while it is key).
+                if embeddedClose != nil {
+                    Button(action: closeWizard) {
+                        Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.white.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close setup (you can reopen it from Settings)")
+                    .accessibilityLabel("Close setup")
+                }
             }
 
             HStack(spacing: 4) {
@@ -382,7 +387,7 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Step 2 (added 2026-10-21): a quick scan that reads the channel list the stations broadcast, so a backup channel list exists
+    /// Last step (moved here 2026-11-15, merged with the old "Scanning the Air" question): a quick scan that reads the channel list the stations broadcast, so a backup channel list exists
     /// from day one. Optional and non-blocking; see AirChannelsCard.
     private var airChannelsScreen: some View {
         Form {
@@ -395,19 +400,26 @@ struct FirstRunWizardView: View {
                 }
             }
             Section {
-                AirChannelsCard(progress: state.otaProgress)
-            }
-            Section {
+                Picker(selection: $airScanEnabled) {
+                    Text("No, do not scan by itself").tag(false)
+                    Text("Yes, scan once a day").tag(true)
+                } label: {
+                    Text("Scan the air automatically")
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("wizard-air-scan-enabled")
+                // Needs the answer above: indented and dimmed while it is No.
                 Picker(selection: $airScanHour) {
                     Text("Never").tag(-1)
                     ForEach(0..<24, id: \.self) { h in Text(String(format: "Daily at %02d:00", h)).tag(h) }
                 } label: {
-                    HStack { Text("Rescan the channel list"); InfoButton("Once a day from this hour on, on idle tuners only, the app rereads the channel list from the air. The scan steps aside whenever a recording or a viewer needs a tuner. The guide from the air is scanned only if the SiliconDust guide cannot be loaded: you are asked first, and with no answer in an hour the scan starts by itself. You can change this later in Settings → Advanced → Over-the-Air Guide.") }
+                    HStack { Text("Rescan the channel list"); InfoButton("Once a day from this hour on, on idle tuners only, the app rereads the channel list from the air. The scan steps aside whenever a recording or a viewer needs a tuner. The guide from the air is read only if the SiliconDust guide cannot be loaded. You can change this later in Settings → Over the Air.") }
                 }
+                .padding(.leading, 20)
+                .disabled(!airScanEnabled)
+                .opacity(airScanEnabled ? 1 : 0.5)
                 .accessibilityIdentifier("wizard-air-schedule")
-            }
-            Section {
-                Text("Using the air for guide data is a separate choice: Settings → Over the Air.")
+                Text("Yes mixes any stations SiliconDust lacks into your channels. If SiliconDust's guide cannot be loaded at all, the guide is read from the air until it is back.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -707,34 +719,6 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Last step: whether the app may scan the air by itself at all. Nothing scans until this is answered; "Yes" turns on the
-    /// daily channel-list scan (at the hour picked on the Channels from the Air step), "No" leaves it off. Saved on Finish.
-    private var airScanningScreen: some View {
-        Form {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Scan the air for channels?").font(.headline)
-                    Text("Once a day, on idle tuners only, the app can tune every TV channel in turn for a few minutes to read the channel list the stations broadcast. It steps aside whenever a recording or a viewer needs a tuner. The scan window opens while it runs. If you say no, nothing scans by itself; you can still scan by hand, or turn it on later in Settings → Over the Air.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Section {
-                Picker(selection: $airScanEnabled) {
-                    Text("No, do not scan by itself").tag(false)
-                    Text("Yes, scan once a day").tag(true)
-                } label: {
-                    Text("Scan the air automatically")
-                }
-                .pickerStyle(.radioGroup)
-                .accessibilityIdentifier("wizard-air-scan-enabled")
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
     // Label morphs Finish → checkmark during the flourish delay (finish()'s finishTask) instead
     // of just disappearing with the window — a small, cheap "yes, that worked" confirmation.
     private var finishButton: some View {
@@ -797,7 +781,6 @@ struct FirstRunWizardView: View {
         case .otherApps:          return "Other Apps"
         case .recordingRelay:     return "Recording FEED (Beta)"
         case .notificationTiming: return "Notification Timing"
-        case .airScanning:        return "Scanning the Air"
         }
     }
 
@@ -910,11 +893,24 @@ struct FirstRunWizardView: View {
         // Flourish, then dismiss — 380ms total, well under a ~500-700ms ceiling. .onExitCommand
         // and the red-close-button both call dismiss() directly and immediately regardless of
         // this pending task, so Escape mid-flourish still works exactly as before.
-        finishGlowTrigger += 1
-        finishTask = Task {
-            try? await Task.sleep(for: .milliseconds(380))
-            guard !Task.isCancelled else { return }
-            closeWizard()
+        let flourishAndClose = {
+            finishGlowTrigger += 1
+            finishTask = Task {
+                try? await Task.sleep(for: .milliseconds(380))
+                guard !Task.isCancelled else { return }
+                closeWizard()
+            }
+        }
+        guard airScanEnabled, !state.recordableDevices.isEmpty else { flourishAndClose(); return }
+        // They chose the daily scan: offer the first one now. It runs in the background (no scan window), on idle tuners only.
+        let alert = NSAlert()
+        alert.messageText = "Scan for channels now?"
+        alert.informativeText = "Reading the channel list from the air takes about three minutes. It runs in the background on idle tuners, steps aside for a recording or a viewer, and you can keep using the app. Otherwise the first scan runs tonight at \(String(format: "%02d:00", state.config.OTA_lineup_hour))."
+        alert.addButton(withTitle: "Scan Now")
+        alert.addButton(withTitle: "Later")
+        Dialogs.show(alert) { response in
+            if response == .alertFirstButtonReturn { state.startOTAScan(lineupOnly: true, userInitiated: false, showWindow: false) }
+            flourishAndClose()
         }
     }
 

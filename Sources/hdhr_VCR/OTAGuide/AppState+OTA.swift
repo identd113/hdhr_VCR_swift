@@ -232,6 +232,17 @@ extension AppState {
         guard !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
               recordableDevices.contains(where: { $0.DeviceID == deviceId }) else { return }
         airFallbackOffered = true
+        // Scanning is switched on (the one Over-the-Air gate): that is the consent, so no prompt — scan for the backup guide at once.
+        if config.OTA_scan_enabled {
+            glog("[OTA] guide unavailable for \(deviceId) — over-the-air scanning is on, reading the air guide now")
+            discordError("📡 Guide unavailable — air guide scan started",
+                         detail: "Device \(deviceId) — the guide can't be loaded, so the app is reading the guide from the air until it is back.",
+                         color: 0xE67E22, enabled: config.Discord_on_guide_error)
+            airFallbackApproved = true; syncAirGuideAllowed()
+            startOTAScan(deviceId: deviceId, userInitiated: false, permitted: true)
+            return
+        }
+        airFallbackOffered = true
         glog("[OTA] guide unavailable for \(deviceId) — offering an air scan, starting it in \(Int(wait / 60)) min if nobody answers")
         let alert = NSAlert()
         alert.messageText = "The guide is unavailable"
