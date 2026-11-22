@@ -63,8 +63,8 @@ Two `Section`s, in order: **Source** (a **Guide format** heading with an (i), th
 The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10, then to the Guide tab → Source, 2026-10-22.
 
 ### Category: Notifications
-**Reminders** section (was "Notifications"): Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
-(2026-10-24: the *Recording alert* minutes stepper moved from Notifications to Advanced → Reminder timing, with its "fires at or after Up Next" warning; the key `Notify_recording` is listed under Advanced for Reset This Tab.)
+**Reminders** section (was "Notifications"): Up Next minutes `Stepper` (5–120, step 5). (The Recording alert stepper and its warning were removed 2026-11-22.)
+(2026-11-22: the *Recording alert* stepper is gone altogether; `Notify_recording` stays in the config only so old files decode.)
 
 **Discord** section: `Toggle("Enable Discord notifications")`. When enabled: `HStack` with monospaced `TextField` for webhook URL (placeholder `https://discord.com/api/webhooks/…`; a "Paste a webhook URL to enable notifications" caption while empty) + `"Test"` `.bordered` button (or `ProgressView` while testing). Status labels:
 - Passed: green `checkmark.circle.fill` + `"Verified"`
@@ -167,7 +167,7 @@ Sidebar entries (with SF Symbol icons):
 | General | `gear` | Launch at Login, Blink menu bar icon, appearance, system |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time minutes, Organize series and skip duplicates, Post-recording script |
 | Guide | `tv` | Guide format (JSON / XMLTV / OTA), auto-refresh, Update Guides Now |
-| Notifications | `bell.badge` | Up Next timing, Recording alert timing |
+| Notifications | `bell.badge` | Up Next timing |
 | Advanced | `terminal` | Network interface, logging + config file path, check for updates, signal quality |
 | Sharing | `globe` | Enable/disable LAN web server, port, access URL, Home Assistant status endpoint, recording-relay rebroadcast |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |

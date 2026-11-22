@@ -269,7 +269,8 @@ struct MenuContent: View {
         // the primary would (docs/VLCPlayerView.md's "Picture-in-picture" section).
         let vlcUsing    = (state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
                         + (state.secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
-        let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
+        let webUsing    = state.webLiveSessions.values.filter { $0.deviceId == device.DeviceID }.count   // browser live TV, as in activeTunerCount
+        let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing + webUsing
         let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
         let hwCount     = liveInfo?.filter { $0.isInUse }.count ?? appCount
         // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —

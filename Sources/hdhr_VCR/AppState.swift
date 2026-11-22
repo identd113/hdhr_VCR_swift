@@ -4494,7 +4494,7 @@ final class AppState: ObservableObject {
         shows[i].show_paused = false
         shows[i].clearFailures()
         showRuntime[shows[i].show_id]?.retryAfter = nil
-        // Re-arm the "Up Next"/"Recording Soon" pre-notifications — see ISSUES.md's 2026-08-19
+        // Re-arm the "Up Next" pre-notification — see ISSUES.md's 2026-08-19
         // entry. A cooldown timestamp set before the pause (or simply stale after a long pause)
         // could otherwise wrongly suppress the notification for the airing that's actually next
         // once this show is active again; clearing both just gives the normal minutesAway-window
@@ -4779,7 +4779,7 @@ final class AppState: ObservableObject {
             }
             if shows[i].show_paused {
                 shows[i].show_paused = false
-                // Re-arm the "Up Next"/"Recording Soon" pre-notifications — same reasoning as
+                // Re-arm the "Up Next" pre-notification — same reasoning as
                 // applyResume (AppState.swift), a gap in this bulk action that fix didn't cover
                 // since this predates it and doesn't route through the shared helper (this loop
                 // touches every paused show at once; applyResume also fires a per-show

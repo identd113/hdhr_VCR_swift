@@ -3218,7 +3218,7 @@ final class WebServer: @unchecked Sendable {
                 updated.show_fail_reason = "Manually paused"
             } else {
                 updated.clearFailures()
-                // Re-arm the "Up Next"/"Recording Soon" pre-notifications and clear any live
+                // Re-arm the "Up Next" pre-notification and clear any live
                 // retry cooldown — same fix as AppState.applyResume/reactivatePausedShows, a gap
                 // in that fix since this edit path builds a standalone `updated` Show value
                 // (committed via state.updateShow(_:) below) rather than mutating state.shows by
