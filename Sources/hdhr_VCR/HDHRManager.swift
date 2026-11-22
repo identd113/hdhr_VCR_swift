@@ -62,8 +62,10 @@ final class HDHRManager {
 
         if found.isEmpty {
             guard let cloud = try? await cloudDiscover(), !cloud.isEmpty else {
+                glog("[Discovery] nothing found locally and the cloud lookup found nothing either", level: .warning)
                 throw URLError(.cannotFindHost)
             }
+            glog("[Discovery] nothing answered on the local network; using SiliconDust's cloud lookup (\(cloud.map { "\($0.DeviceID)@\($0.LocalIP)" }.joined(separator: ", "))). If lineups then fail, macOS Local Network access is probably off for this app", level: .warning)
             return cloud
         }
 

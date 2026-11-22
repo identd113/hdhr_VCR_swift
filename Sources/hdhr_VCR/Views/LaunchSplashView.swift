@@ -398,7 +398,7 @@ struct LaunchSplashView: View {
                !state.recordableDevices.isEmpty,
                !state.recordableDevices.contains(where: { !(state.lineups[$0.DeviceID]?.isEmpty ?? true) }) {
                 lineupStalled = true
-                glog("[Splash] tuner found but no lineup after \(Int(LaunchSplashPlan.stallHintSeconds)) s — Local Network access may be off", level: .warning)
+                glog("[Splash] tuner found but no lineup after \(Int(LaunchSplashPlan.stallHintSeconds)) s — Local Network access may be off (localNetworkConfirmed=\(state.config.Local_network_confirmed), devices=\(state.recordableDevices.map { "\($0.DeviceID)@\($0.LocalIP)" }))", level: .warning)
             }
         }
         let fresh = posterURLs()

@@ -1199,7 +1199,7 @@ final class AppState: ObservableObject {
 
         // 7. Discover tuners + lineups — 10 attempts, 1s apart
         let knownHosts = knownHostsFromShows()
-        glog("[Startup] discovering — knownHosts=\(knownHosts)")
+        glog("[Startup] discovering — knownHosts=\(knownHosts) localNetworkConfirmed=\(config.Local_network_confirmed)")
         await discoverDevices(knownHosts: knownHosts, attempts: 10)
         glog("[Startup] discovered \(devices.count) device(s)")
         // Prime deviceTunerOccupancy immediately after discovery so the first web page load
@@ -1964,6 +1964,7 @@ final class AppState: ObservableObject {
     }
 
     private func fetchLineupsNow(for devices: [HDHRDevice]) async {
+        let netConfirmed = config.Local_network_confirmed
         await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
             for device in devices {
                 group.addTask {
@@ -1971,7 +1972,9 @@ final class AppState: ObservableObject {
                         let lu = try await self.hdhrManager.fetchLineup(for: device)
                         return (device.DeviceID, lu)
                     } catch {
-                        glog("[Lineup] \(device.DeviceID) fetch failed: \(error)", level: .warning)
+                        let blocked = (error as? URLError).map { [.notConnectedToInternet, .cannotConnectToHost, .timedOut, .networkConnectionLost].contains($0.code) } ?? false
+                        glog("[Lineup] \(device.DeviceID) at \(device.LocalIP) fetch failed: \(error)"
+                             + (blocked && !netConfirmed ? " — Local Network access has never been confirmed on this Mac; check System Settings → Privacy & Security → Local Network" : ""), level: .warning)
                         return (device.DeviceID, nil)
                     }
                 }
