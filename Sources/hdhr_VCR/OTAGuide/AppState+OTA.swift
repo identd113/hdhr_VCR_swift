@@ -231,6 +231,8 @@ extension AppState {
     func offerAirGuideFallback(deviceId: String, wait: TimeInterval = 3600) {
         guard !airFallbackOffered, otaScanTask == nil, !OTAStore.hasFreshGuide(deviceId: deviceId),
               recordableDevices.contains(where: { $0.DeviceID == deviceId }) else { return }
+        // A test AppState whose fixture tuner has no guide would otherwise put this prompt on the real screen (and start a scan).
+        guard !runningUnderTests else { return }
         airFallbackOffered = true
         // Scanning is switched on (the one Over-the-Air gate): that is the consent, so no prompt — scan for the backup guide at once.
         if config.OTA_scan_enabled {
