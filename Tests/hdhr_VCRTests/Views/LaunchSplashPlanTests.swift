@@ -28,5 +28,10 @@ struct LaunchSplashPlanTests {
         #expect(all[1].label == "112 channels")
         let missing = LaunchSplashPlan.stages(tunerName: nil, tunerCount: 0, channelCount: 0, guideLoaded: false, startupDone: true)
         #expect(missing[0].label == "No tuner found")
+        let stalled = LaunchSplashPlan.stages(tunerName: "HDHR-1", tunerCount: 2, channelCount: 0, guideLoaded: false, startupDone: false, lineupStalled: true)
+        #expect(stalled[1].label.contains("Local Network"))
+        #expect(stalled[1].done == false)
+        let slow = LaunchSplashPlan.stages(tunerName: "HDHR-1", tunerCount: 2, channelCount: 0, guideLoaded: false, startupDone: false)
+        #expect(slow[1].label == "Loading the channel lineup…")
     }
 }

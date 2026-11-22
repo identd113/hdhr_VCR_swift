@@ -12,6 +12,7 @@ import AppKit
 enum LaunchSplashPlan {
     static let minimumSeconds: TimeInterval = 3.4
     static let capSeconds: TimeInterval = 9.5
+    static let stallHintSeconds: TimeInterval = 5
 
     /// Every launch, a brand-new install included (there it hands off to the setup wizard instead of flying to the
     /// menu-bar icon — the wizard and donation cards slide in instead, see `runCards`).
@@ -31,8 +32,10 @@ enum LaunchSplashPlan {
     }
 
     /// Tuner → lineup → guide, each flipping to a check mark as `AppState` publishes it.
+    /// `lineupStalled`: a tuner was found but no lineup came back after `stallHintSeconds` — usually macOS Local Network access
+    /// is off or its prompt is unanswered (the tuner can still be found through SiliconDust's cloud lookup), so say so.
     static func stages(tunerName: String?, tunerCount: Int, channelCount: Int, guideLoaded: Bool,
-                       startupDone: Bool) -> [Stage] {
+                       startupDone: Bool, lineupStalled: Bool = false) -> [Stage] {
         let tuner: Stage
         if let tunerName {
             tuner = Stage(label: "\(tunerName) · \(tunerCount) tuner\(tunerCount == 1 ? "" : "s")", done: true)
@@ -41,7 +44,9 @@ enum LaunchSplashPlan {
         }
         let lineup = channelCount > 0
             ? Stage(label: "\(channelCount) channels", done: true)
-            : Stage(label: "Loading the channel lineup…", done: false)
+            : Stage(label: lineupStalled && tunerName != nil
+                        ? "Can't reach the tuner: allow Local Network access in System Settings → Privacy & Security"
+                        : "Loading the channel lineup…", done: false)
         let guide = guideLoaded
             ? Stage(label: "Guide ready", done: true)
             : Stage(label: "Loading the guide…", done: false)
@@ -88,6 +93,7 @@ struct LaunchSplashView: View {
     @State private var cardsActive = false          // the window takes input; hidden whenever another app is frontmost
     @State private var wallHasPosters = false       // false → placeholder tiles / cached logos; upgraded once the guide supplies posters
     @State private var ended = false
+    @State private var lineupStalled = false        // tuner found, no lineup after `stallHintSeconds`: probably Local Network access is off
 
     private let cardSize = CGSize(width: LaunchCard.width, height: LaunchCard.designHeight)
 
@@ -249,7 +255,7 @@ struct LaunchSplashView: View {
         return LaunchSplashPlan.stages(
             tunerName: real.first.map { $0.FriendlyName ?? $0.DeviceID }, tunerCount: tuners,
             channelCount: channels, guideLoaded: state.guideByDevice.values.contains { !$0.isEmpty },
-            startupDone: !state.isStartingUp)
+            startupDone: !state.isStartingUp, lineupStalled: lineupStalled)
     }
 
     /// Borderless, clear, click-through (until a card needs input — see `runCards`), covering the menu-bar screen — a
@@ -388,6 +394,12 @@ struct LaunchSplashView: View {
         while !LaunchSplashPlan.shouldFinish(elapsed: Date().timeIntervalSince(started), startupDone: !state.isStartingUp) {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return }
+            if !lineupStalled, Date().timeIntervalSince(started) >= LaunchSplashPlan.stallHintSeconds,
+               !state.recordableDevices.isEmpty,
+               !state.recordableDevices.contains(where: { !(state.lineups[$0.DeviceID]?.isEmpty ?? true) }) {
+                lineupStalled = true
+                glog("[Splash] tuner found but no lineup after \(Int(LaunchSplashPlan.stallHintSeconds)) s — Local Network access may be off", level: .warning)
+            }
         }
         let fresh = posterURLs()
         if !fresh.isEmpty { UserDefaults.standard.set(Array(fresh.prefix(60)), forKey: Self.savedPostersKey) }
