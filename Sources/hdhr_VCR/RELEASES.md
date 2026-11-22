@@ -6,7 +6,7 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
-## Unreleased
+## v2.7.0 (2026-11-22)
 
 ### The headline: Your antenna, now in the guide
 

@@ -2,7 +2,7 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
+## v2.7.0 — 2026-11-22
 
 - *Removed* — **The "Recording Soon" notification.** It fired 15 minutes before a recording and clashed with "Up Next". "Recording Started" (and its Discord post) now tells you when it begins. The recording-alert stepper is gone from Settings and the setup wizard; old config files still load.
 - *Updated* — **The setup and launch screens take clicks reliably.** The wizard or donation card could appear without accepting any clicks when the splash had not captured its own window; it now falls back to the window it created (`[Splash] view had no window` in the log).
