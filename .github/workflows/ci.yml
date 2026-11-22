@@ -78,6 +78,9 @@ jobs:
         run: swift build -Xswiftc -Xfrontend -Xswiftc -warn-long-function-bodies=250 -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=250
 
       - name: Test
+        # The whole suite takes 1-2 minutes. A hang (see ISSUES: HLSConverter.pump, 2026-11-22) should fail fast, not hold the
+        # runner for the job's full 60 minutes.
+        timeout-minutes: 15
         # Tests/hdhr_VCRTests needs full Xcode (not just Command Line Tools) — GitHub-hosted
         # macOS runners have it preinstalled, so this should just work. See CONTRIBUTING.md.
         # SnapshotTests is skipped: its reference images live in __Snapshots__/, which is

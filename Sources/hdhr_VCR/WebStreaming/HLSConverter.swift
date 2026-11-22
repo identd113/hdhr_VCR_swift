@@ -110,8 +110,8 @@ enum HLSConverter {
         writer.startSession(atSourceTime: start)
 
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pump(videoOut, into: videoIn, label: "hls.video") }
-            if let audioOut, let audioIn { group.addTask { await pump(audioOut, into: audioIn, label: "hls.audio") } }
+            group.addTask { await pump(videoOut, into: videoIn, writer: writer, label: "hls.video") }
+            if let audioOut, let audioIn { group.addTask { await pump(audioOut, into: audioIn, writer: writer, label: "hls.audio") } }
         }
         if reader.status == .failed { writer.cancelWriting(); throw HLSConverterError.cannotRead(reader.error?.localizedDescription ?? "unknown") }
         await writer.finishWriting()
@@ -123,28 +123,51 @@ enum HLSConverter {
         return HLSConversionResult(segments: segments, duration: segments.reduce(0) { $0 + $1.duration }, playlistURL: playlistURL)
     }
 
-    /// Feeds sample buffers from one reader output into one writer input until the reader runs dry.
-    static func pump(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, label: String) async {
+    /// Feeds sample buffers from one reader output into one writer input until the reader runs dry, or until the writer fails.
+    /// A failed writer (the hardware encoder refusing or dying, seen on shared CI machines) stops asking for data: the ready
+    /// callback is never called again and a bare continuation would wait forever (CI hung for the full 60 minutes). So a refused
+    /// sample ends the pump, and a watchdog ends it if the writer has failed while the input is not ready.
+    static func pump(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, writer: AVAssetWriter, label: String) async {
         let box = PumpBox(output: output, input: input)
-        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-            box.input.requestMediaDataWhenReady(on: DispatchQueue(label: label)) {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            box.install(cont)
+            input.requestMediaDataWhenReady(on: DispatchQueue(label: label)) {
                 while box.input.isReadyForMoreMediaData {
                     guard let sample = box.output.copyNextSampleBuffer() else {
                         box.input.markAsFinished()
-                        done.resume()
+                        box.finish()
                         return
                     }
-                    box.input.append(sample)
+                    if !box.input.append(sample) { box.finish(); return }   // the writer refused it: it has failed
+                }
+            }
+            DispatchQueue.global().async {
+                while !box.isFinished {
+                    if writer.status == .failed || writer.status == .cancelled { box.finish(); return }
+                    Thread.sleep(forTimeInterval: 0.25)
                 }
             }
         }
     }
 
     // AVFoundation objects are used from one queue at a time here; the box only carries them into the closure.
+    // `finish()` resumes the continuation exactly once, from whichever of the pump or the watchdog gets there first.
     final class PumpBox: @unchecked Sendable {
         let output: AVAssetReaderTrackOutput
         let input: AVAssetWriterInput
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var done = false
         init(output: AVAssetReaderTrackOutput, input: AVAssetWriterInput) { self.output = output; self.input = input }
+        func install(_ c: CheckedContinuation<Void, Never>) { lock.lock(); continuation = c; lock.unlock() }
+        var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return done }
+        func finish() {
+            lock.lock()
+            let c = done ? nil : continuation
+            done = true; continuation = nil
+            lock.unlock()
+            c?.resume()
+        }
     }
 
     /// Receives the writer's init segment and media segments and saves them as files.
