@@ -43,7 +43,12 @@ final class HDHRManager {
     /// types are found in a single pass. mDNS is the primary source for EXTEND devices;
     /// UDP catches any additional tuners that don't respond to mDNS. Results are merged
     /// and DeviceAuth is supplemented from cloud for any device missing it.
+    /// True when the last `discoverDevices` found nothing on the local network and answered from SiliconDust's cloud lookup. The cloud
+    /// path needs no Local Network access, so a tuner found this way may still be unreachable (see `LaunchSplashPlan.stages`).
+    private(set) var lastDiscoveryWasCloudOnly = false
+
     func discoverDevices(knownHosts: [String] = [], interface: String = "") async throws -> [HDHRDevice] {
+        lastDiscoveryWasCloudOnly = false
         // Run all three paths concurrently — known hosts (fastest on stable networks),
         // mDNS (EXTEND devices), and UDP broadcast (all other tuner types)
         async let knownHostDevices = knownHostsDiscover(ips: knownHosts)
@@ -65,6 +70,7 @@ final class HDHRManager {
                 glog("[Discovery] nothing found locally and the cloud lookup found nothing either", level: .warning)
                 throw URLError(.cannotFindHost)
             }
+            lastDiscoveryWasCloudOnly = true
             glog("[Discovery] nothing answered on the local network; using SiliconDust's cloud lookup (\(cloud.map { "\($0.DeviceID)@\($0.LocalIP)" }.joined(separator: ", "))). If lineups then fail, macOS Local Network access is probably off for this app", level: .warning)
             return cloud
         }

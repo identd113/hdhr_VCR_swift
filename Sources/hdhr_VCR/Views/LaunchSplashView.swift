@@ -394,7 +394,10 @@ struct LaunchSplashView: View {
         while !LaunchSplashPlan.shouldFinish(elapsed: Date().timeIntervalSince(started), startupDone: !state.isStartingUp) {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return }
-            if !lineupStalled, Date().timeIntervalSince(started) >= LaunchSplashPlan.stallHintSeconds,
+            // Found only through the cloud lookup and Local Network access never confirmed: the lineup fetch is all but certain to
+            // fail, so say so at once instead of after the wait.
+            let cloudOnly = state.hdhrManager.lastDiscoveryWasCloudOnly && !state.config.Local_network_confirmed
+            if !lineupStalled, cloudOnly || Date().timeIntervalSince(started) >= LaunchSplashPlan.stallHintSeconds,
                !state.recordableDevices.isEmpty,
                !state.recordableDevices.contains(where: { !(state.lineups[$0.DeviceID]?.isEmpty ?? true) }) {
                 lineupStalled = true
