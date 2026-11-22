@@ -87,7 +87,18 @@ jobs:
         # gitignored by design (RECORD_SNAPSHOTS=1 records them) since rendering can differ across
         # machines/GPUs — there's no baseline for a fresh CI checkout to compare against, so this
         # suite is meant to be run and reviewed locally, not gated in CI.
-        run: swift test --skip SnapshotTests
+        run: |
+          # Hang diagnosis: the suite takes 1-2 minutes. If the test process is still alive after 7, print where every thread
+          # is stuck (sample), so the log names the call that never returns instead of ending in a bare cancellation.
+          ( sleep 420
+            for p in $(pgrep -f swiftpm-testing); do
+              echo "::group::sample of test process $p (still running after 7 minutes)"
+              sample "$p" 5 2>&1 | head -600
+              echo "::endgroup::"
+            done ) &
+          watchdog=$!
+          trap 'kill $watchdog 2>/dev/null || true' EXIT   # a normal run must not wait out the sleep
+          swift test --skip SnapshotTests
 
       - name: Release build (arm64)
         # deploy_release.sh builds exactly this (`swift build -c release --arch arm64`). Code behind `#if !DEBUG`
