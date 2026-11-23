@@ -64,11 +64,35 @@ enum HLSConverterError: Error, Equatable {
     case noVideoTrack
     case cannotRead(String)
     case cannotWrite(String)
+    /// The decoder never answered a read (MediaToolbox waiting forever, seen on shared CI machines).
+    case decoderStalled
+}
+
+/// `AVAssetReaderTrackOutput.copyNextSampleBuffer()` with a deadline. A decoder that never answers would block that call for
+/// good (CI hung for the full 60 minutes with the test process parked in MediaToolbox's `FigSemaphoreWaitRelative`); after
+/// `seconds` the reader is cancelled, which makes the call return nil with `reader.status == .cancelled`.
+enum StallGuard {
+    static let defaultSeconds: TimeInterval = 30
+    static func nextSample(_ output: AVAssetReaderTrackOutput, reader: AVAssetReader, seconds: TimeInterval = defaultSeconds) -> CMSampleBuffer? {
+        let cancel = DispatchWorkItem { reader.cancelReading() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: cancel)
+        defer { cancel.cancel() }
+        return output.copyNextSampleBuffer()
+    }
 }
 
 enum HLSConverter {
     /// Converts the whole file (or `options.maxSeconds` of it) into `outputDir`: `init.mp4`, `seg-00001.m4s`…, `index.m3u8`.
     static func convert(input: URL, outputDir: URL, options: HLSConversionOptions = HLSConversionOptions()) async throws -> HLSConversionResult {
+        do { return try await convertOnce(input: input, outputDir: outputDir, options: options) }
+        catch HLSConverterError.decoderStalled {
+            glog("[HLS] the decoder stalled converting \(input.lastPathComponent); trying once more", level: .warning)
+            try? FileManager.default.removeItem(at: outputDir)
+            return try await convertOnce(input: input, outputDir: outputDir, options: options)
+        }
+    }
+
+    private static func convertOnce(input: URL, outputDir: URL, options: HLSConversionOptions) async throws -> HLSConversionResult {
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
         let asset = AVURLAsset(url: input)
         let tracks = try await asset.load(.tracks)
@@ -110,9 +134,10 @@ enum HLSConverter {
         writer.startSession(atSourceTime: start)
 
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pump(videoOut, into: videoIn, writer: writer, label: "hls.video") }
-            if let audioOut, let audioIn { group.addTask { await pump(audioOut, into: audioIn, writer: writer, label: "hls.audio") } }
+            group.addTask { await pump(videoOut, reader: reader, into: videoIn, writer: writer, label: "hls.video") }
+            if let audioOut, let audioIn { group.addTask { await pump(audioOut, reader: reader, into: audioIn, writer: writer, label: "hls.audio") } }
         }
+        if reader.status == .cancelled { writer.cancelWriting(); throw HLSConverterError.decoderStalled }
         if reader.status == .failed { writer.cancelWriting(); throw HLSConverterError.cannotRead(reader.error?.localizedDescription ?? "unknown") }
         await writer.finishWriting()
         guard writer.status == .completed else { throw HLSConverterError.cannotWrite(writer.error?.localizedDescription ?? "status \(writer.status.rawValue)") }
@@ -127,13 +152,13 @@ enum HLSConverter {
     /// A failed writer (the hardware encoder refusing or dying, seen on shared CI machines) stops asking for data: the ready
     /// callback is never called again and a bare continuation would wait forever (CI hung for the full 60 minutes). So a refused
     /// sample ends the pump, and a watchdog ends it if the writer has failed while the input is not ready.
-    static func pump(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, writer: AVAssetWriter, label: String) async {
+    static func pump(_ output: AVAssetReaderTrackOutput, reader: AVAssetReader, into input: AVAssetWriterInput, writer: AVAssetWriter, label: String) async {
         let box = PumpBox(output: output, input: input)
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             box.install(cont)
             input.requestMediaDataWhenReady(on: DispatchQueue(label: label)) {
                 while box.input.isReadyForMoreMediaData {
-                    guard let sample = box.output.copyNextSampleBuffer() else {
+                    guard let sample = StallGuard.nextSample(box.output, reader: reader) else {
                         box.input.markAsFinished()
                         box.finish()
                         return

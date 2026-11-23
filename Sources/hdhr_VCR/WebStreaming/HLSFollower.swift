@@ -283,7 +283,7 @@ final class HLSFollower: @unchecked Sendable {
         /// again with its timestamp clamped to the start of the range (about 1 ms after the original): the
         /// half-frame margin in `skipUpTo` drops it, while the real next frame is a whole frame later.
         func pullNext() {
-            while let sample = output.copyNextSampleBuffer() {
+            while let sample = StallGuard.nextSample(output, reader: reader) {
                 if CMSampleBufferGetPresentationTimeStamp(sample).seconds > skipUpTo { next = sample; return }
             }
             next = nil
