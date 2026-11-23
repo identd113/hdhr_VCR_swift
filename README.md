@@ -17,7 +17,7 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
-### 📦 Latest: [v2.6.5](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.6.5/hdhrVCRplus-2.6.5.dmg)
+### 📦 Latest: [v2.7.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.7.0/hdhrVCRplus-2.7.0.dmg)
 - **One launch, one window:** a short launch splash that flows into setup and the support card as cards on a single panel, then glides up to the menu-bar icon to show where the app lives
 - **Steadier, and truly idle when idle:** dialogs no longer freeze recording, the web guide or FEED viewers; idle CPU is about 0%; Watch Now is right the moment a recording starts; FEED recovers on its own
 - **Safer installs and recordings:** "Move to Applications" waits for macOS's permission prompt, recordings stay on the right drive and under the right series, and Discord cards wait out rate limits
