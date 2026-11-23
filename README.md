@@ -116,6 +116,11 @@ pull program data all live here.
 - **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
 - **Native Apple Silicon** — built for arm64.
 
+### Your antenna, in the guide
+
+- **Stations your lineup lacks** — a daily scan of the air finds channels SiliconDust's lineup leaves out and adds them as ordinary channels (their own colour; watch and schedule them like any other). Off until you say yes on a new install; Settings → Over the Air.
+- **A backup guide from the air** — allow it and the listings stations broadcast fill the gaps in your guide; if SiliconDust's guide cannot be loaded at all, the app reads the guide from the air until it is back. Idle tuners only, and it steps aside for a recording or a viewer.
+
 ### Scheduling
 
 - **Cable TV-style guide** — scrollable grid showing channels and upcoming shows, color-coded by genre. Click to schedule, double-click to confirm.
@@ -132,10 +137,12 @@ pull program data all live here.
 - **Watch a recording in progress — for free** — click "Watch Now!" on a show that's currently recording and it plays straight from disk instead of opening a second tuner. Hover over the video for a scrub bar to jump anywhere already recorded, and switch between simultaneous recordings right from the channel picker.
 - **True fullscreen** — Esc to exit, arrow-key seeking (15s back / 30s forward), and a labeled toolbar that hides itself until you move the cursor to the top of the screen.
 - **Live tuner status** — the menu header shows exactly how many tuners are in use and by what, at a glance
+- **Watch in your browser (Beta)** — the web guide plays live TV and recordings in a built-in player (Settings → Sharing); starts in about 10 seconds and reconnects itself
 
 ### Notifications
 
 - **macOS alerts** — "Up Next" before each show, and "Recording Started" when it begins
+- **Tuner firmware updates** — a menu row appears when a tuner has an update waiting, with SiliconDust's release notes
 - **Discord webhooks** — rich embeds for recording started, completed (with file size), failed, paused, conflict, and more. Per-event toggles, with a live Test button for the webhook in Settings — no waiting for a real recording
 
 ### Remote access
@@ -143,6 +150,7 @@ pull program data all live here.
 - **Recording FEED (Beta)** — watch an in-progress recording live from another Mac on your LAN without opening a second tuner session. Off by default; turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings." A discovering Mac sees it appear under "Recording on Another Mac — \<hostname\>" within about a second, with a plain-MPEG-2 "Watch" and an on-the-fly-transcoded "Watch (H.264)" option, a live viewer count, and an estimated signal-strength reading from the source Mac's own tuner. Beta: occasional playback hiccups, and switching audio tracks mid-watch, are known limitations. The transcoded path is best treated as one viewer at a time — several concurrent transcoded viewers plus a live recording can push CPU noticeably higher.
 - **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. Pull down at the top of the grid to refresh in place, no page reload. (Viewing is Mac-only via the in-app VLC player.)
 - **Portrait phone layout at `/vertical`** — visit `http://<mac-ip>:1980/vertical` on your phone for a calendar-style guide: channels become side-by-side columns, time reads top-to-bottom. Responds live to how you're holding the phone, no toggle to remember; the plain root URL always stays the standard horizontal grid regardless of device, if you'd rather bookmark that instead.
+- **Playlist feed for other apps** — opt-in `/feed.m3u` and `/feed.xml` (XMLTV) of the channels recording right now (Settings → Sharing)
 - **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled with the app (`hdhrVCRplus.app/Contents/Helpers/hdhr_guide`). Run it over SSH from anywhere on your network, or click "Open in Terminal" in Settings → Sharing. Same schedule/delete/favorite actions as the web guide, all from a keyboard.
 
 ### Multi-device & formats
@@ -157,22 +165,21 @@ pull program data all live here.
 
 ## What's New
 
-**v2.6.5's headline: fixes and polish.** The app is steadier and costs nothing when idle: a stray dialog no longer
-freezes the web guide, FEED viewers or recording scheduling, the launch splash's window is released when it ends
-(about 0 % CPU at idle, no more periodic hitch), Watch Now updates the instant a recording starts, and FEED no longer
-freezes for tens of seconds. The one new touch is a **launch splash** — the logo, a live checklist and show posters
-flying in — that on a new install flows into the setup wizard and the support card on the same panel, then glides up to
-the menu-bar icon. Measured side by side with 2.6.0, startup, idle CPU, memory and web-guide speed are unchanged;
-with the splash on, startup finishes about 3 seconds later by design (`docs/PerformanceHistory.md`).
+**v2.7.0's headline: your antenna, now in the guide.** Once a day the app listens to the airwaves and finds the stations
+your SiliconDust lineup leaves out. They show up in your guide like any other channel, with a colour of their own, ready to
+watch, and, if you allow it, their listings fill the gaps in your guide too. If SiliconDust's guide is ever down, the air
+keeps your guide going. A new install is asked once, at the end of setup, whether to scan; Settings → Over the Air has the
+rest, including a button to look at the last scan again. (Watching live TV and recordings in your browser, recording the
+channels seen on the air, and a guide built from the air alone are in testing: beta.)
 
-Also in 2.6.5: recordings stay on the right drive when an external drive is unplugged, "Organize series recordings" no
-longer files one show under another, unreachable tuners are no longer offered, the player's sound follows your Mac's
-output, and "Move to Applications" no longer starts the app underneath its own prompt. (2.6.0 was the FEED and
-picture-in-picture release — scrub a FEED, resize and place picture-in-picture, Cast to Chromecast (Beta), exclude
-recordings from Time Machine.)
+Also in 2.7.0: pick your guide (JSON, XMLTV or the air) side by side, a tuner firmware row in the menu, an opt-in playlist
+feed for other apps, a browser player that looks like the app's, a web guide that fits phones again, and a friendlier first
+launch (if the tuner is found but cannot be reached, the startup screen asks you to allow Local Network access). The
+"Recording Soon" alert, which landed on top of "Up Next", is gone; "Recording Started" is the recording alert. (2.6.5 was the
+fixes and polish release, 2.6.0 the FEED and picture-in-picture one.)
 
 See **[RELEASES.md](RELEASES.md)** for the rest of what changed in the current release and every
-version before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
+version before it, or the → [full changelog](CHANGELOG.md) for the complete list.
 
 Everything else (LAN web UI, Discord notifications, per-show bonus time, etc.) is covered above
 under [Features](#features).
