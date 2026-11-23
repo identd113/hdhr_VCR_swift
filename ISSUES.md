@@ -25,7 +25,7 @@ Historical record of bugs encountered during development. Used as a "don't repea
 | T30a | Donation-nag gate may read config before it is loaded | `hdhr_VCRApp.swift:~104` |
 | T31 | VoiceOver: StarburstBadge unlabelled, low-contrast Donation buttons, PiP grip has no adjustable action, PiP close button is not in the AX tree until hovered | several views |
 | T42 | Tools nits: `test_favorite.sh` has no restore trap, `setup_signing.sh` text stale, `run_test_scenarios.sh` restart race; AddShow `GeometryReader` writes `@AppStorage` per tick; `Info.plist` category/copyright | `tools/`, `AddShowView.swift` |
-| — | `MenuContent` `ForEach` id collisions; `GuideJSONNewEpisodeTests` depends on local midnight; `overtime/__pycache__` is committed | — |
+| — | `MenuContent` `ForEach` id collisions; `overtime/__pycache__` is committed | — |
 | T40 | Doc drift: `AppState.md:188`, `Config.md:38`, `VLCPlayerView.md:10/382/841`, and the tuner-occupancy formula in `CLAUDE.md` omits `secondaryVlcOccupiesTuner`. Unverified. | `docs/`, `CLAUDE.md` |
 
 ### Fix, but needs care or a design

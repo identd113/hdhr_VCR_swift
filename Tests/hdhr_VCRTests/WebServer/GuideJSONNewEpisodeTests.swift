@@ -27,10 +27,13 @@ struct GuideJSONNewEpisodeTests {
 
         let now = Int(Date().timeIntervalSince1970)
         let start = now + 3600, end = now + 5400
-        // Midnight UTC of "today" — always decodes to today's local calendar date regardless of
-        // the CI machine's timezone offset from UTC (same reasoning as isNewEpisode's own doc
-        // comment: OriginalAirdate is UTC midnight for the broadcast calendar date).
-        let todayMidnightUTC = Int(Calendar(identifier: .gregorian).startOfDay(for: Date()).timeIntervalSince1970)
+        // OriginalAirdate is UTC midnight of the broadcast calendar date (isNewEpisode's own doc comment), and isNewEpisode compares that
+        // date with today's date in the LOCAL calendar. So the fixture is UTC midnight of today's local Y-M-D. (It used to be local
+        // midnight, which is the previous UTC date in any zone east of UTC, so the test failed there.)
+        let today = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let todayMidnightUTC = Int(try #require(utcCalendar.date(from: today)).timeIntervalSince1970)
         let guideJSON = """
         [{"GuideNumber":"5.1","GuideName":"KVUE","Guide":[
             {"StartTime":\(start),"EndTime":\(end),"Title":"Brand New Episode","OriginalAirdate":\(todayMidnightUTC)},
