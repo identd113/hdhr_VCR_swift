@@ -98,7 +98,11 @@ jobs:
             done ) &
           watchdog=$!
           trap 'kill $watchdog 2>/dev/null || true' EXIT   # a normal run must not wait out the sleep
-          swift test --skip SnapshotTests
+          # The media suites decode and re-encode MPEG-2 video; run beside ~1300 other tests on the runner's few cores they starved the
+          # whole process (unrelated tests took 7-9 s instead of milliseconds, a 2 s loopback connect timed out, a decoder read
+          # waited for good). So they run on their own, one at a time, after everything else. No test is changed or skipped.
+          swift test --skip SnapshotTests --skip HLSConverterTests --skip HLSFollowerTests --skip StreamSessionsTests --skip OTAAudioTests
+          swift test --skip-build --no-parallel --filter 'HLSConverterTests|HLSFollowerTests|StreamSessionsTests|OTAAudioTests'
 
       - name: Release build (arm64)
         # deploy_release.sh builds exactly this (`swift build -c release --arch arm64`). Code behind `#if !DEBUG`
