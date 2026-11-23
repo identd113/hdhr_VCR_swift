@@ -18,9 +18,9 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ### 📦 Latest: [v2.7.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.7.0/hdhrVCRplus-2.7.0.dmg)
-- **One launch, one window:** a short launch splash that flows into setup and the support card as cards on a single panel, then glides up to the menu-bar icon to show where the app lives
-- **Steadier, and truly idle when idle:** dialogs no longer freeze recording, the web guide or FEED viewers; idle CPU is about 0%; Watch Now is right the moment a recording starts; FEED recovers on its own
-- **Safer installs and recordings:** "Move to Applications" waits for macOS's permission prompt, recordings stay on the right drive and under the right series, and Discord cards wait out rate limits
+- **Your antenna, now in the guide:** a daily scan of the air finds the stations your SiliconDust lineup leaves out and adds them as ordinary channels; allow it, and their listings fill the gaps in your guide too, and keep the guide going if SiliconDust's is down. Settings → Over the Air
+- **Pick your guide, and a friendlier first launch:** JSON, XMLTV or the air side by side; the setup screens take clicks reliably, and if your tuner is found but unreachable the startup screen asks you to allow Local Network access
+- **Quieter alerts, plus a few extras:** "Up Next", then "Recording Started" (the overlapping "Recording Soon" is gone); a tuner firmware row in the menu; an opt-in playlist feed for other apps; a browser player and a web guide that fit phones
 - Apple Silicon only.
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
