@@ -287,5 +287,9 @@ func makeTestAppState(
     s.isStartingUp = false
     s.statusMessage = "Ready"
     s.config.Web_server_enabled = false
+    // A test AppState must never bind the app's real port: a relay or guide-window claim (ensureWebServerRunning) would otherwise
+    // open port 1980 inside the test process, and the post-deploy smoke tests (which treat a 200 from :1980 as "the app is
+    // running") would talk to it and fail when it went away. Tests that need a server set their own port after this.
+    s.config.Web_server_port = Int.random(in: 30_000...39_999)
     return s
 }
